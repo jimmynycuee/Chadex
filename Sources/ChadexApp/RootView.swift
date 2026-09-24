@@ -116,10 +116,13 @@ struct RootView: View {
                 .contentShape(Rectangle())
                 .accessibilityLabel(L10n.string("menubar.settings"))
             }
+            // Keep the native collapsible sidebar, but give the split item no
+            // horizontal resize range. This also keeps the titlebar tracking
+            // separator and the content divider on one stable boundary.
             .navigationSplitViewColumnWidth(
-                min: layout.sidebar(ChadexMetrics.sidebarMinWidth),
-                ideal: layout.sidebar(ChadexMetrics.sidebarIdealWidth),
-                max: layout.sidebar(ChadexMetrics.sidebarMaxWidth)
+                min: fixedSidebarWidth,
+                ideal: fixedSidebarWidth,
+                max: fixedSidebarWidth
             )
         } detail: {
             detail
@@ -226,6 +229,10 @@ struct RootView: View {
                 secondaryButton: .cancel(Text(L10n.string("common.cancel")))
             )
         }
+    }
+
+    private var fixedSidebarWidth: CGFloat {
+        layout.sidebar(ChadexMetrics.sidebarFixedWidth)
     }
 
     private var selectedSidebarProject: ProjectRecord? {

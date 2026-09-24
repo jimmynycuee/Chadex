@@ -8,9 +8,7 @@ enum ChadexMetrics {
     static let sectionSpacing: CGFloat = 24
     static let compactSectionSpacing: CGFloat = 18
     static let contentCornerRadius: CGFloat = 6
-    static let sidebarMinWidth: CGFloat = 200
-    static let sidebarIdealWidth: CGFloat = 224
-    static let sidebarMaxWidth: CGFloat = 270
+    static let sidebarFixedWidth: CGFloat = 200
     static let settingsContentWidth: CGFloat = 612
     static let settingsLabelWidth: CGFloat = 126
     static let settingsControlWidth: CGFloat = 360
