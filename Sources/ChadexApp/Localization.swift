@@ -16,12 +16,22 @@ enum L10n {
     }
 
     private static func localizedBundle(for language: ChadexLanguage) -> Bundle {
-        guard let code = language.localizationCode,
-              let path = Bundle.module.path(forResource: code, ofType: "lproj"),
-              let bundle = Bundle(path: path)
-        else {
+        guard let code = language.localizationCode else {
             return Bundle.module
         }
-        return bundle
+
+        if let stringsURL = Bundle.module.url(
+            forResource: "Localizable",
+            withExtension: "strings",
+            subdirectory: nil,
+            localization: code
+        ),
+           let bundle = Bundle(url: stringsURL.deletingLastPathComponent()) {
+            return bundle
+        }
+
+        let directURL = Bundle.module.bundleURL
+            .appendingPathComponent("\(code).lproj", isDirectory: true)
+        return Bundle(url: directURL) ?? Bundle.module
     }
 }

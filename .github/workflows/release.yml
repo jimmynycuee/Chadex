@@ -91,6 +91,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          args=(release create "$CHADEX_RELEASE_TAG" "$CHADEX_DMG_OUTPUT" "$CHADEX_DMG_OUTPUT.sha256" --title "Chadex $CHADEX_RELEASE_TAG" --notes-file docs/releases/0.1.0-rc.1.md)
+          notes_file="docs/releases/${CHADEX_RELEASE_TAG#v}.md"
+          test -f "$notes_file"
+          args=(release create "$CHADEX_RELEASE_TAG" "$CHADEX_DMG_OUTPUT" "$CHADEX_DMG_OUTPUT.sha256" --title "Chadex $CHADEX_RELEASE_TAG" --notes-file "$notes_file")
           [[ "$CHADEX_RELEASE_TAG" != *-* ]] || args+=(--prerelease)
           gh "${args[@]}"
