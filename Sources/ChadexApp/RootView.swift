@@ -119,6 +119,10 @@ struct RootView: View {
             // Keep the native collapsible sidebar, but give the split item no
             // horizontal resize range. This also keeps the titlebar tracking
             // separator and the content divider on one stable boundary.
+            .background {
+                SidebarSplitViewAlignmentBridge(width: fixedSidebarWidth)
+                    .frame(width: 0, height: 0)
+            }
             .navigationSplitViewColumnWidth(
                 min: fixedSidebarWidth,
                 ideal: fixedSidebarWidth,
@@ -301,6 +305,105 @@ struct RootView: View {
         case .none:
             EmptyProjectView()
         }
+    }
+}
+
+private struct SidebarSplitViewAlignmentBridge: NSViewRepresentable {
+    let width: CGFloat
+
+    func makeNSView(context: Context) -> SidebarSplitViewAlignmentView {
+        let view = SidebarSplitViewAlignmentView()
+        view.sidebarWidth = width
+        return view
+    }
+
+    func updateNSView(_ nsView: SidebarSplitViewAlignmentView, context: Context) {
+        nsView.sidebarWidth = width
+        nsView.scheduleAlignment()
+    }
+}
+
+private final class SidebarSplitViewAlignmentView: NSView {
+    var sidebarWidth: CGFloat = ChadexMetrics.sidebarFixedWidth
+    private var windowUpdateObserver: NSObjectProtocol?
+
+    deinit {
+        removeWindowObserver()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        installWindowObserver()
+        scheduleAlignment()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        scheduleAlignment()
+    }
+
+    func scheduleAlignment() {
+        DispatchQueue.main.async { [weak self] in
+            self?.alignSplitViewAndTrackingSeparator()
+        }
+    }
+
+    private func installWindowObserver() {
+        removeWindowObserver()
+        guard let window else { return }
+
+        windowUpdateObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didUpdateNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.alignSplitViewAndTrackingSeparator()
+        }
+    }
+
+    private func removeWindowObserver() {
+        if let windowUpdateObserver {
+            NotificationCenter.default.removeObserver(windowUpdateObserver)
+            self.windowUpdateObserver = nil
+        }
+    }
+
+    private func alignSplitViewAndTrackingSeparator() {
+        guard let splitView = enclosingSplitView(),
+              splitView.subviews.count >= 2
+        else {
+            return
+        }
+
+        guard let sidebar = splitView.subviews.min(by: { $0.frame.minX < $1.frame.minX }) else {
+            return
+        }
+        if !sidebar.isHidden,
+           sidebar.frame.width > 1,
+           abs(sidebar.frame.width - sidebarWidth) > 0.5 {
+            splitView.setPosition(sidebarWidth, ofDividerAt: 0)
+        }
+
+        guard let toolbarItems = window?.toolbar?.items else {
+            return
+        }
+        for case let trackingItem as NSTrackingSeparatorToolbarItem in toolbarItems {
+            if trackingItem.splitView !== splitView || trackingItem.dividerIndex != 0 {
+                trackingItem.splitView = splitView
+                trackingItem.dividerIndex = 0
+            }
+        }
+    }
+
+    private func enclosingSplitView() -> NSSplitView? {
+        var candidate = superview
+        while let view = candidate {
+            if let splitView = view as? NSSplitView {
+                return splitView
+            }
+            candidate = view.superview
+        }
+        return nil
     }
 }
 
