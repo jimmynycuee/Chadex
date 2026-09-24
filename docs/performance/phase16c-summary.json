@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "phase": "16C",
+  "status": "complete",
+  "objective": "Attribute and reduce remaining first-tool latency variance without speculative Server/Runner/helper optimization.",
+  "implemented": {
+    "helper_timing_projection": true,
+    "exact_server_trace_join": true,
+    "gui_helper_export_dependency_removed_for_new_runs": true,
+    "first_tool_profiler_decomposition": true,
+    "matched_variance_analyzer": true,
+    "matched_connected_campaign_driver": true,
+    "semantic_multi_selector_connector_selection": true,
+    "post_selection_connector_verification": true,
+    "blocking_modal_recovery": true,
+    "durable_submit_commit_checkpoint": true,
+    "exclusive_campaign_locks": true,
+    "per_run_launcher_auto_start_removed": true,
+    "fixed_launcher_identity_pin": true,
+    "launcher_identity_change_fails_closed": true,
+    "phase16b_surface_preserved": true
+  },
+  "validation": {
+    "python_tooling_tests": {
+      "passed": 22,
+      "failed": 0
+    },
+    "javascript_syntax": "passed",
+    "targeted_rust_tests": {
+      "passed": 2,
+      "failed": 0
+    },
+    "targeted_git_diff_check": "passed",
+    "repo_wide_rustfmt": "blocked_by_preexisting_unrelated_format_diffs"
+  },
+  "package": {
+    "path": "dist/Chadex-Phase16C-Instrumented.app",
+    "codesign_verify": "passed",
+    "runtime_binary_alignment": "passed",
+    "standard_app_replaced": false
+  },
+  "connected_campaign": {
+    "canonical_path": "docs/performance/phase16c-campaign-final-combined",
+    "status": "complete",
+    "matched_pairs": 10,
+    "total_valid_runs": 20,
+    "balanced_order": true,
+    "chadex_first_pairs": 5,
+    "webcodex_first_pairs": 5,
+    "fresh_temporary_chat_each_run": true,
+    "extra_high_verified": true,
+    "exact_id_attribution_required": true,
+    "launcher_identity": {
+      "pid": 38777,
+      "endpoint": "http://127.0.0.1:50065",
+      "fixed_for_all_included_runs": true
+    },
+    "source_campaigns": [
+      "phase16c-campaign-final-pinned-v2 pairs01-08",
+      "phase16c-campaign-final-pinned-replacements pairs01-02"
+    ],
+    "exclusions": {
+      "pinned-v2 pair09": "incomplete matched pair; WebCodex submitted but produced no exact tool trace within 90 seconds",
+      "pinned-v2 pair10": "not executed after pair09 campaign stop",
+      "v1-v7": "diagnostic_only_excluded_from_final_statistics"
+    },
+    "chadex": {
+      "n": 10,
+      "median_ms": 7762.51,
+      "mean_ms": 7746.77,
+      "p95_ms": 9665.479,
+      "iqr_ms": 1120.512,
+      "min_ms": 6359.861,
+      "max_ms": 10350.846
+    },
+    "webcodex": {
+      "n": 10,
+      "median_ms": 9075.858,
+      "mean_ms": 9468.858,
+      "p95_ms": 11764.453,
+      "iqr_ms": 1126.469,
+      "min_ms": 8109.578,
+      "max_ms": 12074.965
+    },
+    "paired_chadex_minus_webcodex": {
+      "n": 10,
+      "median_ms": -1540.492,
+      "mean_ms": -1722.088,
+      "iqr_ms": 1626.894,
+      "chadex_faster_pairs": 8,
+      "chadex_slower_pairs": 2
+    },
+    "order_effect": {
+      "chadex_position_1_median_ms": 7284.755,
+      "chadex_position_1_mean_ms": 7916.696,
+      "chadex_position_2_median_ms": 7777.697,
+      "chadex_position_2_mean_ms": 7576.844,
+      "webcodex_position_1_median_ms": 9478.938,
+      "webcodex_position_1_mean_ms": 10218.112,
+      "webcodex_position_2_median_ms": 8561.097,
+      "webcodex_position_2_mean_ms": 8719.604
+    }
+  },
+  "chadex_attribution": {
+    "prompt_to_helper_ingress_median_ms": 7761.017,
+    "prompt_to_helper_ingress_p95_ms": 9664.694,
+    "helper_ingress_to_server_median_ms": 0.87,
+    "helper_ingress_to_server_p95_ms": 3.646,
+    "helper_ingress_to_server_max_ms": 4.571,
+    "helper_pre_backend_median_ms": 0.092,
+    "helper_backend_to_server_median_ms": 0.766
+  },
+  "optimization_decision": "stop_first_tool_local_runtime_optimization_unless_new_observability_exposes_a_specific_controllable_pre_server_component",
+  "phase16d_first_tool": "not_warranted_by_current_evidence"
+}

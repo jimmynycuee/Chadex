@@ -1,0 +1,342 @@
+{
+  "audit_date": "2026-09-21",
+  "scope": "read-only source review plus isolated fixtures and tests; no production code changes",
+  "initial_source_head": "7c2eacb652f85900e5776c8cacbc7e7dafa6ed4a",
+  "source_review_head": "b717b1cd6b465c5b9a6596fdc1b38080f0a5f4f4",
+  "version_caveat": "Packaged probes were performed on the initial bundle. Latest source deltas were reviewed, with targeted Swift/helper tests, but no claim of a freshly packaged end-to-end retest.",
+  "probe_records": {
+    "runtime-probe": {
+      "raw_evidence_path": "/tmp/chadex-audit-runtime-probe.json",
+      "raw_sha256": "f9c0287ea1e058f2685c7d141e7887e418ad0006a7268506a031c4d4caa01b9f",
+      "source_head_at_probe": "7c2eacb652f85900e5776c8cacbc7e7dafa6ed4a",
+      "bundle_sha256": {
+        "Helpers/chadex-helper": "331de2fa62464487685063d49c72afb5efe16441c805cb03f24ae849bf1210f1",
+        "Resources/chadex-runtime/chadex-runtime-server": "f2169e26229b83bb844945f0a2fd1f5b26122ae8194ba96f44d2424e2f6bb563",
+        "Resources/chadex-runtime/chadex-runtime-runner": "1e95a60fe8c989b164c9c3e6adf8f8c1ab307a1f420c2c72fc7f548fd6236f5b"
+      },
+      "observations": {
+        "run_process3": {
+          "success": false,
+          "elapsed_seconds": 4.014,
+          "execution_state": "outcome_unknown",
+          "failure": null,
+          "workspace": null,
+          "process_details": {
+            "command_started": true,
+            "command_completed": false,
+            "effective_timeout_secs": 2,
+            "sync_wait_secs": 2,
+            "promoted_to_job": false,
+            "terminal": false
+          }
+        },
+        "adaptive_child_finished_after_unknown": true,
+        "execute_task5": {
+          "success": false,
+          "elapsed_seconds": 0.607,
+          "execution_state": "unknown",
+          "failure": {
+            "kind": "workspace_prepare_failed",
+            "category": "workspace",
+            "message": "managed_worktree_root_unavailable"
+          },
+          "workspace": {
+            "mode": "task",
+            "state": "preserved",
+            "source_project": "agent:device-audit-a:project",
+            "worktree_created": false
+          },
+          "process_details": {}
+        },
+        "late_long_job_marker_count": 0
+      }
+    },
+    "runtime-extended": {
+      "raw_evidence_path": "/tmp/chadex-audit-runtime-extended.json",
+      "raw_sha256": "a117e30b8919e74674ddefe7923615386524c5def9895e5c76081eecd7000a0f",
+      "source_head_at_probe": "7c2eacb652f85900e5776c8cacbc7e7dafa6ed4a",
+      "bundle_sha256": {
+        "Helpers/chadex-helper": "331de2fa62464487685063d49c72afb5efe16441c805cb03f24ae849bf1210f1",
+        "Resources/chadex-runtime/chadex-runtime-server": "f2169e26229b83bb844945f0a2fd1f5b26122ae8194ba96f44d2424e2f6bb563",
+        "Resources/chadex-runtime/chadex-runtime-runner": "1e95a60fe8c989b164c9c3e6adf8f8c1ab307a1f420c2c72fc7f548fd6236f5b"
+      },
+      "observations": {
+        "run_process3": {
+          "success": false,
+          "elapsed_seconds": 4.014,
+          "execution_state": "outcome_unknown",
+          "failure": null,
+          "workspace": null,
+          "process_details": {
+            "command_started": true,
+            "command_completed": false,
+            "effective_timeout_secs": 2,
+            "sync_wait_secs": 2,
+            "promoted_to_job": false,
+            "terminal": false
+          }
+        },
+        "adaptive_child_finished_after_unknown": false,
+        "execute_task5": {
+          "success": false,
+          "elapsed_seconds": 0.577,
+          "execution_state": "unknown",
+          "failure": {
+            "kind": "workspace_prepare_failed",
+            "category": "workspace",
+            "message": "managed_worktree_root_unavailable"
+          },
+          "workspace": {
+            "mode": "task",
+            "state": "preserved",
+            "source_project": "agent:device-audit-b:project",
+            "worktree_created": false
+          },
+          "process_details": {}
+        },
+        "execute_task6": {
+          "success": false,
+          "elapsed_seconds": 1.283,
+          "execution_state": "unknown",
+          "failure": {
+            "kind": "step_failed",
+            "category": "step",
+            "message": "Rejected before starting command: run_process does not accept shell command modes; use run_shell for shell syntax.\nNo command was started.\nNo files were modified.\nRetry guidance: correct the structured process fields and retry; use run_shell only when shell syntax is required.",
+            "step": 0,
+            "step_kind": "run_process",
+            "attempts": 1,
+            "retries": 0,
+            "raw_log_retained": true,
+            "execution_state": "not_started",
+            "failure_kind": "invalid_arguments",
+            "command_started": false,
+            "command_completed": false,
+            "reason": "command_failure",
+            "retry_strategy": "caller_decides",
+            "package": 0
+          },
+          "workspace": {
+            "mode": "task",
+            "state": "preserved",
+            "source_project": "agent:device-audit-b:project",
+            "execution_project": "agent:device-audit-b:project-b3aa6cb7-ecdec3f2",
+            "base_sha": "2a093a001b99c5602c81babfcb84bdc2a15d4347",
+            "source_head_sha": "2a093a001b99c5602c81babfcb84bdc2a15d4347",
+            "source_tree_sha": "b5eafe2942d3eda2e2914f07115278829cbede0e",
+            "source_index_tree_sha": "b5eafe2942d3eda2e2914f07115278829cbede0e",
+            "timings": {
+              "snapshot_ms": 1101,
+              "worktree_creation_ms": 477,
+              "scheduler_wait_ms": 0,
+              "execution_ms": 0,
+              "integration_ms": 0,
+              "validation_ms": 0,
+              "apply_back_ms": 0,
+              "cleanup_ms": 0
+            },
+            "worktree_created": true
+          },
+          "process_details": {}
+        },
+        "late_long_job_marker_count": 0
+      }
+    },
+    "runtime-long": {
+      "raw_evidence_path": "/tmp/chadex-audit-runtime-long.json",
+      "raw_sha256": "56480a6fa6cb3ab461a6fc734fd83592e4f50b78b2094eed3201f89fcd7ade30",
+      "source_head_at_probe": "7c2eacb652f85900e5776c8cacbc7e7dafa6ed4a",
+      "bundle_sha256": {
+        "Helpers/chadex-helper": "331de2fa62464487685063d49c72afb5efe16441c805cb03f24ae849bf1210f1",
+        "Resources/chadex-runtime/chadex-runtime-server": "f2169e26229b83bb844945f0a2fd1f5b26122ae8194ba96f44d2424e2f6bb563",
+        "Resources/chadex-runtime/chadex-runtime-runner": "1e95a60fe8c989b164c9c3e6adf8f8c1ab307a1f420c2c72fc7f548fd6236f5b"
+      },
+      "observations": {
+        "run_process3": {
+          "success": false,
+          "elapsed_seconds": 4.08,
+          "execution_state": "outcome_unknown",
+          "failure": null,
+          "workspace": null,
+          "process_details": {
+            "command_started": true,
+            "command_completed": false,
+            "effective_timeout_secs": 2,
+            "sync_wait_secs": 2,
+            "promoted_to_job": false,
+            "terminal": false
+          }
+        },
+        "adaptive_child_finished_after_unknown": false,
+        "execute_task5": {
+          "success": false,
+          "elapsed_seconds": 1.781,
+          "execution_state": "unknown",
+          "failure": {
+            "kind": "workspace_prepare_failed",
+            "category": "workspace",
+            "message": "managed_worktree_root_unavailable"
+          },
+          "workspace": {
+            "mode": "task",
+            "state": "preserved",
+            "source_project": "agent:device-audit-c:project",
+            "worktree_created": false
+          },
+          "process_details": {}
+        },
+        "execute_task6": {
+          "success": false,
+          "elapsed_seconds": 63.021,
+          "execution_state": "unknown",
+          "failure": {
+            "kind": "job_observation_required",
+            "category": "blocked_job",
+            "message": "a nested process outlived the synchronous task step; observe the underlying Job before continuing",
+            "step": 0,
+            "package": 0,
+            "step_kind": "run_process",
+            "attempts": 1,
+            "retries": 0,
+            "raw_log_retained": true,
+            "job_id": "wc_job_TjFY5-h0qAA9uyzb",
+            "execution_state": "running",
+            "stdout_truncated": false,
+            "stderr_truncated": false
+          },
+          "workspace": {
+            "mode": "task",
+            "state": "preserved",
+            "source_project": "agent:device-audit-c:project",
+            "execution_project": "agent:device-audit-c:project-9faed856-2c6e7f36",
+            "base_sha": "cc19f485c2fe47b729e3005ef0a74b43e97f56a0",
+            "source_head_sha": "d2633b56a16be8450514254b090d3e683a44d75e",
+            "source_tree_sha": "7079d3bead785f8ad543704968025b18b59672a7",
+            "source_index_tree_sha": "79c738074f06f84dcdc65ca612b4e1638e36df3d",
+            "timings": {
+              "snapshot_ms": 2738,
+              "worktree_creation_ms": 1942,
+              "scheduler_wait_ms": 0,
+              "execution_ms": 0,
+              "integration_ms": 0,
+              "validation_ms": 0,
+              "apply_back_ms": 0,
+              "cleanup_ms": 0
+            },
+            "worktree_created": true
+          },
+          "process_details": {}
+        },
+        "late_long_job_marker_count": 1
+      }
+    },
+    "helper-load": {
+      "raw_evidence_path": "/tmp/chadex-audit-helper-load.json",
+      "raw_sha256": "576b1e943ba1e748c2bef00bc67f48fd4bcd4edfcd4cf4d9fc35fd0be64d71f0",
+      "observations": [
+        {
+          "requests": 0,
+          "rss_kib": 3248
+        },
+        {
+          "requests": 10000,
+          "rss_kib": 133200
+        },
+        {
+          "requests": 20000,
+          "rss_kib": 262336
+        },
+        {
+          "requests": 30000,
+          "rss_kib": 379072
+        }
+      ]
+    },
+    "swift-bridge": {
+      "raw_evidence_path": "/tmp/chadex-audit-swift-bridge.json",
+      "raw_sha256": "842d9716adf47009aa22ca7ae61b401e984bd24e1eacb4d4d06d5f431a1fb889",
+      "observations": {
+        "cancelled_request_completed": false,
+        "shutdown_completed_after_6s": false
+      }
+    },
+    "project-progress": {
+      "raw_evidence_path": "/tmp/chadex-audit-project-progress.json",
+      "raw_sha256": "4092173de3d657ad1e3eaa59a518372cc0ebd0fb2eb0f5bc4b381a11995cd1db",
+      "observations": {
+        "selected_project_is_B": true,
+        "task_project": "fixture_project_A",
+        "cross_project_progress_visible": true
+      }
+    }
+  },
+  "test_logs": {
+    "swift-latest": {
+      "path": "/tmp/chadex-audit-swift-latest.log",
+      "sha256": "fed0ad57efc5924c3988bd05847311db2d222132d81a642872a7d57c2b1a6afa",
+      "result_lines": [
+        "\t Executed 15 tests, with 0 failures (0 unexpected) in 0.014 (0.015) seconds",
+        "\t Executed 15 tests, with 0 failures (0 unexpected) in 0.014 (0.015) seconds",
+        "\t Executed 15 tests, with 0 failures (0 unexpected) in 0.014 (0.019) seconds"
+      ]
+    },
+    "helper-latest": {
+      "path": "/tmp/chadex-audit-helper-latest.log",
+      "sha256": "51550f9d2d4be7588e47ed02c2bef0a9de5041538398cd6b645ba7687916c5fd",
+      "result_lines": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 127 filtered out; finished in 0.00s"
+      ]
+    },
+    "bridge-latest": {
+      "path": "/tmp/chadex-audit-bridge-latest.log",
+      "sha256": "9f918eeba679d6bc00927c57e06e0296e7fd464fecc4b28d930fadd160c76ffc",
+      "result_lines": [
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 121 filtered out; finished in 0.00s"
+      ]
+    },
+    "managed-worktree": {
+      "path": "/tmp/chadex-audit-managed-worktree.log",
+      "sha256": "96d21470c5b19deb11b4779ae90bc32e85aa6b6705cf1470d3344fa6d6525f51",
+      "result_lines": [
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 857 filtered out; finished in 2.60s"
+      ]
+    },
+    "executor": {
+      "path": "/tmp/chadex-audit-executor.log",
+      "sha256": "dccec36fd6643bea31bb734ca4c5be4358a9ba4f2c19cb2ba4dc02e392c140b1",
+      "result_lines": [
+        "  left: String(\"interruption\")",
+        " right: \"ambiguous_mutation\"",
+        "test result: FAILED. 65 passed; 1 failed; 0 ignored; 0 measured; 2621 filtered out; finished in 8.81s"
+      ]
+    },
+    "workspaces": {
+      "path": "/tmp/chadex-audit-workspaces.log",
+      "sha256": "c875f2f674b6b19c4662a399738c36ca8ece265126ee82af821a62d17eb8dd2b",
+      "result_lines": [
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 2680 filtered out; finished in 0.01s"
+      ]
+    },
+    "phase13": {
+      "path": "/tmp/chadex-audit-phase13.log",
+      "sha256": "ffe7b023385300f13ae42c4fb6cb90f23310721d49445dc15803ca2224d5a97d",
+      "result_lines": [
+        "test result: FAILED. 4 passed; 1 failed; 1 ignored; 0 measured; 859 filtered out; finished in 2.05s"
+      ]
+    },
+    "helper-permitted": {
+      "path": "/tmp/chadex-audit-helper-permitted.log",
+      "sha256": "149e1d2ff06e21383d616f51d9c4b81668be823df20cd343e19e3e11566b6e87",
+      "result_lines": [
+        "test result: ok. 124 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 10.35s"
+      ]
+    }
+  },
+  "limitations": [
+    "No fresh real ChatGPT Web end-to-end run",
+    "No complete runtime workspace test suite",
+    "Phase13 silent CPU progress test failed in sandbox that denied /bin/ps; not classified as confirmed production regression",
+    "Latest ingress drain and recovery crash-window findings are source based, not live full fault-injection results",
+    "Read-only elevated signing/Gatekeeper verification was not executed: automatic approval review rejected it because workspace credits were exhausted"
+  ],
+  "production_source_modified": false
+}

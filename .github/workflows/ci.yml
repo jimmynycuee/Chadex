@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-history:
+    name: Public history / secret scan
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install pinned Gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=8.29.1
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
+          curl -fsSL "$url" -o "/tmp/$archive"
+          echo "e4eb209d04e20339d77122a3bdf9cd41351255cfb27ebcb75e85325e04f88924  /tmp/$archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf "/tmp/$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          echo "GITLEAKS_BIN=$RUNNER_TEMP/gitleaks/gitleaks" >> "$GITHUB_ENV"
+
+      - name: Scan public history
+        env:
+          CHADEX_REQUIRE_GITLEAKS: "1"
+        run: ./scripts/public_release_check.sh HEAD
+
+  source-gate:
+    name: Source release gate
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Bootstrap pinned Rust
+        run: ./scripts/bootstrap_rust.sh
+
+      - name: Run source gate
+        env:
+          CHADEX_RELEASE_CHECK_BUILD_APP: "0"
+        run: ./scripts/release_check.sh
+
+  arm64-package:
+    name: ARM64 package gate
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Bootstrap pinned Rust
+        run: ./scripts/bootstrap_rust.sh
+
+      - name: Build hardened-runtime ad-hoc package
+        env:
+          CHADEX_APP_OUTPUT: ${{ runner.temp }}/Chadex.app
+          CHADEX_CODESIGN_MODE: adhoc
+          CHADEX_RUNTIME_PROFILE: release
+        run: ./scripts/build_app.sh
+
+      - name: Verify package shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/Chadex.app"
+          plutil -lint "$app/Contents/Info.plist"
+          codesign --verify --deep --strict "$app"
+          codesign -dvvv "$app" 2>&1 | grep -q 'flags=.*runtime'
+          for executable in \
+            "$app/Contents/MacOS/Chadex" \
+            "$app/Contents/Helpers/chadex-helper" \
+            "$app/Contents/Resources/chadex-runtime/chadex-runtime-cli" \
+            "$app/Contents/Resources/chadex-runtime/chadex-runtime-server" \
+            "$app/Contents/Resources/chadex-runtime/chadex-runtime-runner"
+          do
+            test "$(lipo -archs "$executable")" = "arm64"
+            codesign --verify --strict "$executable"
+            codesign -dvvv "$executable" 2>&1 | grep -q 'flags=.*runtime'
+          done

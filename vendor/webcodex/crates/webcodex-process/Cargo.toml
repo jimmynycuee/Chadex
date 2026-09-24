@@ -1,0 +1,33 @@
+[package]
+name = "webcodex-process"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+publish = false
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[[bin]]
+name = "process-tree-helper"
+path = "src/bin/process_tree_helper.rs"
+
+[dev-dependencies]
+tempfile = "3"
+
+# The integration tests probe process liveness directly (OpenProcess +
+# GetExitCodeProcess) instead of shelling out to tasklist.
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }

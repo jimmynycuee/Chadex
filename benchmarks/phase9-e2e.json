@@ -1,0 +1,450 @@
+{
+  "baseline_commit": "49f793fd66b054a38923c3f6e3ccd9c1aca6579f",
+  "candidate_app": "Chadex.app",
+  "candidate_helper_sha256": "03ca0c3b0f07986ecd39a04c17641e9dc3fe6b4b435b95fb9b0451ff1f1273f0",
+  "equivalent_correct_output": true,
+  "iterations_per_variant": 5,
+  "measured_scope": "workflow only; runtime setup, baseline clone, and hidden evaluator excluded",
+  "production_app_replaced": false,
+  "rows": [
+    {
+      "changed_files": [
+        "pricing/discount.py",
+        "tests/test_checkout.py"
+      ],
+      "correct": true,
+      "diff_hash": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "errors": 0,
+      "hidden_evaluator": {
+        "business_rule": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "changed_files_exact": true,
+        "git_diff_check": true,
+        "passed": true,
+        "tests": true,
+        "tests_run": 4
+      },
+      "internal_steps": 5,
+      "iteration": 1,
+      "request_bytes": 2156,
+      "result_bytes": 6004,
+      "retries": 0,
+      "review_changed_files": 2,
+      "task_status": "completed",
+      "tests": {
+        "hidden_count": 4,
+        "hidden_ok": true,
+        "workflow_ok": true
+      },
+      "tool_calls": 5,
+      "variant": "baseline",
+      "wall_ms": 351.299,
+      "workflow_diagnostics": {}
+    },
+    {
+      "changed_files": [
+        "pricing/discount.py",
+        "tests/test_checkout.py"
+      ],
+      "completed_steps": 5,
+      "correct": true,
+      "diff_hash": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "errors": 0,
+      "hidden_evaluator": {
+        "business_rule": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "changed_files_exact": true,
+        "git_diff_check": true,
+        "passed": true,
+        "tests": true,
+        "tests_run": 4
+      },
+      "internal_result_bytes_after": 636,
+      "internal_result_bytes_before": 4768,
+      "internal_steps": 5,
+      "iteration": 1,
+      "request_bytes": 2090,
+      "result_bytes": 2265,
+      "result_truncated": false,
+      "retries": 0,
+      "review_changed_files": 2,
+      "task_status": "completed",
+      "tests": {
+        "hidden_count": 4,
+        "hidden_ok": true,
+        "workflow_ok": true
+      },
+      "tool_calls": 1,
+      "variant": "phase9",
+      "wall_ms": 347.072,
+      "workflow_diagnostics": {}
+    },
+    {
+      "changed_files": [
+        "pricing/discount.py",
+        "tests/test_checkout.py"
+      ],
+      "completed_steps": 5,
+      "correct": true,
+      "diff_hash": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "errors": 0,
+      "hidden_evaluator": {
+        "business_rule": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "changed_files_exact": true,
+        "git_diff_check": true,
+        "passed": true,
+        "tests": true,
+        "tests_run": 4
+      },
+      "internal_result_bytes_after": 636,
+      "internal_result_bytes_before": 4768,
+      "internal_steps": 5,
+      "iteration": 2,
+      "request_bytes": 2090,
+      "result_bytes": 2264,
+      "result_truncated": false,
+      "retries": 0,
+      "review_changed_files": 2,
+      "task_status": "completed",
+      "tests": {
+        "hidden_count": 4,
+        "hidden_ok": true,
+        "workflow_ok": true
+      },
+      "tool_calls": 1,
+      "variant": "phase9",
+      "wall_ms": 366.492,
+      "workflow_diagnostics": {}
+    },
+    {
+      "changed_files": [
+        "pricing/discount.py",
+        "tests/test_checkout.py"
+      ],
+      "correct": true,
+      "diff_hash": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "errors": 0,
+      "hidden_evaluator": {
+        "business_rule": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "changed_files_exact": true,
+        "git_diff_check": true,
+        "passed": true,
+        "tests": true,
+        "tests_run": 4
+      },
+      "internal_steps": 5,
+      "iteration": 2,
+      "request_bytes": 2156,
+      "result_bytes": 6004,
+      "retries": 0,
+      "review_changed_files": 2,
+      "task_status": "completed",
+      "tests": {
+        "hidden_count": 4,
+        "hidden_ok": true,
+        "workflow_ok": true
+      },
+      "tool_calls": 5,
+      "variant": "baseline",
+      "wall_ms": 264.172,
+      "workflow_diagnostics": {}
+    },
+    {
+      "changed_files": [
+        "pricing/discount.py",
+        "tests/test_checkout.py"
+      ],
+      "correct": true,
+      "diff_hash": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "errors": 0,
+      "hidden_evaluator": {
+        "business_rule": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "changed_files_exact": true,
+        "git_diff_check": true,
+        "passed": true,
+        "tests": true,
+        "tests_run": 4
+      },
+      "internal_steps": 5,
+      "iteration": 3,
+      "request_bytes": 2156,
+      "result_bytes": 6004,
+      "retries": 0,
+      "review_changed_files": 2,
+      "task_status": "completed",
+      "tests": {
+        "hidden_count": 4,
+        "hidden_ok": true,
+        "workflow_ok": true
+      },
+      "tool_calls": 5,
+      "variant": "baseline",
+      "wall_ms": 270.755,
+      "workflow_diagnostics": {}
+    },
+    {
+      "changed_files": [
+        "pricing/discount.py",
+        "tests/test_checkout.py"
+      ],
+      "completed_steps": 5,
+      "correct": true,
+      "diff_hash": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "errors": 0,
+      "hidden_evaluator": {
+        "business_rule": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "changed_files_exact": true,
+        "git_diff_check": true,
+        "passed": true,
+        "tests": true,
+        "tests_run": 4
+      },
+      "internal_result_bytes_after": 636,
+      "internal_result_bytes_before": 4768,
+      "internal_steps": 5,
+      "iteration": 3,
+      "request_bytes": 2090,
+      "result_bytes": 2264,
+      "result_truncated": false,
+      "retries": 0,
+      "review_changed_files": 2,
+      "task_status": "completed",
+      "tests": {
+        "hidden_count": 4,
+        "hidden_ok": true,
+        "workflow_ok": true
+      },
+      "tool_calls": 1,
+      "variant": "phase9",
+      "wall_ms": 357.205,
+      "workflow_diagnostics": {}
+    },
+    {
+      "changed_files": [
+        "pricing/discount.py",
+        "tests/test_checkout.py"
+      ],
+      "completed_steps": 5,
+      "correct": true,
+      "diff_hash": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "errors": 0,
+      "hidden_evaluator": {
+        "business_rule": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "changed_files_exact": true,
+        "git_diff_check": true,
+        "passed": true,
+        "tests": true,
+        "tests_run": 4
+      },
+      "internal_result_bytes_after": 636,
+      "internal_result_bytes_before": 4768,
+      "internal_steps": 5,
+      "iteration": 4,
+      "request_bytes": 2090,
+      "result_bytes": 2264,
+      "result_truncated": false,
+      "retries": 0,
+      "review_changed_files": 2,
+      "task_status": "completed",
+      "tests": {
+        "hidden_count": 4,
+        "hidden_ok": true,
+        "workflow_ok": true
+      },
+      "tool_calls": 1,
+      "variant": "phase9",
+      "wall_ms": 383.695,
+      "workflow_diagnostics": {}
+    },
+    {
+      "changed_files": [
+        "pricing/discount.py",
+        "tests/test_checkout.py"
+      ],
+      "correct": true,
+      "diff_hash": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "errors": 0,
+      "hidden_evaluator": {
+        "business_rule": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "changed_files_exact": true,
+        "git_diff_check": true,
+        "passed": true,
+        "tests": true,
+        "tests_run": 4
+      },
+      "internal_steps": 5,
+      "iteration": 4,
+      "request_bytes": 2156,
+      "result_bytes": 6004,
+      "retries": 0,
+      "review_changed_files": 2,
+      "task_status": "completed",
+      "tests": {
+        "hidden_count": 4,
+        "hidden_ok": true,
+        "workflow_ok": true
+      },
+      "tool_calls": 5,
+      "variant": "baseline",
+      "wall_ms": 311.314,
+      "workflow_diagnostics": {}
+    },
+    {
+      "changed_files": [
+        "pricing/discount.py",
+        "tests/test_checkout.py"
+      ],
+      "correct": true,
+      "diff_hash": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "errors": 0,
+      "hidden_evaluator": {
+        "business_rule": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "changed_files_exact": true,
+        "git_diff_check": true,
+        "passed": true,
+        "tests": true,
+        "tests_run": 4
+      },
+      "internal_steps": 5,
+      "iteration": 5,
+      "request_bytes": 2156,
+      "result_bytes": 6004,
+      "retries": 0,
+      "review_changed_files": 2,
+      "task_status": "completed",
+      "tests": {
+        "hidden_count": 4,
+        "hidden_ok": true,
+        "workflow_ok": true
+      },
+      "tool_calls": 5,
+      "variant": "baseline",
+      "wall_ms": 296.523,
+      "workflow_diagnostics": {}
+    },
+    {
+      "changed_files": [
+        "pricing/discount.py",
+        "tests/test_checkout.py"
+      ],
+      "completed_steps": 5,
+      "correct": true,
+      "diff_hash": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "errors": 0,
+      "hidden_evaluator": {
+        "business_rule": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "changed_files_exact": true,
+        "git_diff_check": true,
+        "passed": true,
+        "tests": true,
+        "tests_run": 4
+      },
+      "internal_result_bytes_after": 636,
+      "internal_result_bytes_before": 4768,
+      "internal_steps": 5,
+      "iteration": 5,
+      "request_bytes": 2090,
+      "result_bytes": 2264,
+      "result_truncated": false,
+      "retries": 0,
+      "review_changed_files": 2,
+      "task_status": "completed",
+      "tests": {
+        "hidden_count": 4,
+        "hidden_ok": true,
+        "workflow_ok": true
+      },
+      "tool_calls": 1,
+      "variant": "phase9",
+      "wall_ms": 349.719,
+      "workflow_diagnostics": {}
+    }
+  ],
+  "schema": 1,
+  "summary": {
+    "baseline": {
+      "correct_runs": 5,
+      "diff_hashes": [
+        "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      ],
+      "median_internal_result_bytes_after": null,
+      "median_internal_result_bytes_before": null,
+      "median_internal_steps": 5.0,
+      "median_request_bytes": 2156.0,
+      "median_result_bytes": 6004.0,
+      "median_tool_calls": 5.0,
+      "runs": 5,
+      "total_errors": 0,
+      "total_retries": 0,
+      "wall_ms": {
+        "max": 351.299,
+        "median": 296.523,
+        "min": 264.172,
+        "p95": 351.299
+      }
+    },
+    "internal_result_bytes_reduction_percent": 86.66,
+    "phase9": {
+      "correct_runs": 5,
+      "diff_hashes": [
+        "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      ],
+      "median_internal_result_bytes_after": 636.0,
+      "median_internal_result_bytes_before": 4768.0,
+      "median_internal_steps": 5.0,
+      "median_request_bytes": 2090.0,
+      "median_result_bytes": 2264.0,
+      "median_tool_calls": 1.0,
+      "runs": 5,
+      "total_errors": 0,
+      "total_retries": 0,
+      "wall_ms": {
+        "max": 383.695,
+        "median": 357.205,
+        "min": 347.072,
+        "p95": 383.695
+      }
+    },
+    "result_bytes_reduction_percent": 62.29
+  },
+  "surface": "isolated local MCP through candidate helper/server/runner",
+  "task": "Ensure a fixed discount never makes the payable subtotal negative. Clamp an excessive fixed discount at zero and add a regression test, then run the full unittest suite and review the final changes."
+}

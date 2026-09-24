@@ -1,0 +1,36 @@
+# systemd unit for the WebCodex runner.
+#
+# Copy to /etc/systemd/system/webcodex-runner-workstation.service, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now webcodex-runner-workstation
+#
+# The runner owns local machine knowledge (project id/path/policy/capabilities)
+# and registers it with the server at startup. The server is a zero-project-
+# config relay and does NOT need a server-side projects.toml for runtime project
+# discovery; project ids are exposed as agent:<client_id>:<project_id>.
+#
+# New deployments should prefer transport = "auto" in runner.toml with [quic]
+# configured. The agent tries QUIC first, then WebSocket, then polling. Use a
+# strict transport only when you intentionally want exactly one transport.
+
+[Unit]
+Description=WebCodex runner (auto transport: QUIC, WebSocket, polling)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/opt/webcodex/webcodex-runner --config /etc/webcodex/clients/workstation/runner.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+# Keep environment minimal; runner behavior should come from runner.toml.
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target

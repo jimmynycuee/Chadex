@@ -1,0 +1,54 @@
+{
+  "exact_project_return_ms": {
+    "max": 21.405,
+    "median": 17.287,
+    "min": 14.228,
+    "p95": 20.425
+  },
+  "first_runtime_ms": {
+    "max": 510.52,
+    "median": 408.308,
+    "min": 397.21,
+    "p95": 425.383
+  },
+  "first_runtime_phases_ms": {
+    "operation_to_ready": {
+      "max": 511.0,
+      "median": 408.5,
+      "min": 397.0,
+      "p95": 426.0
+    },
+    "operation_to_setup": {
+      "max": 139.0,
+      "median": 67.5,
+      "min": 66.0,
+      "p95": 70.0
+    },
+    "runner_to_ready": {
+      "max": 114.0,
+      "median": 86.0,
+      "min": 74.0,
+      "p95": 102.0
+    },
+    "server_to_runner_spawn": {
+      "max": 185.0,
+      "median": 183.5,
+      "min": 182.0,
+      "p95": 185.0
+    },
+    "setup_to_server_spawn": {
+      "max": 73.0,
+      "median": 72.0,
+      "min": 70.0,
+      "p95": 73.0
+    }
+  },
+  "iterations": 12,
+  "new_project_extension_ms": {
+    "max": 220.24,
+    "median": 130.442,
+    "min": 102.567,
+    "p95": 195.204
+  },
+  "schema": 1
+}

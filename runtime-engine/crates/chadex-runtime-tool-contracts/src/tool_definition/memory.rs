@@ -1,0 +1,241 @@
+use super::ToolVisibility::ModelHidden;
+use super::{
+    def, require_all_scopes, ToolDefinition, ToolOperatorExtensionFamily, TOOL_CATEGORY_RUNTIME,
+};
+use crate::metadata::{
+    ToolPathHint::None as NoPath,
+    ToolRisk::{MemoryManage, Read},
+    ADMIN, PROJECT_READ, PROJECT_WRITE, TOOL_PROVIDER_CONTROL,
+};
+use webcodex_core::authority::{MEMORY_MANAGE_SCOPES, MEMORY_READ_SCOPES};
+
+/// Fixed Control-owned project Memory runtime contract. These tools remain
+/// globally hidden and are projected only by the capable Stateless MCP Full
+/// Operator surface; the kernel capability gate is authoritative.
+pub(super) const DEFINITIONS: &[ToolDefinition] = &[
+    require_all_scopes(
+        def(
+            "memory_search",
+            super::ToolAuditPolicy::typed_fields(&[
+                super::ToolAuditResultField::value("project"),
+                super::ToolAuditResultField::value("catalog_revision"),
+                super::ToolAuditResultField::value("total_count"),
+                super::ToolAuditResultField::value("returned_count"),
+                super::ToolAuditResultField::value("truncated"),
+                super::ToolAuditResultField::value("error_kind"),
+                super::ToolAuditResultField::value("state_changed"),
+            ])
+            .context(super::ToolAuditContextPolicy::Fields(&[
+                super::ToolAuditResultField::value("catalog_revision"),
+                super::ToolAuditResultField::value("total_count"),
+                super::ToolAuditResultField::value("returned_count"),
+                super::ToolAuditResultField::value("offset"),
+                super::ToolAuditResultField::value("next_offset"),
+                super::ToolAuditResultField::value("truncated"),
+                super::ToolAuditResultField::value("error_kind"),
+                super::ToolAuditResultField::value("state_changed"),
+            ])),
+            ModelHidden,
+            TOOL_CATEGORY_RUNTIME,
+            None,
+            TOOL_PROVIDER_CONTROL,
+            super::ToolSemanticContract {
+                effect: super::ToolEffect::Observe,
+                risk: Read,
+                approval: super::ToolApprovalPolicy::None,
+                idempotency: super::ToolIdempotency::PureRead,
+            },
+            Some(PROJECT_READ),
+            true,
+            NoPath,
+            false,
+            false,
+            super::ToolSessionEvidencePolicy::NONE,
+        ),
+        MEMORY_READ_SCOPES,
+    )
+    .with_operator_extension_family(ToolOperatorExtensionFamily::MemoryRuntime),
+    require_all_scopes(
+        def(
+            "memory_read",
+            super::ToolAuditPolicy::typed_fields(&[
+                super::ToolAuditResultField::value("project"),
+                super::ToolAuditResultField::value("memory_id"),
+                super::ToolAuditResultField::value("memory_key"),
+                super::ToolAuditResultField::value("revision"),
+                super::ToolAuditResultField::value("bootstrap"),
+                super::ToolAuditResultField::value("priority"),
+                super::ToolAuditResultField::string_bytes("returned_body_bytes", "body"),
+                super::ToolAuditResultField::value("error_kind"),
+                super::ToolAuditResultField::value("state_changed"),
+            ])
+            .context(super::ToolAuditContextPolicy::Fields(&[
+                super::ToolAuditResultField::value("memory_id"),
+                super::ToolAuditResultField::value("memory_key"),
+                super::ToolAuditResultField::value("revision"),
+                super::ToolAuditResultField::value("bootstrap"),
+                super::ToolAuditResultField::value("priority"),
+                super::ToolAuditResultField::string_bytes("returned_body_bytes", "body"),
+                super::ToolAuditResultField::value("error_kind"),
+                super::ToolAuditResultField::value("state_changed"),
+            ])),
+            ModelHidden,
+            TOOL_CATEGORY_RUNTIME,
+            None,
+            TOOL_PROVIDER_CONTROL,
+            super::ToolSemanticContract {
+                effect: super::ToolEffect::Observe,
+                risk: Read,
+                approval: super::ToolApprovalPolicy::None,
+                idempotency: super::ToolIdempotency::PureRead,
+            },
+            Some(PROJECT_READ),
+            true,
+            NoPath,
+            false,
+            false,
+            super::ToolSessionEvidencePolicy::NONE,
+        ),
+        MEMORY_READ_SCOPES,
+    )
+    .with_operator_extension_family(ToolOperatorExtensionFamily::MemoryRuntime),
+    require_all_scopes(
+        def(
+            "memory_set",
+            super::ToolAuditPolicy::typed_fields(&[
+                super::ToolAuditResultField::value("project"),
+                super::ToolAuditResultField::value("memory_id"),
+                super::ToolAuditResultField::value("memory_key"),
+                super::ToolAuditResultField::value("old_revision"),
+                super::ToolAuditResultField::value("revision"),
+                super::ToolAuditResultField::value("created"),
+                super::ToolAuditResultField::value("error_kind"),
+                super::ToolAuditResultField::value("state_changed"),
+            ])
+            .context(super::ToolAuditContextPolicy::Fields(&[
+                super::ToolAuditResultField::value("memory_id"),
+                super::ToolAuditResultField::value("memory_key"),
+                super::ToolAuditResultField::value("old_revision"),
+                super::ToolAuditResultField::value("revision"),
+                super::ToolAuditResultField::value("created"),
+                super::ToolAuditResultField::value("error_kind"),
+                super::ToolAuditResultField::value("state_changed"),
+            ])),
+            ModelHidden,
+            TOOL_CATEGORY_RUNTIME,
+            None,
+            TOOL_PROVIDER_CONTROL,
+            super::ToolSemanticContract {
+                effect: super::ToolEffect::Mutate,
+                risk: MemoryManage,
+                approval: super::ToolApprovalPolicy::Standard,
+                idempotency: super::ToolIdempotency::NonIdempotent,
+            },
+            Some(PROJECT_WRITE),
+            true,
+            NoPath,
+            false,
+            false,
+            super::ToolSessionEvidencePolicy::NONE,
+        ),
+        MEMORY_MANAGE_SCOPES,
+    )
+    .with_operator_extension_family(ToolOperatorExtensionFamily::MemoryManagement),
+    require_all_scopes(
+        def(
+            "memory_delete",
+            super::ToolAuditPolicy::typed_fields(&[
+                super::ToolAuditResultField::value("project"),
+                super::ToolAuditResultField::value("memory_id"),
+                super::ToolAuditResultField::value("memory_key"),
+                super::ToolAuditResultField::value("revision"),
+                super::ToolAuditResultField::value("deleted"),
+                super::ToolAuditResultField::value("error_kind"),
+                super::ToolAuditResultField::value("state_changed"),
+            ])
+            .context(super::ToolAuditContextPolicy::Fields(&[
+                super::ToolAuditResultField::value("memory_id"),
+                super::ToolAuditResultField::value("memory_key"),
+                super::ToolAuditResultField::value("revision"),
+                super::ToolAuditResultField::value("deleted"),
+                super::ToolAuditResultField::value("error_kind"),
+                super::ToolAuditResultField::value("state_changed"),
+            ])),
+            ModelHidden,
+            TOOL_CATEGORY_RUNTIME,
+            None,
+            TOOL_PROVIDER_CONTROL,
+            super::ToolSemanticContract {
+                effect: super::ToolEffect::Mutate,
+                risk: MemoryManage,
+                approval: super::ToolApprovalPolicy::Standard,
+                idempotency: super::ToolIdempotency::NonIdempotent,
+            },
+            Some(PROJECT_WRITE),
+            true,
+            NoPath,
+            true,
+            false,
+            super::ToolSessionEvidencePolicy::NONE,
+        ),
+        MEMORY_MANAGE_SCOPES,
+    )
+    .with_operator_extension_family(ToolOperatorExtensionFamily::MemoryManagement),
+    def(
+        "memory_scope_list",
+        super::ToolAuditPolicy::typed_fields(&[
+            super::ToolAuditResultField::value("total_count"),
+            super::ToolAuditResultField::value("returned_count"),
+            super::ToolAuditResultField::value("truncated"),
+            super::ToolAuditResultField::value("error_kind"),
+            super::ToolAuditResultField::value("state_changed"),
+        ])
+        .context_from_result(),
+        ModelHidden,
+        TOOL_CATEGORY_RUNTIME,
+        None,
+        TOOL_PROVIDER_CONTROL,
+        super::ToolSemanticContract {
+            effect: super::ToolEffect::Observe,
+            risk: Read,
+            approval: super::ToolApprovalPolicy::None,
+            idempotency: super::ToolIdempotency::PureRead,
+        },
+        Some(ADMIN),
+        false,
+        NoPath,
+        false,
+        false,
+        super::ToolSessionEvidencePolicy::NONE,
+    )
+    .with_operator_extension_family(ToolOperatorExtensionFamily::MemoryManagement),
+    def(
+        "memory_scope_purge",
+        super::ToolAuditPolicy::typed_fields(&[
+            super::ToolAuditResultField::value("memory_scope_id"),
+            super::ToolAuditResultField::value("catalog_revision"),
+            super::ToolAuditResultField::value("current_catalog_revision"),
+            super::ToolAuditResultField::value("purged_count"),
+            super::ToolAuditResultField::value("error_kind"),
+            super::ToolAuditResultField::value("state_changed"),
+        ])
+        .context_from_result(),
+        ModelHidden,
+        TOOL_CATEGORY_RUNTIME,
+        None,
+        TOOL_PROVIDER_CONTROL,
+        super::ToolSemanticContract {
+            effect: super::ToolEffect::Mutate,
+            risk: MemoryManage,
+            approval: super::ToolApprovalPolicy::Standard,
+            idempotency: super::ToolIdempotency::NonIdempotent,
+        },
+        Some(ADMIN),
+        false,
+        NoPath,
+        true,
+        false,
+        super::ToolSessionEvidencePolicy::NONE,
+    )
+    .with_operator_extension_family(ToolOperatorExtensionFamily::MemoryManagement),
+];

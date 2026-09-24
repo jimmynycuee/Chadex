@@ -1,0 +1,152 @@
+<div id="app" style="font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:16px;border:1px solid var(--color-border-primary,rgba(127,127,127,.35));border-radius:12px;max-width:920px;color:var(--color-text-primary,inherit);background:var(--color-background-primary,transparent)">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <strong style="font-size:17px">WebCodex Computer</strong>
+    <span id="state" style="font-size:12px">HTML loaded</span>
+  </div>
+  <div style="margin-top:12px;border:1px solid var(--color-border-secondary,rgba(127,127,127,.25));border-radius:10px;overflow:hidden;background:rgba(127,127,127,.08);min-height:180px;display:flex;align-items:center;justify-content:center">
+    <img id="screenshot" alt="WebCodex Computer screenshot" style="display:none;max-width:100%;max-height:min(72vh,900px);object-fit:contain" />
+    <div id="empty" style="padding:28px;font-size:13px;text-align:center">Waiting for the computer_snapshot tool result…</div>
+  </div>
+  <div id="meta" style="margin-top:10px;font-size:12px">Minimal MCP Apps handshake · waiting for initialization</div>
+  <div id="surface" style="margin-top:4px;font-size:12px;overflow-wrap:anywhere">—</div>
+</div>
+<script>
+(() => {
+  const APP_PROTOCOL = "2026-01-26";
+  const MAX_DECODED_IMAGE_BYTES = 1024 * 1024;
+  const MAX_ENCODED_IMAGE_CHARS = 4 * Math.ceil(MAX_DECODED_IMAGE_BYTES / 3);
+  const IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
+  const stateEl = document.getElementById("state");
+  const screenshotEl = document.getElementById("screenshot");
+  const emptyEl = document.getElementById("empty");
+  const metaEl = document.getElementById("meta");
+  const surfaceEl = document.getElementById("surface");
+  const pending = new Map();
+  let nextId = 1;
+
+  function boundedString(value, max) {
+    if (typeof value !== "string") return null;
+    return value.length <= max ? value : value.slice(0, max) + "…";
+  }
+
+  function request(method, params, timeoutMs = 10000) {
+    const id = nextId++;
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(method + " timed out"));
+      }, timeoutMs);
+      pending.set(id, { resolve, reject, timeout });
+      try {
+        window.parent.postMessage({ jsonrpc: "2.0", id, method, params: params || {} }, "*");
+      } catch (error) {
+        pending.delete(id);
+        clearTimeout(timeout);
+        reject(error);
+      }
+    });
+  }
+
+  function notify(method, params) {
+    window.parent.postMessage({ jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) }, "*");
+  }
+
+  function formatBytes(bytes) {
+    if (!Number.isInteger(bytes) || bytes < 0) return "unknown size";
+    if (bytes < 1024) return String(bytes) + " B";
+    return (bytes / 1024).toFixed(bytes < 10240 ? 1 : 0) + " KB";
+  }
+
+  function fail(message) {
+    stateEl.textContent = "result rejected";
+    emptyEl.textContent = message;
+    emptyEl.style.display = "block";
+    screenshotEl.style.display = "none";
+    screenshotEl.removeAttribute("src");
+  }
+
+  function renderToolResult(result) {
+    if (!result || typeof result !== "object") {
+      fail("Tool result is missing.");
+      return;
+    }
+    const structured = result.structuredContent;
+    const output = structured && typeof structured === "object" && structured.output && typeof structured.output === "object"
+      ? structured.output
+      : null;
+    if (!structured || structured.success !== true || !output) {
+      const message = structured && typeof structured.error === "string" ? structured.error : "computer_snapshot failed.";
+      fail(message);
+      return;
+    }
+    if (output.content_delivery !== "mcp_image") {
+      fail("computer_snapshot did not use native MCP image delivery.");
+      return;
+    }
+    const image = Array.isArray(result.content)
+      ? result.content.find((item) => item && typeof item === "object" && item.type === "image")
+      : null;
+    const mimeType = image && typeof image.mimeType === "string" ? image.mimeType : "";
+    const data = image && typeof image.data === "string" ? image.data : "";
+    if (!IMAGE_MIMES.has(mimeType) || !data || data.length > MAX_ENCODED_IMAGE_CHARS) {
+      fail("computer_snapshot returned an unsupported or oversized image block.");
+      return;
+    }
+
+    screenshotEl.src = "data:" + mimeType + ";base64," + data;
+    screenshotEl.style.display = "block";
+    emptyEl.style.display = "none";
+    stateEl.textContent = "screenshot received";
+
+    const width = Number.isInteger(output.width) && output.width > 0 && output.width <= 4096 ? output.width : null;
+    const height = Number.isInteger(output.height) && output.height > 0 && output.height <= 4096 ? output.height : null;
+    const fileBytes = Number.isInteger(output.file_bytes) && output.file_bytes >= 0 ? output.file_bytes : null;
+    const clientId = boundedString(output.client_id, 128) || "unknown client";
+    const surface = output.surface && typeof output.surface === "object" ? output.surface : {};
+    const application = boundedString(surface.application, 256) || "unknown application";
+    const title = boundedString(surface.title, 256);
+
+    metaEl.textContent = (width === null || height === null ? "unknown dimensions" : width + " × " + height)
+      + " · " + mimeType + " · " + formatBytes(fileBytes);
+    surfaceEl.textContent = clientId + " · " + application + (title ? " · " + title : "");
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window.parent) return;
+    const message = event.data;
+    if (!message || typeof message !== "object" || message.jsonrpc !== "2.0") return;
+    if (message.id !== undefined && pending.has(message.id)) {
+      const item = pending.get(message.id);
+      pending.delete(message.id);
+      clearTimeout(item.timeout);
+      if (message.error !== undefined) item.reject(message.error);
+      else item.resolve(message.result);
+      return;
+    }
+    if (message.method === "ui/notifications/tool-result") renderToolResult(message.params);
+  }, { passive: true });
+
+  async function initialize() {
+    try {
+      const result = await request("ui/initialize", {
+        protocolVersion: APP_PROTOCOL,
+        appInfo: { name: "webcodex-computer-app", title: "WebCodex Computer", version: "1.0.0" },
+        appCapabilities: {}
+      });
+      const protocol = result && typeof result === "object" && typeof result.protocolVersion === "string"
+        ? boundedString(result.protocolVersion, 64)
+        : null;
+      notify("ui/notifications/initialized", {});
+      if (stateEl.textContent !== "screenshot received") {
+        stateEl.textContent = "initialized";
+        metaEl.textContent = "MCP Apps initialized" + (protocol ? " · " + protocol : "");
+      }
+    } catch (error) {
+      stateEl.textContent = "init failed";
+      metaEl.textContent = "ui/initialize failed: " + String(error && error.message ? error.message : error);
+    }
+  }
+
+  void initialize();
+})();
+</script>

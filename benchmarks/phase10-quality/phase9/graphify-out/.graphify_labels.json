@@ -1,0 +1,12 @@
+{
+  "0": "TaskResult",
+  "1": "test_existing_behavior.py",
+  "2": "PreferencesStore",
+  "3": "TaskService",
+  "4": "TaskRuntime",
+  "5": "TaskViewModel",
+  "6": "README.md",
+  "7": ".call",
+  "8": "taskdesk/__init__.py",
+  "9": "tests/__init__.py"
+}

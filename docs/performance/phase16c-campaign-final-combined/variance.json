@@ -1,0 +1,758 @@
+{
+  "chadex_attribution_spans": {
+    "helper_backend_send_to_server_received_ms": {
+      "iqr_ms": 0.548,
+      "max_ms": 4.357,
+      "mean_ms": 1.211,
+      "median_ms": 0.766,
+      "min_ms": 0.379,
+      "n": 10,
+      "p95_ms": 3.49,
+      "q1_ms": 0.472,
+      "q3_ms": 1.02,
+      "range_ms": 3.978,
+      "sample_stdev_ms": 1.263
+    },
+    "helper_ingress_to_server_received_ms": {
+      "iqr_ms": 0.664,
+      "max_ms": 4.571,
+      "mean_ms": 1.333,
+      "median_ms": 0.87,
+      "min_ms": 0.469,
+      "n": 10,
+      "p95_ms": 3.646,
+      "q1_ms": 0.564,
+      "q3_ms": 1.228,
+      "range_ms": 4.102,
+      "sample_stdev_ms": 1.296
+    },
+    "helper_pre_backend_ms": {
+      "iqr_ms": 0.062,
+      "max_ms": 0.231,
+      "mean_ms": 0.122,
+      "median_ms": 0.092,
+      "min_ms": 0.073,
+      "n": 10,
+      "p95_ms": 0.223,
+      "q1_ms": 0.085,
+      "q3_ms": 0.147,
+      "range_ms": 0.158,
+      "sample_stdev_ms": 0.058
+    },
+    "prompt_to_helper_ingress_ms": {
+      "iqr_ms": 1119.664,
+      "max_ms": 10350.357,
+      "mean_ms": 7745.437,
+      "median_ms": 7761.017,
+      "min_ms": 6358.737,
+      "n": 10,
+      "p95_ms": 9664.694,
+      "q1_ms": 6890.613,
+      "q3_ms": 8010.277,
+      "range_ms": 3991.62,
+      "sample_stdev_ms": 1207.025
+    },
+    "server_handler_ms": {
+      "iqr_ms": 904.369,
+      "max_ms": 4046.994,
+      "mean_ms": 2756.312,
+      "median_ms": 2352.533,
+      "min_ms": 2304.003,
+      "n": 10,
+      "p95_ms": 3860.365,
+      "q1_ms": 2332.217,
+      "q3_ms": 3236.586,
+      "range_ms": 1742.991,
+      "sample_stdev_ms": 688.296
+    }
+  },
+  "classification_rule": "input profiles must already be exact server_trace_id joins; this analyzer never identifies requests by timestamp or tool name",
+  "grouped_effects": {
+    "harness_by_chat_state": {
+      "chadex|fresh": {
+        "iqr_ms": 1120.512,
+        "max_ms": 10350.846,
+        "mean_ms": 7746.77,
+        "median_ms": 7762.51,
+        "min_ms": 6359.861,
+        "n": 10,
+        "p95_ms": 9665.479,
+        "q1_ms": 6891.345,
+        "q3_ms": 8011.857,
+        "range_ms": 3990.985,
+        "sample_stdev_ms": 1207.047
+      },
+      "webcodex|fresh": {
+        "iqr_ms": 1126.469,
+        "max_ms": 12074.965,
+        "mean_ms": 9468.858,
+        "median_ms": 9075.858,
+        "min_ms": 8109.578,
+        "n": 10,
+        "p95_ms": 11764.453,
+        "q1_ms": 8626.191,
+        "q3_ms": 9752.66,
+        "range_ms": 3965.387,
+        "sample_stdev_ms": 1313.182
+      }
+    },
+    "harness_by_connector_state": {
+      "chadex|unknown": {
+        "iqr_ms": 1120.512,
+        "max_ms": 10350.846,
+        "mean_ms": 7746.77,
+        "median_ms": 7762.51,
+        "min_ms": 6359.861,
+        "n": 10,
+        "p95_ms": 9665.479,
+        "q1_ms": 6891.345,
+        "q3_ms": 8011.857,
+        "range_ms": 3990.985,
+        "sample_stdev_ms": 1207.047
+      },
+      "webcodex|unknown": {
+        "iqr_ms": 1126.469,
+        "max_ms": 12074.965,
+        "mean_ms": 9468.858,
+        "median_ms": 9075.858,
+        "min_ms": 8109.578,
+        "n": 10,
+        "p95_ms": 11764.453,
+        "q1_ms": 8626.191,
+        "q3_ms": 9752.66,
+        "range_ms": 3965.387,
+        "sample_stdev_ms": 1313.182
+      }
+    },
+    "harness_by_order_position": {
+      "chadex|1": {
+        "iqr_ms": 2067.601,
+        "max_ms": 10350.846,
+        "mean_ms": 7916.696,
+        "median_ms": 7284.755,
+        "min_ms": 6359.861,
+        "n": 5,
+        "p95_ms": 10046.239,
+        "q1_ms": 6760.208,
+        "q3_ms": 8827.809,
+        "range_ms": 3990.985,
+        "sample_stdev_ms": 1651.951
+      },
+      "chadex|2": {
+        "iqr_ms": 227.479,
+        "max_ms": 8024.209,
+        "mean_ms": 7576.844,
+        "median_ms": 7777.697,
+        "min_ms": 6360.191,
+        "n": 5,
+        "p95_ms": 8014.328,
+        "q1_ms": 7747.323,
+        "q3_ms": 7974.802,
+        "range_ms": 1664.018,
+        "sample_stdev_ms": 690.68
+      },
+      "webcodex|1": {
+        "iqr_ms": 2136.085,
+        "max_ms": 12074.965,
+        "mean_ms": 10218.112,
+        "median_ms": 9478.938,
+        "min_ms": 8902.863,
+        "n": 5,
+        "p95_ms": 11936.96,
+        "q1_ms": 9248.854,
+        "q3_ms": 11384.939,
+        "range_ms": 3172.102,
+        "sample_stdev_ms": 1416.431
+      },
+      "webcodex|2": {
+        "iqr_ms": 559.502,
+        "max_ms": 9843.901,
+        "mean_ms": 8719.604,
+        "median_ms": 8561.097,
+        "min_ms": 8109.578,
+        "n": 5,
+        "p95_ms": 9639.416,
+        "q1_ms": 8261.972,
+        "q3_ms": 8821.474,
+        "range_ms": 1734.323,
+        "sample_stdev_ms": 685.767
+      }
+    },
+    "harness_by_registry_state": {
+      "chadex|unknown": {
+        "iqr_ms": 1120.512,
+        "max_ms": 10350.846,
+        "mean_ms": 7746.77,
+        "median_ms": 7762.51,
+        "min_ms": 6359.861,
+        "n": 10,
+        "p95_ms": 9665.479,
+        "q1_ms": 6891.345,
+        "q3_ms": 8011.857,
+        "range_ms": 3990.985,
+        "sample_stdev_ms": 1207.047
+      },
+      "webcodex|unknown": {
+        "iqr_ms": 1126.469,
+        "max_ms": 12074.965,
+        "mean_ms": 9468.858,
+        "median_ms": 9075.858,
+        "min_ms": 8109.578,
+        "n": 10,
+        "p95_ms": 11764.453,
+        "q1_ms": 8626.191,
+        "q3_ms": 9752.66,
+        "range_ms": 3965.387,
+        "sample_stdev_ms": 1313.182
+      }
+    }
+  },
+  "interpretation_guardrail": "group differences are descriptive until repeated/interleaved samples support them; prompt-to-helper is host/relay/model-side unattributed, not reasoning time",
+  "paired_chadex_minus_webcodex_ms": {
+    "iqr_ms": 1626.894,
+    "max_ms": 506.945,
+    "mean_ms": -1722.088,
+    "median_ms": -1540.492,
+    "min_ms": -4297.268,
+    "n": 10,
+    "p95_ms": 281.67,
+    "q1_ms": -2642.025,
+    "q3_ms": -1015.131,
+    "range_ms": 4804.213,
+    "sample_stdev_ms": 1477.017
+  },
+  "paired_runs": [
+    {
+      "chadex_minus_webcodex_ms": -1902.111,
+      "chadex_order_position": 1,
+      "chadex_run_id": "pair01-chadex",
+      "pair_id": "pair01",
+      "webcodex_order_position": 2,
+      "webcodex_run_id": "pair01-webcodex"
+    },
+    {
+      "chadex_minus_webcodex_ms": 506.945,
+      "chadex_order_position": 1,
+      "chadex_run_id": "pair02-chadex",
+      "pair_id": "pair02",
+      "webcodex_order_position": 2,
+      "webcodex_run_id": "pair02-webcodex"
+    },
+    {
+      "chadex_minus_webcodex_ms": -3360.73,
+      "chadex_order_position": 2,
+      "chadex_run_id": "pair03-chadex",
+      "pair_id": "pair03",
+      "webcodex_order_position": 1,
+      "webcodex_run_id": "pair03-webcodex"
+    },
+    {
+      "chadex_minus_webcodex_ms": 6.335,
+      "chadex_order_position": 1,
+      "chadex_run_id": "pair04-chadex",
+      "pair_id": "pair04",
+      "webcodex_order_position": 2,
+      "webcodex_run_id": "pair04-webcodex"
+    },
+    {
+      "chadex_minus_webcodex_ms": -1349.37,
+      "chadex_order_position": 1,
+      "chadex_run_id": "pair05-chadex",
+      "pair_id": "pair05",
+      "webcodex_order_position": 2,
+      "webcodex_run_id": "pair05-webcodex"
+    },
+    {
+      "chadex_minus_webcodex_ms": -4297.268,
+      "chadex_order_position": 2,
+      "chadex_run_id": "pair06-chadex",
+      "pair_id": "pair06",
+      "webcodex_order_position": 1,
+      "webcodex_run_id": "pair06-webcodex"
+    },
+    {
+      "chadex_minus_webcodex_ms": -2888.663,
+      "chadex_order_position": 2,
+      "chadex_run_id": "pair07-chadex",
+      "pair_id": "pair07",
+      "webcodex_order_position": 1,
+      "webcodex_run_id": "pair07-webcodex"
+    },
+    {
+      "chadex_minus_webcodex_ms": -1731.615,
+      "chadex_order_position": 2,
+      "chadex_run_id": "pair08-chadex",
+      "pair_id": "pair08",
+      "webcodex_order_position": 1,
+      "webcodex_run_id": "pair08-webcodex"
+    },
+    {
+      "chadex_minus_webcodex_ms": -928.061,
+      "chadex_order_position": 2,
+      "chadex_run_id": "replacement-pair01-chadex",
+      "pair_id": "replacement-pair01",
+      "webcodex_order_position": 1,
+      "webcodex_run_id": "replacement-pair01-webcodex"
+    },
+    {
+      "chadex_minus_webcodex_ms": -1276.342,
+      "chadex_order_position": 1,
+      "chadex_run_id": "replacement-pair02-chadex",
+      "pair_id": "replacement-pair02",
+      "webcodex_order_position": 2,
+      "webcodex_run_id": "replacement-pair02-webcodex"
+    }
+  ],
+  "prompt_to_server_by_harness": {
+    "chadex": {
+      "iqr_ms": 1120.512,
+      "max_ms": 10350.846,
+      "mean_ms": 7746.77,
+      "median_ms": 7762.51,
+      "min_ms": 6359.861,
+      "n": 10,
+      "p95_ms": 9665.479,
+      "q1_ms": 6891.345,
+      "q3_ms": 8011.857,
+      "range_ms": 3990.985,
+      "sample_stdev_ms": 1207.047
+    },
+    "webcodex": {
+      "iqr_ms": 1126.469,
+      "max_ms": 12074.965,
+      "mean_ms": 9468.858,
+      "median_ms": 9075.858,
+      "min_ms": 8109.578,
+      "n": 10,
+      "p95_ms": 11764.453,
+      "q1_ms": 8626.191,
+      "q3_ms": 9752.66,
+      "range_ms": 3965.387,
+      "sample_stdev_ms": 1313.182
+    }
+  },
+  "run_count": 20,
+  "runs": [
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "helper_join_status": "server_projected_exact_trace",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": 1.01,
+        "helper_ingress_to_server_received_ms": 1.124,
+        "helper_pre_backend_ms": 0.114,
+        "prompt_to_helper_ingress_ms": 6358.737,
+        "prompt_to_server_received_ms": 6359.861,
+        "server_handler_ms": 2314.23
+      },
+      "order_position": 1,
+      "pair_id": "pair01",
+      "profile": "profiles/pair01-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair01-chadex",
+      "server_trace_id": "9f2b8547-7b48-415b-8785-e7b8cc874537",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "helper_join_status": "unavailable",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": null,
+        "helper_ingress_to_server_received_ms": null,
+        "helper_pre_backend_ms": null,
+        "prompt_to_helper_ingress_ms": null,
+        "prompt_to_server_received_ms": 8261.972,
+        "server_handler_ms": 2358.711
+      },
+      "order_position": 2,
+      "pair_id": "pair01",
+      "profile": "profiles/pair01-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair01-webcodex",
+      "server_trace_id": "40510564-58aa-463b-a8a6-76fd4163272f",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "helper_join_status": "server_projected_exact_trace",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": 0.412,
+        "helper_ingress_to_server_received_ms": 0.489,
+        "helper_pre_backend_ms": 0.077,
+        "prompt_to_helper_ingress_ms": 10350.357,
+        "prompt_to_server_received_ms": 10350.846,
+        "server_handler_ms": 2339.381
+      },
+      "order_position": 1,
+      "pair_id": "pair02",
+      "profile": "profiles/pair02-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair02-chadex",
+      "server_trace_id": "a05e6dc9-47a1-4295-8a16-ee2187742a4f",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "helper_join_status": "unavailable",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": null,
+        "helper_ingress_to_server_received_ms": null,
+        "helper_pre_backend_ms": null,
+        "prompt_to_helper_ingress_ms": null,
+        "prompt_to_server_received_ms": 9843.901,
+        "server_handler_ms": 3478.165
+      },
+      "order_position": 2,
+      "pair_id": "pair02",
+      "profile": "profiles/pair02-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair02-webcodex",
+      "server_trace_id": "3524b6a1-e85b-4752-a291-ededef9385e9",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "helper_join_status": "unavailable",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": null,
+        "helper_ingress_to_server_received_ms": null,
+        "helper_pre_backend_ms": null,
+        "prompt_to_helper_ingress_ms": null,
+        "prompt_to_server_received_ms": 11384.939,
+        "server_handler_ms": 3391.24
+      },
+      "order_position": 1,
+      "pair_id": "pair03",
+      "profile": "profiles/pair03-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair03-webcodex",
+      "server_trace_id": "db1e5895-cd7c-4690-8975-ccec9b1fb821",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "helper_join_status": "server_projected_exact_trace",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": 0.498,
+        "helper_ingress_to_server_received_ms": 0.583,
+        "helper_pre_backend_ms": 0.085,
+        "prompt_to_helper_ingress_ms": 8023.626,
+        "prompt_to_server_received_ms": 8024.209,
+        "server_handler_ms": 2347.501
+      },
+      "order_position": 2,
+      "pair_id": "pair03",
+      "profile": "profiles/pair03-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair03-chadex",
+      "server_trace_id": "095735db-5b5b-49c0-925f-e7fdd1b75841",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "helper_join_status": "server_projected_exact_trace",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": 0.989,
+        "helper_ingress_to_server_received_ms": 1.147,
+        "helper_pre_backend_ms": 0.158,
+        "prompt_to_helper_ingress_ms": 8826.662,
+        "prompt_to_server_received_ms": 8827.809,
+        "server_handler_ms": 4046.994
+      },
+      "order_position": 1,
+      "pair_id": "pair04",
+      "profile": "profiles/pair04-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair04-chadex",
+      "server_trace_id": "efda3178-a2c3-4c17-8824-f1360811e4f5",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "helper_join_status": "unavailable",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": null,
+        "helper_ingress_to_server_received_ms": null,
+        "helper_pre_backend_ms": null,
+        "prompt_to_helper_ingress_ms": null,
+        "prompt_to_server_received_ms": 8821.474,
+        "server_handler_ms": 3356.437
+      },
+      "order_position": 2,
+      "pair_id": "pair04",
+      "profile": "profiles/pair04-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair04-webcodex",
+      "server_trace_id": "23182b70-4142-4616-9ac5-9a59a7977c7a",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "helper_join_status": "server_projected_exact_trace",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": 0.463,
+        "helper_ingress_to_server_received_ms": 0.557,
+        "helper_pre_backend_ms": 0.094,
+        "prompt_to_helper_ingress_ms": 6759.651,
+        "prompt_to_server_received_ms": 6760.208,
+        "server_handler_ms": 3632.263
+      },
+      "order_position": 1,
+      "pair_id": "pair05",
+      "profile": "profiles/pair05-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair05-chadex",
+      "server_trace_id": "1d9c7b53-38b1-4093-8104-af1b20ce4870",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "helper_join_status": "unavailable",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": null,
+        "helper_ingress_to_server_received_ms": null,
+        "helper_pre_backend_ms": null,
+        "prompt_to_helper_ingress_ms": null,
+        "prompt_to_server_received_ms": 8109.578,
+        "server_handler_ms": 2302.134
+      },
+      "order_position": 2,
+      "pair_id": "pair05",
+      "profile": "profiles/pair05-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair05-webcodex",
+      "server_trace_id": "6a2c0d60-278c-463b-9258-b939d76f3975",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "helper_join_status": "unavailable",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": null,
+        "helper_ingress_to_server_received_ms": null,
+        "helper_pre_backend_ms": null,
+        "prompt_to_helper_ingress_ms": null,
+        "prompt_to_server_received_ms": 12074.965,
+        "server_handler_ms": 3331.904
+      },
+      "order_position": 1,
+      "pair_id": "pair06",
+      "profile": "profiles/pair06-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair06-webcodex",
+      "server_trace_id": "f0bdd53c-33ce-4c0c-aa48-5d3f19b640bc",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "helper_join_status": "server_projected_exact_trace",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": 2.43,
+        "helper_ingress_to_server_received_ms": 2.516,
+        "helper_pre_backend_ms": 0.086,
+        "prompt_to_helper_ingress_ms": 7775.181,
+        "prompt_to_server_received_ms": 7777.697,
+        "server_handler_ms": 3527.496
+      },
+      "order_position": 2,
+      "pair_id": "pair06",
+      "profile": "profiles/pair06-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair06-chadex",
+      "server_trace_id": "fdac9505-53e4-4e63-bd0f-fa532b76077e",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "helper_join_status": "unavailable",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": null,
+        "helper_ingress_to_server_received_ms": null,
+        "helper_pre_backend_ms": null,
+        "prompt_to_helper_ingress_ms": null,
+        "prompt_to_server_received_ms": 9248.854,
+        "server_handler_ms": 2304.505
+      },
+      "order_position": 1,
+      "pair_id": "pair07",
+      "profile": "profiles/pair07-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair07-webcodex",
+      "server_trace_id": "2f5e3b1f-0099-41be-87ac-6b7da911bd86",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "helper_join_status": "server_projected_exact_trace",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": 0.543,
+        "helper_ingress_to_server_received_ms": 0.616,
+        "helper_pre_backend_ms": 0.073,
+        "prompt_to_helper_ingress_ms": 6359.575,
+        "prompt_to_server_received_ms": 6360.191,
+        "server_handler_ms": 2329.829
+      },
+      "order_position": 2,
+      "pair_id": "pair07",
+      "profile": "profiles/pair07-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair07-chadex",
+      "server_trace_id": "d6344e8b-c527-4341-848b-41a870e694e3",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "helper_join_status": "unavailable",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": null,
+        "helper_ingress_to_server_received_ms": null,
+        "helper_pre_backend_ms": null,
+        "prompt_to_helper_ingress_ms": null,
+        "prompt_to_server_received_ms": 9478.938,
+        "server_handler_ms": 2300.668
+      },
+      "order_position": 1,
+      "pair_id": "pair08",
+      "profile": "profiles/pair08-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair08-webcodex",
+      "server_trace_id": "9cc7fd5a-19cb-43eb-852a-f147dc141021",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "helper_join_status": "server_projected_exact_trace",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": 0.379,
+        "helper_ingress_to_server_received_ms": 0.469,
+        "helper_pre_backend_ms": 0.09,
+        "prompt_to_helper_ingress_ms": 7746.854,
+        "prompt_to_server_received_ms": 7747.323,
+        "server_handler_ms": 2304.003
+      },
+      "order_position": 2,
+      "pair_id": "pair08",
+      "profile": "profiles/pair08-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair08-chadex",
+      "server_trace_id": "d7e19f1d-55e4-4f0e-bade-8a031ae74e6e",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "helper_join_status": "unavailable",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": null,
+        "helper_ingress_to_server_received_ms": null,
+        "helper_pre_backend_ms": null,
+        "prompt_to_helper_ingress_ms": null,
+        "prompt_to_server_received_ms": 8902.863,
+        "server_handler_ms": 3427.589
+      },
+      "order_position": 1,
+      "pair_id": "replacement-pair01",
+      "profile": "profiles/replacement-pair01-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "replacement-pair01-webcodex",
+      "server_trace_id": "d6be4aaf-7385-432e-9ead-4d273a906ef2",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "helper_join_status": "server_projected_exact_trace",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": 4.357,
+        "helper_ingress_to_server_received_ms": 4.571,
+        "helper_pre_backend_ms": 0.214,
+        "prompt_to_helper_ingress_ms": 7970.231,
+        "prompt_to_server_received_ms": 7974.802,
+        "server_handler_ms": 2357.564
+      },
+      "order_position": 2,
+      "pair_id": "replacement-pair01",
+      "profile": "profiles/replacement-pair01-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "replacement-pair01-chadex",
+      "server_trace_id": "805722d3-6459-4c3e-8172-dfd8cbde23a8",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "helper_join_status": "server_projected_exact_trace",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": 1.024,
+        "helper_ingress_to_server_received_ms": 1.255,
+        "helper_pre_backend_ms": 0.231,
+        "prompt_to_helper_ingress_ms": 7283.5,
+        "prompt_to_server_received_ms": 7284.755,
+        "server_handler_ms": 2363.855
+      },
+      "order_position": 1,
+      "pair_id": "replacement-pair02",
+      "profile": "profiles/replacement-pair02-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "replacement-pair02-chadex",
+      "server_trace_id": "d4d0027d-fa74-4719-a068-c4a412989bbb",
+      "tool_name": "work_on_project"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "helper_join_status": "unavailable",
+      "metrics": {
+        "helper_backend_send_to_server_received_ms": null,
+        "helper_ingress_to_server_received_ms": null,
+        "helper_pre_backend_ms": null,
+        "prompt_to_helper_ingress_ms": null,
+        "prompt_to_server_received_ms": 8561.097,
+        "server_handler_ms": 2386.925
+      },
+      "order_position": 2,
+      "pair_id": "replacement-pair02",
+      "profile": "profiles/replacement-pair02-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "replacement-pair02-webcodex",
+      "server_trace_id": "89f12688-a9b2-45b4-a3ce-6b5da082bc77",
+      "tool_name": "work_on_project"
+    }
+  ],
+  "schema_version": 1
+}

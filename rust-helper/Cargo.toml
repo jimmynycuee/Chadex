@@ -1,0 +1,30 @@
+[package]
+name = "chadex-helper"
+version = "0.1.0"
+license = "Apache-2.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+axum = "0.8"
+futures-core = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+sha2 = "0.10"
+toml = "0.8"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+tokio = { version = "1", features = ["fs", "io-util", "io-std", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
+url = "2"
+zeroize = { version = "1", features = ["zeroize_derive"] }
+chadex-runtime-process = { path = "../runtime-engine/crates/chadex-runtime-process" }
+chadex-runtime-runner-config = { path = "../runtime-engine/crates/chadex-runtime-runner-config" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+
+[dev-dependencies]
+tempfile = "3"

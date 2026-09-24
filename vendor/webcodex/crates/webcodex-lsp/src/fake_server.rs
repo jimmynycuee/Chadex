@@ -1,0 +1,896 @@
+// Standalone Rust fake LSP server used by the lifecycle and navigation tests.
+// The test suite compiles this file directly with rustc so it never depends on
+// a real language server or scripting runtime and never becomes a production
+// binary target.
+
+use std::env;
+use std::fs::{self, OpenOptions};
+use std::io::{self, BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::Duration;
+
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("fake LSP server failed: {error}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> io::Result<()> {
+    let mut args = env::args().skip(1);
+    let scenario = args.next().unwrap_or_else(|| "normal".to_string());
+    if scenario == "sleep_descendant" {
+        let seconds = args.next().and_then(|value| value.parse().ok()).unwrap_or(60);
+        thread::sleep(Duration::from_secs(seconds));
+        return Ok(());
+    }
+    let marker = args.next().map(PathBuf::from);
+    let exit_marker = args.next().map(PathBuf::from);
+    if let Some(marker) = &marker {
+        append_marker(
+            marker,
+            &format!(
+                "start:{}:{}\n",
+                std::process::id(),
+                env::current_dir()?.display()
+            ),
+        )?;
+    }
+    if scenario == "capture_safety_env" {
+        if let Some(marker) = &marker {
+            for key in [
+                "GOPROXY",
+                "GOSUMDB",
+                "GOTOOLCHAIN",
+                "GOPRIVATE",
+                "GONOPROXY",
+                "GOVCS",
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "ALL_PROXY",
+                "NO_PROXY",
+                "http_proxy",
+                "https_proxy",
+                "all_proxy",
+                "no_proxy",
+            ] {
+                append_marker(
+                    marker,
+                    &format!("env:{key}={}\n", env::var(key).unwrap_or_default()),
+                )?;
+            }
+        }
+    }
+    if scenario == "shutdown_descendant" {
+        let descendant = spawn_sleep_descendant()?;
+        if let Some(marker) = &marker {
+            append_marker(marker, &format!("descendant:{}\n", descendant.id()))?;
+        }
+        drop(descendant);
+    }
+    if scenario == "stderr_flood" {
+        let mut stderr = io::stderr().lock();
+        let chunk = vec![b'x'; 4096];
+        for _ in 0..128 {
+            stderr.write_all(&chunk)?;
+        }
+        stderr.flush()?;
+    }
+    // Exit before any LSP traffic while emitting a rustup-style missing
+    // component error. Used to assert initialize failures surface bounded
+    // stderr diagnostics without a real rust-analyzer install.
+    if scenario == "missing_component_stderr" {
+        eprintln!(
+            "error: Unknown binary 'rust-analyzer' in official toolchain 'stable-x86_64-unknown-linux-gnu'."
+        );
+        std::process::exit(1);
+    }
+
+    let stdin = io::stdin();
+    let mut reader = BufReader::new(stdin.lock());
+    let stdout = io::stdout();
+    let mut writer = stdout.lock();
+    let mut server_status_requested = false;
+    loop {
+        let body = match read_frame(&mut reader)? {
+            Some(body) => body,
+            None => return Ok(()),
+        };
+        let method = json_string_field(&body, "method");
+        let id = json_u64_field(&body, "id");
+        match method.as_deref() {
+            Some("initialize") => {
+                server_status_requested = body.contains("\"serverStatusNotification\":true");
+                if let Some(marker) = &marker {
+                    append_marker(marker, &format!("initialize:{body}\n"))?;
+                }
+                if scenario == "initialize_exit" {
+                    return Ok(());
+                }
+                if scenario == "initialize_hang" {
+                    // Never answer initialize; keep the process alive so the
+                    // client cleanup path must kill/wait under the configured
+                    // shutdown budget.
+                    loop {
+                        thread::sleep(Duration::from_secs(60));
+                    }
+                }
+                if scenario == "interleaved" {
+                    write_frame(
+                        &mut writer,
+                        r#"{"jsonrpc":"2.0","method":"window/logMessage","params":{"type":3,"message":"ready"}}"#,
+                    )?;
+                }
+                let encoding = match scenario.as_str() {
+                    value if value.ends_with("_utf8") || value == "utf8" => Some("utf-8"),
+                    value if value.ends_with("_utf16") || value == "utf16" => Some("utf-16"),
+                    value if value.ends_with("_utf32") || value == "utf32" => Some("utf-32"),
+                    _ => None,
+                };
+                let mut capability_fields = Vec::new();
+                if let Some(encoding) = encoding {
+                    capability_fields.push(format!(r#""positionEncoding":"{encoding}""#));
+                }
+                if scenario_behavior(&scenario).starts_with("call_hierarchy")
+                    && scenario_behavior(&scenario) != "call_hierarchy_provider_unsupported"
+                {
+                    capability_fields.push(r#""callHierarchyProvider":true"#.to_string());
+                }
+                let capabilities = format!("{{{}}}", capability_fields.join(","));
+                write_frame(
+                    &mut writer,
+                    &format!(
+                        r#"{{"jsonrpc":"2.0","id":{},"result":{{"capabilities":{capabilities}}}}}"#,
+                        id.unwrap_or(0)
+                    ),
+                )?;
+                if scenario == "exit_after_initialize" {
+                    return Ok(());
+                }
+            }
+            Some("initialized") => {
+                if server_status_requested {
+                    let behavior = scenario_behavior(&scenario);
+                    match behavior {
+                        "workspace_readiness_timeout" => {
+                            write_server_status(&mut writer, "ok", false, None)?;
+                        }
+                        "workspace_readiness_restart" => {
+                            if start_count(marker.as_deref()) <= 1 {
+                                write_server_status(&mut writer, "ok", true, None)?;
+                            } else {
+                                write_server_status(&mut writer, "ok", false, None)?;
+                            }
+                        }
+                        "workspace_readiness_warning" => {
+                            write_server_status(
+                                &mut writer,
+                                "warning",
+                                true,
+                                Some("workspace incomplete at file:///secret/private.rs"),
+                            )?;
+                        }
+                        _ => {
+                            write_server_status(&mut writer, "ok", true, None)?;
+                        }
+                    }
+                }
+            }
+            Some("textDocument/didOpen") => {
+                if let Some(marker) = &marker {
+                    append_marker(
+                        marker,
+                        &format!("didOpen:{}:{body}\n", std::process::id()),
+                    )?;
+                }
+                maybe_publish_diagnostics(
+                    &mut writer,
+                    &scenario,
+                    &body,
+                    marker.as_deref(),
+                )?;
+            }
+            Some("textDocument/didChange") => {
+                if let Some(marker) = &marker {
+                    append_marker(
+                        marker,
+                        &format!("didChange:{}:{body}\n", std::process::id()),
+                    )?;
+                }
+                maybe_publish_diagnostics(
+                    &mut writer,
+                    &scenario,
+                    &body,
+                    marker.as_deref(),
+                )?;
+            }
+            Some("shutdown") => {
+                if scenario == "shutdown_hang" {
+                    // Acknowledge nothing and never exit on its own.
+                    continue;
+                }
+                write_frame(
+                    &mut writer,
+                    &format!(
+                        r#"{{"jsonrpc":"2.0","id":{},"result":null}}"#,
+                        id.unwrap_or(0)
+                    ),
+                )?;
+            }
+            Some("exit") => {
+                if scenario == "shutdown_hang" {
+                    continue;
+                }
+                if let Some(path) = exit_marker {
+                    fs::write(path, b"exited")?;
+                }
+                return Ok(());
+            }
+            Some("$/cancelRequest") => {
+                if let Some(marker) = &marker {
+                    append_marker(marker, &format!("cancel:{body}\n"))?;
+                }
+            }
+            Some(method) => {
+                if method == "workspace/symbol" {
+                    if let Some(marker) = &marker {
+                        append_marker(
+                            marker,
+                            &format!("workspace-request:{}\n", start_count(Some(marker))),
+                        )?;
+                    }
+                }
+                if scenario_behavior(&scenario).starts_with("call_hierarchy")
+                    && matches!(
+                        method,
+                        "textDocument/prepareCallHierarchy"
+                            | "callHierarchy/incomingCalls"
+                            | "callHierarchy/outgoingCalls"
+                    )
+                {
+                    if let Some(marker) = &marker {
+                        append_marker(marker, &format!("hierarchy:{method}\n"))?;
+                    }
+                }
+                match scenario_behavior(&scenario) {
+                // Never answer business requests; keep the process alive.
+                "timeout" | "timeout_cancel" | "shutdown_hang" => {}
+                "malformed_json" => write_frame(&mut writer, "{not-json")?,
+                "malformed_alive_then_success" => {
+                    let starts = start_count(marker.as_deref());
+                    if starts <= 1 {
+                        // Malformed response while keeping the process alive so
+                        // the client reader crashes but try_wait still sees the
+                        // child as running.
+                        write_frame(&mut writer, "{not-json")?;
+                    } else {
+                        write_result(&mut writer, id, method, &body)?;
+                    }
+                }
+                "malformed_alive_always" => {
+                    write_frame(&mut writer, "{not-json")?;
+                }
+                "invalid_length" => {
+                    writer.write_all(b"Content-Length: invalid\r\n\r\n")?;
+                    writer.flush()?;
+                }
+                "json_error" => write_frame(
+                    &mut writer,
+                    &format!(
+                        r#"{{"jsonrpc":"2.0","id":{},"error":{{"code":-32001,"message":"fake failure","data":{{"retry":false}}}}}}"#,
+                        id.unwrap_or(0)
+                    ),
+                )?,
+                "call_hierarchy_shared_deadline" if method == "callHierarchy/incomingCalls" => {
+                    thread::sleep(Duration::from_millis(1150));
+                    write_result(&mut writer, id, method, &body)?;
+                    if let Some(marker) = &marker {
+                        append_marker(
+                            marker,
+                            "hierarchy-complete:callHierarchy/incomingCalls\n",
+                        )?;
+                    }
+                }
+                "call_hierarchy_method_unsupported"
+                    if method == "textDocument/prepareCallHierarchy"
+                        || method == "callHierarchy/incomingCalls"
+                        || method == "callHierarchy/outgoingCalls" =>
+                {
+                    write_frame(
+                        &mut writer,
+                        &format!(
+                            r#"{{"jsonrpc":"2.0","id":{},"error":{{"code":-32601,"message":"method not found","data":{{"private":"file:///secret/private"}}}}}}"#,
+                            id.unwrap_or(0)
+                        ),
+                    )?
+                }
+                "workspace_slow_success" if method == "workspace/symbol" => {
+                    thread::sleep(Duration::from_millis(600));
+                    write_result(&mut writer, id, method, &body)?;
+                }
+                "workspace_operation_deadline" if method == "workspace/symbol" => {}
+                "workspace_readiness_restart" if method == "workspace/symbol" => {
+                    if start_count(marker.as_deref()) <= 1 {
+                        return Ok(());
+                    }
+                    write_result(&mut writer, id, method, &body)?;
+                }
+                "crash_request" | "restart_exhausted" => return Ok(()),
+                "restart_then_success" => {
+                    let crashed = marker
+                        .as_deref()
+                        .and_then(|path| fs::read_to_string(path).ok())
+                        .is_some_and(|contents| contents.contains("crashed-once"));
+                    if !crashed {
+                        if let Some(marker) = &marker {
+                            append_marker(marker, "crashed-once\n")?;
+                        }
+                        return Ok(());
+                    }
+                    write_result(&mut writer, id, method, &body)?;
+                }
+                "unknown_id" => {
+                    write_frame(
+                        &mut writer,
+                        r#"{"jsonrpc":"2.0","id":999999,"result":{"ignored":true}}"#,
+                    )?;
+                    write_result(&mut writer, id, method, &body)?;
+                }
+                "server_request" => {
+                    write_frame(
+                        &mut writer,
+                        r#"{"jsonrpc":"2.0","id":"server-request","method":"fake/serverRequest","params":{}}"#,
+                    )?;
+                    write_result(&mut writer, id, method, &body)?;
+                }
+                _ => write_result(&mut writer, id, method, &body)?,
+                }
+            }
+            None => {
+                // JSON-RPC response to a fake server->client request.
+            }
+        }
+    }
+}
+
+fn spawn_sleep_descendant() -> io::Result<std::process::Child> {
+    let self_exe = env::current_exe()?;
+    Command::new(self_exe)
+        .args(["sleep_descendant", "60"])
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+}
+
+fn maybe_publish_diagnostics(
+    writer: &mut impl Write,
+    scenario: &str,
+    document_notification: &str,
+    marker: Option<&Path>,
+) -> io::Result<()> {
+    let behavior = scenario_behavior(scenario);
+    if !behavior.starts_with("diagnostics_") || behavior == "diagnostics_timeout" {
+        return Ok(());
+    }
+    let Some(mut uri) = json_string_field(document_notification, "uri") else {
+        return Ok(());
+    };
+    let mut version = json_u64_field(document_notification, "version").unwrap_or(1);
+    if behavior == "diagnostics_wrong_uri" {
+        let other = if scenario.starts_with("go_") {
+            "src/other.go"
+        } else {
+            "src/other.rs"
+        };
+        uri = path_to_file_uri(&env::current_dir()?.join(other));
+    } else if behavior == "diagnostics_external_uri" {
+        uri = "file:///usr/lib/rustlib/src/rust/library/core/src/lib.rs".to_string();
+    }
+    if behavior == "diagnostics_delayed" {
+        thread::sleep(Duration::from_millis(50));
+    }
+    if behavior == "diagnostics_malformed_notification" {
+        write_frame(
+            writer,
+            r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":7,"diagnostics":"bad"}}"#,
+        )?;
+    }
+    if behavior == "diagnostics_stale_then_timeout" {
+        let already_published = marker
+            .and_then(|path| fs::read_to_string(path).ok())
+            .is_some_and(|contents| contents.contains("diagnostics-publication"));
+        if already_published {
+            return Ok(());
+        }
+        version = 0;
+    }
+    let diagnostics = match behavior {
+        "diagnostics_empty"
+        | "diagnostics_delayed"
+        | "diagnostics_wrong_uri"
+        | "diagnostics_external_uri"
+        | "diagnostics_stale_then_timeout"
+        | "diagnostics_malformed_notification" => "[]".to_string(),
+        "diagnostics_one" => {
+            let source = if scenario.starts_with("go_") {
+                "gopls"
+            } else {
+                "rust-analyzer"
+            };
+            format!(r#"[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}},"severity":1,"code":"E0308","source":"{source}","message":"type mismatch","tags":[]}}]"#)
+        }
+        "diagnostics_mixed" => r#"[{"range":{"start":{"line":3,"character":0},"end":{"line":3,"character":2}},"severity":4,"message":"hint","tags":[2,9]},{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":2}},"severity":2,"code":7,"source":"rust-analyzer","message":"warning at file:///secret/source.rs\nnext","tags":[1],"data":{"private":"file:///secret/data"},"relatedInformation":[{"location":{"uri":"file:///secret/related.rs"},"message":"hidden"}]},{"range":{"start":{"line":1,"character":0},"end":{"line":1,"character":1}},"severity":3,"message":"information","tags":[]},{"range":{"start":{"line":2,"character":0},"end":{"line":2,"character":1}},"severity":9,"message":"unknown","tags":[]},{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"message":"error","tags":[]}]"#.to_string(),
+        "diagnostics_duplicates" => r#"[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"message":"same","tags":[]},{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"message":"same","tags":[]}]"#.to_string(),
+        "diagnostics_malformed_range" => r#"[{"range":{"start":{"line":999,"character":0},"end":{"line":999,"character":1}},"severity":1,"message":"bad range"},{"range":{"start":{"line":1,"character":1},"end":{"line":1,"character":0}},"severity":2,"message":"reversed"},{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":2,"message":"valid"},7]"#.to_string(),
+        "diagnostics_utf16" => r#"[{"range":{"start":{"line":2,"character":3},"end":{"line":2,"character":5}},"severity":1,"message":"emoji"}]"#.to_string(),
+        "diagnostics_oversized_message" => {
+            let message = format!("{} file:///secret/source.rs", "x".repeat(5000));
+            format!(r#"[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":1}}}},"severity":1,"source":"{}","code":"{}","message":"{}"}}]"#, "s".repeat(300), "c".repeat(300), json_escape(&message))
+        }
+        "diagnostics_overflow" => {
+            let items = (0..520)
+                .map(|index| format!(r#"{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":1}}}},"severity":2,"message":"diagnostic {index}"}}"#))
+                .collect::<Vec<_>>();
+            format!("[{}]", items.join(","))
+        }
+        "diagnostics_text_budget" => {
+            let message = "m".repeat(4096);
+            let items = (0..30)
+                .map(|index| format!(r#"{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":1}}}},"severity":2,"code":"{index}","message":"{message}"}}"#))
+                .collect::<Vec<_>>();
+            format!("[{}]", items.join(","))
+        }
+        _ => return Ok(()),
+    };
+    write_frame(
+        writer,
+        &format!(
+            r#"{{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{{"uri":"{}","version":{version},"diagnostics":{diagnostics}}}}}"#,
+            json_escape(&uri)
+        ),
+    )?;
+    if let Some(marker) = marker {
+        append_marker(marker, "diagnostics-publication\n")?;
+    }
+    Ok(())
+}
+
+fn write_server_status(
+    writer: &mut impl Write,
+    health: &str,
+    quiescent: bool,
+    message: Option<&str>,
+) -> io::Result<()> {
+    let message = message
+        .map(|message| format!(",\"message\":\"{}\"", json_escape(message)))
+        .unwrap_or_default();
+    write_frame(
+        writer,
+        &format!(
+            r#"{{"jsonrpc":"2.0","method":"experimental/serverStatus","params":{{"health":"{}","quiescent":{}{}}}}}"#,
+            json_escape(health),
+            if quiescent { "true" } else { "false" },
+            message
+        ),
+    )
+}
+
+fn start_count(marker: Option<&Path>) -> usize {
+    marker
+        .and_then(|path| fs::read_to_string(path).ok())
+        .map(|contents| {
+            contents
+                .lines()
+                .filter(|line| line.starts_with("start:"))
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+fn write_result(
+    writer: &mut impl Write,
+    id: Option<u64>,
+    method: &str,
+    request_body: &str,
+) -> io::Result<()> {
+    let cwd = env::current_dir()?.display().to_string();
+    // Scenario is argv[1]; navigation scenarios encode response shape without
+    // process-global env vars (which race under parallel tests). `go_` is a
+    // routing prefix: it preserves the existing response shape while pointing
+    // normalized locations at Go fixture files.
+    let scenario = env::args().nth(1).unwrap_or_else(|| "normal".to_string());
+    let behavior = scenario_behavior(&scenario);
+    // The `space_unicode` scenario points responses at a file whose name
+    // needs URI percent-encoding (space + non-ASCII), exercising the full
+    // didOpen → response → classification round-trip on every platform.
+    let main_relative = if scenario_is_space_unicode() {
+        "src/ünïcode file.rs"
+    } else if scenario.starts_with("go_") {
+        "src/main.go"
+    } else {
+        "src/main.rs"
+    };
+    let other_relative = if scenario.starts_with("go_") {
+        "src/other.go"
+    } else {
+        "src/other.rs"
+    };
+    let main_uri = path_to_file_uri(&Path::new(&cwd).join(main_relative));
+    let other_uri = path_to_file_uri(&Path::new(&cwd).join(other_relative));
+    let request_uri =
+        json_string_field(request_body, "uri").unwrap_or_else(|| main_uri.clone());
+    let external_uri = "file:///usr/lib/rustlib/src/rust/library/core/src/lib.rs";
+    let body = match method {
+        "textDocument/documentSymbol" => match behavior {
+            "symbol_information" => format!(
+                r#"[{{"name":"main","kind":12,"location":{{"uri":"{main_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}}}}}}]"#
+            ),
+            "symbols_malformed" => {
+                r#"[{"name":"bad","kind":12,"range":{"start":{"line":999,"character":0},"end":{"line":999,"character":1}}}]"#.to_string()
+            }
+            _ => format!(
+                r#"[{{"name":"outer","kind":5,"range":{{"start":{{"line":0,"character":0}},"end":{{"line":3,"character":1}}}},"selectionRange":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":5}}}},"children":[{{"name":"inner","kind":12,"range":{{"start":{{"line":2,"character":0}},"end":{{"line":2,"character":5}}}},"selectionRange":{{"start":{{"line":2,"character":0}},"end":{{"line":2,"character":2}}}},"children":[]}}]}}]"#
+            ),
+        },
+        "textDocument/definition" => match behavior {
+            "definition_null" => "null".to_string(),
+            "definition_array" => format!(
+                r#"[{{"uri":"{main_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}}}},{{"uri":"{other_uri}","range":{{"start":{{"line":1,"character":0}},"end":{{"line":1,"character":3}}}}}}]"#
+            ),
+            "definition_link" => format!(
+                r#"[{{"targetUri":"{main_uri}","targetRange":{{"start":{{"line":0,"character":0}},"end":{{"line":3,"character":1}}}},"targetSelectionRange":{{"start":{{"line":0,"character":3}},"end":{{"line":0,"character":7}}}}}}]"#
+            ),
+            "definition_external" => format!(
+                r#"[{{"uri":"{external_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}}}}]"#
+            ),
+            "definition_malformed" => format!(
+                r#"[{{"uri":"{main_uri}","range":{{"start":{{"line":999,"character":0}},"end":{{"line":999,"character":1}}}}}}]"#
+            ),
+            _ => format!(
+                r#"{{"uri":"{main_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}}}}"#
+            ),
+        },
+        "textDocument/references" => match behavior {
+            "references_empty" => "null".to_string(),
+            "references_duplicates" => format!(
+                r#"[{{"uri":"{main_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}}}},{{"uri":"{main_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}}}},{{"uri":"{other_uri}","range":{{"start":{{"line":2,"character":0}},"end":{{"line":2,"character":3}}}}}}]"#
+            ),
+            "references_overflow" => {
+                let mut items = Vec::new();
+                for i in 0..30 {
+                    items.push(format!(
+                        r#"{{"uri":"{main_uri}","range":{{"start":{{"line":{i},"character":0}},"end":{{"line":{i},"character":1}}}}}}"#
+                    ));
+                }
+                format!("[{}]", items.join(","))
+            }
+            "references_external" => format!(
+                r#"[{{"uri":"{main_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}}}},{{"uri":"{external_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}}}}]"#
+            ),
+            _ => format!(
+                r#"[{{"uri":"{main_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}}}},{{"uri":"{main_uri}","range":{{"start":{{"line":3,"character":0}},"end":{{"line":3,"character":4}}}}}}]"#
+            ),
+        },
+        "textDocument/hover" => match behavior {
+            "hover_markup_markdown" => r#"{"contents":{"kind":"markdown","value":"**main** docs"},"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":4}}}"#.to_string(),
+            "hover_markup_plaintext" => r#"{"contents":{"kind":"plaintext","value":"plain docs"}}"#.to_string(),
+            "hover_string" => r#"{"contents":"string docs"}"#.to_string(),
+            "hover_marked_string" => r#"{"contents":{"language":"rust","value":"fn main() {}"}}"#.to_string(),
+            "hover_array" => r#"{"contents":["first",{"language":"rust","value":"let value = 1;"},"last"]}"#.to_string(),
+            "hover_null" => "null".to_string(),
+            "hover_oversized" => format!(
+                r#"{{"contents":{{"kind":"markdown","value":"{}"}}}}"#,
+                "h".repeat(20_000)
+            ),
+            "hover_invalid_range" => r#"{"contents":"docs","range":{"start":{"line":999,"character":0},"end":{"line":999,"character":1}}}"#.to_string(),
+            "hover_utf16" => r#"{"contents":"emoji","range":{"start":{"line":2,"character":3},"end":{"line":2,"character":5}}}"#.to_string(),
+            "hover_sanitizer" => r#"{"contents":{"kind":"markdown","value":"source file:///secret/main.rs\u0001\nnext"}}"#.to_string(),
+            "hover_malformed" => r#"{"contents":{"kind":"html","value":"bad"}}"#.to_string(),
+            _ => r#"{"contents":{"kind":"markdown","value":"hover"}}"#.to_string(),
+        },
+        "workspace/symbol" => match behavior {
+            "workspace_symbol_information" => format!(
+                r#"[{{"name":"ToolRuntime","kind":23,"containerName":"runtime","location":{{"uri":"{main_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":4}}}}}}}}]"#
+            ),
+            "workspace_symbol" => format!(
+                r#"[{{"name":"AgentBridge","kind":5,"tags":[1],"location":{{"uri":"{other_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":3}}}}}},"data":{{"hidden":true}}}}]"#
+            ),
+            "workspace_uri_only" => format!(
+                r#"[{{"name":"Deferred","kind":12,"location":{{"uri":"{main_uri}"}}}}]"#
+            ),
+            "workspace_empty" => "null".to_string(),
+            "workspace_duplicates" => format!(
+                r#"[{{"name":"Zulu","kind":12,"location":{{"uri":"{main_uri}","range":{{"start":{{"line":3,"character":0}},"end":{{"line":3,"character":2}}}}}}}},{{"name":"Alpha","kind":23,"location":{{"uri":"{other_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":2}}}}}}}},{{"name":"Alpha","kind":23,"location":{{"uri":"{other_uri}","range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":2}}}}}}}}]"#
+            ),
+            "workspace_external" => format!(
+                r#"[{{"name":"Local","kind":12,"location":{{"uri":"{main_uri}"}}}},{{"name":"External","kind":12,"location":{{"uri":"{external_uri}"}}}}]"#
+            ),
+            "workspace_malformed" => format!(
+                r#"[7,{{"name":"","kind":12,"location":{{"uri":"{main_uri}"}}}},{{"name":"NoKind","location":{{"uri":"{main_uri}"}}}},{{"name":"BadRange","kind":12,"location":{{"uri":"{main_uri}","range":{{"start":{{"line":999,"character":0}},"end":{{"line":999,"character":1}}}}}}}},{{"name":"Valid","kind":12,"location":{{"uri":"{main_uri}"}}}}]"#
+            ),
+            "workspace_overflow" => {
+                let items = (0..230)
+                    .map(|index| format!(r#"{{"name":"Symbol{index:03}","kind":12,"location":{{"uri":"{main_uri}"}}}}"#))
+                    .collect::<Vec<_>>();
+                format!("[{}]", items.join(","))
+            }
+            "workspace_sanitizer" => format!(
+                r#"[{{"name":"file:///secret/name","kind":12,"containerName":"/secret/container","location":{{"uri":"{main_uri}"}}}}]"#
+            ),
+            _ => "[]".to_string(),
+        },
+        "textDocument/prepareCallHierarchy" => match behavior {
+            "call_hierarchy_prepare_empty" => "null".to_string(),
+            "call_hierarchy_raw_prepare_fanout" => {
+                let mut items = vec!["7".to_string(); 64];
+                items.extend((0..16).map(|index| {
+                    call_hierarchy_item(
+                        &format!("LateRoot{index:02}"),
+                        &request_uri,
+                        0,
+                        "private",
+                    )
+                }));
+                format!("[{}]", items.join(","))
+            }
+            "call_hierarchy_external_invalid" => format!(
+                "[{}, {}, {{\"name\":\"invalid\",\"kind\":12,\"uri\":7}}]",
+                call_hierarchy_item("file:///secret/root", &request_uri, 0, "root-private"),
+                call_hierarchy_item("External", external_uri, 0, "external-private")
+            ),
+            "call_hierarchy_utf16" => format!(
+                r#"[{{"name":"Root","kind":12,"uri":"{}","range":{{"start":{{"line":2,"character":3}},"end":{{"line":2,"character":5}}}},"selectionRange":{{"start":{{"line":2,"character":3}},"end":{{"line":2,"character":5}}}},"data":{{"opaque":"private"}}}}]"#,
+                json_escape(&request_uri)
+            ),
+            _ if behavior.starts_with("call_hierarchy") => format!(
+                "[{}]",
+                call_hierarchy_item("Root", &request_uri, 0, "root-private")
+            ),
+            _ => "null".to_string(),
+        },
+        "callHierarchy/incomingCalls" => {
+            let current =
+                json_string_field_from_last_item(request_body, "name").unwrap_or_default();
+            match behavior {
+                "call_hierarchy_external_invalid" => "[]".to_string(),
+                _ if behavior.starts_with("call_hierarchy") && current == "Root" => format!(
+                    r#"[{{"from":{},"fromRanges":[{{"start":{{"line":0,"character":3}},"end":{{"line":0,"character":7}}}}]}}]"#,
+                    call_hierarchy_item("Caller", &request_uri, 0, "caller-private")
+                ),
+                _ if behavior.starts_with("call_hierarchy") && current == "Caller" => format!(
+                    r#"[{{"from":{},"fromRanges":[{{"start":{{"line":3,"character":0}},"end":{{"line":3,"character":4}}}}]}}]"#,
+                    call_hierarchy_item("Caller2", &request_uri, 3, "caller2-private")
+                ),
+                _ => "[]".to_string(),
+            }
+        }
+        "callHierarchy/outgoingCalls" => {
+            let current =
+                json_string_field_from_last_item(request_body, "name").unwrap_or_default();
+            match behavior {
+                "call_hierarchy_external_invalid" => format!(
+                    r#"[{{"to":{},"fromRanges":[{{"start":{{"line":0,"character":3}},"end":{{"line":0,"character":7}}}}]}},{{"to":{},"fromRanges":[]}},{{"to":{{"name":"Bad","kind":12,"uri":7}},"fromRanges":[]}}]"#,
+                    call_hierarchy_item("Local", &request_uri, 1, "file:///secret/private-data"),
+                    call_hierarchy_item("External", external_uri, 0, "external-private")
+                ),
+                "call_hierarchy_dedup" if current == "Root" => {
+                    let target = call_hierarchy_item("Callee", &request_uri, 1, "callee-private");
+                    format!(
+                        r#"[{{"to":{target},"fromRanges":[{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":1}}}}]}},{{"to":{target},"fromRanges":[{{"start":{{"line":0,"character":1}},"end":{{"line":0,"character":2}}}}]}}]"#
+                    )
+                }
+                "call_hierarchy_raw_call_entries_fanout" if current == "Root" => {
+                    let mut calls = vec!["7".to_string(); 256];
+                    calls.extend((0..16).map(|index| {
+                        format!(
+                            r#"{{"to":{},"fromRanges":[]}}"#,
+                            call_hierarchy_item(
+                                &format!("LateCallee{index:02}"),
+                                &request_uri,
+                                1,
+                                "private"
+                            )
+                        )
+                    }));
+                    format!("[{}]", calls.join(","))
+                }
+                "call_hierarchy_raw_call_sites_fanout" if current == "Root" => {
+                    let ranges = std::iter::repeat(
+                        r#"{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}"#,
+                    )
+                    .take(140)
+                    .collect::<Vec<_>>()
+                    .join(",");
+                    format!(
+                        r#"[{{"to":{},"fromRanges":[{ranges}]}}]"#,
+                        call_hierarchy_item("Callee", &request_uri, 1, "callee-private")
+                    )
+                }
+                "call_hierarchy_call_sites_overflow" if current == "Root" => {
+                    let ranges = (0..30)
+                        .map(|line| format!(r#"{{"start":{{"line":{line},"character":0}},"end":{{"line":{line},"character":1}}}}"#))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    format!(
+                        r#"[{{"to":{},"fromRanges":[{ranges}]}}]"#,
+                        call_hierarchy_item("Callee", &request_uri, 1, "callee-private")
+                    )
+                }
+                "call_hierarchy_overflow" if current == "Root" => {
+                    let calls = (0..120)
+                        .rev()
+                        .map(|index| {
+                            format!(
+                                r#"{{"to":{},"fromRanges":[]}}"#,
+                                call_hierarchy_item(
+                                    &format!("Callee{index:03}"),
+                                    &request_uri,
+                                    1,
+                                    "private"
+                                )
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    format!("[{}]", calls.join(","))
+                }
+                _ if behavior.starts_with("call_hierarchy") && current == "Root" => format!(
+                    r#"[{{"to":{},"fromRanges":[{{"start":{{"line":0,"character":3}},"end":{{"line":0,"character":7}}}}]}}]"#,
+                    call_hierarchy_item("Callee", &request_uri, 1, "callee-private")
+                ),
+                _ if behavior.starts_with("call_hierarchy") && current == "Callee" => format!(
+                    r#"[{{"to":{},"fromRanges":[{{"start":{{"line":1,"character":0}},"end":{{"line":1,"character":3}}}}]}}]"#,
+                    call_hierarchy_item("Callee2", &request_uri, 3, "callee2-private")
+                ),
+                _ => "[]".to_string(),
+            }
+        }
+        _ => format!(
+            r#"{{"method":"{}","cwd":"{}"}}"#,
+            json_escape(method),
+            json_escape(&cwd)
+        ),
+    };
+    write_frame(
+        writer,
+        &format!(
+            r#"{{"jsonrpc":"2.0","id":{},"result":{body}}}"#,
+            id.unwrap_or(0),
+        ),
+    )
+}
+
+fn call_hierarchy_item(name: &str, uri: &str, line: usize, data: &str) -> String {
+    let line = if env::args().nth(1).as_deref().is_some_and(|scenario| scenario.starts_with("go_")) {
+        match name {
+            "Root" => 2,
+            "Callee" => 3,
+            "Caller" => 4,
+            "Caller2" => 5,
+            "Callee2" => 6,
+            _ => line,
+        }
+    } else {
+        line
+    };
+    format!(
+        r#"{{"name":"{}","kind":12,"uri":"{}","range":{{"start":{{"line":{line},"character":0}},"end":{{"line":{line},"character":4}}}},"selectionRange":{{"start":{{"line":{line},"character":0}},"end":{{"line":{line},"character":4}}}},"data":{{"opaque":"{}"}}}}"#,
+        json_escape(name),
+        json_escape(uri),
+        json_escape(data)
+    )
+}
+
+fn json_string_field_from_last_item(body: &str, field: &str) -> Option<String> {
+    let marker = format!(r#""{field}""#);
+    let (_, after) = body.rsplit_once(&marker)?;
+    let after_colon = after.split_once(':')?.1.trim_start();
+    let quoted = after_colon.strip_prefix('"')?;
+    let end = quoted.find('"')?;
+    Some(quoted[..end].to_string())
+}
+
+fn scenario_behavior(scenario: &str) -> &str {
+    scenario.strip_prefix("go_").unwrap_or(scenario)
+}
+
+fn scenario_is_space_unicode() -> bool {
+    env::args().nth(1).as_deref() == Some("space_unicode")
+}
+
+fn path_to_file_uri(path: &Path) -> String {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(path)
+    };
+    let text = absolute.display().to_string();
+    // Percent-encode every byte outside the URL-unreserved set, the path
+    // separators, and the Windows drive colon — the same encoding real
+    // language servers use when emitting file URIs. Raw spaces or non-ASCII
+    // bytes would produce an unparseable URI.
+    let mut encoded = String::new();
+    for &byte in text.as_bytes() {
+        if byte.is_ascii_alphanumeric()
+            || matches!(byte, b'/' | b'\\' | b':' | b'-' | b'.' | b'_' | b'~')
+        {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    if encoded.starts_with('/') {
+        format!("file://{encoded}")
+    } else {
+        format!("file:///{}", encoded.replace('\\', "/"))
+    }
+}
+
+fn read_frame(reader: &mut impl BufRead) -> io::Result<Option<String>> {
+    let mut content_length = None;
+    loop {
+        let mut line = String::new();
+        if reader.read_line(&mut line)? == 0 {
+            return Ok(None);
+        }
+        if line == "\r\n" || line == "\n" {
+            break;
+        }
+        if let Some((name, value)) = line.trim().split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                content_length = value.trim().parse::<usize>().ok();
+            }
+        }
+    }
+    let length = content_length
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing Content-Length"))?;
+    let mut body = vec![0_u8; length];
+    reader.read_exact(&mut body)?;
+    String::from_utf8(body)
+        .map(Some)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+fn write_frame(writer: &mut impl Write, body: &str) -> io::Result<()> {
+    write!(writer, "Content-Length: {}\r\n\r\n", body.len())?;
+    writer.write_all(body.as_bytes())?;
+    writer.flush()
+}
+
+fn json_u64_field(body: &str, field: &str) -> Option<u64> {
+    let marker = format!(r#""{field}""#);
+    let after = body.split_once(&marker)?.1;
+    let after_colon = after.split_once(':')?.1.trim_start();
+    let digits = after_colon
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .collect::<String>();
+    digits.parse().ok()
+}
+
+fn json_string_field(body: &str, field: &str) -> Option<String> {
+    let marker = format!(r#""{field}""#);
+    let after = body.split_once(&marker)?.1;
+    let after_colon = after.split_once(':')?.1.trim_start();
+    let quoted = after_colon.strip_prefix('"')?;
+    let end = quoted.find('"')?;
+    Some(quoted[..end].to_string())
+}
+
+fn json_escape(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+}
+
+fn append_marker(path: &Path, value: &str) -> io::Result<()> {
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?
+        .write_all(value.as_bytes())
+}

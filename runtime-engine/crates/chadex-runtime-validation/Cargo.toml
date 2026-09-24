@@ -1,0 +1,20 @@
+[package]
+name = "chadex-runtime-validation"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+webcodex-core = { path = "../chadex-runtime-core", package = "chadex-runtime-core" }
+webcodex-tool-contracts = { path = "../chadex-runtime-tool-contracts", package = "chadex-runtime-tool-contracts" }
+webcodex-workflow-session = { path = "../chadex-runtime-workflow-session", package = "chadex-runtime-workflow-session" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
+webcodex-tool-contracts = { path = "../chadex-runtime-tool-contracts", package = "chadex-runtime-tool-contracts", features = ["root-test-support"] }
+webcodex-tool-runtime-contracts = { path = "../chadex-runtime-tool-runtime-contracts", package = "chadex-runtime-tool-runtime-contracts" }
+webcodex-workflow-session = { path = "../chadex-runtime-workflow-session", package = "chadex-runtime-workflow-session", features = ["root-test-support"] }

@@ -1,0 +1,115 @@
+{
+  "surface": "user-provided ChatGPT connected MCP 5-run AB/BA; original run artifacts unavailable",
+  "baseline": "49f793fd66b054a38923c3f6e3ccd9c1aca6579f",
+  "chadex_build": "72e7fb0decd4 dirty=false",
+  "webcodex_build": "0.4.1/f080c8f3ea70 dirty=false",
+  "columns": [
+    "workflow",
+    "search",
+    "read",
+    "edit",
+    "test",
+    "review"
+  ],
+  "chadex_ms": [
+    [
+      12924,
+      2382,
+      1814,
+      2653,
+      4083,
+      1992
+    ],
+    [
+      24036,
+      2068,
+      2793,
+      13184,
+      3005,
+      2986
+    ],
+    [
+      14744,
+      2126,
+      2832,
+      3403,
+      2881,
+      3502
+    ],
+    [
+      11287,
+      1474,
+      1814,
+      3469,
+      2737,
+      1793
+    ],
+    [
+      12603,
+      1623,
+      2042,
+      2848,
+      3613,
+      2477
+    ]
+  ],
+  "webcodex_ms": [
+    [
+      8388,
+      968,
+      1015,
+      2071,
+      3252,
+      1082
+    ],
+    [
+      7867,
+      977,
+      872,
+      3109,
+      1892,
+      1017
+    ],
+    [
+      7600,
+      798,
+      842,
+      1989,
+      3251,
+      720
+    ],
+    [
+      7766,
+      1090,
+      923,
+      1939,
+      2649,
+      1165
+    ],
+    [
+      7922,
+      1018,
+      836,
+      2877,
+      2061,
+      1130
+    ]
+  ],
+  "runtime_status_ms": {
+    "chadex": [
+      1826,
+      1814,
+      1869,
+      1478,
+      3651
+    ],
+    "webcodex": [
+      886,
+      1001,
+      964,
+      959,
+      869
+    ]
+  },
+  "correctness": "user reported matching diffs, tests and hidden evaluator; reruns have independent recorded evidence"
+}

@@ -1,0 +1,511 @@
+use serde_json::{json, Value};
+
+use super::common::{object_schema, with_optional_session_id};
+use webcodex_core::runner_protocol::{
+    DETACHED_IDEMPOTENCY_KEY_MAX_BYTES, JOB_TERMINAL_RETENTION_SECS, PROCESS_ARG_MAX_BYTES,
+    PROCESS_ARG_MAX_COUNT, PROCESS_CWD_MAX_BYTES, PROCESS_EXECUTABLE_MAX_BYTES,
+    PROCESS_STDIN_MAX_BYTES, RAW_SHELL_COMMAND_MAX_BYTES, SCRIPT_ARGV_MAX_BYTES,
+    SCRIPT_ARG_MAX_BYTES, SCRIPT_ARG_MAX_COUNT, SCRIPT_CWD_MAX_BYTES, SCRIPT_MAX_BYTES,
+    SCRIPT_STDIN_MAX_BYTES,
+};
+use webcodex_core::runtime_contract::MAX_JOB_OBSERVATION_WAIT_SECS;
+use webcodex_core::workflow_session_contract::{
+    EXECUTION_PURPOSE_VALUES, MAX_MODEL_VALIDATION_ASSERTION_NAME_CHARS,
+    TOOL_ACCEPTED_EXIT_CODES_FIELD, TOOL_ASSERTION_NAME_FIELD, TOOL_RESULT_EXPECTATION_FIELD,
+};
+
+const EXECUTION_PURPOSE_DESCRIPTION: &str = "Optional caller-declared evidence intent. Set it only when the execution has a real validation/test/build/format/release/diagnostic/operation classification; it never changes the command, authorization, or execution authority.";
+
+fn apply_execution_purpose_vocabulary(schema: &mut Value) {
+    schema["properties"]["purpose"]["enum"] = json!(EXECUTION_PURPOSE_VALUES);
+    schema["properties"]["purpose"]["description"] = json!(EXECUTION_PURPOSE_DESCRIPTION);
+}
+
+fn with_optional_validation_assertion(mut schema: Value) -> Value {
+    schema["properties"][TOOL_ASSERTION_NAME_FIELD] = json!({
+        "type": "string",
+        "minLength": 1,
+        "maxLength": MAX_MODEL_VALIDATION_ASSERTION_NAME_CHARS,
+        "description": "Optional stable human-readable validation assertion label. Reuse the same value after a fix to correlate later validation evidence even when the command changes. It never grants execution authority, changes success, or bypasses structured validation proof. It is inert unless the existing purpose/evidence rules classify the execution as validation-like."
+    });
+    schema
+}
+
+fn with_optional_result_expectation(mut schema: Value, accepted_exit_codes: bool) -> Value {
+    schema["properties"][TOOL_RESULT_EXPECTATION_FIELD] = json!({
+        "type": "string",
+        "enum": ["success", "failure", "observe"],
+        "description": "Optional pre-execution result expectation. Omit (or use success) for the normal success-required path; failure means a completed known business failure is the expected negative-test result; observe means either a completed known success or completed known business failure is acceptable. It changes only Session ledger expectation classification, never authorization, the real ToolResult, exit code, timeout, guard, transport, or outcome-unknown semantics."
+    });
+    if accepted_exit_codes {
+        schema["properties"][TOOL_ACCEPTED_EXIT_CODES_FIELD] = json!({
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": { "type": "integer" },
+            "description": "Optional exact set of completed process exit codes that are valid observations (for example [0,1] for boolean probe commands). A completed exit code outside the set is an expectation mismatch. This is more precise than observe and may be combined only with result_expectation=observe or with result_expectation omitted. Timeout, cancellation, transport failure, guard/permission rejection, malformed results, and outcome-unknown remain failures."
+        });
+    }
+    schema
+}
+
+pub fn run_process_input_schema() -> Value {
+    let mut schema = object_schema(with_optional_session_id(vec![
+        ("project", "string", "Configured project id.", true),
+        (
+            "executable",
+            "string",
+            "Executable name or path, resolved through the Runner execution environment. Native executables use literal argv. Windows .cmd/.bat shims use Runner-owned cmd.exe conversion with AutoRun and delayed expansion disabled; no model shell string. Batch paths/arguments reject quotes, %, !, ^, control characters and trailing backslashes before spawn; use a native runtime for these values. Batch command lines are limited to 8000 UTF-16 units and require a local drive cwd; UNC cwd is rejected before spawn.",
+            true,
+        ),
+        (
+            "args",
+            "array",
+            "Ordered argv values passed literally to the child process. Defaults to an empty array. Runtime validation allows at most 16,000 UTF-8 bytes across executable and argv boundaries.",
+            false,
+        ),
+        (
+            "cwd",
+            "string",
+            "Project-relative working directory. Omit, empty string, or '.' for the project root. Named Session SSH resources are unsupported for run_process.",
+            false,
+        ),
+        (
+            "stdin",
+            "string",
+            "Optional bounded UTF-8 stdin payload passed through a pipe.",
+            false,
+        ),
+        (
+            "timeout_secs",
+            "integer",
+            "Total process runtime budget in seconds (minimum 1, default 60). Values above 3600 are accepted and clamped to 3600. Short work returns synchronously; longer work keeps the same execution and returns job_id when durable structured execution is available.",
+            false,
+        ),
+        (
+            "sync_wait_secs",
+            "integer",
+            "Optional synchronous grace before durable Job handoff. Omit to use 10 seconds bounded by the total timeout. Explicit values must be positive; values above 60 or above the effective timeout are accepted and clamped to the smaller bound. It only controls how long the Server waits for the already-started execution before exposing that same execution as a Job; it does not extend the total runtime timeout or rerun work.",
+            false,
+        ),
+        (
+            "purpose",
+            "string",
+            EXECUTION_PURPOSE_DESCRIPTION,
+            false,
+        ),
+    ]));
+    schema["properties"]["executable"]["minLength"] = json!(1);
+    schema["properties"]["executable"]["maxLength"] = json!(PROCESS_EXECUTABLE_MAX_BYTES);
+    schema["properties"]["args"]["maxItems"] = json!(PROCESS_ARG_MAX_COUNT);
+    schema["properties"]["args"]["items"]["maxLength"] = json!(PROCESS_ARG_MAX_BYTES);
+    schema["properties"]["args"]["default"] = json!([]);
+    schema["properties"]["stdin"] = json!({
+        "anyOf": [
+            {"type": "string", "maxLength": PROCESS_STDIN_MAX_BYTES},
+            {"type": "null"}
+        ],
+        "description": "Optional bounded UTF-8 stdin payload passed through a pipe; null and omission both mean no stdin payload."
+    });
+    schema["properties"]["cwd"]["maxLength"] = json!(PROCESS_CWD_MAX_BYTES);
+    schema["properties"]["timeout_secs"]["minimum"] = json!(1);
+    schema["properties"]["timeout_secs"]["default"] = json!(60);
+    schema["properties"]["sync_wait_secs"]["minimum"] = json!(1);
+    apply_execution_purpose_vocabulary(&mut schema);
+    with_optional_result_expectation(with_optional_validation_assertion(schema), true)
+}
+
+pub fn run_detached_process_input_schema() -> Value {
+    let mut schema = run_process_input_schema();
+    schema["properties"]
+        .as_object_mut()
+        .expect("run_process schema properties")
+        .remove(TOOL_ASSERTION_NAME_FIELD);
+    schema["properties"]
+        .as_object_mut()
+        .expect("run_process schema properties")
+        .remove(TOOL_RESULT_EXPECTATION_FIELD);
+    schema["properties"]
+        .as_object_mut()
+        .expect("run_process schema properties")
+        .remove(TOOL_ACCEPTED_EXIT_CODES_FIELD);
+    schema["properties"]
+        .as_object_mut()
+        .expect("run_process schema properties")
+        .remove("sync_wait_secs");
+    schema["properties"]["idempotency_key"] = json!({
+        "type": "string",
+        "minLength": 1,
+        "maxLength": DETACHED_IDEMPOTENCY_KEY_MAX_BYTES,
+        "description": format!("Required bounded caller-chosen key for this detached initiation. While the logical Job is active or retained for {JOB_TERMINAL_RETENTION_SECS} seconds after terminal completion, reusing the same key resolves to that Job and cannot redispatch its payload. After retained history expires the key may identify a new execution, so never reuse an expired key as a retry token. After Server restart an existing retained Job is returned for recovery rather than guessing that a resent body matches.")
+    });
+    schema["required"]
+        .as_array_mut()
+        .expect("run_process schema required array")
+        .push(json!("idempotency_key"));
+    schema["properties"]["cwd"]["description"] = json!(
+        "Project-relative working directory. Omit, empty string, or '.' for the project root. Named Session SSH resources are unsupported for run_detached_process."
+    );
+    schema["properties"]["timeout_secs"]["description"] = json!(
+        "Total detached process runtime budget in seconds (minimum 1, default 60). Values above 3600 are accepted and clamped to 3600. Admission returns the stable Job identity without waiting for terminal completion."
+    );
+    schema
+}
+
+pub fn run_script_input_schema() -> Value {
+    let mut schema = object_schema(with_optional_session_id(vec![
+        ("project", "string", "Configured project id.", true),
+        (
+            "language",
+            "string",
+            "Required semantic script language. JavaScript uses Runner-resolved Node.js with fixed .mjs ESM semantics. TypeScript uses Runner-resolved Node.js native erasable type stripping from a fixed .mts ESM file and requires Node.js 22.6.0 or newer. The Runner owns any runtime compatibility flags; callers cannot provide a runtime path or runtime flags. Session default_shell never overrides this field.",
+            true,
+        ),
+        (
+            "script",
+            "string",
+            "Bounded UTF-8 script content transported as typed data. It is written to a Runner-owned temporary file and never placed in a shell command string.",
+            true,
+        ),
+        (
+            "args",
+            "array",
+            "Ordered script arguments passed as independent argv values. Defaults to an empty array; values are never interpolated into the script body.",
+            false,
+        ),
+        (
+            "stdin",
+            "string",
+            "Optional bounded UTF-8 stdin payload piped independently to the script process. Null and omission both mean no stdin payload.",
+            false,
+        ),
+        (
+            "cwd",
+            "string",
+            "Project-relative working directory. Omit, empty string, or '.' for the project root. Named Session SSH resources are unsupported for run_script.",
+            false,
+        ),
+        (
+            "timeout_secs",
+            "integer",
+            "Total script runtime budget in seconds (minimum 1, default 60). Values above 3600 are accepted and clamped to 3600. Short work returns synchronously; longer work keeps the same execution and returns job_id when durable structured execution is available.",
+            false,
+        ),
+        (
+            "sync_wait_secs",
+            "integer",
+            "Optional synchronous grace before durable Job handoff. Omit to use 10 seconds bounded by the total timeout. Explicit values must be positive; values above 60 or above the effective timeout are accepted and clamped to the smaller bound. It only controls how long the Server waits for the already-started execution before exposing that same execution as a Job; it does not extend the total runtime timeout or rerun work.",
+            false,
+        ),
+        (
+            "purpose",
+            "string",
+            EXECUTION_PURPOSE_DESCRIPTION,
+            false,
+        ),
+    ]));
+    schema["properties"]["language"]["enum"] =
+        json!(["sh", "bash", "powershell", "javascript", "typescript"]);
+    schema["properties"]["script"]["minLength"] = json!(1);
+    schema["properties"]["script"]["maxLength"] = json!(SCRIPT_MAX_BYTES);
+    schema["properties"]["args"]["maxItems"] = json!(SCRIPT_ARG_MAX_COUNT);
+    schema["properties"]["args"]["items"]["maxLength"] = json!(SCRIPT_ARG_MAX_BYTES);
+    schema["properties"]["args"]["default"] = json!([]);
+    schema["properties"]["args"]["description"] = json!(format!(
+        "Ordered script arguments passed as independent argv values. Defaults to an empty array. At most {SCRIPT_ARG_MAX_COUNT} entries, each at most {SCRIPT_ARG_MAX_BYTES} UTF-8 bytes, with at most {SCRIPT_ARGV_MAX_BYTES} bytes total including one boundary byte per value; values are never interpolated into the script body."
+    ));
+    schema["properties"]["stdin"] = json!({
+        "anyOf": [
+            {"type": "string", "maxLength": SCRIPT_STDIN_MAX_BYTES},
+            {"type": "null"}
+        ],
+        "description": "Optional bounded UTF-8 stdin payload piped independently to the script process; null and omission both mean no stdin payload."
+    });
+    schema["properties"]["cwd"]["maxLength"] = json!(SCRIPT_CWD_MAX_BYTES);
+    schema["properties"]["timeout_secs"]["minimum"] = json!(1);
+    schema["properties"]["timeout_secs"]["default"] = json!(60);
+    schema["properties"]["sync_wait_secs"]["minimum"] = json!(1);
+    apply_execution_purpose_vocabulary(&mut schema);
+    with_optional_result_expectation(with_optional_validation_assertion(schema), false)
+}
+
+pub fn run_shell_input_schema() -> Value {
+    let mut schema = object_schema(with_optional_session_id(vec![
+        ("project", "string", "Configured project id.", true),
+        ("command", "string", "Shell command to run.", true),
+        (
+            "timeout_secs",
+            "integer",
+            "Total lifetime seconds (default 60, min 1); clamped to shared structured-execution ceiling; named SSH keeps direct ceiling.",
+            false,
+        ),
+        (
+            "sync_wait_secs",
+            "integer",
+            "same-execution durable Job handoff grace (default 10s), clamped by 60s and timeout; controls return, not when the command is killed; named SSH unsupported.",
+            false,
+        ),
+        (
+            "cwd",
+            "string",
+            "Working directory contract: without a Session SSH resource, omit, empty string, or '.' selects the project root and any other value is project-relative. With a named Session SSH resource, cwd is a remote path checked by the remote shell instead of the Runner project-root policy.",
+            false,
+        ),
+        (
+            "purpose",
+            "string",
+            EXECUTION_PURPOSE_DESCRIPTION,
+            false,
+        ),
+        (
+            "shell",
+            "string",
+            "Optional explicit command language: sh or bash. When omitted, local run_shell uses sh, a Runner-backed run_shell uses that Runner's configured shell, and a named Session SSH resource uses the remote login shell. The response always records the actual selection.",
+            false,
+        ),
+    ]));
+    apply_execution_purpose_vocabulary(&mut schema);
+    schema["properties"]["shell"]["enum"] = json!(["sh", "bash"]);
+    schema["properties"]["command"]["maxLength"] = json!(RAW_SHELL_COMMAND_MAX_BYTES);
+    schema["properties"]["command"]["description"] = json!(format!(
+        "Shell command to run. At most {RAW_SHELL_COMMAND_MAX_BYTES} UTF-8 bytes; use run_script for larger program text and stdin/files/artifacts for large data."
+    ));
+    schema["properties"]["timeout_secs"]["minimum"] = json!(1);
+    schema["properties"]["timeout_secs"]["default"] = json!(60);
+    schema["properties"]["sync_wait_secs"]["minimum"] = json!(1);
+    with_optional_result_expectation(with_optional_validation_assertion(schema), false)
+}
+
+pub fn run_job_input_schema() -> Value {
+    let mut schema = object_schema(with_optional_session_id(vec![
+        ("project", "string", "Configured project id.", true),
+        (
+            "command",
+            "string",
+            "Shell command to run asynchronously.",
+            true,
+        ),
+        (
+            "timeout_secs",
+            "integer",
+            "Maximum runtime in seconds.",
+            false,
+        ),
+        (
+            "cwd",
+            "string",
+            "Working directory contract: without a Session SSH resource, omit, empty string, or '.' selects the project root and any other value is project-relative. With a named Session SSH resource, cwd is a remote path checked by the remote shell instead of the Runner project-root policy.",
+            false,
+        ),
+        (
+            "purpose",
+            "string",
+            EXECUTION_PURPOSE_DESCRIPTION,
+            false,
+        ),
+        (
+            "shell",
+            "string",
+            "Optional explicit command language: sh or bash. When omitted, local run_job preserves its existing bash contract, a Runner-backed run_job uses that Runner's configured shell, and a named Session SSH resource uses the remote login shell. The response always records the actual selection.",
+            false,
+        ),
+    ]));
+    apply_execution_purpose_vocabulary(&mut schema);
+    schema["properties"]["shell"]["enum"] = json!(["sh", "bash"]);
+    schema["properties"]["command"]["maxLength"] = json!(RAW_SHELL_COMMAND_MAX_BYTES);
+    schema["properties"]["command"]["description"] = json!(format!(
+        "Shell command to run asynchronously. At most {RAW_SHELL_COMMAND_MAX_BYTES} UTF-8 bytes; use run_script for larger program text and stdin/files/artifacts for large data."
+    ));
+    with_optional_validation_assertion(schema)
+}
+
+pub fn open_session_shell_input_schema() -> Value {
+    let mut schema = object_schema(vec![
+        ("project", "string", "Exact Workflow Session project id.", true),
+        (
+            "session_id",
+            "string",
+            "Explicit active Workflow Session id. Current-session fallback is not used.",
+            true,
+        ),
+        (
+            "cwd",
+            "string",
+            "Optional initial cwd. Without a named Session SSH resource it is project-relative; with one it is a remote path. Omission uses the Session default, then the project or SSH-resource default.",
+            false,
+        ),
+        (
+            "shell",
+            "string",
+            "Optional Unix local-shell override: sh or bash. Omit on Windows so the Runner uses its configured PowerShell program/profile.",
+            false,
+        ),
+    ]);
+    schema["properties"]["shell"]["enum"] = json!(["sh", "bash"]);
+    schema
+}
+
+pub fn session_shell_exec_input_schema() -> Value {
+    let mut schema = object_schema(vec![
+        ("project", "string", "Exact Workflow Session project id.", true),
+        ("session_id", "string", "Explicit active Workflow Session id.", true),
+        (
+            "shell_id",
+            "string",
+            "Opaque id returned by open_session_shell.",
+            true,
+        ),
+        (
+            "command",
+            "string",
+            "One command evaluated by the existing long-lived shell.",
+            true,
+        ),
+        (
+            "timeout_secs",
+            "integer",
+            "Command timeout in seconds (minimum 1, default 60). Values above 3600 are accepted and clamped to 3600. Timeout recovery requires verified framing resynchronization; otherwise the shell is poisoned and terminated before reuse.",
+            false,
+        ),
+        (
+            "purpose",
+            "string",
+            EXECUTION_PURPOSE_DESCRIPTION,
+            false,
+        ),
+    ]);
+    schema["properties"]["timeout_secs"]["minimum"] = json!(1);
+    schema["properties"]["timeout_secs"]["default"] = json!(60);
+    schema["properties"]["command"]["maxLength"] = json!(RAW_SHELL_COMMAND_MAX_BYTES);
+    schema["properties"]["command"]["description"] = json!(format!(
+        "One command evaluated by the existing long-lived shell. At most {RAW_SHELL_COMMAND_MAX_BYTES} UTF-8 bytes."
+    ));
+    apply_execution_purpose_vocabulary(&mut schema);
+    with_optional_result_expectation(schema, false)
+}
+
+pub fn session_shell_identity_input_schema() -> Value {
+    object_schema(vec![
+        (
+            "project",
+            "string",
+            "Exact Workflow Session project id.",
+            true,
+        ),
+        (
+            "session_id",
+            "string",
+            "Explicit active Workflow Session id.",
+            true,
+        ),
+        (
+            "shell_id",
+            "string",
+            "Opaque id returned by open_session_shell.",
+            true,
+        ),
+    ])
+}
+
+pub fn stop_job_input_schema() -> Value {
+    object_schema(with_optional_session_id(vec![
+        (
+            "project",
+            "string",
+            "Configured project id that must match the job project.",
+            true,
+        ),
+        ("job_id", "string", "Existing runtime Job id to stop.", true),
+        (
+            "confirm",
+            "boolean",
+            "Must be true to stop or no-op an already-finished job; false returns confirmation_required.",
+            false,
+        ),
+    ]))
+}
+
+pub fn observe_jobs_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "items": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "description": "Existing Jobs to observe in input order. Duplicate job_id values are rejected.",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "job_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Existing opaque runtime Job id."
+                        },
+                        "after_observation_token": {
+                            "type": "string",
+                            "maxLength": webcodex_core::job_observation::MAX_JOB_OBSERVATION_TOKEN_LEN,
+                            "description": "Optional opaque Job-bound lifecycle/log-delta token from the latest observation. Return it unchanged without interpreting its cursor state. It is not execution identity or retry authority; a stale Server epoch is immediately actionable and conservatively resets the bounded log projection."
+                        }
+                    },
+                    "required": ["job_id"]
+                }
+            },
+            "tail_lines": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 40,
+                "description": "Global per-stream bound. Values above 200 are accepted and clamped to 200. First observations return a current tail; cursor-aware follow-ups return at most this many new or reset-recovery lines."
+            },
+            "wait_secs": {
+                "type": "integer",
+                "minimum": 1,
+                "description": format!("Optional one shared bounded wait (a maximum), never a minimum sleep or multiplied by item count. Omission or any item without a token returns an immediate observation/baseline. Values above {MAX_JOB_OBSERVATION_WAIT_SECS} seconds are clamped to {MAX_JOB_OBSERVATION_WAIT_SECS}. With tokens, wake_on selects early wake behavior; updates never extend the deadline. The canonical {MAX_JOB_OBSERVATION_WAIT_SECS}-second terminal wait is for when further useful progress depends on terminal outcome; otherwise defer observation while independent work continues.")
+            },
+            "wake_on": {
+                "type": "string",
+                "enum": ["change", "terminal", "all_terminal"],
+                "default": "change",
+                "description": "Bounded-wait wake policy. change (default) returns on any observable change. terminal waits for any Job to be terminal; use it for one Job or when any terminal result unblocks progress. all_terminal waits for every Job in a predetermined set needed before progress. Both coalesce non-terminal log/progress/activity updates and return immediately on any item error or at the shared deadline. Deadline returns timeout even when changed=true; deltas remain relative to the caller's original tokens. No token means immediate baseline; no wait_secs means immediate observation."
+            }
+        },
+        "required": ["items"]
+    })
+}
+
+pub fn list_jobs_input_schema() -> Value {
+    let mut schema = object_schema(vec![
+        (
+            "limit",
+            "integer",
+            "Maximum number of job summaries to return after all filters. Values above 100 are accepted and clamped to 100.",
+            false,
+        ),
+        (
+            "status",
+            "string",
+            "Optional exact status filter (e.g. running, completed, failed).",
+            false,
+        ),
+        (
+            "project",
+            "string",
+            "Optional exact full runtime Project id; filters only already caller-visible Jobs.",
+            false,
+        ),
+        (
+            "session_id",
+            "string",
+            "Optional exact Workflow Session id; filters only already caller-visible Jobs.",
+            false,
+        ),
+    ]);
+    schema["properties"]["limit"]["minimum"] = json!(1);
+    schema["properties"]["project"]["minLength"] = json!(1);
+    schema["properties"]["project"]["maxLength"] = json!(512);
+    schema["properties"]["session_id"]["minLength"] = json!(1);
+    schema["properties"]["session_id"]["maxLength"] = json!(128);
+    schema
+}

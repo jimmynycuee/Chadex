@@ -1,0 +1,1207 @@
+//! Private project setup, registration, and local-state ownership.
+
+use super::{
+    runner_runtime_available, ProductError, ProjectCommandOptions, ReadinessFact, SetupReport,
+};
+use crate::runner_config::{
+    generated_runner_config_toml, RunnerInitOptions, DEFAULT_POLL_INTERVAL_MS, TRANSPORT_WEBSOCKET,
+};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+#[cfg(not(windows))]
+use std::fs::OpenOptions;
+#[cfg(not(windows))]
+use std::io::Write;
+use std::net::TcpListener;
+use std::path::{Component, Path, PathBuf};
+use uuid::Uuid;
+
+const CONFIG_VERSION: u32 = 2;
+const PROJECT_PORT_BASE: u16 = 20_000;
+const PROJECT_PORT_COUNT: u32 = 20_000;
+const PROJECT_PORT_PROBE_STEP: u32 = 7_919;
+const PROJECT_PORT_PROBE_LIMIT: usize = 256;
+
+#[derive(Debug)]
+pub(super) struct ProjectPaths {
+    pub(super) state: PathBuf,
+    pub(super) data: PathBuf,
+    pub(super) credentials: PathBuf,
+    pub(super) project_registry: PathBuf,
+    pub(super) logs: PathBuf,
+    pub(super) config: PathBuf,
+    pub(super) bootstrap_key: PathBuf,
+    pub(super) project_credential: PathBuf,
+    pub(super) agent_token: PathBuf,
+    pub(super) runner_config: PathBuf,
+    pub(super) legacy_agent_config: PathBuf,
+}
+
+impl ProjectPaths {
+    fn new(state: PathBuf) -> Result<Self, ProductError> {
+        let credentials = state.join("credentials");
+        let runner_state_dir = state.join("agent");
+        let project_registry =
+            crate::runner_config::paths::select_project_registry_dir(&runner_state_dir)
+                .map_err(|message| invalid_registration(&message))?;
+        Ok(Self {
+            data: state.join("data"),
+            project_registry,
+            logs: state.join("logs"),
+            config: state.join("project.toml"),
+            bootstrap_key: credentials.join("bootstrap-key"),
+            project_credential: credentials.join("project-credential"),
+            agent_token: credentials.join("agent-token"),
+            runner_config: runner_state_dir.join(webcodex_runner_config::paths::RUNNER_CONFIG_FILE),
+            legacy_agent_config: runner_state_dir
+                .join(webcodex_runner_config::paths::LEGACY_AGENT_CONFIG_FILE),
+            credentials,
+            state,
+        })
+    }
+
+    pub(super) fn resolved_runner_config(&self) -> Result<PathBuf, ProductError> {
+        let dir = self
+            .runner_config
+            .parent()
+            .ok_or_else(|| invalid_registration("Runner config path has no parent directory"))?;
+        webcodex_runner_config::paths::resolve_runner_config_path(dir).map_err(|message| {
+            ProductError::new(
+                "project_registration_invalid",
+                message,
+                Some(
+                    "Keep exactly one Runner config in the project state directory; prefer runner.toml for new state.",
+                ),
+            )
+        })
+    }
+
+    fn create(&self) -> Result<(), ProductError> {
+        for path in [
+            &self.state,
+            &self.data,
+            &self.credentials,
+            &self.project_registry,
+            &self.logs,
+        ] {
+            create_private_dir(path)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+enum LocalProjectState {
+    NotConfigured,
+    Configured {
+        config: ProjectConfig,
+        paths: ProjectPaths,
+    },
+    Invalid {
+        config: Option<ProjectConfig>,
+        paths: ProjectPaths,
+        error: ProductError,
+    },
+    WorkspaceUnavailable {
+        config: Option<ProjectConfig>,
+        paths: Option<ProjectPaths>,
+        error: ProductError,
+    },
+}
+
+impl LocalProjectState {
+    fn invalid(config: Option<ProjectConfig>, paths: ProjectPaths, error: ProductError) -> Self {
+        Self::Invalid {
+            config,
+            paths,
+            error,
+        }
+    }
+
+    fn workspace_unavailable(
+        config: Option<ProjectConfig>,
+        paths: Option<ProjectPaths>,
+        error: ProductError,
+    ) -> Self {
+        Self::WorkspaceUnavailable {
+            config,
+            paths,
+            error,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct LocalReadiness {
+    pub(super) config: Option<ProjectConfig>,
+    pub(super) paths: Option<ProjectPaths>,
+    pub(super) setup_present: bool,
+    pub(super) can_probe_remote: bool,
+    pub(super) findings: Vec<ReadinessFact>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct ProjectConfig {
+    pub(super) version: u32,
+    pub(super) project_name: String,
+    pub(super) root: PathBuf,
+    pub(super) profile: String,
+    pub(super) port: u16,
+    pub(super) executor_project_id: String,
+    pub(super) executor_client_id: String,
+}
+
+impl ProjectConfig {
+    pub(super) fn resolve(
+        options: &ProjectCommandOptions,
+    ) -> Result<(Self, ProjectPaths), ProductError> {
+        validate_profile(&options.profile)?;
+        let root = discover_project_root(&options.root)?;
+        let identity = project_identity(&root);
+        let project_name = safe_slug(&root);
+        let executor_project_id = format!("{project_name}-{}", &identity[..10]);
+        let state = resolve_state_path(options, &root, &executor_project_id)?;
+        let grant_id = project_grant_identity(&root, &options.profile, &state);
+        let port_seed = u16::from_str_radix(&identity[..4], 16).unwrap_or_default();
+        let port = PROJECT_PORT_BASE + (port_seed % PROJECT_PORT_COUNT as u16);
+        Ok((
+            Self {
+                version: CONFIG_VERSION,
+                project_name,
+                root,
+                profile: options.profile.clone(),
+                port,
+                executor_project_id,
+                executor_client_id: format!("local-{}-{}", &identity[..8], &grant_id[10..18]),
+            },
+            ProjectPaths::new(state)?,
+        ))
+    }
+
+    pub(super) fn server_url(&self) -> String {
+        format!("http://127.0.0.1:{}", self.port)
+    }
+
+    pub(super) fn runtime_project_id(&self) -> String {
+        format!(
+            "agent:{}:{}",
+            self.executor_client_id, self.executor_project_id
+        )
+    }
+
+    pub(super) fn project_grant_id(&self, paths: &ProjectPaths) -> String {
+        project_grant_identity(&self.root, &self.profile, &paths.state)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProjectRegistration {
+    id: String,
+    path: String,
+    name: String,
+    kind: String,
+    allow_patch: bool,
+    disabled: bool,
+}
+
+pub(crate) fn setup(options: &ProjectCommandOptions) -> Result<SetupReport, ProductError> {
+    let (mut expected, paths) = ProjectConfig::resolve(options)?;
+    // Establish the private-state boundary before reading or creating any
+    // project/share state. On Windows this replaces inherited broad DACLs with
+    // a protected current-user + SYSTEM boundary; on Unix it preserves 0700.
+    paths.create()?;
+    prepare_runtime_private_state(&paths)?;
+    let runner_config = paths.resolved_runner_config()?;
+    let config = match read_toml_optional::<ProjectConfig>(&paths.config)? {
+        Some(existing) => {
+            validate_product_config(&expected, &existing)?;
+            existing
+        }
+        None => {
+            expected.port = select_available_project_port(expected.port)?;
+            expected
+        }
+    };
+    validate_existing_runner(&config, &paths)?;
+    validate_existing_registration(&config, &paths)?;
+    if runner_config.exists() {
+        validate_agent_authentication(&config, &paths)?;
+    }
+
+    let mut changed = Vec::new();
+    if paths.project_credential.is_file() {
+        let _ = read_project_credential(&paths.project_credential)?;
+    } else {
+        if runner_config.exists() {
+            return Err(ProductError::new(
+                "project_registration_invalid",
+                "existing Runner configuration conflicts with missing authentication material",
+                Some("Restore the existing authentication material or remove this incomplete profile, then run webcodex setup."),
+            ));
+        }
+        let value = generate_project_credential();
+        write_new_private(&paths.project_credential, format!("{value}\n").as_bytes())?;
+        changed.push("Connection".to_string());
+    }
+    if !paths.bootstrap_key.is_file() {
+        let value = format!(
+            "wc_bootstrap_{}{}",
+            Uuid::new_v4().simple(),
+            Uuid::new_v4().simple()
+        );
+        write_new_private(&paths.bootstrap_key, format!("{value}\n").as_bytes())?;
+        if !changed.iter().any(|item| item == "Connection") {
+            changed.push("Connection".to_string());
+        }
+    } else {
+        let _ = read_private_value(&paths.bootstrap_key)?;
+    }
+
+    let agent_token = if paths.agent_token.is_file() {
+        read_project_agent_token(&paths.agent_token)?
+    } else {
+        let value = crate::auth::generate_agent_token();
+        write_new_private(&paths.agent_token, format!("{value}\n").as_bytes())?;
+        value
+    };
+
+    if !runner_config.is_file() {
+        let allowed_root = config.root.parent().ok_or_else(|| {
+            ProductError::new(
+                "project_registration_invalid",
+                "the project root has no parent directory for canonical managed worktrees",
+                Some("Move the project below a normal filesystem directory, then run webcodex setup."),
+            )
+        })?.to_path_buf();
+        let content = generated_runner_config_toml(&RunnerInitOptions {
+            server_url: config.server_url(),
+            token: Some(agent_token),
+            token_file: None,
+            client_id: config.executor_client_id.clone(),
+            owner: "local-owner".to_string(),
+            display_name: Some(format!("{} local Runner", config.project_name)),
+            transport: TRANSPORT_WEBSOCKET.to_string(),
+            poll_interval_ms: DEFAULT_POLL_INTERVAL_MS,
+            project_registry_dir: paths.project_registry.clone(),
+            output: runner_config.clone(),
+            allowed_roots: vec![allowed_root],
+            allow_cwd_anywhere: false,
+            overwrite: false,
+        })
+        .map_err(|message| {
+            ProductError::new(
+                "project_registration_invalid",
+                format!("could not generate Runner configuration: {message}"),
+                Some("Correct the reported configuration issue, then run webcodex setup."),
+            )
+        })?;
+        write_new_private(&runner_config, content.as_bytes())?;
+        changed.push("Runner".to_string());
+    }
+
+    let project_path = registration_path(&config, &paths);
+    if !project_path.is_file() {
+        let registration = expected_registration(&config);
+        let content = toml::to_string_pretty(&registration).map_err(|error| {
+            ProductError::new(
+                "project_registration_invalid",
+                format!("could not serialize project registration: {error}"),
+                Some("Run webcodex setup again after correcting the local state error."),
+            )
+        })?;
+        write_new_private(&project_path, content.as_bytes())?;
+        changed.push("Project registration".to_string());
+    }
+
+    if !paths.config.is_file() {
+        let content = toml::to_string_pretty(&config).map_err(|error| {
+            ProductError::new(
+                "project_registration_invalid",
+                format!("could not serialize project configuration: {error}"),
+                Some("Run webcodex setup again after correcting the local state error."),
+            )
+        })?;
+        write_new_private(&paths.config, content.as_bytes())?;
+        if !changed.iter().any(|item| item == "Connection") {
+            changed.insert(0, "Connection".to_string());
+        }
+    }
+    validate_existing_runner(&config, &paths)?;
+    validate_agent_authentication(&config, &paths)?;
+    validate_existing_registration(&config, &paths)?;
+    let connection_url = config.server_url();
+    Ok(SetupReport {
+        project: config.project_name,
+        connection_url,
+        status: if changed.is_empty() {
+            "already_configured".to_string()
+        } else {
+            "configured".to_string()
+        },
+        changed,
+        next_action: "webcodex doctor".to_string(),
+    })
+}
+
+fn select_available_project_port(primary: u16) -> Result<u16, ProductError> {
+    let primary_offset = u32::from(primary.saturating_sub(PROJECT_PORT_BASE));
+    for attempt in 0..PROJECT_PORT_PROBE_LIMIT {
+        let offset = (primary_offset + (attempt as u32).saturating_mul(PROJECT_PORT_PROBE_STEP))
+            % PROJECT_PORT_COUNT;
+        let port = PROJECT_PORT_BASE + offset as u16;
+        if let Ok(listener) = TcpListener::bind(("127.0.0.1", port)) {
+            drop(listener);
+            return Ok(port);
+        }
+    }
+    Err(ProductError::new(
+        "server_port_unavailable",
+        format!(
+            "no available loopback port was found after checking {PROJECT_PORT_PROBE_LIMIT} stable project port candidates"
+        ),
+        Some(
+            "Stop a conflicting local process or choose a separate project state/profile, then run webcodex setup again.",
+        ),
+    ))
+}
+
+pub(super) fn local_readiness(options: &ProjectCommandOptions) -> LocalReadiness {
+    match local_project_state(options) {
+        LocalProjectState::NotConfigured => LocalReadiness {
+            config: None,
+            paths: None,
+            setup_present: false,
+            can_probe_remote: false,
+            findings: vec![ReadinessFact::fail(
+                "Setup",
+                "project_not_configured",
+                "No WebCodex setup was found for this project.",
+                "webcodex setup",
+            )],
+        },
+        LocalProjectState::Invalid {
+            config,
+            paths,
+            error,
+        } => LocalReadiness {
+            config,
+            paths: Some(paths),
+            setup_present: true,
+            can_probe_remote: false,
+            findings: vec![ReadinessFact::fail(
+                if error.code == "project_credential_invalid" {
+                    "Authentication"
+                } else {
+                    "Setup"
+                },
+                &error.code,
+                error.message,
+                error
+                    .next_action
+                    .as_deref()
+                    .unwrap_or("Resolve the invalid private project state."),
+            )],
+        },
+        LocalProjectState::WorkspaceUnavailable {
+            config,
+            paths,
+            error,
+        } => LocalReadiness {
+            config,
+            paths,
+            setup_present: true,
+            can_probe_remote: false,
+            findings: vec![ReadinessFact::fail(
+                "Workspace",
+                &error.code,
+                error.message,
+                error
+                    .next_action
+                    .as_deref()
+                    .unwrap_or("Restore the configured Git workspace."),
+            )],
+        },
+        LocalProjectState::Configured { config, paths } => configured_readiness(config, paths),
+    }
+}
+
+fn configured_readiness(config: ProjectConfig, paths: ProjectPaths) -> LocalReadiness {
+    let mut findings = [
+        (
+            "Config",
+            "config_readable",
+            "Project configuration is readable.",
+        ),
+        (
+            "Connection",
+            "server_url_valid",
+            "The loopback server URL is valid.",
+        ),
+        (
+            "Authentication",
+            "authentication_configured",
+            "The project credential is present and protected.",
+        ),
+        (
+            "Project",
+            "project_registered",
+            "Project registration points to the current project.",
+        ),
+        (
+            "Workspace",
+            "workspace_available",
+            "The Git workspace is available.",
+        ),
+        (
+            "Git",
+            "git_workspace_available",
+            "Git workspace discovery is valid.",
+        ),
+    ]
+    .into_iter()
+    .map(|(name, code, summary)| ReadinessFact::pass(name, code, summary))
+    .collect::<Vec<_>>();
+    if runner_runtime_available() {
+        findings.push(ReadinessFact::pass(
+            "Runner runtime",
+            "agent_runtime_available",
+            "The local Runner runtime is available.",
+        ));
+    } else {
+        findings.push(ReadinessFact::fail(
+            "Runner runtime",
+            "required_capability_unavailable",
+            "The local Runner executable is unavailable.",
+            "Install all WebCodex binaries, then retry.",
+        ));
+    }
+    LocalReadiness {
+        config: Some(config),
+        paths: Some(paths),
+        setup_present: true,
+        can_probe_remote: true,
+        findings,
+    }
+}
+
+fn local_project_state(options: &ProjectCommandOptions) -> LocalProjectState {
+    let state = match state_path_for_readiness(options) {
+        Ok(state) => state,
+        Err(error) if error.code == "project_not_configured" => {
+            return LocalProjectState::NotConfigured;
+        }
+        Err(error) => {
+            return LocalProjectState::workspace_unavailable(None, None, error);
+        }
+    };
+    let paths = match ProjectPaths::new(state) {
+        Ok(paths) => paths,
+        Err(error) => return LocalProjectState::workspace_unavailable(None, None, error),
+    };
+    if !paths.state.exists() {
+        return LocalProjectState::NotConfigured;
+    }
+    if !paths.state.is_dir() {
+        return LocalProjectState::invalid(
+            None,
+            paths,
+            invalid_registration("the WebCodex project state path is not a directory"),
+        );
+    }
+    if !paths.config.exists() {
+        return if contains_setup_state(&paths) {
+            LocalProjectState::invalid(
+                None,
+                paths,
+                invalid_registration(
+                    "WebCodex project state exists but its registration is incomplete",
+                ),
+            )
+        } else {
+            LocalProjectState::NotConfigured
+        };
+    }
+    let config = match read_toml::<ProjectConfig>(&paths.config) {
+        Ok(config) => config,
+        Err(error) => return LocalProjectState::invalid(None, paths, error),
+    };
+    let expected = match ProjectConfig::resolve(options) {
+        Ok((expected, _)) => expected,
+        Err(error) if error.code == "workspace_unavailable" => {
+            return LocalProjectState::workspace_unavailable(Some(config), Some(paths), error);
+        }
+        Err(error) => return LocalProjectState::invalid(Some(config), paths, error),
+    };
+    let validation = validate_product_config(&expected, &config)
+        .and_then(|_| validate_existing_runner(&config, &paths))
+        .and_then(|_| validate_existing_registration(&config, &paths))
+        .and_then(|_| read_project_credential(&paths.project_credential).map(|_| ()))
+        .and_then(|_| validate_agent_authentication(&config, &paths))
+        .and_then(|_| read_private_value(&paths.bootstrap_key).map(|_| ()));
+    if let Err(error) = validation {
+        return LocalProjectState::invalid(Some(config), paths, error);
+    }
+    LocalProjectState::Configured { config, paths }
+}
+
+fn contains_setup_state(paths: &ProjectPaths) -> bool {
+    paths.runner_config.exists()
+        || paths.legacy_agent_config.exists()
+        || paths.project_credential.exists()
+        || paths.agent_token.exists()
+        || paths.bootstrap_key.exists()
+        || paths.project_registry.exists()
+        || paths.data.exists()
+}
+
+fn invalid_registration(message: &str) -> ProductError {
+    ProductError::new(
+        "project_registration_invalid",
+        message,
+        Some("Resolve the invalid private state, then run webcodex setup."),
+    )
+}
+
+pub(super) fn validate_product_config(
+    expected: &ProjectConfig,
+    actual: &ProjectConfig,
+) -> Result<(), ProductError> {
+    for (field, same) in [
+        ("version", actual.version == CONFIG_VERSION),
+        ("project root", actual.root == expected.root),
+        ("profile", actual.profile == expected.profile),
+        (
+            "project identity",
+            actual.executor_project_id == expected.executor_project_id,
+        ),
+        (
+            "Runner identity",
+            actual.executor_client_id == expected.executor_client_id,
+        ),
+    ] {
+        if !same {
+            return Err(ProductError::new(
+                "project_registration_invalid",
+                format!("existing project configuration conflicts in field '{field}'"),
+                Some("Use the state directory belonging to this project or resolve the conflict manually."),
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn validate_existing_runner(
+    config: &ProjectConfig,
+    paths: &ProjectPaths,
+) -> Result<(), ProductError> {
+    let runner_config = paths.resolved_runner_config()?;
+    if !runner_config.exists() {
+        return Ok(());
+    }
+    let value: toml::Value = read_toml(&runner_config)?;
+    let expected = [
+        ("server_url", config.server_url()),
+        ("client_id", config.executor_client_id.clone()),
+    ];
+    for (field, expected) in expected {
+        if value.get(field).and_then(toml::Value::as_str) != Some(expected.as_str()) {
+            return Err(ProductError::new(
+                "project_registration_invalid",
+                format!("existing Runner configuration conflicts in field '{field}'"),
+                Some(
+                    "Resolve the existing configuration conflict; WebCodex will not overwrite it.",
+                ),
+            ));
+        }
+    }
+    let current_registry = value
+        .get("project_registry_dir")
+        .and_then(toml::Value::as_str);
+    let legacy_registry = value.get("projects_dir").and_then(toml::Value::as_str);
+    if current_registry.is_some() && legacy_registry.is_some() {
+        return Err(invalid_registration(
+            "existing Runner configuration contains both project_registry_dir and legacy projects_dir",
+        ));
+    }
+    let expected_registry = paths.project_registry.to_string_lossy();
+    if current_registry.or(legacy_registry) != Some(expected_registry.as_ref()) {
+        return Err(ProductError::new(
+            "project_registration_invalid",
+            "existing Runner configuration conflicts in field 'project_registry_dir'",
+            Some("Resolve the existing configuration conflict; WebCodex will not overwrite it."),
+        ));
+    }
+    if value
+        .get("token")
+        .and_then(toml::Value::as_str)
+        .is_none_or(str::is_empty)
+    {
+        return Err(ProductError::new(
+            "project_registration_invalid",
+            "existing Runner configuration conflicts in field 'authentication'",
+            Some("Restore the existing authentication material; WebCodex will not overwrite it."),
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn validate_agent_authentication(
+    config: &ProjectConfig,
+    paths: &ProjectPaths,
+) -> Result<(), ProductError> {
+    let runner_config = paths.resolved_runner_config()?;
+    let _ = read_private_value_with_code(&runner_config, "agent_credential_invalid")?;
+    let value: toml::Value = read_toml(&runner_config)?;
+    let configured_token = value
+        .get("token")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| {
+            ProductError::new(
+                "agent_credential_invalid",
+                "the bound project Agent Token is missing from Runner configuration",
+                Some("Restore the private Agent Token or recreate this project profile."),
+            )
+        })?;
+    let agent_token = read_project_agent_token(&paths.agent_token)?;
+    let verifier = crate::auth::ProjectAgentTokenVerifier::new(
+        config.project_grant_id(paths),
+        config.executor_client_id.clone(),
+        "local-owner".to_string(),
+        &agent_token,
+    )
+    .map_err(|_| {
+        ProductError::new(
+            "agent_credential_invalid",
+            "the configured project Agent Token is invalid",
+            Some("Restore the private Agent Token or recreate this project profile."),
+        )
+    })?;
+    verifier
+        .authenticate(configured_token)
+        .map(|_| ())
+        .ok_or_else(|| {
+            ProductError::new(
+                "agent_credential_invalid",
+                "the Runner configuration does not match the bound project Agent Token",
+                Some("Restore the matching private Agent Token or recreate this project profile."),
+            )
+        })
+}
+
+pub(super) fn validate_existing_registration(
+    config: &ProjectConfig,
+    paths: &ProjectPaths,
+) -> Result<(), ProductError> {
+    let path = registration_path(config, paths);
+    if !path.exists() {
+        return Ok(());
+    }
+    let actual: ProjectRegistration = read_toml(&path)?;
+    let expected = expected_registration(config);
+    if actual.id != expected.id {
+        return registration_conflict("id");
+    }
+    if actual.path != expected.path {
+        return registration_conflict("path");
+    }
+    if actual.disabled || !actual.allow_patch {
+        return registration_conflict("coding access");
+    }
+    Ok(())
+}
+
+fn registration_conflict(field: &str) -> Result<(), ProductError> {
+    Err(ProductError::new(
+        "project_registration_invalid",
+        format!("existing project registration conflicts in field '{field}'"),
+        Some("Resolve the existing registration conflict; WebCodex will not overwrite it."),
+    ))
+}
+
+fn expected_registration(config: &ProjectConfig) -> ProjectRegistration {
+    ProjectRegistration {
+        id: config.executor_project_id.clone(),
+        path: config.root.to_string_lossy().into_owned(),
+        name: config.project_name.clone(),
+        kind: "auto".to_string(),
+        allow_patch: true,
+        disabled: false,
+    }
+}
+
+fn registration_path(config: &ProjectConfig, paths: &ProjectPaths) -> PathBuf {
+    paths
+        .project_registry
+        .join(format!("{}.toml", config.executor_project_id))
+}
+
+pub(super) fn validate_profile(profile: &str) -> Result<(), ProductError> {
+    if profile.is_empty()
+        || matches!(profile, "." | "..")
+        || !profile
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return Err(ProductError::new(
+            "project_registration_invalid",
+            "profile may only contain ASCII letters, digits, '-', '_', and '.'",
+            Some("Choose a valid profile name, then retry."),
+        ));
+    }
+    Ok(())
+}
+
+fn discover_project_root(input: &Path) -> Result<PathBuf, ProductError> {
+    let canonical = input.canonicalize().map_err(|_| {
+        ProductError::new(
+            "workspace_unavailable",
+            "the project path is unavailable",
+            Some("Run webcodex setup from an accessible Git project."),
+        )
+    })?;
+    if !canonical.is_dir() {
+        return Err(ProductError::new(
+            "workspace_unavailable",
+            "the project path is not a directory",
+            Some("Run webcodex setup from a Git project directory."),
+        ));
+    }
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&canonical)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .map_err(|_| {
+            ProductError::new(
+                "workspace_unavailable",
+                "Git is unavailable",
+                Some("Install Git, then run webcodex setup."),
+            )
+        })?;
+    if !output.status.success() {
+        return Err(ProductError::new(
+            "workspace_unavailable",
+            "the selected directory is not a supported Git project",
+            Some("Run webcodex setup from a Git project directory."),
+        ));
+    }
+    let discovered = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    PathBuf::from(discovered).canonicalize().map_err(|_| {
+        ProductError::new(
+            "workspace_unavailable",
+            "the discovered Git root is unavailable",
+            Some("Resolve the Git workspace path, then retry."),
+        )
+    })
+}
+
+fn project_identity(root: &Path) -> String {
+    format!("{:x}", Sha256::digest(root.to_string_lossy().as_bytes()))
+}
+
+fn project_grant_identity(root: &Path, profile: &str, state: &Path) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"webcodex-project-grant-v1\0");
+    hasher.update(root.to_string_lossy().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(profile.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(state.to_string_lossy().as_bytes());
+    let digest = format!("{:x}", hasher.finalize());
+    format!("wc_pgrant_{}", &digest[..24])
+}
+
+fn safe_slug(root: &Path) -> String {
+    let slug = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("project")
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches(['-', '.'])
+        .to_string();
+    if slug.is_empty() {
+        "project".to_string()
+    } else {
+        slug
+    }
+}
+
+fn resolve_state_path(
+    options: &ProjectCommandOptions,
+    root: &Path,
+    executor_project_id: &str,
+) -> Result<PathBuf, ProductError> {
+    let cwd = std::env::current_dir().map_err(|_| state_path_unavailable())?;
+    resolve_state_path_from(options, root, executor_project_id, &cwd)
+}
+
+pub(super) fn resolve_state_path_from(
+    options: &ProjectCommandOptions,
+    root: &Path,
+    executor_project_id: &str,
+    cwd: &Path,
+) -> Result<PathBuf, ProductError> {
+    let requested = match &options.state_dir {
+        Some(path) if path.is_absolute() => path.clone(),
+        Some(path) => cwd.join(path),
+        None => default_state_base()?
+            .join(&options.profile)
+            .join(executor_project_id),
+    };
+    let state = canonicalize_with_missing_tail(&requested)?;
+    let canonical_root = root.canonicalize().map_err(|_| state_path_unavailable())?;
+    if state == canonical_root || state.starts_with(&canonical_root) {
+        return Err(ProductError::new(
+            "state_directory_unsafe",
+            "the WebCodex state directory must be outside the Git project checkout",
+            Some(
+                "Choose --state-dir in a private directory outside the checkout, or omit it to use the default user state directory.",
+            ),
+        ));
+    }
+    Ok(state)
+}
+
+fn state_path_for_readiness(options: &ProjectCommandOptions) -> Result<PathBuf, ProductError> {
+    ProjectConfig::resolve(options).map(|(_, paths)| paths.state)
+}
+
+fn canonicalize_with_missing_tail(path: &Path) -> Result<PathBuf, ProductError> {
+    let absolute = lexical_normalize_absolute(path)?;
+    let mut probe = absolute.clone();
+    let mut missing = Vec::new();
+    loop {
+        match std::fs::symlink_metadata(&probe) {
+            Ok(_) => {
+                let mut resolved = probe.canonicalize().map_err(|_| state_path_unavailable())?;
+                if !missing.is_empty() && !resolved.is_dir() {
+                    return Err(state_path_unavailable());
+                }
+                for component in missing.iter().rev() {
+                    resolved.push(component);
+                }
+                return Ok(resolved);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let Some(name) = probe.file_name().map(|name| name.to_os_string()) else {
+                    return Err(state_path_unavailable());
+                };
+                missing.push(name);
+                if !probe.pop() {
+                    return Err(state_path_unavailable());
+                }
+            }
+            Err(_) => return Err(state_path_unavailable()),
+        }
+    }
+}
+
+fn lexical_normalize_absolute(path: &Path) -> Result<PathBuf, ProductError> {
+    if !path.is_absolute() {
+        return Err(state_path_unavailable());
+    }
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(Path::new("/")),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(value) => normalized.push(value),
+        }
+    }
+    Ok(normalized)
+}
+
+fn state_path_unavailable() -> ProductError {
+    ProductError::new(
+        "workspace_unavailable",
+        "cannot safely resolve the requested state directory",
+        Some("Use an accessible absolute --state-dir outside the Git checkout."),
+    )
+}
+
+fn default_state_base() -> Result<PathBuf, ProductError> {
+    default_state_base_from(
+        std::env::var_os("XDG_STATE_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+        if cfg!(windows) {
+            std::env::var_os("LOCALAPPDATA")
+        } else {
+            None
+        }
+        .as_deref(),
+    )
+}
+
+pub(super) fn default_state_base_from(
+    xdg_state_home: Option<&std::ffi::OsStr>,
+    home: Option<&std::ffi::OsStr>,
+    local_app_data: Option<&std::ffi::OsStr>,
+) -> Result<PathBuf, ProductError> {
+    if let Some(path) = xdg_state_home.filter(|value| !value.is_empty()) {
+        return Ok(PathBuf::from(path).join("webcodex/projects"));
+    }
+    // Preserve the historical HOME path when it exists. Native Windows shells
+    // commonly lack HOME, so LOCALAPPDATA is the compatibility fallback rather
+    // than a migration of existing profiles.
+    if let Some(path) = home.filter(|value| !value.is_empty()) {
+        return Ok(PathBuf::from(path).join(".local/state/webcodex/projects"));
+    }
+    if let Some(path) = local_app_data.filter(|value| !value.is_empty()) {
+        return Ok(PathBuf::from(path).join("WebCodex/state/projects"));
+    }
+    Err(ProductError::new(
+        "project_not_configured",
+        "no private user state directory is available and no --state-dir was provided",
+        Some("Set HOME/XDG_STATE_HOME, ensure LOCALAPPDATA is available on Windows, or pass an absolute --state-dir."),
+    ))
+}
+
+fn read_toml<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, ProductError> {
+    #[cfg(windows)]
+    let content = super::windows_private_state::read_private_bytes(path)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .ok_or_else(|| {
+            ProductError::new(
+                "project_registration_invalid",
+                "a WebCodex configuration file is unreadable or not protected",
+                Some("Restore protected private state, then retry."),
+            )
+        })?;
+    #[cfg(not(windows))]
+    let content = std::fs::read_to_string(path).map_err(|_| {
+        ProductError::new(
+            "project_registration_invalid",
+            "a WebCodex configuration file is unreadable",
+            Some("Restore readable private state, then retry."),
+        )
+    })?;
+    toml::from_str(&content).map_err(|_| {
+        ProductError::new(
+            "project_registration_invalid",
+            "a WebCodex configuration file is invalid",
+            Some("Resolve the invalid configuration; WebCodex will not overwrite it."),
+        )
+    })
+}
+
+pub(super) fn read_toml_optional<T: for<'de> Deserialize<'de>>(
+    path: &Path,
+) -> Result<Option<T>, ProductError> {
+    if path.is_file() {
+        read_toml(path).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+pub(super) fn generate_project_credential() -> String {
+    format!(
+        "webcodex_{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    )
+}
+
+pub(super) fn read_private_value(path: &Path) -> Result<String, ProductError> {
+    read_private_value_with_code(path, "project_registration_invalid")
+}
+
+pub(super) fn read_project_credential(path: &Path) -> Result<String, ProductError> {
+    let value = read_private_value_with_code(path, "project_credential_invalid")?;
+    crate::auth::validate_project_credential(&value).map_err(|_| {
+        ProductError::new(
+            "project_credential_invalid",
+            "the configured project credential is invalid",
+            Some("Restore the private credential or explicitly rotate the project setup."),
+        )
+    })?;
+    Ok(value)
+}
+
+pub(super) fn read_project_agent_token(path: &Path) -> Result<String, ProductError> {
+    let value = read_private_value_with_code(path, "agent_credential_invalid")?;
+    crate::auth::validate_project_agent_token(&value).map_err(|_| {
+        ProductError::new(
+            "agent_credential_invalid",
+            "the configured project Agent Token is invalid",
+            Some("Restore the private Agent Token or recreate this project profile."),
+        )
+    })?;
+    Ok(value)
+}
+
+fn read_private_value_with_code(path: &Path, code: &str) -> Result<String, ProductError> {
+    #[cfg(windows)]
+    let protected = super::windows_private_state::read_private_bytes(path).and_then(|bytes| {
+        String::from_utf8(bytes)
+            .map(|value| value.trim().to_string())
+            .map_err(|_| "private authentication material is unreadable".to_string())
+    });
+    #[cfg(not(windows))]
+    let protected = crate::auth::read_protected_secret(path);
+    protected
+        .and_then(|value| {
+            (!value.is_empty())
+                .then_some(value)
+                .ok_or_else(|| "private authentication material is empty".to_string())
+        })
+        .map_err(|message| {
+            ProductError::new(
+                code,
+                message,
+                Some("Restore protected private authentication material, then retry."),
+            )
+        })
+}
+
+pub(super) fn prepare_runtime_private_state(paths: &ProjectPaths) -> Result<(), ProductError> {
+    #[cfg(windows)]
+    {
+        create_private_dir(&paths.data)?;
+        create_private_dir(&paths.logs)?;
+    }
+    harden_existing_runtime_private_state(paths)
+}
+
+pub(super) fn harden_existing_runtime_private_state(
+    paths: &ProjectPaths,
+) -> Result<(), ProductError> {
+    #[cfg(windows)]
+    {
+        for path in [
+            paths.data.join("webcodex.db"),
+            paths.data.join("webcodex.db-wal"),
+            paths.data.join("webcodex.db-shm"),
+            paths.logs.join("server.log"),
+            paths.logs.join("agent.log"),
+        ] {
+            match std::fs::symlink_metadata(&path) {
+                Ok(metadata) => {
+                    if !metadata.file_type().is_file() {
+                        return Err(ProductError::new(
+                            "project_registration_invalid",
+                            "WebCodex refused unsafe existing private Windows runtime state",
+                            Some(
+                                "Remove the unexpected reparse or non-file runtime state, then retry.",
+                            ),
+                        ));
+                    }
+                    super::windows_private_state::protect_private_file(&path).map_err(|_| {
+                        ProductError::new(
+                            "project_registration_invalid",
+                            "WebCodex could not protect existing private Windows runtime state",
+                            Some(
+                                "Check local filesystem permissions and reparse points, then retry.",
+                            ),
+                        )
+                    })?;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(_) => {
+                    return Err(ProductError::new(
+                        "project_registration_invalid",
+                        "WebCodex could not inspect existing private Windows runtime state",
+                        Some("Check local filesystem permissions, then retry."),
+                    ));
+                }
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = paths;
+    Ok(())
+}
+
+pub(super) fn create_private_dir(path: &Path) -> Result<(), ProductError> {
+    std::fs::create_dir_all(path).map_err(|_| {
+        ProductError::new(
+            "project_registration_invalid",
+            "WebCodex could not create its private state directory",
+            Some("Check local filesystem permissions, then retry."),
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).map_err(|_| {
+            ProductError::new(
+                "project_registration_invalid",
+                "WebCodex could not protect its private state directory",
+                Some("Check local filesystem permissions, then retry."),
+            )
+        })?;
+    }
+    #[cfg(windows)]
+    super::windows_private_state::protect_private_directory(path).map_err(|_| {
+        ProductError::new(
+            "project_registration_invalid",
+            "WebCodex could not protect its private Windows state directory",
+            Some("Check local filesystem permissions and reparse points, then retry."),
+        )
+    })?;
+    Ok(())
+}
+
+pub(super) fn write_new_private(path: &Path, content: &[u8]) -> Result<(), ProductError> {
+    if let Some(parent) = path.parent() {
+        create_private_dir(parent)?;
+    }
+    #[cfg(windows)]
+    {
+        return super::windows_private_state::write_new_private_file(path, content).map_err(
+            |message| {
+                let conflict = message.contains("overwrite");
+                ProductError::new(
+                    "project_registration_invalid",
+                    if conflict {
+                        "WebCodex refused to overwrite existing project state"
+                    } else {
+                        "WebCodex could not securely write private Windows project state"
+                    },
+                    Some(if conflict {
+                        "Resolve the existing state conflict, then retry."
+                    } else {
+                        "Check local filesystem permissions and reparse points, then retry."
+                    }),
+                )
+            },
+        );
+    }
+    #[cfg(not(windows))]
+    {
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(path).map_err(|_| {
+            ProductError::new(
+                "project_registration_invalid",
+                "WebCodex refused to overwrite existing project state",
+                Some("Resolve the existing state conflict, then retry."),
+            )
+        })?;
+        file.write_all(content).map_err(|_| {
+            ProductError::new(
+                "project_registration_invalid",
+                "WebCodex could not write private project state",
+                Some("Check local filesystem permissions, then retry."),
+            )
+        })
+    }
+}

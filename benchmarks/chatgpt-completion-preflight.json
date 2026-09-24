@@ -1,0 +1,28 @@
+{
+  "surface": "ChatGPT browser, submit to visible final answer",
+  "model_effort": "extra-high; browser driver verifies control",
+  "baseline": "49f793fd66b054a38923c3f6e3ccd9c1aca6579f",
+  "prompt_template_sha256": "67812d1189ef295771992108d64798145827123cabbf45ae6c14fb4685e1d339",
+  "arms": [
+    {
+      "name": "chadex-current",
+      "connector": "Chadex Benchmark",
+      "fixture": "/path/to/Benchmark-Chadex"
+    },
+    {
+      "name": "webcodex",
+      "connector": "WebCodex Benchmark",
+      "fixture": "/path/to/Benchmark-WebCodex"
+    }
+  ],
+  "iterations_requested": 20,
+  "runtime_builds_verified": false,
+  "tool_calls": null,
+  "token_context_usage": null,
+  "rows": [],
+  "valid_e2e": false,
+  "blocked": {
+    "arm": "chadex-current",
+    "reason": "ChatGPT connector \"Chadex Benchmark\" is not available"
+  }
+}

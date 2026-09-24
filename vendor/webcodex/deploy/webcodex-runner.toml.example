@@ -1,0 +1,106 @@
+# Example config for webcodex-runner.
+# Copy to /etc/webcodex/clients/workstation/runner.toml and edit token/client_id/server_url.
+# Prefer generating this file with: webcodex runner init --profile workstation
+
+server_url = "https://webcodex.example.com"
+token = "replace-with-agent-token"
+client_id = "example-agent"
+display_name = "Example Agent"
+owner = "example-user"
+transport = "auto"
+# Minimum idle polling interval used by polling/auto fallback. Empty polls may
+# back off above this value; values above 30000 are rejected.
+poll_interval_ms = 1000
+project_registry_dir = "/etc/webcodex/clients/workstation/project-registry"
+
+# Agent transport. New deployments should prefer auto transport with
+# [quic] configured: the agent tries QUIC first, then WebSocket, then polling.
+# Use transport = "quic" only when you want strict QUIC without fallback.
+# QUIC is a custom WebCodex agent stream transport, NOT HTTP/3; the server
+# listens directly on UDP 8443 when enabled, and Nginx does not need QUIC/HTTP/3
+# support for GPT Actions or MCP. runtime_status/list_runners report the actual
+# connected transport. See docs/RUNNER.md.
+# transport = "quic"
+# transport = "websocket"
+# transport = "polling"
+# transport = "auto"
+# [quic]
+# server_addr = "webcodex.example.com:8443"
+# server_name = "webcodex.example.com"
+# alpn = "webcodex-runner/1"
+# connect_timeout_secs = 10
+# keepalive_interval_secs = 20 # QUIC transport keepalive; valid range 1..=25 seconds
+
+# Shell profiles describe prepared development environments for projects.
+# init_script is inline shell text, not a file path. runtime_status/list_runners
+# do not expose profile env values or init_script text.
+[shell]
+default_profile = "rust"
+
+[shell.profiles.rust]
+description = "Rust development tools"
+program = "sh"
+args = ["-c"]
+
+[shell.profiles.rust.env]
+PATH = "/home/webcodex/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+CARGO_HOME = "/home/webcodex/.cargo"
+RUSTUP_HOME = "/home/webcodex/.rustup"
+
+[shell.profiles.py-venv]
+description = "Project-local Python virtual environment"
+program = "bash"
+args = ["-lc"]
+init_script = '''
+source .venv/bin/activate
+'''
+
+[shell.profiles.conda-ml]
+description = "Conda ML environment"
+program = "bash"
+args = ["-lc"]
+init_script = '''
+source /opt/miniconda3/etc/profile.d/conda.sh
+conda activate ml
+'''
+
+# Optional named remote Shell/Job targets for Session-bound SSH execution.
+# `host` is passed to this Runner's OpenSSH client, so it may be a Host alias
+# from ~/.ssh/config or /etc/ssh/ssh_config. Keep keys, passwords, ProxyJump,
+# and agent setup in the Runner host's SSH configuration; never put them here.
+# [ssh.resources.tmp]
+# host = "tmp"
+# default_cwd = "/opt/webcodex-edge"
+
+# Optional live Skill roots on this Runner host. WebCodex does not modify files
+# under these roots, but supported scripts/*.py and scripts/*.sh may execute via
+# run_skill_resource because the configured root is an operator-trusted Skill source.
+# These paths do not expand [policy].allowed_roots and are not copied into the
+# managed Skill Store. File edits are visible to the next discovery/read/execution;
+# editing this roots list is applied with runner config check/reload, without restart.
+[skills]
+roots = []
+# roots = ["/home/webcodex/.codex/skills", "/opt/company/agent-skills"]
+# Windows TOML literal-string example: roots = ['C:\Users\alice\.codex\skills']
+
+[capabilities]
+file_read = true
+file_write = true
+git = true
+shell = true
+jobs = true
+async_jobs = true
+async_shell_jobs = true
+# ssh_shell is detected from the local OpenSSH executable at Runner startup.
+
+[policy]
+# Missing or empty allowed_roots defaults to $HOME.
+# Explicit allowed_roots replaces that default. Leave it empty to use $HOME, or
+# set a narrower workspace root for production hardening.
+allow_raw_shell = true
+allow_cwd_anywhere = false
+# allowed_roots = []
+# Example narrow root only; not the default:
+# allowed_roots = ["/root/git"]
+max_timeout_secs = 3600
+max_output_bytes = 262144

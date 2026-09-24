@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "phase": "16B",
+  "status": "completed",
+  "scope": "first-tool initial surface and host-facing schema/description compaction",
+  "implementation": {
+    "effective_direct_policy_tools_without_code_mode": 20,
+    "current_source_mcp_2026_non_ui": {
+      "tool_count": 27,
+      "serialized_tools_bytes": 95145
+    },
+    "current_source_mcp_2026_ui": {
+      "tool_count": 38,
+      "serialized_tools_bytes": 109249
+    },
+    "legacy_final_package_probe": {
+      "tool_count": 22,
+      "response_bytes": 53665,
+      "note": "legacy tools/list params={} projection; not directly comparable to 2026/stateless projection"
+    },
+    "helper_optimized": false
+  },
+  "references_ms": {
+    "phase16a_chadex_fresh": 15432.869,
+    "phase16a_webcodex_fresh": 6936.979
+  },
+  "connected_small_runs_ms": [
+    6923.828,
+    11462.24,
+    8885.38
+  ],
+  "connected_small_stats_ms": {
+    "median": 8885.38,
+    "mean": 9090.483,
+    "best": 6923.828,
+    "worst": 11462.24
+  },
+  "improvement_vs_phase16a_chadex": {
+    "median_ms": 6547.489,
+    "median_percent": 42.4,
+    "mean_ms": 6342.386,
+    "mean_percent": 41.1
+  },
+  "residual_vs_phase16a_webcodex": {
+    "median_ms": 1948.401,
+    "best_ms": -13.151
+  },
+  "attribution": {
+    "dominant_changed_span": "prompt_submit_to_first_local_server_receive",
+    "label": "pre-Server host/relay/model-side unattributed",
+    "local_server_first_handler_ms_range": [
+      2.013,
+      3.139
+    ],
+    "helper_multi_second_floor_supported": false
+  },
+  "validation": {
+    "tool_contract_full_suite": {
+      "passed": 139,
+      "failed": 0
+    },
+    "current_source_closeout": {
+      "passed": 10,
+      "failed": 0
+    },
+    "representative_host_integrations": [
+      "session_handoff",
+      "plugin_gateway",
+      "runtime_status",
+      "attachment_fileParams",
+      "goal_plan_app",
+      "project_artifact_native_image"
+    ],
+    "final_package_build": "passed",
+    "final_package_path": "dist/Chadex-Phase16B-Final.app",
+    "standard_app_path": "dist/Chadex.app",
+    "standard_app_replaced_after_not_running_check": true
+  },
+  "final_package_runtime_sha256": {
+    "cli": "a770a28a2ef3590b00eefdf0cfec51d5028623b2515af8f0eb3658eca2f0fbf3",
+    "server": "6855e66dd29e36e131bf8c6f067a009c3ae9f0985f99a2c13ffe312e6fef6b2f",
+    "runner": "03eaa81084cc36c0283920c97562b14034b0fd4e71f033d16feebcd1facd8f0d"
+  },
+  "evidence": [
+    "docs/performance/phase16b-first-tool-optimization.md",
+    "docs/performance/phase16b-final-package-tools-list.json"
+  ],
+  "local_diagnostic_evidence": "connected profile JSONs remain uncommitted because they contain machine-specific paths or connector identifiers",
+  "next": "diagnose and stabilize pre-Server variance before Server/Runner/helper micro-optimization"
+}

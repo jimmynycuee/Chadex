@@ -1,0 +1,96 @@
+name: Free Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag label, for example v0.1.0-rc.1"
+        required: true
+        type: string
+      app_version:
+        description: "CFBundleShortVersionString, for example 0.1.0"
+        required: true
+        type: string
+      build_number:
+        description: "CFBundleVersion; leave empty to use the Actions run number"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  adhoc-arm64:
+    name: Build free ARM64 DMG
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      INPUT_TAG: ${{ inputs.tag }}
+      INPUT_APP_VERSION: ${{ inputs.app_version }}
+      INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Resolve release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"; raw="${tag#v}"; version="${raw%%-*}"
+          else
+            tag="$INPUT_TAG"; version="$INPUT_APP_VERSION"
+          fi
+          build="${INPUT_BUILD_NUMBER:-$GITHUB_RUN_NUMBER}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          [[ "$version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]
+          [[ "$build" =~ ^[0-9]+(\.[0-9]+)*$ ]]
+          echo "CHADEX_RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "CHADEX_APP_VERSION=$version" >> "$GITHUB_ENV"
+          echo "CHADEX_APP_BUILD_NUMBER=$build" >> "$GITHUB_ENV"
+          echo "CHADEX_APP_OUTPUT=$RUNNER_TEMP/Chadex.app" >> "$GITHUB_ENV"
+          echo "CHADEX_DMG_OUTPUT=$RUNNER_TEMP/Chadex-${tag}-macos-arm64.dmg" >> "$GITHUB_ENV"
+      - name: Bootstrap pinned Rust
+        run: ./scripts/bootstrap_rust.sh
+      - name: Install pinned Gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=8.29.1; archive="gitleaks_${version}_darwin_arm64.tar.gz"
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}" -o "$RUNNER_TEMP/$archive"
+          echo "69836c841d7e648fb30ff4846f8c3587855c5754ed02b8510caaf6008f65d177  $RUNNER_TEMP/$archive" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks"; tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          echo "GITLEAKS_BIN=$RUNNER_TEMP/gitleaks/gitleaks" >> "$GITHUB_ENV"
+      - name: Public history gate
+        env: { CHADEX_REQUIRE_GITLEAKS: "1" }
+        run: ./scripts/public_release_check.sh HEAD
+      - name: Source release gate
+        env: { CHADEX_RELEASE_CHECK_BUILD_APP: "0" }
+        run: ./scripts/release_check.sh
+      - name: Build ad-hoc signed app
+        env:
+          CHADEX_CODESIGN_MODE: adhoc
+          CHADEX_RUNTIME_PROFILE: release
+        run: ./scripts/build_app.sh
+      - name: Package and smoke-test DMG
+        run: ./scripts/package_free_macos_release.sh "$CHADEX_APP_OUTPUT" "$CHADEX_DMG_OUTPUT"
+      - name: Upload free release artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Chadex-${{ env.CHADEX_RELEASE_TAG }}-macos-arm64
+          path: |
+            ${{ env.CHADEX_DMG_OUTPUT }}
+            ${{ env.CHADEX_DMG_OUTPUT }}.sha256
+          if-no-files-found: error
+      - name: Publish GitHub prerelease/release
+        if: github.ref_type == 'tag'
+        env: { GH_TOKEN: "${{ github.token }}" }
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(release create "$CHADEX_RELEASE_TAG" "$CHADEX_DMG_OUTPUT" "$CHADEX_DMG_OUTPUT.sha256" --title "Chadex $CHADEX_RELEASE_TAG" --notes-file docs/releases/0.1.0-rc.1.md)
+          [[ "$CHADEX_RELEASE_TAG" != *-* ]] || args+=(--prerelease)
+          gh "${args[@]}"

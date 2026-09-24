@@ -1,0 +1,335 @@
+{
+  "blind_until_both_implementations_complete": true,
+  "candidate_app": "Phase 10 Candidate.app",
+  "phase10": {
+    "diff": {
+      "additions": 230,
+      "changed_file_count": 5,
+      "changed_files": [
+        "taskdesk/bridge.py",
+        "taskdesk/service.py",
+        "taskdesk/store.py",
+        "taskdesk/viewmodel.py",
+        "tests/test_task_history_visible.py"
+      ],
+      "deletions": 1,
+      "total_changed_lines": 231
+    },
+    "execution": {
+      "complexity_band": "large",
+      "complexity_score": 7,
+      "complexity_signals": {
+        "concurrency_or_security_sensitive": true,
+        "cross_runtime_boundary": false,
+        "estimated_file_count": 5,
+        "estimated_language_count": 1,
+        "estimated_subsystem_count": 4,
+        "estimation_source": "preplan",
+        "graphify_informed": true,
+        "plan_shape_shadow_band": "large",
+        "plan_shape_shadow_score": 7,
+        "stateful_or_schema_change": true,
+        "validation_domain_count": 3
+      },
+      "dependency_merge_count": 1,
+      "duration_ms": 795,
+      "effective_package_count": 2,
+      "graphify_adjusted": true,
+      "graphify_fresh": true,
+      "graphify_planning_ms": 72,
+      "graphify_status": "used",
+      "recommended_package_count": 3,
+      "requested_package_count": 3,
+      "review": {
+        "changed_file_count": 8,
+        "changed_paths": [
+          "taskdesk/bridge.py",
+          "taskdesk/service.py",
+          "taskdesk/store.py",
+          "taskdesk/viewmodel.py",
+          "tests/test_task_history_visible.py",
+          "graphify-out/",
+          "taskdesk/__pycache__/",
+          "tests/__pycache__/"
+        ],
+        "clean": false,
+        "conflicted": 0,
+        "diff_stat": " taskdesk/bridge.py                 |   9 ++\n taskdesk/service.py                |  10 +++\n taskdesk/store.py                  | 172 ++++++++++++++++++++++++++++++++++++-\n taskdesk/viewmodel.py              |   5 ++\n tests/test_task_history_visible.py |  35 ++++++++\n 5 files changed, 230 insertions(+), 1 deletion(-)",
+        "status": "completed"
+      },
+      "status": "completed",
+      "steps": [
+        {
+          "attempts": 1,
+          "duration_ms": 17,
+          "index": 0,
+          "kind": "edit",
+          "result_bytes_after": 93,
+          "result_bytes_before": 584,
+          "retries": 0,
+          "status": "completed"
+        },
+        {
+          "attempts": 1,
+          "duration_ms": 64,
+          "index": 1,
+          "kind": "validate",
+          "result_bytes_after": 37,
+          "result_bytes_before": 45,
+          "retries": 0,
+          "status": "completed",
+          "summary": {
+            "checks_failed": 0,
+            "checks_passed": 1
+          }
+        },
+        {
+          "attempts": 1,
+          "duration_ms": 17,
+          "index": 2,
+          "kind": "edit",
+          "result_bytes_after": 95,
+          "result_bytes_before": 587,
+          "retries": 0,
+          "status": "completed"
+        },
+        {
+          "attempts": 1,
+          "duration_ms": 66,
+          "index": 3,
+          "kind": "validate",
+          "result_bytes_after": 37,
+          "result_bytes_before": 45,
+          "retries": 0,
+          "status": "completed",
+          "summary": {
+            "checks_failed": 0,
+            "checks_passed": 1
+          }
+        },
+        {
+          "attempts": 1,
+          "duration_ms": 21,
+          "index": 4,
+          "kind": "edit",
+          "result_bytes_after": 94,
+          "result_bytes_before": 585,
+          "retries": 0,
+          "status": "completed"
+        },
+        {
+          "attempts": 1,
+          "duration_ms": 57,
+          "index": 5,
+          "kind": "validate",
+          "result_bytes_after": 37,
+          "result_bytes_before": 45,
+          "retries": 0,
+          "status": "completed",
+          "summary": {
+            "checks_failed": 0,
+            "checks_passed": 1
+          }
+        },
+        {
+          "attempts": 1,
+          "duration_ms": 26,
+          "index": 6,
+          "kind": "edit",
+          "result_bytes_after": 134,
+          "result_bytes_before": 1010,
+          "retries": 0,
+          "status": "completed"
+        },
+        {
+          "attempts": 1,
+          "duration_ms": 208,
+          "index": 7,
+          "kind": "validate",
+          "result_bytes_after": 37,
+          "result_bytes_before": 45,
+          "retries": 0,
+          "status": "completed",
+          "summary": {
+            "checks_failed": 0,
+            "checks_passed": 2
+          }
+        },
+        {
+          "attempts": 1,
+          "duration_ms": 174,
+          "index": 8,
+          "kind": "review",
+          "result_bytes_after": 593,
+          "result_bytes_before": 3322,
+          "retries": 0,
+          "status": "completed",
+          "summary": {
+            "changed_file_count": 8,
+            "changed_paths": [
+              "taskdesk/bridge.py",
+              "taskdesk/service.py",
+              "taskdesk/store.py",
+              "taskdesk/viewmodel.py",
+              "tests/test_task_history_visible.py",
+              "graphify-out/",
+              "taskdesk/__pycache__/",
+              "tests/__pycache__/"
+            ],
+            "clean": false,
+            "conflicted": 0,
+            "diff_stat": " taskdesk/bridge.py                 |   9 ++\n taskdesk/service.py                |  10 +++\n taskdesk/store.py                  | 172 ++++++++++++++++++++++++++++++++++++-\n taskdesk/viewmodel.py              |   5 ++\n tests/test_task_history_visible.py |  35 ++++++++\n 5 files changed, 230 insertions(+), 1 deletion(-)"
+          }
+        }
+      ],
+      "success": true,
+      "tool_calls": 1,
+      "validation": {
+        "checks_failed": 0,
+        "checks_passed": 2,
+        "status": "passed"
+      },
+      "wall_ms": 803.508
+    },
+    "hidden": {
+      "passed": true,
+      "passed_tests": 10,
+      "stderr": "test_all_terminal_statuses_persist (__main__.HiddenTaskHistoryTests.test_all_terminal_statuses_persist) ... ok\ntest_atomic_replace_does_not_leave_temp_files (__main__.HiddenTaskHistoryTests.test_atomic_replace_does_not_leave_temp_files) ... ok\ntest_bridge_limit_is_clamped (__main__.HiddenTaskHistoryTests.test_bridge_limit_is_clamped) ... ok\ntest_changed_files_are_deduped_and_capped (__main__.HiddenTaskHistoryTests.test_changed_files_are_deduped_and_capped) ... ok\ntest_concurrent_recording_keeps_valid_bounded_json (__main__.HiddenTaskHistoryTests.test_concurrent_recording_keeps_valid_bounded_json) ... ok\ntest_corrupt_file_reads_empty_and_next_write_repairs (__main__.HiddenTaskHistoryTests.test_corrupt_file_reads_empty_and_next_write_repairs) ... ok\ntest_duplicate_id_replaces_and_moves_to_front (__main__.HiddenTaskHistoryTests.test_duplicate_id_replaces_and_moves_to_front) ... ok\ntest_duration_is_nonnegative_and_persisted (__main__.HiddenTaskHistoryTests.test_duration_is_nonnegative_and_persisted) ... ok\ntest_existing_status_api_stays_backward_compatible (__main__.HiddenTaskHistoryTests.test_existing_status_api_stays_backward_compatible) ... ok\ntest_v1_migrates_on_next_mutation (__main__.HiddenTaskHistoryTests.test_v1_migrates_on_next_mutation) ... ok\n\n----------------------------------------------------------------------\nRan 10 tests in 0.256s\n\nOK\n",
+      "stdout": "HIDDEN_SCORE=10/10\n",
+      "total_tests": 10
+    },
+    "visible": {
+      "passed": true,
+      "stderr": "test_status_and_label_remain_available (test_existing_behavior.ExistingBehaviorTests.test_status_and_label_remain_available) ... ok\ntest_duplicate_id_replaces_older_entry (test_task_history_visible.TaskHistoryVisibleTests.test_duplicate_id_replaces_older_entry) ... ok\ntest_history_is_capped_and_clearable (test_task_history_visible.TaskHistoryVisibleTests.test_history_is_capped_and_clearable) ... ok\ntest_non_terminal_results_are_not_persisted (test_task_history_visible.TaskHistoryVisibleTests.test_non_terminal_results_are_not_persisted) ... ok\ntest_terminal_result_persists_and_reloads (test_task_history_visible.TaskHistoryVisibleTests.test_terminal_result_persists_and_reloads) ... ok\ntest_v1_history_is_preserved_on_next_write (test_task_history_visible.TaskHistoryVisibleTests.test_v1_history_is_preserved_on_next_write) ... ok\ntest_view_model_exposes_recent_rows (test_task_history_visible.TaskHistoryVisibleTests.test_view_model_exposes_recent_rows) ... ok\n\n----------------------------------------------------------------------\nRan 7 tests in 0.078s\n\nOK\n",
+      "stdout": ""
+    }
+  },
+  "phase9": {
+    "diff": {
+      "additions": 186,
+      "changed_file_count": 4,
+      "changed_files": [
+        "taskdesk/bridge.py",
+        "taskdesk/service.py",
+        "taskdesk/store.py",
+        "taskdesk/viewmodel.py"
+      ],
+      "deletions": 0,
+      "total_changed_lines": 186
+    },
+    "execution": {
+      "complexity_band": "large",
+      "complexity_score": 7,
+      "complexity_signals": {
+        "concurrency_or_security_sensitive": true,
+        "cross_runtime_boundary": false,
+        "estimated_file_count": 5,
+        "estimated_language_count": 1,
+        "estimated_subsystem_count": 4,
+        "estimation_source": "preplan",
+        "graphify_informed": true,
+        "plan_shape_shadow_band": "small",
+        "plan_shape_shadow_score": 3,
+        "stateful_or_schema_change": true,
+        "validation_domain_count": 3
+      },
+      "dependency_merge_count": 0,
+      "duration_ms": 549,
+      "effective_package_count": 1,
+      "graphify_adjusted": false,
+      "graphify_fresh": false,
+      "graphify_planning_ms": 0,
+      "graphify_status": "skipped_single_package",
+      "recommended_package_count": 3,
+      "requested_package_count": 1,
+      "review": {
+        "changed_file_count": 7,
+        "changed_paths": [
+          "taskdesk/bridge.py",
+          "taskdesk/service.py",
+          "taskdesk/store.py",
+          "taskdesk/viewmodel.py",
+          "graphify-out/",
+          "taskdesk/__pycache__/",
+          "tests/__pycache__/"
+        ],
+        "clean": false,
+        "conflicted": 0,
+        "diff_stat": " taskdesk/bridge.py    |  10 ++++\n taskdesk/service.py   |  10 ++++\n taskdesk/store.py     | 161 ++++++++++++++++++++++++++++++++++++++++++++++++++\n taskdesk/viewmodel.py |   5 ++\n 4 files changed, 186 insertions(+)",
+        "status": "completed"
+      },
+      "status": "completed",
+      "steps": [
+        {
+          "attempts": 1,
+          "duration_ms": 40,
+          "index": 0,
+          "kind": "edit",
+          "result_bytes_after": 160,
+          "result_bytes_before": 1753,
+          "retries": 0,
+          "status": "completed"
+        },
+        {
+          "attempts": 1,
+          "duration_ms": 305,
+          "index": 1,
+          "kind": "validate",
+          "result_bytes_after": 37,
+          "result_bytes_before": 45,
+          "retries": 0,
+          "status": "completed",
+          "summary": {
+            "checks_failed": 0,
+            "checks_passed": 2
+          }
+        },
+        {
+          "attempts": 1,
+          "duration_ms": 179,
+          "index": 2,
+          "kind": "review",
+          "result_bytes_after": 453,
+          "result_bytes_before": 3076,
+          "retries": 0,
+          "status": "completed",
+          "summary": {
+            "changed_file_count": 7,
+            "changed_paths": [
+              "taskdesk/bridge.py",
+              "taskdesk/service.py",
+              "taskdesk/store.py",
+              "taskdesk/viewmodel.py",
+              "graphify-out/",
+              "taskdesk/__pycache__/",
+              "tests/__pycache__/"
+            ],
+            "clean": false,
+            "conflicted": 0,
+            "diff_stat": " taskdesk/bridge.py    |  10 ++++\n taskdesk/service.py   |  10 ++++\n taskdesk/store.py     | 161 ++++++++++++++++++++++++++++++++++++++++++++++++++\n taskdesk/viewmodel.py |   5 ++\n 4 files changed, 186 insertions(+)"
+          }
+        }
+      ],
+      "success": true,
+      "tool_calls": 1,
+      "validation": {
+        "checks_failed": 0,
+        "checks_passed": 2,
+        "status": "passed"
+      },
+      "wall_ms": 557.933
+    },
+    "hidden": {
+      "passed": true,
+      "passed_tests": 10,
+      "stderr": "test_all_terminal_statuses_persist (__main__.HiddenTaskHistoryTests.test_all_terminal_statuses_persist) ... ok\ntest_atomic_replace_does_not_leave_temp_files (__main__.HiddenTaskHistoryTests.test_atomic_replace_does_not_leave_temp_files) ... ok\ntest_bridge_limit_is_clamped (__main__.HiddenTaskHistoryTests.test_bridge_limit_is_clamped) ... ok\ntest_changed_files_are_deduped_and_capped (__main__.HiddenTaskHistoryTests.test_changed_files_are_deduped_and_capped) ... ok\ntest_concurrent_recording_keeps_valid_bounded_json (__main__.HiddenTaskHistoryTests.test_concurrent_recording_keeps_valid_bounded_json) ... ok\ntest_corrupt_file_reads_empty_and_next_write_repairs (__main__.HiddenTaskHistoryTests.test_corrupt_file_reads_empty_and_next_write_repairs) ... ok\ntest_duplicate_id_replaces_and_moves_to_front (__main__.HiddenTaskHistoryTests.test_duplicate_id_replaces_and_moves_to_front) ... ok\ntest_duration_is_nonnegative_and_persisted (__main__.HiddenTaskHistoryTests.test_duration_is_nonnegative_and_persisted) ... ok\ntest_existing_status_api_stays_backward_compatible (__main__.HiddenTaskHistoryTests.test_existing_status_api_stays_backward_compatible) ... ok\ntest_v1_migrates_on_next_mutation (__main__.HiddenTaskHistoryTests.test_v1_migrates_on_next_mutation) ... ok\n\n----------------------------------------------------------------------\nRan 10 tests in 0.262s\n\nOK\n",
+      "stdout": "HIDDEN_SCORE=10/10\n",
+      "total_tests": 10
+    },
+    "visible": {
+      "passed": true,
+      "stderr": "test_status_and_label_remain_available (test_existing_behavior.ExistingBehaviorTests.test_status_and_label_remain_available) ... ok\ntest_history_is_capped_and_clearable (test_task_history_visible.TaskHistoryVisibleTests.test_history_is_capped_and_clearable) ... ok\ntest_non_terminal_results_are_not_persisted (test_task_history_visible.TaskHistoryVisibleTests.test_non_terminal_results_are_not_persisted) ... ok\ntest_terminal_result_persists_and_reloads (test_task_history_visible.TaskHistoryVisibleTests.test_terminal_result_persists_and_reloads) ... ok\ntest_view_model_exposes_recent_rows (test_task_history_visible.TaskHistoryVisibleTests.test_view_model_exposes_recent_rows) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 0.059s\n\nOK\n",
+      "stdout": ""
+    }
+  }
+}

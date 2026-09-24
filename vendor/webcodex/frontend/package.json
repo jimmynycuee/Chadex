@@ -1,0 +1,15 @@
+{
+  "name": "webcodex-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs --out-dir dist",
+    "dev": "node scripts/build.mjs --out-dir .dev-dist --watch",
+    "check:dist": "node scripts/build.mjs --out-dir dist --check",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

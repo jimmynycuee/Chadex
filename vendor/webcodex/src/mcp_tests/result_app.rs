@@ -1,0 +1,2362 @@
+use super::*;
+use crate::runner_protocol::{
+    RunnerCapabilities, RunnerJobUpdateRequest, RunnerPollRequest, RunnerProjectSummary,
+    RunnerRegisterRequest, RunnerResultRequest,
+};
+use crate::tool_runtime::{ObserveJobsItem, ToolCall};
+
+fn tool<'a>(payload: &'a Value, name: &str) -> &'a Value {
+    payload["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == name)
+        .unwrap_or_else(|| panic!("missing {name} descriptor"))
+}
+
+fn presentation<'a>(call_result: &'a Value) -> &'a Value {
+    &call_result["_meta"][super::super::presentation::MCP_PRESENTATION_META_KEY]
+}
+
+const RESULT_APP_TOOLS: [&str; 0] = [];
+const UNBOUND_RESULT_APP_TOOLS: [&str; 17] = [
+    "show_changes",
+    "list_jobs",
+    "observe_jobs",
+    "cargo_check",
+    "cargo_test",
+    "go_test",
+    "validation_summary",
+    "git_review_summary",
+    "cargo_fmt",
+    "run_shell",
+    "run_process",
+    "run_job",
+    "finish_coding_task",
+    "git_diff_hunks",
+    "git_status",
+    "git_commit_paths",
+    "git_restore_paths",
+];
+
+fn assert_presentation_strings_bounded(value: &Value) {
+    match value {
+        Value::String(text) => assert!(
+            text.chars().count() <= super::super::presentation::MAX_MCP_PRESENTATION_TEXT_CHARS,
+            "presentation text exceeded bound: {}",
+            text.chars().count()
+        ),
+        Value::Array(values) => values.iter().for_each(assert_presentation_strings_bounded),
+        Value::Object(values) => values
+            .values()
+            .for_each(assert_presentation_strings_bounded),
+        _ => {}
+    }
+}
+
+fn projected_result(tool_name: &str, success: bool, output: Value) -> Value {
+    let canonical = ToolResult {
+        success,
+        output,
+        error: (!success).then(|| "canonical validation failure".to_string()),
+    };
+    let mut framed = super::super::tools::mcp_runtime_tool_result(tool_name, false, canonical);
+    let structured_before = framed["structuredContent"].clone();
+    super::super::presentation::attach_result_app_presentation(tool_name, &mut framed);
+    assert_eq!(framed["structuredContent"], structured_before);
+    framed
+}
+
+async fn handle_with_server_apps_enabled(
+    runtime: &ToolRuntime,
+    request: JsonRpcRequest,
+    auth: Option<&crate::auth::AuthContext>,
+    server_mcp_apps_enabled: bool,
+) -> McpOutcome {
+    let protocol_era = super::super::inferred_protocol_era(&request);
+    super::super::handle_mcp_request_with_lifecycle(
+        runtime,
+        request,
+        auth,
+        protocol_era,
+        super::super::HostFileImportTrust::Untrusted,
+        None,
+        None,
+        None,
+        crate::model_surface::effective_mcp_compact_schemas(
+            crate::config::mcp_compact_schemas_override(),
+        ),
+        server_mcp_apps_enabled,
+        None,
+    )
+    .await
+}
+
+#[test]
+fn result_tool_app_metadata_is_capability_scoped_compact_safe_and_merge_safe() {
+    for compact in [false, true] {
+        let enabled = mcp_tools_list_payload_with_compact_and_app(compact, true);
+        for name in RESULT_APP_TOOLS {
+            assert!(super::super::presentation::tool_supports_result_app(name));
+            assert_eq!(
+                tool(&enabled, name)["_meta"]["ui"]["resourceUri"],
+                MCP_RESULT_UI_RESOURCE_URI
+            );
+            assert!(tool(&enabled, name)["_meta"]
+                .get("ui/resourceUri")
+                .is_none());
+        }
+        for name in UNBOUND_RESULT_APP_TOOLS {
+            assert!(!super::super::presentation::tool_supports_result_app(name));
+            if let Some(descriptor) = enabled["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|tool| tool["name"] == name)
+            {
+                assert_ne!(
+                    descriptor
+                        .pointer("/_meta/ui/resourceUri")
+                        .and_then(Value::as_str),
+                    Some(MCP_RESULT_UI_RESOURCE_URI)
+                );
+            }
+        }
+
+        assert_eq!(
+            tool(&enabled, "present_goal_plan")["_meta"]["ui"]["resourceUri"],
+            MCP_GOAL_PLAN_UI_RESOURCE_URI
+        );
+        assert_eq!(
+            tool(&enabled, "present_agent_continuation")["_meta"]["ui"]["resourceUri"],
+            MCP_AGENT_CONTINUATION_UI_RESOURCE_URI
+        );
+        assert_eq!(
+            tool(&enabled, "present_work_result")["_meta"]["ui"]["resourceUri"],
+            MCP_WORK_RESULT_UI_RESOURCE_URI
+        );
+
+        let disabled = mcp_tools_list_payload_with_compact_and_app(compact, false);
+        for name in RESULT_APP_TOOLS {
+            assert!(tool(&disabled, name).get("_meta").is_none());
+        }
+    }
+
+    let mut existing = json!({
+        "name": "future_job_tool",
+        "_meta": {
+            "openai/fileParams": ["file"],
+            "ui": {"other": true}
+        }
+    });
+    super::super::tools::attach_app_metadata(&mut existing, MCP_RESULT_UI_RESOURCE_URI);
+    assert_eq!(existing["_meta"]["openai/fileParams"], json!(["file"]));
+    assert_eq!(existing["_meta"]["ui"]["other"], true);
+    assert_eq!(
+        existing["_meta"]["ui"]["resourceUri"],
+        MCP_RESULT_UI_RESOURCE_URI
+    );
+}
+
+#[tokio::test]
+async fn result_app_descriptor_and_resource_exposure_require_ui_operator_capability() {
+    const PUBLIC_URL: &str = "https://self-host.example";
+    let runtime = test_runtime_with_public_url(PUBLIC_URL);
+    assert_eq!(MCP_RESULT_UI_RESOURCE_URI, "ui://webcodex/changes/v2");
+    assert_eq!(
+        MCP_WORK_RESULT_UI_RESOURCE_URI,
+        "ui://webcodex/work-result/v1"
+    );
+    assert!(MCP_RESULT_UI_RESOURCE_LEGACY_URIS.contains(&"ui://webcodex/changes/v1"));
+    assert!(MCP_RESULT_UI_RESOURCE_LEGACY_URIS.contains(&"ui://webcodex/result/v1"));
+    assert!(MCP_RESULT_UI_RESOURCE_LEGACY_URIS.contains(&"ui://webcodex/result/v2"));
+    assert!(MCP_RESULT_UI_RESOURCE_LEGACY_URIS.contains(&"ui://webcodex/result/v3"));
+    assert!(mcp_result_app_resource_meta(None)["ui"]
+        .get("domain")
+        .is_none());
+    let ui_tools = handle_mcp_request(
+        &runtime,
+        rpc(
+            "tools/list",
+            Some(json!(3201)),
+            mcp_2026_ui_params(json!({})),
+        ),
+        None,
+    )
+    .await;
+    let McpOutcome::Ok(ui_tools) = ui_tools else {
+        panic!("expected UI-capable tools/list");
+    };
+    assert_eq!(
+        tool(&ui_tools["result"], "present_work_result")["_meta"]["ui"]["resourceUri"],
+        MCP_WORK_RESULT_UI_RESOURCE_URI
+    );
+    assert!(tool(&ui_tools["result"], "present_work_result")["_meta"]
+        .get("ui/resourceUri")
+        .is_none());
+    for descriptor in ui_tools["result"]["tools"].as_array().unwrap() {
+        assert_ne!(
+            descriptor
+                .pointer("/_meta/ui/resourceUri")
+                .and_then(Value::as_str),
+            Some(MCP_RESULT_UI_RESOURCE_URI),
+            "legacy Result App resource must not be bound to any current tool descriptor"
+        );
+    }
+
+    let plain_tools = handle_mcp_request(
+        &runtime,
+        rpc("tools/list", Some(json!(3202)), mcp_2026_params(json!({}))),
+        None,
+    )
+    .await;
+    let McpOutcome::Ok(plain_tools) = plain_tools else {
+        panic!("expected ordinary tools/list");
+    };
+    for name in RESULT_APP_TOOLS {
+        assert!(tool(&plain_tools["result"], name).get("_meta").is_none());
+    }
+
+    let resources = handle_mcp_request(
+        &runtime,
+        rpc(
+            "resources/list",
+            Some(json!(3203)),
+            mcp_2026_ui_params(json!({})),
+        ),
+        None,
+    )
+    .await;
+    let McpOutcome::Ok(resources) = resources else {
+        panic!("expected UI resources/list");
+    };
+    let resources = resources["result"]["resources"].as_array().unwrap();
+    assert!(resources
+        .iter()
+        .all(|resource| resource["uri"] != MCP_RESULT_UI_RESOURCE_URI));
+    assert!(resources
+        .iter()
+        .any(|resource| resource["uri"] == MCP_COMPUTER_UI_RESOURCE_URI));
+    let work_resource = resources
+        .iter()
+        .find(|resource| resource["uri"] == MCP_WORK_RESULT_UI_RESOURCE_URI)
+        .expect("Work Result App resource");
+    assert_eq!(work_resource["mimeType"], MCP_UI_RESOURCE_MIME_TYPE);
+    assert_eq!(
+        work_resource["_meta"],
+        json!({
+            "ui": {
+                "prefersBorder": true,
+                "domain": PUBLIC_URL,
+                "csp": {"connectDomains": [], "resourceDomains": []}
+            }
+        })
+    );
+
+    let read = handle_mcp_request(
+        &runtime,
+        rpc(
+            "resources/read",
+            Some(json!(3204)),
+            mcp_2026_params(json!({"uri": MCP_RESULT_UI_RESOURCE_URI})),
+        ),
+        None,
+    )
+    .await;
+    let McpOutcome::Ok(read) = read else {
+        panic!("expected Result App resource read");
+    };
+    assert_eq!(
+        read["result"]["contents"][0]["uri"],
+        MCP_RESULT_UI_RESOURCE_URI
+    );
+    assert_eq!(
+        read["result"]["contents"][0]["mimeType"],
+        MCP_UI_RESOURCE_MIME_TYPE
+    );
+    assert_eq!(read["result"]["contents"][0]["text"], MCP_RESULT_APP_HTML);
+    assert_eq!(
+        read["result"]["contents"][0]["_meta"]["ui"]["domain"],
+        PUBLIC_URL
+    );
+    for legacy_uri in MCP_RESULT_UI_RESOURCE_LEGACY_URIS {
+        let legacy = handle_mcp_request(
+            &runtime,
+            rpc(
+                "resources/read",
+                Some(json!(32041)),
+                mcp_2026_params(json!({"uri": legacy_uri})),
+            ),
+            None,
+        )
+        .await;
+        let McpOutcome::Ok(legacy) = legacy else {
+            panic!("legacy Result App resource must remain readable: {legacy_uri}");
+        };
+        assert_eq!(legacy["result"]["contents"][0]["uri"], *legacy_uri);
+        assert_eq!(legacy["result"]["contents"][0]["text"], MCP_RESULT_APP_HTML);
+        assert_eq!(
+            legacy["result"]["contents"][0]["_meta"]["ui"]["domain"],
+            PUBLIC_URL
+        );
+    }
+
+    let no_ui_resources = handle_mcp_request(
+        &runtime,
+        rpc(
+            "resources/list",
+            Some(json!(3205)),
+            mcp_2026_params(json!({})),
+        ),
+        None,
+    )
+    .await;
+    let McpOutcome::Ok(no_ui_resources) = no_ui_resources else {
+        panic!("expected non-UI resources/list");
+    };
+    assert!(no_ui_resources["result"]["resources"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    let local_runtime = test_runtime();
+    let plain_tools = handle_mcp_request(
+        &local_runtime,
+        rpc(
+            "tools/list",
+            Some(json!(3206)),
+            mcp_2026_ui_params(json!({})),
+        ),
+        None,
+    )
+    .await;
+    let McpOutcome::Ok(plain_tools) = plain_tools else {
+        panic!("expected plain tools/list");
+    };
+    assert!(plain_tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|tool| tool
+            .pointer("/_meta/ui/resourceUri")
+            .and_then(Value::as_str)
+            != Some(MCP_RESULT_UI_RESOURCE_URI)));
+
+    assert!(mcp_app_enabled(true, true, &mcp_2026_ui_params(json!({}))));
+    assert!(!mcp_app_enabled(
+        false,
+        true,
+        &mcp_2026_ui_params(json!({}))
+    ));
+}
+
+#[tokio::test]
+async fn server_mcp_apps_setting_disables_only_app_presentation() {
+    let runtime = test_runtime();
+
+    let enabled = handle_with_server_apps_enabled(
+        &runtime,
+        rpc(
+            "tools/list",
+            Some(json!(3207)),
+            mcp_2026_ui_params(json!({})),
+        ),
+        None,
+        true,
+    )
+    .await;
+    let McpOutcome::Ok(enabled) = enabled else {
+        panic!("enabled MCP Apps tools/list failed");
+    };
+    assert!(tool(&enabled["result"], "show_changes")
+        .pointer("/_meta/ui/resourceUri")
+        .is_none());
+    assert_eq!(
+        tool(&enabled["result"], "present_work_result")["_meta"]["ui"]["resourceUri"],
+        MCP_WORK_RESULT_UI_RESOURCE_URI
+    );
+
+    let discover = handle_with_server_apps_enabled(
+        &runtime,
+        rpc(
+            "server/discover",
+            Some(json!(3208)),
+            mcp_2026_ui_params(json!({})),
+        ),
+        None,
+        false,
+    )
+    .await;
+    let McpOutcome::Ok(discover) = discover else {
+        panic!("MCP discovery with Apps disabled failed");
+    };
+    let capabilities = &discover["result"]["capabilities"];
+    assert_eq!(capabilities["resources"]["listChanged"], false);
+    assert!(capabilities["extensions"].get(MCP_UI_EXTENSION).is_none());
+
+    let tools = handle_with_server_apps_enabled(
+        &runtime,
+        rpc(
+            "tools/list",
+            Some(json!(3209)),
+            mcp_2026_ui_params(json!({})),
+        ),
+        None,
+        false,
+    )
+    .await;
+    let McpOutcome::Ok(tools) = tools else {
+        panic!("tools/list with Apps disabled failed");
+    };
+    for name in RESULT_APP_TOOLS {
+        assert!(tool(&tools["result"], name)
+            .pointer("/_meta/ui/resourceUri")
+            .is_none());
+    }
+
+    let resources = handle_with_server_apps_enabled(
+        &runtime,
+        rpc(
+            "resources/list",
+            Some(json!(3213)),
+            mcp_2026_ui_params(json!({})),
+        ),
+        None,
+        false,
+    )
+    .await;
+    let McpOutcome::Ok(resources) = resources else {
+        panic!("resources/list with Apps disabled failed");
+    };
+    assert!(resources["result"]["resources"]
+        .as_array()
+        .is_some_and(Vec::is_empty));
+
+    let read = handle_with_server_apps_enabled(
+        &runtime,
+        rpc(
+            "resources/read",
+            Some(json!(3214)),
+            mcp_2026_ui_params(json!({"uri": MCP_RESULT_UI_RESOURCE_URI})),
+        ),
+        None,
+        false,
+    )
+    .await;
+    match read {
+        McpOutcome::BadRequest(value) => {
+            assert_eq!(value["error"]["code"], -32602);
+            assert!(value["error"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("disabled by Server configuration")));
+        }
+        other => panic!("disabled static App resource must fail closed: {other:?}"),
+    }
+
+    let computer_read = handle_with_server_apps_enabled(
+        &runtime,
+        rpc(
+            "resources/read",
+            Some(json!(3216)),
+            mcp_2026_ui_params(json!({"uri": MCP_COMPUTER_UI_RESOURCE_URI})),
+        ),
+        None,
+        false,
+    )
+    .await;
+    match computer_read {
+        McpOutcome::BadRequest(value) => {
+            assert_eq!(value["error"]["code"], -32602);
+            assert!(value["error"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("disabled by Server configuration")));
+        }
+        other => panic!("disabled Computer App resource must fail closed: {other:?}"),
+    }
+
+    let call = handle_with_server_apps_enabled(
+        &runtime,
+        rpc(
+            "tools/call",
+            Some(json!(3215)),
+            mcp_2026_ui_params(json!({
+                "name": "list_jobs",
+                "arguments": {"limit": 1}
+            })),
+        ),
+        None,
+        false,
+    )
+    .await;
+    let McpOutcome::Ok(call) = call else {
+        panic!("canonical list_jobs call with Apps disabled failed");
+    };
+    assert!(call["result"]["structuredContent"].is_object());
+    assert!(call["result"]["_meta"]
+        .get(super::super::presentation::MCP_PRESENTATION_META_KEY)
+        .is_none());
+}
+
+#[test]
+fn job_presentation_is_post_result_bounded_and_private() {
+    let secret = "SECRET-SHOULD-NOT-REACH-PRESENTATION";
+    let jobs = (0..12)
+        .map(|index| {
+            json!({
+                "job_id": format!("job-{index}"),
+                "status": match index {
+                    0 => "lost",
+                    1 => "running",
+                    2 => "recovering",
+                    4 => "failed",
+                    _ => "completed",
+                },
+                "project": "p".repeat(400),
+                "active": index != 0,
+                "blocking_active": index != 0,
+                "terminal": index == 0,
+                "terminal_pending": false,
+                "duration_ms": 25,
+                "elapsed_secs": 1,
+                "command_execution_state": if index == 0 { "outcome_unknown" } else { "completed" },
+                "recovery_state": if index == 0 || index == 2 { "recovering" } else { "reconciled" },
+                "recovery_reason": "r".repeat(400),
+                "activity": if index == 1 {
+                    json!({"state": "working", "phase": "cargo_compiling", "source": "cargo_output"})
+                } else {
+                    Value::Null
+                },
+                "detected_summary": if index == 1 {
+                    json!({
+                        "kind": "build",
+                        "outcome": "in_progress",
+                        "progress": {
+                            "state": "working",
+                            "reason_code": "cargo_compiling",
+                            "summary": secret
+                        },
+                        "raw": secret
+                    })
+                } else {
+                    Value::Null
+                },
+                "stdout_tail": secret,
+                "stderr_tail": secret,
+                "command_summary": secret,
+                "cwd": format!("/private/{secret}"),
+                "observation_token": secret,
+            })
+        })
+        .collect::<Vec<_>>();
+    let canonical = ToolResult::ok(json!({
+        "jobs": jobs,
+        "count": 12,
+        "matched_count": 12,
+        "truncated": true
+    }));
+    let mut framed = super::super::tools::mcp_runtime_tool_result("list_jobs", false, canonical);
+    let structured_before = framed["structuredContent"].clone();
+    super::super::presentation::attach_result_app_presentation("list_jobs", &mut framed);
+    assert_eq!(framed["structuredContent"], structured_before);
+
+    let meta = presentation(&framed);
+    assert_eq!(meta["kind"], "job_list");
+    assert_eq!(meta["items"].as_array().unwrap().len(), 4);
+    assert_eq!(meta["presented_count"], 4);
+    assert_eq!(meta["routine_omitted_count"], 8);
+    assert_eq!(meta["items_truncated"], false);
+    assert_eq!(meta["truncated"], true);
+    assert!(meta["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|item| item["status"] != "completed"));
+    assert_eq!(meta["items"][0]["status"], "lost");
+    assert_eq!(
+        meta["items"][0]["command_execution_state"],
+        "outcome_unknown"
+    );
+    assert_eq!(meta["items"][0]["recovery_state"], "recovering");
+    assert_eq!(meta["items"][0]["terminal"], true);
+    assert_eq!(meta["items"][0]["active"], false);
+    assert_eq!(meta["items"][0]["blocking_active"], false);
+    assert_eq!(meta["items"][0]["terminal_pending"], false);
+    assert_eq!(meta["shown_active_count"], 2);
+    assert_eq!(meta["shown_terminal_count"], 2);
+    assert_eq!(meta["shown_attention_count"], 3);
+    assert_eq!(meta["items"][1]["active"], true);
+    assert_eq!(meta["items"][1]["blocking_active"], true);
+    assert_eq!(meta["items"][1]["terminal"], false);
+    assert_eq!(meta["items"][2]["status"], "recovering");
+    assert_eq!(meta["items"][2]["active"], true);
+    assert_eq!(meta["items"][2]["blocking_active"], true);
+    assert_eq!(meta["items"][2]["terminal"], false);
+    assert_eq!(meta["items"][3]["status"], "failed");
+    assert_eq!(meta["items"][3]["terminal"], true);
+    assert_eq!(meta["items"][1]["progress"]["state"], "working");
+    assert_eq!(
+        meta["items"][1]["progress"]["reason_code"],
+        "cargo_compiling"
+    );
+    assert_eq!(
+        meta["items"][1]["progress"]["summary"],
+        "Cargo compilation in progress"
+    );
+    assert_eq!(meta["items"][1]["work"]["kind"], "build");
+    assert_eq!(meta["items"][1]["work"]["outcome"], "in_progress");
+    assert!(meta["items"][0]["guidance"]
+        .as_str()
+        .unwrap()
+        .contains("uncertain"));
+
+    fn assert_bounded_strings(value: &Value) {
+        match value {
+            Value::String(text) => assert!(
+                text.chars().count() <= super::super::presentation::MAX_MCP_PRESENTATION_TEXT_CHARS,
+                "presentation text exceeded bound: {}",
+                text.chars().count()
+            ),
+            Value::Array(values) => values.iter().for_each(assert_bounded_strings),
+            Value::Object(values) => values.values().for_each(assert_bounded_strings),
+            _ => {}
+        }
+    }
+    assert_bounded_strings(meta);
+    let serialized = serde_json::to_string(meta).unwrap();
+    assert!(!serialized.contains(secret));
+    for forbidden in [
+        "stdout_tail",
+        "stderr_tail",
+        "command_summary",
+        "observation_token",
+        "detected_summary",
+        "activity",
+        "cwd",
+    ] {
+        assert!(!serialized.contains(forbidden));
+    }
+}
+
+#[test]
+fn observe_presentation_preserves_wait_uncertainty_and_unknown_job_without_log_bodies() {
+    let canonical = ToolResult::ok(json!({
+        "requested_count": 2,
+        "returned_count": 2,
+        "succeeded_count": 1,
+        "failed_count": 1,
+        "items": [
+            {
+                "job_id": "job-uncertain",
+                "success": true,
+                "output": {
+                    "job_id": "job-uncertain",
+                    "status": "lost",
+                    "terminal": true,
+                    "changed": true,
+                    "command_execution_state": "outcome_unknown",
+                    "recovery_state": "lost_after_reconcile",
+                    "log_delta_status": "delta",
+                    "stdout_lines": 500,
+                    "stderr_lines": 2,
+                    "stdout_tail": "SECRET-STDOUT",
+                    "stderr_tail": "SECRET-STDERR",
+                    "observation_token": "opaque-secret-token"
+                }
+            },
+            {
+                "job_id": "missing-job",
+                "success": false,
+                "error_kind": "unknown_job",
+                "recovery_kind": "reobserve",
+                "suggested_call": {"tool": "list_jobs", "arguments": {}},
+                "error": "unbounded internal error text"
+            }
+        ],
+        "wait": {"outcome": "item_error", "waited_ms": 7},
+        "changed_count": 1,
+        "terminal_count": 1,
+        "output_truncated": false,
+        "next_index": null
+    }));
+    let mut framed = super::super::tools::mcp_runtime_tool_result("observe_jobs", false, canonical);
+    let structured_before = framed["structuredContent"].clone();
+    super::super::presentation::attach_result_app_presentation("observe_jobs", &mut framed);
+    assert_eq!(framed["structuredContent"], structured_before);
+    let meta = presentation(&framed);
+    assert_eq!(meta["wait"]["outcome"], "item_error");
+    assert_eq!(meta["items"][0]["status"], "lost");
+    assert_eq!(
+        meta["items"][0]["command_execution_state"],
+        "outcome_unknown"
+    );
+    assert_eq!(meta["items"][1]["error_kind"], "unknown_job");
+    assert_eq!(
+        meta["items"][1]["suggested_call"],
+        json!({"tool": "list_jobs", "arguments": {}})
+    );
+    let serialized = serde_json::to_string(meta).unwrap();
+    for forbidden in [
+        "SECRET-STDOUT",
+        "SECRET-STDERR",
+        "opaque-secret-token",
+        "unbounded internal error text",
+        "stdout_tail",
+        "stderr_tail",
+        "observation_token",
+    ] {
+        assert!(!serialized.contains(forbidden));
+    }
+}
+
+#[test]
+fn validation_run_presentation_preserves_canonical_state_matrix() {
+    let cases = [
+        (
+            "completed_passed",
+            true,
+            json!({
+                "execution_state": "completed", "terminal": true, "passed": true,
+                "command_started": true, "command_completed": true,
+                "promoted_to_job": false, "duration_ms": 1840, "exit_code": 0,
+                "tests_detected": true, "tests_run_count": 42,
+                "tests_passed": 42, "tests_failed": 0, "zero_tests_run": false
+            }),
+            "completed",
+            Some(true),
+            None,
+        ),
+        (
+            "validation_failed",
+            false,
+            json!({
+                "execution_state": "completed", "terminal": true, "passed": false,
+                "failure_kind": "validation_failed", "command_started": true,
+                "command_completed": true, "promoted_to_job": false, "exit_code": 101
+            }),
+            "completed",
+            Some(false),
+            Some("validation_failed"),
+        ),
+        (
+            "process_exit",
+            false,
+            json!({
+                "execution_state": "completed", "terminal": true, "passed": false,
+                "failure_kind": "process_exit", "command_started": true,
+                "command_completed": true, "promoted_to_job": false, "exit_code": 2
+            }),
+            "completed",
+            Some(false),
+            Some("process_exit"),
+        ),
+        (
+            "promoted_running",
+            true,
+            json!({
+                "execution_state": "running", "terminal": false,
+                "command_started": true, "command_completed": false,
+                "promoted_to_job": true, "job_id": "job-validation",
+                "job_status": "running", "observation_token": "canonical-only-token"
+            }),
+            "running",
+            None,
+            None,
+        ),
+        (
+            "outcome_unknown",
+            false,
+            json!({
+                "execution_state": "outcome_unknown", "terminal": false, "passed": false,
+                "failure_kind": "outcome_unknown", "command_started": true,
+                "command_completed": false, "promoted_to_job": false
+            }),
+            "outcome_unknown",
+            Some(false),
+            Some("outcome_unknown"),
+        ),
+        (
+            "timed_out",
+            false,
+            json!({
+                "execution_state": "timed_out", "terminal": true, "passed": false,
+                "failure_kind": "timeout", "command_started": true,
+                "command_completed": false, "promoted_to_job": false
+            }),
+            "timed_out",
+            Some(false),
+            Some("timeout"),
+        ),
+        (
+            "pre_start",
+            false,
+            json!({
+                "execution_state": "not_started", "terminal": true, "passed": false,
+                "failure_kind": "permission_denied", "command_started": false,
+                "command_completed": false, "promoted_to_job": false
+            }),
+            "not_started",
+            Some(false),
+            Some("permission_denied"),
+        ),
+    ];
+
+    for (label, success, output, execution_state, passed, failure_kind) in cases {
+        let framed = projected_result("cargo_test", success, output);
+        let meta = presentation(&framed);
+        assert_eq!(meta["kind"], "validation_run", "{label}");
+        assert_eq!(meta["tool"], "cargo_test", "{label}");
+        assert_eq!(meta["validation_kind"], "test", "{label}");
+        assert_eq!(meta["execution_state"], execution_state, "{label}");
+        match passed {
+            Some(value) => assert_eq!(meta["passed"], value, "{label}"),
+            None => assert!(meta.get("passed").is_none(), "{label}"),
+        }
+        match failure_kind {
+            Some(value) => assert_eq!(meta["failure_kind"], value, "{label}"),
+            None => assert!(meta.get("failure_kind").is_none(), "{label}"),
+        }
+    }
+}
+
+#[test]
+fn validation_run_presentation_bounds_diagnostics_and_excludes_private_canonical_fields() {
+    let secret = "VALIDATION-PRIVATE-SECRET";
+    let diagnostics = (0..4)
+        .map(|index| {
+            json!({
+                "severity": "error",
+                "code": "C".repeat(300),
+                "message": format!("{index}-{}", "😀".repeat(300)),
+                "file": format!("/private/{secret}/{index}.rs"),
+                "line": 123,
+                "column": 7
+            })
+        })
+        .collect::<Vec<_>>();
+    let failed_tests = (0..9)
+        .map(|index| {
+            json!({
+                "name": format!("test_{}", "名".repeat(300)),
+                "failure_kind": "assertion",
+                "file": format!("/private/{secret}/test-{index}.rs"),
+                "line": 9,
+                "column": 2
+            })
+        })
+        .collect::<Vec<_>>();
+    let output = json!({
+        "execution_state": "completed",
+        "terminal": true,
+        "passed": false,
+        "failure_kind": "validation_failed",
+        "command_started": true,
+        "command_completed": true,
+        "promoted_to_job": false,
+        "stdout_tail": secret,
+        "stderr_tail": secret,
+        "stdout_evidence": secret,
+        "stderr_evidence": secret,
+        "command_summary": format!("cargo test -- {secret}"),
+        "command": secret,
+        "argv": [secret],
+        "cwd": format!("/private/{secret}"),
+        "affected_paths": [format!("/private/{secret}/src")],
+        "credential": secret,
+        "Authorization": secret,
+        "token": secret,
+        "observation_token": secret,
+        "identity": secret,
+        "detected_summary": {"raw": secret},
+        "diagnostics": {
+            "available": true,
+            "diagnostic_count": 13,
+            "returned_diagnostic_count": 13,
+            "diagnostics_truncated": false,
+            "failed_test_details_truncated": false,
+            "diagnostics": diagnostics,
+            "failed_test_details": failed_tests,
+            "raw_parser_output": secret
+        }
+    });
+    let framed = projected_result("cargo_test", false, output);
+    let meta = presentation(&framed);
+    let safe_diagnostics = &meta["diagnostics"];
+    assert_eq!(safe_diagnostics["items"].as_array().unwrap().len(), 4);
+    assert_eq!(
+        safe_diagnostics["failed_tests"].as_array().unwrap().len(),
+        4
+    );
+    assert_eq!(safe_diagnostics["presentation_items_truncated"], true);
+    assert!(safe_diagnostics["items"][0].get("file").is_none());
+    assert!(safe_diagnostics["failed_tests"][0].get("file").is_none());
+    assert_eq!(
+        safe_diagnostics["items"][0]["message"]
+            .as_str()
+            .unwrap()
+            .chars()
+            .count(),
+        super::super::presentation::MAX_MCP_PRESENTATION_TEXT_CHARS
+    );
+    assert_presentation_strings_bounded(meta);
+    let serialized = serde_json::to_string(meta).unwrap();
+    for forbidden in [
+        secret,
+        "stdout_tail",
+        "stderr_tail",
+        "stdout_evidence",
+        "stderr_evidence",
+        "command_summary",
+        "command\"",
+        "argv",
+        "cwd",
+        "affected_paths",
+        "credential",
+        "Authorization",
+        "token",
+        "observation_token",
+        "identity",
+        "raw_parser_output",
+        "detected_summary",
+        "file",
+    ] {
+        assert!(!serialized.contains(forbidden), "leaked {forbidden}");
+    }
+}
+
+#[test]
+fn validation_summary_presentation_preserves_evidence_statuses_and_history_boundaries() {
+    let cases = [
+        ("passed", "passed", 0),
+        ("failed", "failed", 0),
+        ("mixed", "passed", 0),
+        ("inconclusive", "inconclusive", 0),
+        ("expected", "expected", 0),
+        ("passed", "stale", 0),
+        ("not_run", "not_run", 0),
+        ("unknown", "unknown", 1),
+    ];
+    for (status, current_status, evidence_gap_count) in cases {
+        let framed = projected_result(
+            "validation_summary",
+            true,
+            json!({
+                "validation": {
+                    "available": status != "not_run",
+                    "status": status,
+                    "latest_status": if status == "mixed" { "passed" } else { status },
+                    "reason": null,
+                    "current_evidence": {
+                        "status": current_status,
+                        "reason": if current_status == "stale" { Some("workspace changed") } else { None },
+                        "latest_status": if current_status == "stale" { "passed" } else { current_status },
+                        "events_total": 2,
+                        "successes": 1,
+                        "failures": 1,
+                        "expected_results": 0,
+                        "resolved_failure_count": 1,
+                        "unresolved_failure_count": 0,
+                        "evidence_gap_event_count": evidence_gap_count,
+                        "stale_failure_count": if current_status == "stale" { 1 } else { 0 },
+                        "evidence_after_latest_content_change": current_status != "stale",
+                        "boundary_reason": "workspace_content_changed"
+                    },
+                    "historical_failures": {"count": 3, "resolved": true, "unresolved": false},
+                    "resolved_failures": {"count": 3, "events": []},
+                    "unresolved_failures": {"count": 0, "events": []},
+                    "evidence_gaps": {"count": evidence_gap_count, "events": []},
+                    "cargo_test_zero_tests_run": false,
+                    "events": []
+                }
+            }),
+        );
+        let meta = presentation(&framed);
+        assert_eq!(meta["kind"], "validation_summary");
+        assert_eq!(meta["validation"]["status"], status);
+        assert_eq!(
+            meta["validation"]["current_evidence"]["status"],
+            current_status
+        );
+        assert_eq!(meta["validation"]["historical_failures"]["count"], 3);
+        assert_eq!(meta["validation"]["resolved_failures"]["count"], 3);
+        assert_eq!(meta["validation"]["unresolved_failures"]["count"], 0);
+        assert_eq!(
+            meta["validation"]["evidence_gaps"]["count"],
+            evidence_gap_count
+        );
+    }
+}
+
+#[test]
+fn validation_summary_presentation_bounds_events_and_excludes_private_event_fields() {
+    let secret = "LEDGER-PRIVATE-SECRET";
+    let events = (0..12)
+        .map(|index| {
+            json!({
+                "tool_name": if index % 2 == 0 { "cargo_check" } else { "cargo_test" },
+                "validation_kind": if index % 2 == 0 { "check" } else { "test" },
+                "success": index % 3 != 0,
+                "validation_passed": index % 4 != 0,
+                "expectation_satisfied": index % 5 == 0,
+                "failure_class": "execution_or_correctness",
+                "failure_kind": "validation_failed",
+                "unresolved_failure": index == 0,
+                "duration_ms": 33,
+                "tests_run_count": 7,
+                "diagnostics": {"test_summary": {"passed": 6, "failed": 1}},
+                "command_summary": secret,
+                "cwd": format!("/private/{secret}"),
+                "affected_paths": [secret],
+                "identity": secret,
+                "stdout_evidence": secret,
+                "stderr_evidence": secret,
+                "raw_parser_output": secret
+            })
+        })
+        .collect::<Vec<_>>();
+    let framed = projected_result(
+        "validation_summary",
+        true,
+        json!({
+            "validation": {
+                "available": true,
+                "status": "mixed",
+                "latest_status": "passed",
+                "current_evidence": {
+                    "status": "passed", "reason": null, "latest_status": "passed",
+                    "events_total": 1, "successes": 1, "failures": 0, "expected_results": 0,
+                    "resolved_failure_count": 0, "unresolved_failure_count": 0,
+                    "evidence_gap_event_count": 0, "stale_failure_count": 0,
+                    "evidence_after_latest_content_change": true,
+                    "boundary_reason": "attempt_start"
+                },
+                "historical_failures": {"count": 4, "resolved": true, "unresolved": false},
+                "resolved_failures": {"count": 4, "events": []},
+                "unresolved_failures": {"count": 0, "events": []},
+                "evidence_gaps": {"count": 0, "events": []},
+                "cargo_test_zero_tests_run": false,
+                "events": events
+            }
+        }),
+    );
+    let meta = presentation(&framed);
+    assert_eq!(meta["validation"]["events"].as_array().unwrap().len(), 8);
+    assert_eq!(meta["validation"]["events_truncated"], true);
+    assert_eq!(meta["validation"]["events"][0]["tests_passed"], 6);
+    assert_eq!(meta["validation"]["events"][0]["tests_failed"], 1);
+    assert_eq!(meta["validation"]["events"][0]["success"], true);
+    assert_eq!(meta["validation"]["events"][0]["validation_passed"], false);
+    assert_eq!(
+        meta["validation"]["events"][0]["failure_kind"],
+        "validation_failed"
+    );
+    assert!(meta["validation"]["events"][0]
+        .get("execution_success")
+        .is_none());
+    assert!(meta["validation"]["events"][0].get("summary").is_none());
+    assert_presentation_strings_bounded(meta);
+    let serialized = serde_json::to_string(meta).unwrap();
+    for forbidden in [
+        secret,
+        "command_summary",
+        "cwd",
+        "affected_paths",
+        "identity",
+        "stdout_evidence",
+        "stderr_evidence",
+        "raw_parser_output",
+    ] {
+        assert!(!serialized.contains(forbidden), "leaked {forbidden}");
+    }
+}
+
+#[test]
+fn git_changes_presentation_preserves_canonical_workspace_states() {
+    let clean = projected_result(
+        "show_changes",
+        true,
+        json!({
+            "git_available": true,
+            "non_git_project": false,
+            "branch": "main",
+            "upstream_status": "absent",
+            "upstream_reason_code": "no_upstream",
+            "ahead": null,
+            "behind": null,
+            "head": {"commit": "a".repeat(40), "short": "aaaaaaaa", "summary": "canonical subject"},
+            "status_observation": {"status": "observed", "reason_code": null, "exit_code": 0},
+            "clean": true,
+            "counts": {"modified": 0, "added": 0, "deleted": 0, "renamed": 0, "copied": 0, "untracked": 0, "conflicted": 0, "staged": 0, "unstaged": 0},
+            "files": [],
+            "files_total": 0,
+            "files_returned": 0,
+            "files_truncated": false,
+            "files_limit": 200,
+            "transport_safe": true,
+            "output_truncated": false,
+            "truncation_reasons": []
+        }),
+    );
+    let clean_meta = presentation(&clean);
+    assert_eq!(clean_meta["kind"], "git_changes");
+    assert_eq!(clean_meta["git_available"], true);
+    assert_eq!(clean_meta["clean"], true);
+    assert_eq!(clean_meta["branch"], "main");
+    assert_eq!(clean_meta["upstream_status"], "absent");
+    assert_eq!(clean_meta["head"]["short"], "aaaaaaaa");
+    assert_eq!(clean_meta["files_total"], 0);
+
+    let dirty = projected_result(
+        "show_changes",
+        true,
+        json!({
+            "git_available": true,
+            "non_git_project": false,
+            "branch": "feature/git-card",
+            "upstream_status": "unobserved",
+            "upstream_reason_code": "git_status_unobserved",
+            "ahead": 2,
+            "behind": 1,
+            "head": {"short": "12345678"},
+            "status_observation": {"status": "observed", "reason_code": null, "exit_code": 0},
+            "clean": false,
+            "counts": {"modified": 2, "added": 1, "deleted": 1, "renamed": 1, "copied": 0, "untracked": 1, "conflicted": 1, "staged": 2, "unstaged": 3},
+            "files": [
+                {"path": "src/lib.rs", "status": "modified", "staged": true, "unstaged": true, "kind": "tracked", "additions": 5, "deletions": 2},
+                {"path": "src/new.rs", "old_path": "src/old.rs", "status": "renamed", "staged": true, "unstaged": false, "kind": "tracked", "additions": 4, "deletions": 4},
+                {"path": "notes.txt", "status": "untracked", "staged": false, "unstaged": false, "kind": "untracked"},
+                {"path": "src/conflict.rs", "status": "conflicted", "staged": false, "unstaged": false, "kind": "conflicted"}
+            ],
+            "files_total": 4,
+            "files_returned": 4,
+            "files_truncated": false,
+            "files_limit": 200,
+            "transport_safe": true,
+            "output_truncated": false,
+            "truncation_reasons": [],
+            "hunks": [{"path": "src/lib.rs", "hunks": [{"diff": "@@ -1 +1 @@\n-old\n+new", "truncated": false}]}],
+            "hunks_truncated": false
+        }),
+    );
+    let dirty_meta = presentation(&dirty);
+    assert_eq!(dirty_meta["clean"], false);
+    assert_eq!(dirty_meta["ahead"], 2);
+    assert_eq!(dirty_meta["behind"], 1);
+    assert_eq!(dirty_meta["counts"]["staged"], 2);
+    assert_eq!(dirty_meta["counts"]["unstaged"], 3);
+    assert_eq!(dirty_meta["counts"]["untracked"], 1);
+    assert_eq!(dirty_meta["counts"]["conflicted"], 1);
+    assert_eq!(dirty_meta["counts"]["renamed"], 1);
+    assert_eq!(dirty_meta["files"][1]["old_path"], "src/old.rs");
+    assert_eq!(dirty_meta["files"][0]["additions"], 5);
+    assert_eq!(dirty_meta["files"][0]["deletions"], 2);
+    assert_eq!(dirty_meta["additions"], 9);
+    assert_eq!(dirty_meta["deletions"], 6);
+    assert_eq!(dirty_meta["line_stats_partial"], true);
+    assert_eq!(
+        dirty_meta["files"][0]["diff_hunks"][0]["diff"],
+        "@@ -1 +1 @@\n-old\n+new"
+    );
+
+    let stats_unavailable = projected_result(
+        "show_changes",
+        true,
+        json!({
+            "git_available": true,
+            "non_git_project": false,
+            "branch": "feature/no-numstat",
+            "status_observation": {"status": "observed", "reason_code": null, "exit_code": 0},
+            "clean": false,
+            "counts": {"modified": 1, "added": 0, "deleted": 0, "renamed": 0, "copied": 0, "untracked": 0, "conflicted": 0, "staged": 0, "unstaged": 1},
+            "files": [{"path": "src/lib.rs", "status": "modified", "kind": "tracked", "staged": false, "unstaged": true}],
+            "files_total": 1,
+            "files_returned": 1,
+            "files_truncated": false,
+            "files_limit": 200,
+            "transport_safe": true,
+            "output_truncated": false,
+            "truncation_reasons": []
+        }),
+    );
+    let stats_unavailable_meta = presentation(&stats_unavailable);
+    assert!(stats_unavailable_meta.get("additions").is_none());
+    assert!(stats_unavailable_meta.get("deletions").is_none());
+
+    let non_git = projected_result(
+        "show_changes",
+        true,
+        json!({
+            "git_available": false,
+            "non_git_project": true,
+            "branch": null,
+            "upstream_status": "unobserved",
+            "upstream_reason_code": "git_unavailable",
+            "ahead": null,
+            "behind": null,
+            "head": {"short": null},
+            "status_observation": {"status": "non_git", "reason_code": "not_a_git_repository", "exit_code": 128},
+            "clean": null,
+            "counts": {"modified": 0, "added": 0, "deleted": 0, "renamed": 0, "copied": 0, "untracked": 0, "conflicted": null, "staged": 0, "unstaged": 0},
+            "files": [],
+            "files_total": null,
+            "files_returned": 0,
+            "files_truncated": false,
+            "transport_safe": false,
+            "output_truncated": false,
+            "truncation_reasons": []
+        }),
+    );
+    let non_git_meta = presentation(&non_git);
+    assert_eq!(non_git_meta["git_available"], false);
+    assert_eq!(non_git_meta["non_git_project"], true);
+    assert!(
+        non_git_meta.get("clean").is_none(),
+        "unavailable Git status must not become clean"
+    );
+    assert_eq!(non_git_meta["status_observation"]["status"], "non_git");
+    assert_eq!(non_git_meta["upstream_status"], "unobserved");
+}
+
+#[test]
+fn git_changes_presentation_bounds_paths_and_excludes_raw_private_fields() {
+    let secret = "GIT_PRESENTATION_SECRET_MARKER";
+    let mut files = vec![
+        json!({"path": format!("/private/{secret}"), "status": "modified", "kind": "tracked"}),
+        json!({"path": format!("https://example.invalid/{secret}"), "status": "modified", "kind": "tracked"}),
+        json!({"path": format!("../{secret}"), "status": "modified", "kind": "tracked"}),
+        json!({"path": format!("C:\\private\\{secret}"), "status": "modified", "kind": "tracked"}),
+        json!({"path": format!("src/{}{}", "x".repeat(320), secret), "status": "modified", "staged": false, "unstaged": true, "kind": "tracked"}),
+    ];
+    files.extend((0..12).map(|index| {
+        json!({
+            "path": format!("src/safe-{index}.rs"),
+            "status": if index == 0 { "renamed" } else { "modified" },
+            "old_path": (index == 0).then(|| format!("old/safe-{index}.rs")),
+            "staged": index % 2 == 0,
+            "unstaged": index % 2 == 1,
+            "kind": "tracked"
+        })
+    }));
+    let framed = projected_result(
+        "show_changes",
+        true,
+        json!({
+            "git_available": true,
+            "non_git_project": false,
+            "branch": "feature/git-card",
+            "upstream_status": "ahead",
+            "upstream_reason_code": "tracking_branch_observed",
+            "upstream": format!("https://user:{secret}@example.invalid/repo.git"),
+            "ahead": 1,
+            "behind": 0,
+            "head": {"short": "abcdef12", "summary": secret},
+            "status_observation": {"status": "observed", "reason_code": null, "exit_code": 0, "repository_probe": format!("/{secret}")},
+            "clean": false,
+            "counts": {"modified": 16, "added": 0, "deleted": 0, "renamed": 1, "copied": 0, "untracked": 0, "conflicted": 0, "staged": 6, "unstaged": 7},
+            "files": files,
+            "files_total": 17,
+            "files_returned": 17,
+            "files_truncated": true,
+            "files_limit": 200,
+            "transport_safe": true,
+            "output_truncated": true,
+            "truncation_reasons": ["status_file_count_limit"],
+            "diff_stat": format!("src/{secret}.rs | 99 +++++"),
+            "diff": format!("RAW_DIFF_{secret}"),
+            "hunks": [{"diff": format!("RAW_HUNK_{secret}")}],
+            "untracked_previews": [{"body": format!("PREVIEW_{secret}")}],
+            "porcelain": format!(" M /private/{secret}"),
+            "stdout": format!("STDOUT_{secret}"),
+            "stderr": format!("STDERR_{secret}"),
+            "command": format!("git status {secret}"),
+            "argv": [secret],
+            "cwd": format!("/absolute/{secret}"),
+            "remote_url": format!("https://{secret}@example.invalid"),
+            "Authorization": format!("Bearer {secret}"),
+            "credential": secret,
+            "token": secret,
+            "suggested_next_actions": [format!("do something with {secret}")]
+        }),
+    );
+    let meta = presentation(&framed);
+    assert_eq!(meta["kind"], "git_changes");
+    assert!(meta["files"].as_array().unwrap().len() <= 8);
+    assert_eq!(meta["items_truncated"], true);
+    assert_eq!(meta["files_truncated"], true);
+    assert_eq!(meta["output_truncated"], true);
+    assert!(meta["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["path"] == "src/safe-0.rs"));
+    let oversized = meta["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|item| {
+            item["path"]
+                .as_str()
+                .filter(|path| path.starts_with("src/xxx"))
+        })
+        .expect("bounded oversized repository-relative path");
+    assert!(oversized.chars().count() <= 256);
+    assert!(!oversized.contains(secret));
+    assert_presentation_strings_bounded(meta);
+    let serialized = serde_json::to_string(meta).unwrap();
+    for forbidden in [
+        secret,
+        "RAW_DIFF_",
+        "RAW_HUNK_",
+        "PREVIEW_",
+        "\"diff_stat\"",
+        "\"hunks\"",
+        "\"untracked_previews\"",
+        "\"porcelain\"",
+        "\"stdout\"",
+        "\"stderr\"",
+        "\"command\"",
+        "\"argv\"",
+        "\"cwd\"",
+        "\"remote_url\"",
+        "\"Authorization\"",
+        "\"credential\"",
+        "\"token\"",
+        "\"suggested_next_actions\"",
+    ] {
+        assert!(
+            !serialized.contains(forbidden),
+            "leaked {forbidden}: {serialized}"
+        );
+    }
+}
+
+#[test]
+fn git_changes_presentation_bounds_diff_hunks_and_text() {
+    let oversized_diff = (0..120)
+        .map(|index| format!("+line-{index}-{}", "x".repeat(220)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let hunks = (0..10)
+        .map(|_| json!({"diff": oversized_diff, "truncated": false}))
+        .collect::<Vec<_>>();
+    let framed = projected_result(
+        "show_changes",
+        true,
+        json!({
+            "git_available": true,
+            "non_git_project": false,
+            "branch": "feature/bounded-diff",
+            "status_observation": {"status": "observed", "reason_code": null, "exit_code": 0},
+            "clean": false,
+            "counts": {"modified": 1, "added": 0, "deleted": 0, "renamed": 0, "copied": 0, "untracked": 0, "conflicted": 0, "staged": 0, "unstaged": 1},
+            "files": [{"path": "src/lib.rs", "status": "modified", "kind": "tracked", "staged": false, "unstaged": true, "additions": 120, "deletions": 0}],
+            "files_total": 1,
+            "files_returned": 1,
+            "files_truncated": false,
+            "files_limit": 200,
+            "transport_safe": true,
+            "output_truncated": false,
+            "truncation_reasons": [],
+            "hunks": [{"path": "src/lib.rs", "hunks": hunks}],
+            "hunks_truncated": true
+        }),
+    );
+    let meta = presentation(&framed);
+    let projected_hunks = meta["files"][0]["diff_hunks"].as_array().unwrap();
+    assert!(projected_hunks.len() <= super::super::presentation::MAX_MCP_PRESENTATION_DIFF_HUNKS);
+    assert_eq!(meta["diff_truncated"], true);
+    for hunk in projected_hunks {
+        let diff = hunk["diff"].as_str().unwrap();
+        assert!(
+            diff.lines().count() <= super::super::presentation::MAX_MCP_PRESENTATION_DIFF_LINES
+        );
+        assert!(
+            diff.chars().count() <= super::super::presentation::MAX_MCP_PRESENTATION_DIFF_CHARS
+        );
+        assert_eq!(hunk["truncated"], true);
+    }
+
+    let exact_budget_hunks = (0..super::super::presentation::MAX_MCP_PRESENTATION_DIFF_HUNKS)
+        .map(|index| json!({"diff": format!("@@ -1 +1 @@\n-old-{index}\n+new-{index}"), "truncated": false}))
+        .collect::<Vec<_>>();
+    let exact_budget = projected_result(
+        "show_changes",
+        true,
+        json!({
+            "git_available": true,
+            "non_git_project": false,
+            "clean": false,
+            "files": [{"path": "src/lib.rs", "status": "modified", "kind": "tracked", "additions": 4, "deletions": 4}],
+            "files_total": 1,
+            "files_returned": 1,
+            "files_truncated": false,
+            "hunks": [{"path": "src/lib.rs", "hunks": exact_budget_hunks}],
+            "hunks_truncated": false
+        }),
+    );
+    assert!(presentation(&exact_budget).get("diff_truncated").is_none());
+}
+
+#[test]
+fn git_changes_presentation_distributes_diff_preview_across_presented_files() {
+    let files = (0..6)
+        .map(|index| {
+            json!({
+                "path": format!("src/file-{index}.rs"),
+                "status": "modified",
+                "kind": "tracked",
+                "additions": 1,
+                "deletions": 1
+            })
+        })
+        .collect::<Vec<_>>();
+    let hunks = (0..6)
+        .map(|index| {
+            json!({
+                "path": format!("src/file-{index}.rs"),
+                "hunks": [{
+                    "diff": format!("@@ -1 +1 @@\n-old-{index}\n+new-{index}"),
+                    "truncated": false
+                }]
+            })
+        })
+        .collect::<Vec<_>>();
+    let framed = projected_result(
+        "show_changes",
+        true,
+        json!({
+            "git_available": true,
+            "non_git_project": false,
+            "clean": false,
+            "files": files,
+            "files_total": 6,
+            "files_returned": 6,
+            "files_truncated": false,
+            "hunks": hunks,
+            "hunks_truncated": false
+        }),
+    );
+
+    let meta = presentation(&framed);
+    let projected_files = meta["files"].as_array().unwrap();
+    assert_eq!(projected_files.len(), 6);
+    for (index, file) in projected_files.iter().enumerate() {
+        let diff_hunks = file["diff_hunks"].as_array().unwrap();
+        assert_eq!(diff_hunks.len(), 1, "file {index} lost its diff preview");
+        assert!(diff_hunks[0]["diff"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("+new-{index}")));
+    }
+    assert!(meta.get("diff_truncated").is_none());
+}
+
+#[test]
+fn git_changes_presentation_matches_diff_hunks_before_display_path_truncation() {
+    let shared = format!("src/{}", "a".repeat(300));
+    let first_path = format!("{shared}-first.rs");
+    let second_path = format!("{shared}-second.rs");
+    let framed = projected_result(
+        "show_changes",
+        true,
+        json!({
+            "git_available": true,
+            "non_git_project": false,
+            "clean": false,
+            "files": [
+                {"path": first_path, "status": "modified", "kind": "tracked", "additions": 1, "deletions": 0},
+                {"path": second_path, "status": "modified", "kind": "tracked", "additions": 2, "deletions": 0}
+            ],
+            "files_total": 2,
+            "files_returned": 2,
+            "files_truncated": false,
+            "hunks": [{
+                "path": second_path,
+                "hunks": [{"diff": "@@ -1 +1 @@\n-old\n+second", "truncated": false}]
+            }],
+            "hunks_truncated": false
+        }),
+    );
+
+    let meta = presentation(&framed);
+    let files = meta["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0]["additions"], 1);
+    assert!(files[0].get("diff_hunks").is_none());
+    assert_eq!(files[1]["additions"], 2);
+    assert_eq!(
+        files[1]["diff_hunks"][0]["diff"],
+        "@@ -1 +1 @@\n-old\n+second"
+    );
+    assert_eq!(
+        files[0]["path"], files[1]["path"],
+        "fixture must exercise a display-path collision"
+    );
+}
+
+#[test]
+fn git_review_presentation_preserves_scope_stats_files_and_partial_state() {
+    let base = "a".repeat(40);
+    let head = "b".repeat(40);
+    let complete = projected_result(
+        "git_review_summary",
+        true,
+        json!({
+            "scope": {"requested_base": base, "requested_head": head, "merge_base": "a".repeat(40), "base_is_ancestor": true, "commit_count": 3, "diff_range": "raw range"},
+            "stats": {"files_changed": 4, "insertions": 12, "deletions": 7, "binary_files": 1},
+            "file_classes": {"counts_observed": {"production": 2, "test": 1, "docs": 1}, "partial": false},
+            "coverage": {"production_changed": true, "tests_changed": true, "docs_changed": true, "partial": false},
+            "truncation": {"files_total": 4, "files_returned": 4, "files_truncated": false, "classification_partial": false, "file_stats_partial": false, "file_modes_partial": false, "symbols_partial": false, "subsystems_partial": false, "signals_partial": false},
+            "files": [
+                {"path": "src/new.rs", "previous_path": "src/old.rs", "path_omitted": false, "status": "renamed", "additions": 5, "deletions": 2, "binary": false, "gitlink": false, "classes": ["production"], "symbols": ["ignored"]},
+                {"path": "src/added.rs", "previous_path": null, "path_omitted": false, "status": "added", "additions": 4, "deletions": 0, "binary": false, "gitlink": false, "classes": ["production"]},
+                {"path": "tests/deleted.rs", "previous_path": null, "path_omitted": false, "status": "deleted", "additions": 0, "deletions": 5, "binary": false, "gitlink": false, "classes": ["test"]},
+                {"path": "docs/blob.bin", "previous_path": null, "path_omitted": false, "status": "modified", "additions": null, "deletions": null, "binary": true, "gitlink": false, "classes": ["docs"]}
+            ],
+            "deterministic": true,
+            "llm_summary": false,
+            "truncated": false,
+            "reason_code": null
+        }),
+    );
+    let meta = presentation(&complete);
+    assert_eq!(meta["kind"], "git_review");
+    assert_eq!(meta["scope"]["base"], "aaaaaaaa");
+    assert_eq!(meta["scope"]["head"], "bbbbbbbb");
+    assert_eq!(meta["scope"]["base_is_ancestor"], true);
+    assert_eq!(meta["scope"]["commit_count"], 3);
+    assert_eq!(meta["stats"]["files_changed"], 4);
+    assert_eq!(meta["stats"]["insertions"], 12);
+    assert_eq!(meta["stats"]["deletions"], 7);
+    assert_eq!(meta["stats"]["binary_files"], 1);
+    assert_eq!(meta["coverage"]["production_changed"], true);
+    assert_eq!(meta["coverage"]["tests_changed"], true);
+    assert_eq!(meta["coverage"]["docs_changed"], true);
+    assert_eq!(meta["files"][0]["status"], "renamed");
+    assert_eq!(meta["files"][0]["previous_path"], "src/old.rs");
+    assert_eq!(meta["files"][3]["binary"], true);
+    assert_eq!(meta["truncated"], false);
+
+    let partial = projected_result(
+        "git_review_summary",
+        true,
+        json!({
+            "scope": {"requested_base": "c".repeat(40), "requested_head": "d".repeat(40), "merge_base": "c".repeat(40), "base_is_ancestor": true, "commit_count": 9},
+            "stats": {"files_changed": 120, "insertions": 500, "deletions": 250, "binary_files": 2},
+            "file_classes": {"counts_observed": {"production": 70}, "partial": true},
+            "coverage": {"production_changed": true, "tests_changed": null, "docs_changed": null, "partial": true},
+            "truncation": {"files_total": 120, "files_returned": 80, "files_truncated": true, "classification_partial": true, "file_stats_partial": true, "file_modes_partial": false, "symbols_partial": true, "subsystems_partial": true, "signals_partial": true},
+            "files": [{"path": "/private/must-not-render", "previous_path": null, "path_omitted": true, "status": "modified", "additions": null, "deletions": null, "binary": null, "gitlink": null, "classes": []}],
+            "deterministic": true,
+            "truncated": true
+        }),
+    );
+    let partial_meta = presentation(&partial);
+    assert_eq!(partial_meta["truncated"], true);
+    assert_eq!(partial_meta["coverage"]["partial"], true);
+    assert_eq!(partial_meta["file_classes"]["partial"], true);
+    assert_eq!(partial_meta["truncation"]["files_total"], 120);
+    assert_eq!(partial_meta["truncation"]["files_returned"], 80);
+    assert_eq!(partial_meta["truncation"]["files_truncated"], true);
+    assert_eq!(partial_meta["truncation"]["classification_partial"], true);
+    assert_eq!(partial_meta["files"][0]["path_omitted"], true);
+    assert!(
+        partial_meta["files"][0].get("path").is_none(),
+        "canonical path_omitted must suppress a contradictory path value"
+    );
+}
+
+#[test]
+fn git_review_presentation_bounds_file_metadata_and_excludes_raw_diff_context() {
+    let secret = "GIT_REVIEW_PRESENTATION_SECRET";
+    let base = "e".repeat(40);
+    let head = "f".repeat(40);
+    let class_counts = (0..12)
+        .map(|index| (format!("class_{index}"), Value::from(index + 1)))
+        .collect::<serde_json::Map<_, _>>();
+    let mut files = vec![json!({
+        "path": format!("/absolute/{secret}"), "previous_path": null, "path_omitted": false,
+        "status": "modified", "additions": 1, "deletions": 1, "binary": false, "gitlink": false,
+        "classes": ["production"], "symbols": [secret]
+    })];
+    files.extend((0..12).map(|index| {
+        json!({
+            "path": format!("src/review-{index}.rs"),
+            "previous_path": (index == 0).then(|| format!("/private/{secret}")),
+            "path_omitted": false,
+            "status": if index == 0 { "renamed" } else { "modified" },
+            "additions": index + 1,
+            "deletions": index,
+            "binary": index == 3,
+            "gitlink": index == 4,
+            "classes": (0..12).map(|class| format!("class_{class}")).collect::<Vec<_>>(),
+            "symbols": [format!("fn {secret}_{index}()")],
+            "symbol_inspection": secret
+        })
+    }));
+    let framed = projected_result(
+        "git_review_summary",
+        true,
+        json!({
+            "scope": {"requested_base": base, "requested_head": head, "merge_base": "e".repeat(40), "base_is_ancestor": true, "commit_count": 2, "diff_range": format!("{}..{}", "e".repeat(40), "f".repeat(40))},
+            "stats": {"files_changed": 13, "insertions": 91, "deletions": 78, "binary_files": 1},
+            "file_classes": {"counts_observed": class_counts, "partial": false},
+            "coverage": {"production_changed": true, "tests_changed": false, "docs_changed": false, "partial": false},
+            "truncation": {"files_total": 13, "files_returned": 13, "files_truncated": false, "classification_partial": false, "file_stats_partial": false, "file_modes_partial": false, "symbols_partial": true, "subsystems_partial": false, "signals_partial": false},
+            "files": files,
+            "subsystems": [{"name": secret, "paths": [format!("/private/{secret}")]}],
+            "signals": [{"name": secret, "reason": secret, "paths": [format!("/private/{secret}")]}],
+            "warnings": [secret],
+            "raw_diff": format!("@@ -1 +1 @@ {secret}"),
+            "raw_hunk": format!("HUNK_{secret}"),
+            "stdout": secret,
+            "stderr": secret,
+            "command": secret,
+            "argv": [secret],
+            "cwd": format!("/private/{secret}"),
+            "remote_url": format!("https://{secret}@example.invalid"),
+            "Authorization": format!("Bearer {secret}"),
+            "credential": secret,
+            "token": secret,
+            "deterministic": true,
+            "llm_summary": false,
+            "truncated": true,
+            "reason_code": null
+        }),
+    );
+    let meta = presentation(&framed);
+    assert_eq!(meta["kind"], "git_review");
+    assert!(meta["files"].as_array().unwrap().len() <= 8);
+    assert_eq!(meta["items_truncated"], true);
+    assert_eq!(
+        meta["file_classes"]["counts_observed"]
+            .as_object()
+            .unwrap()
+            .len(),
+        8
+    );
+    assert_eq!(meta["file_classes"]["counts_truncated"], true);
+    assert!(meta["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|item| item["classes"].as_array().unwrap().len() <= 8));
+    assert_eq!(meta["files"][0]["path"], "src/review-0.rs");
+    assert!(meta["files"][0].get("previous_path").is_none());
+    assert_eq!(meta["stats"]["files_changed"], 13);
+    assert_presentation_strings_bounded(meta);
+    let serialized = serde_json::to_string(meta).unwrap();
+    for forbidden in [
+        secret,
+        &"e".repeat(40),
+        &"f".repeat(40),
+        "@@ -1 +1 @@",
+        "HUNK_",
+        "\"subsystems\"",
+        "\"signals\"",
+        "\"symbols\"",
+        "\"warnings\"",
+        "\"raw_diff\"",
+        "\"raw_hunk\"",
+        "\"stdout\"",
+        "\"stderr\"",
+        "\"command\"",
+        "\"argv\"",
+        "\"cwd\"",
+        "\"remote_url\"",
+        "\"Authorization\"",
+        "\"credential\"",
+        "\"token\"",
+        "\"diff_range\"",
+    ] {
+        assert!(
+            !serialized.contains(forbidden),
+            "leaked {forbidden}: {serialized}"
+        );
+    }
+}
+
+#[test]
+fn validation_presentation_is_fail_open_for_unknown_shapes_and_unbound_tools() {
+    let canonical = ToolResult::ok(json!({"future_validation_shape": [1, 2, 3]}));
+    let mut framed = super::super::tools::mcp_runtime_tool_result("cargo_check", false, canonical);
+    let structured_before = framed["structuredContent"].clone();
+    super::super::presentation::attach_result_app_presentation("cargo_check", &mut framed);
+    assert_eq!(framed["structuredContent"], structured_before);
+    assert_eq!(presentation(&framed)["kind"], "validation_run");
+
+    let canonical = ToolResult::ok(json!({"execution_state": "completed", "passed": true}));
+    let mut unbound = super::super::tools::mcp_runtime_tool_result("cargo_fmt", false, canonical);
+    let structured_before = unbound["structuredContent"].clone();
+    super::super::presentation::attach_result_app_presentation("cargo_fmt", &mut unbound);
+    assert_eq!(unbound["structuredContent"], structured_before);
+    assert!(unbound
+        .get("_meta")
+        .and_then(|meta| meta.get(super::super::presentation::MCP_PRESENTATION_META_KEY))
+        .is_none());
+}
+
+#[test]
+fn result_app_html_is_display_only_and_uses_safe_dom_rendering() {
+    let html = MCP_RESULT_APP_HTML;
+    for expected in [
+        "ui/initialize",
+        "ui/notifications/initialized",
+        "ui/notifications/tool-result",
+        "webcodex/presentation",
+        "textContent",
+        "document.createElement",
+        "document.createElement(\"details\")",
+        "validation_run",
+        "validation_summary",
+        "git_changes",
+        "git_review",
+        "Changed ",
+        "Show ",
+        "Show fewer files",
+        "setAttribute(\"aria-expanded\"",
+        "520px",
+        "View diff",
+        "Hide diff",
+        "boundedDiffString",
+        "No bounded WebCodex presentation metadata was attached.",
+        "!presentation || typeof presentation !== \"object\" || presentation.version !== 1",
+        "Committed review",
+        "Cargo Test",
+        "jobState",
+        "jobWorkText",
+        "No active jobs",
+        "No active jobs shown",
+        "Progress reason",
+        "Array.from",
+        "Cargo test zero tests",
+    ] {
+        assert!(html.contains(expected), "missing {expected}");
+    }
+    for forbidden in [
+        "innerHTML",
+        "eval(",
+        "new Function",
+        "localStorage",
+        "indexedDB",
+        "fetch(",
+        "WebSocket",
+        "tools/call",
+        "callServerTool",
+        "ui/update-model-context",
+        "ui/message",
+        "button.remove()",
+        "<button",
+    ] {
+        assert!(
+            !html.contains(forbidden),
+            "Result App must not contain {forbidden}"
+        );
+    }
+}
+
+fn result_app_auth() -> crate::auth::AuthContext {
+    crate::auth::AuthContext {
+        kind: crate::auth::AuthKind::Bootstrap,
+        user_id: Some("user-result-app-owner".to_string()),
+        username: Some("result-app-owner".to_string()),
+        api_key_id: Some("key-result-app-owner".to_string()),
+        role: Some("admin".to_string()),
+        scopes: vec!["admin".to_string()],
+        is_bootstrap: true,
+        token_kind: None,
+        allowed_client_id: None,
+        shared_key_hash: None,
+        project_grant_id: None,
+    }
+}
+
+async fn register_job_runner(runtime: &ToolRuntime, auth: &crate::auth::AuthContext) {
+    let capabilities = RunnerCapabilities {
+        shell: true,
+        git: true,
+        internal_posix_script: true,
+        async_jobs: true,
+        async_shell_jobs: true,
+        structured_validation_argv: true,
+        ..Default::default()
+    };
+    runtime
+        .runner_registry
+        .register_with_auth(
+            crate::test_support::current_runner_registration(RunnerRegisterRequest {
+                process_started_at: None,
+                build: None,
+                job_concurrency_limit: None,
+                job_inventory: None,
+                coding_agent_providers: None,
+                coding_agent_inventory: None,
+                client_id: "result-app-runner".to_string(),
+                runner_instance_id: "inst-result-app".to_string(),
+                display_name: None,
+                owner: None,
+                hostname: None,
+                host_context: None,
+                capabilities: crate::test_support::current_runner_capabilities(capabilities),
+                policy: None,
+                runner_protocol_generation: crate::runner_protocol::RUNNER_PROTOCOL_GENERATION_V2,
+            }),
+            Some(&crate::test_support::runner_access(auth)),
+        )
+        .await
+        .unwrap();
+    crate::test_support::apply_project_inventory_snapshot(
+        &runtime.runner_registry,
+        "result-app-runner",
+        "inst-result-app",
+        vec![RunnerProjectSummary {
+            id: "demo".to_string(),
+            name: Some("Result App Demo".to_string()),
+            path: "/tmp/result-app-demo".to_string(),
+            allow_patch: true,
+            kind: Some("repo".to_string()),
+            registration_source: None,
+            description: None,
+            hooks: Vec::new(),
+            disabled: false,
+            revision: None,
+            root_fingerprint: None,
+            lineage: None,
+            git_branch: None,
+            git_head: None,
+            git_dirty: None,
+            updated_at: 1,
+            shell_profile: None,
+        }],
+    )
+    .await;
+}
+
+async fn set_job_state(
+    runtime: &ToolRuntime,
+    request: &crate::runner_protocol::RunnerRequest,
+    status: &str,
+    finished: bool,
+) {
+    runtime
+        .runner_registry
+        .update_job(RunnerJobUpdateRequest {
+            client_id: "result-app-runner".to_string(),
+            runner_instance_id: "inst-result-app".to_string(),
+            update_seq: None,
+            job_id: request.job_id.clone().expect("Job id"),
+            request_id: Some(request.request_id.clone()),
+            status: status.to_string(),
+            stdout_chunk: Some("secret log body that presentation must not copy\n".to_string()),
+            stderr_chunk: None,
+            stdout_tail: None,
+            stderr_tail: None,
+            log_snapshot: None,
+            exit_code: finished.then_some(0),
+            duration_ms: finished.then_some(25),
+            error: None,
+            command_execution_state: finished
+                .then_some(crate::runner_protocol::ShellCommandExecutionState::Completed),
+            validation_progress: None,
+            test_count_evidence: None,
+            activity: None,
+            finished,
+        })
+        .await
+        .unwrap();
+}
+
+async fn wait_for_result_app_runner_request(
+    runtime: &ToolRuntime,
+) -> crate::runner_protocol::RunnerRequest {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Some(request) = runtime
+                .runner_registry
+                .poll(RunnerPollRequest {
+                    client_id: "result-app-runner".to_string(),
+                    runner_instance_id: "inst-result-app".to_string(),
+                })
+                .await
+                .unwrap()
+            {
+                return request;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("timed out waiting for Result App Runner request")
+}
+
+async fn complete_result_app_validation_job(
+    runtime: &ToolRuntime,
+    request: &crate::runner_protocol::RunnerRequest,
+) {
+    runtime
+        .runner_registry
+        .update_job(RunnerJobUpdateRequest {
+            client_id: "result-app-runner".to_string(),
+            runner_instance_id: "inst-result-app".to_string(),
+            update_seq: None,
+            job_id: request.job_id.clone().expect("validation Job id"),
+            request_id: Some(request.request_id.clone()),
+            status: "completed".to_string(),
+            stdout_chunk: None,
+            stderr_chunk: None,
+            stdout_tail: Some("Finished `dev` profile [unoptimized] target(s)\n".to_string()),
+            stderr_tail: Some(String::new()),
+            log_snapshot: None,
+            exit_code: Some(0),
+            duration_ms: Some(25),
+            error: None,
+            command_execution_state: None,
+            validation_progress: Some(crate::runner_protocol::ShellJobValidationProgress {
+                completed: 1,
+                current_step: None,
+                failed_step: None,
+            }),
+            test_count_evidence: None,
+            activity: None,
+            finished: true,
+        })
+        .await
+        .unwrap();
+}
+
+async fn complete_result_app_show_changes(
+    runtime: &ToolRuntime,
+    request: &crate::runner_protocol::RunnerRequest,
+) {
+    assert_eq!(request.kind, "run_internal_posix_script");
+    let stdout = crate::tool_runtime::framed_clean_show_changes_test_stdout(
+        "secret canonical subject not projected",
+        false,
+    );
+    runtime
+        .runner_registry
+        .complete(RunnerResultRequest {
+            client_id: "result-app-runner".to_string(),
+            runner_instance_id: "inst-result-app".to_string(),
+            request_id: request.request_id.clone(),
+            exit_code: Some(0),
+            stdout: Some(stdout),
+            stderr: Some(String::new()),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            duration_ms: Some(1),
+            error: None,
+        })
+        .await
+        .unwrap();
+}
+
+async fn mcp_show_changes_result(
+    runtime: &ToolRuntime,
+    auth: &crate::auth::AuthContext,
+    id: i64,
+    ui: bool,
+    server_apps_enabled: bool,
+) -> Value {
+    let params = json!({
+        "name": "show_changes",
+        "arguments": {"project": "agent:result-app-runner:demo", "include_diff": false}
+    });
+    let params = if ui {
+        mcp_2026_ui_params(params)
+    } else {
+        mcp_2026_params(params)
+    };
+    let call = handle_with_server_apps_enabled(
+        runtime,
+        rpc("tools/call", Some(json!(id)), params),
+        Some(auth),
+        server_apps_enabled,
+    );
+    let complete = async {
+        let request = wait_for_result_app_runner_request(runtime).await;
+        complete_result_app_show_changes(runtime, &request).await;
+    };
+    let (outcome, _) = tokio::join!(call, complete);
+    let McpOutcome::Ok(body) = outcome else {
+        panic!("expected show_changes MCP result");
+    };
+    body["result"].clone()
+}
+
+#[tokio::test]
+async fn mcp_job_presentation_tracks_real_running_to_terminal_transition() {
+    let runtime = test_runtime();
+    let auth = result_app_auth();
+    register_job_runner(&runtime, &auth).await;
+    let started = runtime
+        .dispatch_with_auth(
+            ToolCall::RunJob {
+                project: "agent:result-app-runner:demo".to_string(),
+                command: "echo result-app".to_string(),
+                session_id: None,
+                timeout_secs: Some(60),
+                cwd: None,
+                purpose: None,
+                shell: None,
+            },
+            Some(&auth),
+        )
+        .await;
+    assert!(started.success, "{:?}", started.error);
+    let job_id = started.output["job_id"].as_str().unwrap().to_string();
+    let request = runtime
+        .runner_registry
+        .poll(RunnerPollRequest {
+            client_id: "result-app-runner".to_string(),
+            runner_instance_id: "inst-result-app".to_string(),
+        })
+        .await
+        .unwrap()
+        .expect("queued Job request");
+    set_job_state(&runtime, &request, "running", false).await;
+
+    async fn observe(
+        runtime: &ToolRuntime,
+        auth: &crate::auth::AuthContext,
+        job_id: &str,
+        id: i64,
+    ) -> Value {
+        let outcome = handle_mcp_request(
+            runtime,
+            rpc(
+                "tools/call",
+                Some(json!(id)),
+                mcp_2026_ui_params(json!({
+                    "name": "observe_jobs",
+                    "arguments": {"items": [{"job_id": job_id}]}
+                })),
+            ),
+            Some(auth),
+        )
+        .await;
+        let McpOutcome::Ok(body) = outcome else {
+            panic!("expected observe_jobs MCP result");
+        };
+        body["result"].clone()
+    }
+
+    let running = observe(&runtime, &auth, &job_id, 3210).await;
+    assert_eq!(presentation(&running)["items"][0]["status"], "running");
+    assert_eq!(presentation(&running)["items"][0]["terminal"], false);
+    assert_eq!(presentation(&running)["items"][0]["active"], true);
+    assert_eq!(presentation(&running)["items"][0]["blocking_active"], true);
+    assert!(serde_json::to_string(presentation(&running))
+        .unwrap()
+        .find("secret log body")
+        .is_none());
+
+    let listed = handle_mcp_request(
+        &runtime,
+        rpc(
+            "tools/call",
+            Some(json!(32101)),
+            mcp_2026_ui_params(json!({
+                "name": "list_jobs",
+                "arguments": {"project": "agent:result-app-runner:demo", "limit": 10}
+            })),
+        ),
+        Some(&auth),
+    )
+    .await;
+    let McpOutcome::Ok(listed) = listed else {
+        panic!("expected list_jobs MCP result");
+    };
+    assert_eq!(presentation(&listed["result"])["kind"], "job_list");
+    assert!(presentation(&listed["result"])["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["job_id"] == job_id && item["status"] == "running"));
+
+    let plain_listed = handle_mcp_request(
+        &runtime,
+        rpc(
+            "tools/call",
+            Some(json!(32102)),
+            mcp_2026_params(json!({
+                "name": "list_jobs",
+                "arguments": {"project": "agent:result-app-runner:demo", "limit": 10}
+            })),
+        ),
+        Some(&auth),
+    )
+    .await;
+    let McpOutcome::Ok(plain_listed) = plain_listed else {
+        panic!("expected non-UI list_jobs MCP result");
+    };
+    assert!(plain_listed["result"]["_meta"]
+        .get(super::super::presentation::MCP_PRESENTATION_META_KEY)
+        .is_none());
+    assert_eq!(
+        plain_listed["result"]["structuredContent"]["output"]["jobs"][0]["job_id"],
+        job_id
+    );
+
+    set_job_state(&runtime, &request, "completed", true).await;
+    let completed = observe(&runtime, &auth, &job_id, 3211).await;
+    assert_eq!(presentation(&completed)["items"][0]["status"], "completed");
+    assert_eq!(presentation(&completed)["items"][0]["terminal"], true);
+    assert_eq!(presentation(&completed)["items"][0]["active"], false);
+    assert_eq!(
+        presentation(&completed)["items"][0]["blocking_active"],
+        false
+    );
+    assert_eq!(
+        completed["structuredContent"]["output"]["items"][0]["status"],
+        "completed"
+    );
+
+    let unknown = observe(&runtime, &auth, "unknown-result-app-job", 3212).await;
+    assert_eq!(
+        presentation(&unknown)["items"][0]["error_kind"],
+        "unknown_job"
+    );
+    assert_eq!(
+        presentation(&unknown)["items"][0]["suggested_call"],
+        json!({"tool": "list_jobs", "arguments": {}})
+    );
+
+    assert!(runtime.runner_registry.remove_job_record(&job_id).await);
+}
+
+#[tokio::test]
+async fn mcp_validation_run_and_summary_use_real_canonical_contracts() {
+    std::fs::create_dir_all("/tmp/result-app-demo").unwrap();
+    let runtime = test_runtime().with_validation_sync_wait(std::time::Duration::from_millis(500));
+    let auth = result_app_auth();
+    register_job_runner(&runtime, &auth).await;
+    let project = "agent:result-app-runner:demo";
+    let session = runtime.sessions.start_session(
+        Some(project.to_string()),
+        Some("result app validation".to_string()),
+    );
+
+    let cargo_call = tokio::spawn({
+        let runtime = runtime.clone();
+        let auth = auth.clone();
+        let session_id = session.session_id.clone();
+        async move {
+            handle_mcp_request(
+                &runtime,
+                rpc(
+                    "tools/call",
+                    Some(json!(3220)),
+                    mcp_2026_ui_params(json!({
+                        "name": "cargo_check",
+                        "arguments": {
+                            "project": project,
+                            "session_id": session_id,
+                            "timeout_secs": 60,
+                            "sync_wait_secs": 1
+                        }
+                    })),
+                ),
+                Some(&auth),
+            )
+            .await
+        }
+    });
+    let request = wait_for_result_app_runner_request(&runtime).await;
+    assert_eq!(request.kind, "start_validation_job");
+    complete_result_app_validation_job(&runtime, &request).await;
+    let McpOutcome::Ok(cargo_call) = cargo_call.await.unwrap() else {
+        panic!("expected real cargo_check MCP result");
+    };
+    let cargo_result = &cargo_call["result"];
+    let model_output = &cargo_result["structuredContent"]["output"];
+    for redundant in [
+        "execution_state",
+        "passed",
+        "execution_source",
+        "purpose",
+        "executor",
+        "shell",
+    ] {
+        assert!(
+            model_output.get(redundant).is_none(),
+            "model result leaked {redundant}: {model_output}"
+        );
+    }
+    assert_eq!(model_output["warnings_count"], 0);
+    assert_eq!(model_output["errors_count"], 0);
+    assert_eq!(presentation(cargo_result)["kind"], "validation_run");
+    assert_eq!(presentation(cargo_result)["tool"], "cargo_check");
+    assert_eq!(presentation(cargo_result)["warnings_count"], 0);
+    assert_eq!(presentation(cargo_result)["errors_count"], 0);
+    assert!(presentation(cargo_result).get("execution_state").is_none());
+    assert!(presentation(cargo_result).get("passed").is_none());
+    assert!(!serde_json::to_string(presentation(cargo_result))
+        .unwrap()
+        .contains("secret log body"));
+
+    let summary = handle_mcp_request(
+        &runtime,
+        rpc(
+            "tools/call",
+            Some(json!(3221)),
+            mcp_2026_ui_params(json!({
+                "name": crate::mcp::tools::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME,
+                "arguments": {
+                    "tool": "validation_summary",
+                    "arguments": {"project": project, "session_id": session.session_id}
+                }
+            })),
+        ),
+        Some(&auth),
+    )
+    .await;
+    let McpOutcome::Ok(summary) = summary else {
+        panic!("expected real validation_summary MCP result");
+    };
+    let summary_result = &summary["result"];
+    let canonical_validation = &summary_result["structuredContent"]["output"]["validation"];
+    assert_eq!(canonical_validation["status"], "passed");
+    assert_eq!(canonical_validation["current_evidence"]["status"], "passed");
+    assert_eq!(presentation(summary_result)["kind"], "validation_summary");
+    assert_eq!(
+        presentation(summary_result)["validation"]["status"],
+        canonical_validation["status"]
+    );
+    assert_eq!(
+        presentation(summary_result)["validation"]["current_evidence"]["status"],
+        canonical_validation["current_evidence"]["status"]
+    );
+    assert_eq!(
+        presentation(summary_result)["validation"]["events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let disabled = handle_with_server_apps_enabled(
+        &runtime,
+        rpc(
+            "tools/call",
+            Some(json!(3222)),
+            mcp_2026_ui_params(json!({
+                "name": crate::mcp::tools::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME,
+                "arguments": {
+                    "tool": "validation_summary",
+                    "arguments": {"project": project, "session_id": session.session_id}
+                }
+            })),
+        ),
+        Some(&auth),
+        false,
+    )
+    .await;
+    let McpOutcome::Ok(disabled) = disabled else {
+        panic!("Apps-disabled validation_summary should remain callable");
+    };
+    assert_eq!(
+        disabled["result"]["structuredContent"],
+        summary_result["structuredContent"]
+    );
+    assert!(disabled["result"]["_meta"]
+        .get(super::super::presentation::MCP_PRESENTATION_META_KEY)
+        .is_none());
+
+    let plain = handle_mcp_request(
+        &runtime,
+        rpc(
+            "tools/call",
+            Some(json!(3223)),
+            mcp_2026_params(json!({
+                "name": crate::mcp::tools::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME,
+                "arguments": {
+                    "tool": "validation_summary",
+                    "arguments": {"project": project, "session_id": session.session_id}
+                }
+            })),
+        ),
+        Some(&auth),
+    )
+    .await;
+    let McpOutcome::Ok(plain) = plain else {
+        panic!("non-UI validation_summary should remain callable");
+    };
+    assert_eq!(
+        plain["result"]["structuredContent"],
+        summary_result["structuredContent"]
+    );
+    assert!(plain["result"]["_meta"]
+        .get(super::super::presentation::MCP_PRESENTATION_META_KEY)
+        .is_none());
+}
+
+#[tokio::test]
+async fn mcp_show_changes_uses_real_canonical_framing_and_app_gating() {
+    let runtime = test_runtime();
+    let auth = result_app_auth();
+    register_job_runner(&runtime, &auth).await;
+
+    let ui = mcp_show_changes_result(&runtime, &auth, 3230, true, true).await;
+    let canonical = ui["structuredContent"].clone();
+    assert_eq!(canonical["output"]["git_available"], true);
+    assert_eq!(canonical["output"]["clean"], true);
+    assert_eq!(canonical["output"]["branch"], "main");
+    let meta = presentation(&ui);
+    assert_eq!(meta["kind"], "git_changes");
+    assert_eq!(meta["git_available"], true);
+    assert_eq!(meta["clean"], true);
+    assert_eq!(meta["branch"], "main");
+
+    let disabled = mcp_show_changes_result(&runtime, &auth, 3231, true, false).await;
+    assert_eq!(disabled["structuredContent"], canonical);
+    assert!(disabled["_meta"]
+        .get(super::super::presentation::MCP_PRESENTATION_META_KEY)
+        .is_none());
+
+    let plain = mcp_show_changes_result(&runtime, &auth, 3232, false, true).await;
+    assert_eq!(plain["structuredContent"], canonical);
+    assert!(plain["_meta"]
+        .get(super::super::presentation::MCP_PRESENTATION_META_KEY)
+        .is_none());
+}
+
+#[test]
+fn observation_token_remains_only_in_canonical_result() {
+    let canonical = ToolResult::ok(json!({
+        "items": [{
+            "job_id": "job-token",
+            "status": "running",
+            "terminal": false,
+            "changed": false,
+            "log_delta_status": "unchanged",
+            "observation_token": "opaque-continuation-token"
+        }],
+        "wait": {"outcome": "immediate"}
+    }));
+    let mut framed = super::super::tools::mcp_runtime_tool_result("observe_jobs", false, canonical);
+    super::super::presentation::attach_result_app_presentation("observe_jobs", &mut framed);
+    assert_eq!(
+        framed["structuredContent"]["output"]["items"][0]["observation_token"],
+        "opaque-continuation-token"
+    );
+    assert!(!serde_json::to_string(presentation(&framed))
+        .unwrap()
+        .contains("opaque-continuation-token"));
+}
+
+#[test]
+fn observe_jobs_item_limit_matches_presentation_bound() {
+    assert_eq!(super::super::presentation::MAX_MCP_PRESENTATION_ITEMS, 8);
+    let parsed = ToolCall::ObserveJobs {
+        items: (0..8)
+            .map(|index| ObserveJobsItem {
+                job_id: format!("job-{index}"),
+                after_observation_token: None,
+            })
+            .collect(),
+        tail_lines: 40,
+        wait_secs: None,
+        wake_on: Default::default(),
+    };
+    assert!(matches!(parsed, ToolCall::ObserveJobs { .. }));
+}

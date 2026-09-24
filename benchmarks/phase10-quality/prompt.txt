@@ -1,0 +1,26 @@
+Implement persistent Task History for this project.
+
+Requirements:
+- Persist terminal task results in `task-history.json` under the service data directory.
+- Persist only statuses: completed, failed, failed_validation, cancelled, blocked.
+- Use schema v2: {"schema_version": 2, "items": [...]}. Each item must include task_id, status,
+  started_at, finished_at, duration_ms, changed_files, and validation_result.
+- Keep at most 10 items, newest first.
+- Recording an existing task_id replaces the older item and moves it to the front.
+- changed_files must be de-duplicated while preserving order and capped at 32 entries.
+- validation_result may be null.
+- Reads must never crash on a missing or corrupt history file; corrupt content should behave as
+  empty history and the next successful mutation should repair the file.
+- Support legacy schema v1 {"schema_version": 1, "tasks": [...]} and migrate it to v2 on the next
+  successful mutation without losing valid items.
+- Writes must be atomic using a temporary file in the same directory followed by os.replace.
+- History record/list/clear operations must be thread-safe.
+- TaskService should automatically record terminal TaskResult events while preserving the existing
+  last_result behavior.
+- Add bridge commands `task_history` (optional integer limit, clamped 1..10) and
+  `clear_task_history`. Existing `task_status` behavior must remain backward compatible.
+- TaskViewModel should expose `recent_task_rows(limit=10)` for presentation without reading files
+  directly.
+- Do not add third-party dependencies.
+- Keep the implementation focused and consistent with the existing architecture.
+- Update/add visible tests as needed and run the full visible test suite.

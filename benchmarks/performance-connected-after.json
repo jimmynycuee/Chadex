@@ -1,0 +1,395 @@
+{
+  "surface": "Codex connected tool-await; excludes model/evaluation/reset; alternating AB/BA",
+  "rows": [
+    {
+      "provider": "chadex",
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "started_at_ms": 1790079900719,
+          "ms": 844
+        },
+        {
+          "tool": "read_files",
+          "started_at_ms": 1790079901564,
+          "ms": 911
+        },
+        {
+          "tool": "apply_text_edits",
+          "started_at_ms": 1790079902476,
+          "ms": 6266
+        },
+        {
+          "tool": "run_process",
+          "started_at_ms": 1790079908742,
+          "ms": 5570
+        },
+        {
+          "tool": "show_changes",
+          "started_at_ms": 1790079914313,
+          "ms": 1420
+        }
+      ],
+      "total_ms": 15011,
+      "correctness": {
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+        "business_checks": 43,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      }
+    },
+    {
+      "provider": "webcodex",
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "started_at_ms": 1790079948758,
+          "ms": 1248
+        },
+        {
+          "tool": "read_files",
+          "started_at_ms": 1790079950006,
+          "ms": 991
+        },
+        {
+          "tool": "apply_text_edits",
+          "started_at_ms": 1790079950997,
+          "ms": 4743
+        },
+        {
+          "tool": "run_process",
+          "started_at_ms": 1790079955740,
+          "ms": 4558
+        },
+        {
+          "tool": "show_changes",
+          "started_at_ms": 1790079960298,
+          "ms": 1331
+        }
+      ],
+      "total_ms": 12871,
+      "correctness": {
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+        "business_checks": 43,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      }
+    },
+    {
+      "provider": "webcodex",
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "started_at_ms": 1790079982408,
+          "ms": 1023
+        },
+        {
+          "tool": "read_files",
+          "started_at_ms": 1790079983431,
+          "ms": 765
+        },
+        {
+          "tool": "apply_text_edits",
+          "started_at_ms": 1790079984196,
+          "ms": 4562
+        },
+        {
+          "tool": "run_process",
+          "started_at_ms": 1790079988758,
+          "ms": 4125
+        },
+        {
+          "tool": "show_changes",
+          "started_at_ms": 1790079992883,
+          "ms": 1507
+        }
+      ],
+      "total_ms": 11982,
+      "correctness": {
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+        "business_checks": 43,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      }
+    },
+    {
+      "provider": "chadex",
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "started_at_ms": 1790079997994,
+          "ms": 1689
+        },
+        {
+          "tool": "read_files",
+          "started_at_ms": 1790079999683,
+          "ms": 1175
+        },
+        {
+          "tool": "apply_text_edits",
+          "started_at_ms": 1790080000858,
+          "ms": 4337
+        },
+        {
+          "tool": "run_process",
+          "started_at_ms": 1790080005195,
+          "ms": 4048
+        },
+        {
+          "tool": "show_changes",
+          "started_at_ms": 1790080009243,
+          "ms": 1186
+        }
+      ],
+      "total_ms": 12435,
+      "correctness": {
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+        "business_checks": 43,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      }
+    },
+    {
+      "provider": "chadex",
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "started_at_ms": 1790080042849,
+          "ms": 1098
+        },
+        {
+          "tool": "read_files",
+          "started_at_ms": 1790080043947,
+          "ms": 5782
+        },
+        {
+          "tool": "apply_text_edits",
+          "started_at_ms": 1790080049729,
+          "ms": 14669
+        },
+        {
+          "tool": "run_process",
+          "started_at_ms": 1790080064398,
+          "ms": 8633
+        },
+        {
+          "tool": "show_changes",
+          "started_at_ms": 1790080073031,
+          "ms": 1353
+        }
+      ],
+      "total_ms": 31535,
+      "correctness": {
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+        "business_checks": 43,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      }
+    },
+    {
+      "provider": "webcodex",
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "started_at_ms": 1790080078365,
+          "ms": 1268
+        },
+        {
+          "tool": "read_files",
+          "started_at_ms": 1790080079633,
+          "ms": 757
+        },
+        {
+          "tool": "apply_text_edits",
+          "started_at_ms": 1790080080390,
+          "ms": 9711
+        },
+        {
+          "tool": "run_process",
+          "started_at_ms": 1790080090101,
+          "ms": 4577
+        },
+        {
+          "tool": "show_changes",
+          "started_at_ms": 1790080094678,
+          "ms": 998
+        }
+      ],
+      "total_ms": 17311,
+      "correctness": {
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+        "business_checks": 43,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      }
+    },
+    {
+      "provider": "webcodex",
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "started_at_ms": 1790080099411,
+          "ms": 1139
+        },
+        {
+          "tool": "read_files",
+          "started_at_ms": 1790080100550,
+          "ms": 1061
+        },
+        {
+          "tool": "apply_text_edits",
+          "started_at_ms": 1790080101612,
+          "ms": 4714
+        },
+        {
+          "tool": "run_process",
+          "started_at_ms": 1790080106326,
+          "ms": 4705
+        },
+        {
+          "tool": "show_changes",
+          "started_at_ms": 1790080111031,
+          "ms": 1344
+        }
+      ],
+      "total_ms": 12963,
+      "correctness": {
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+        "business_checks": 43,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      }
+    },
+    {
+      "provider": "chadex",
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "started_at_ms": 1790080116524,
+          "ms": 1105
+        },
+        {
+          "tool": "read_files",
+          "started_at_ms": 1790080117629,
+          "ms": 1011
+        },
+        {
+          "tool": "apply_text_edits",
+          "started_at_ms": 1790080118641,
+          "ms": 4806
+        },
+        {
+          "tool": "run_process",
+          "started_at_ms": 1790080123447,
+          "ms": 4672
+        },
+        {
+          "tool": "show_changes",
+          "started_at_ms": 1790080128119,
+          "ms": 1313
+        }
+      ],
+      "total_ms": 12907,
+      "correctness": {
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+        "business_checks": 43,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      }
+    },
+    {
+      "provider": "chadex",
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "started_at_ms": 1790080133490,
+          "ms": 944
+        },
+        {
+          "tool": "read_files",
+          "started_at_ms": 1790080134434,
+          "ms": 975
+        },
+        {
+          "tool": "apply_text_edits",
+          "started_at_ms": 1790080135409,
+          "ms": 4868
+        },
+        {
+          "tool": "run_process",
+          "started_at_ms": 1790080140277,
+          "ms": 7174
+        },
+        {
+          "tool": "show_changes",
+          "started_at_ms": 1790080147451,
+          "ms": 943
+        }
+      ],
+      "total_ms": 14904,
+      "correctness": {
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+        "business_checks": 43,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      }
+    },
+    {
+      "provider": "webcodex",
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "started_at_ms": 1790080152746,
+          "ms": 787
+        },
+        {
+          "tool": "read_files",
+          "started_at_ms": 1790080153533,
+          "ms": 1034
+        },
+        {
+          "tool": "apply_text_edits",
+          "started_at_ms": 1790080154567,
+          "ms": 6671
+        },
+        {
+          "tool": "run_process",
+          "started_at_ms": 1790080161238,
+          "ms": 6137
+        },
+        {
+          "tool": "show_changes",
+          "started_at_ms": 1790080167375,
+          "ms": 1345
+        }
+      ],
+      "total_ms": 15974,
+      "correctness": {
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+        "business_checks": 43,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      }
+    }
+  ]
+}

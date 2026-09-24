@@ -1,0 +1,93 @@
+//! OAuth2 authorization, token, revocation, and discovery endpoints.
+//!
+//! - `POST /oauth/token` — token endpoint (authorization_code, refresh_token)
+//! - `POST /oauth/revoke` — token revocation endpoint (RFC 7009)
+//! - `GET /.well-known/oauth-protected-resource` — protected resource metadata
+//! - `GET /.well-known/oauth-authorization-server` — authorization server metadata
+//!
+//! Token and revocation are **public** endpoints (no `AuthMiddleware`); clients
+//! authenticate via `client_id` + `client_secret` in the form body. The
+//! metadata endpoint is also public and requires no authentication.
+//!
+//! Security properties:
+//! - Authorization codes are consumed atomically (single-use).
+//! - Code consumption and token insertion happen in a single DB transaction
+//!   **only** when all validations pass.
+//! - Refresh tokens are rotated: the old token is revoked and a new
+//!   access+refresh token pair is issued in a single transaction.
+//! - Revocation is idempotent: unknown, already-revoked, and other-client
+//!   tokens all return HTTP 200 without disclosing token state.
+//! - Client secret is verified with constant-time comparison.
+//! - Only `application/x-www-form-urlencoded` content type is accepted.
+//! - Request body size is bounded (16 KiB).
+//! - All responses include `Cache-Control: no-store` and `Pragma: no-cache`.
+//! - Plaintext tokens are returned **only once** in the response.
+//! - Only SHA-256 hashes are stored in the database.
+
+mod clients;
+mod html;
+mod managed_authorize;
+mod metadata;
+mod project_share;
+mod responses;
+mod revoke;
+mod scope_registry;
+mod shared_key_bridge;
+mod token;
+
+pub(crate) use clients::validate_redirect_uri;
+pub(crate) use clients::{
+    oauth_clients_create, oauth_clients_list, oauth_clients_revoke, oauth_clients_update_scopes,
+};
+use html::authorize_bridge_html;
+
+#[derive(Debug, Clone)]
+struct BridgePermissionView {
+    id: &'static str,
+    label: &'static str,
+    available: bool,
+    selected: bool,
+    availability: &'static str,
+}
+#[cfg(test)]
+use managed_authorize::AUTHORIZE_SESSION_COOKIE;
+use managed_authorize::{
+    authorization_response_issuer, decoded_authorize_param, form_field,
+    is_authorize_identity_allowed, oauth_authorize_direct_error, parse_authorize_query,
+    parse_form_body, redirect_with_authorization_code, redirect_with_oauth_error,
+    validate_authorize_resource, OAuthAuthorizeError, OAuthAuthorizeRequest,
+};
+pub(crate) use managed_authorize::{
+    oauth_authorize, oauth_authorize_consent, oauth_authorize_login, AuthorizeSessionStore,
+};
+pub(crate) use metadata::{oauth_authorization_server_metadata, oauth_metadata};
+pub(crate) use project_share::oauth_authorize_project;
+#[cfg(test)]
+pub(crate) use project_share::{
+    normalize_project_share_oauth_scopes, PROJECT_SHARE_OAUTH_INVALID_SCOPE_MESSAGE,
+};
+use responses::{apply_oauth_no_store_headers, oauth_error};
+pub(crate) use revoke::oauth_revoke;
+pub(crate) use scope_registry::{
+    normalize_oauth_scopes, oauth_discovery_scopes_supported, oauth_scopes_supported,
+    OAUTH_OFFLINE_ACCESS_SCOPE,
+};
+#[cfg(test)]
+pub(crate) use shared_key_bridge::{
+    bridge_oauth_computer_enabled_scopes, bridge_oauth_scopes, bridge_shared_key_hash,
+    normalize_bridge_oauth_scopes, OAUTH_BRIDGE_INVALID_SCOPE_MESSAGE,
+};
+pub(crate) use shared_key_bridge::{oauth_authorize_bridge, oauth_shared_key_client_provision};
+pub(crate) use token::oauth_token;
+#[cfg(test)]
+pub(crate) use token::verify_pkce_s256;
+
+/// Maximum request body size for the token endpoint (16 KiB).
+const MAX_OAUTH_TOKEN_FORM_BYTES: usize = 16 * 1024;
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests;

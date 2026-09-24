@@ -1,0 +1,152 @@
+{
+  "adaptive_policy_replay": {
+    "cold_base_overhead_ms": 7500,
+    "heavy_8s_packages": {
+      "estimated_parallel_gain_pct": 37.4,
+      "estimated_parallel_ms": 23450,
+      "estimated_parallel_overhead_ms": 10500,
+      "estimated_sequential_ms": 37450,
+      "observed_parallel_speedup_pct": 15.7,
+      "observed_pre_task3": {
+        "phase11_parallel_ms": 27910,
+        "phase11_task_sequential_ms": 33100
+      },
+      "selected_mode": "package_parallel"
+    },
+    "minimum_gain_pct": 15.0,
+    "per_extra_package_overhead_ms": 1500,
+    "policy_correct": true,
+    "short_2s_packages": {
+      "avoided_forced_parallel_regression_pct": 28.2,
+      "estimated_parallel_gain_pct": 10.3,
+      "estimated_parallel_ms": 17450,
+      "estimated_parallel_overhead_ms": 10500,
+      "estimated_sequential_ms": 19450,
+      "observed_pre_task3": {
+        "phase11_forced_parallel_ms": 21690,
+        "phase11_task_sequential_ms": 15570
+      },
+      "selected_mode": "task_sequential"
+    }
+  },
+  "benchmark": "phase11_local_synthetic",
+  "clean_snapshot_fast_path": {
+    "clean_fast_path_median_ms": 66.71,
+    "latency_reduction_pct": 83.1,
+    "legacy_effective_tree_median_ms": 393.7,
+    "speedup": 5.9,
+    "tracked_file_count": 1200
+  },
+  "dirty_working_tree": {
+    "interference": false,
+    "snapshot_created": true,
+    "source_change_detected": true,
+    "source_file_preserved": true,
+    "source_head_preserved": true,
+    "source_status_preserved": true,
+    "worktree_creation_ms": 40.02,
+    "worktree_matches_snapshot": true
+  },
+  "forced_short_parallel_packages": {
+    "baseline_wall_ms": 811.42,
+    "cleanup_ms": 107.0,
+    "correct": true,
+    "integration_overhead_ms": 242.86,
+    "interference": false,
+    "package_commit_ms": 459.91,
+    "package_count": 4,
+    "phase11_wall_ms": 1718.74,
+    "planning_overhead_ms": 0.16,
+    "speedup": 0.47,
+    "validation_ms": 19.89,
+    "worktree_creation_ms": 166.12
+  },
+  "note": "Synthetic scheduler timings plus disposable Git plumbing; not ChatGPT Web/Runner evidence.",
+  "two_independent_tasks": {
+    "baseline_wall_ms": 506.01,
+    "correct": true,
+    "interference": false,
+    "phase11_wall_ms": 255.91,
+    "speedup": 1.98
+  },
+  "connected_runtime_task3_final": {
+    "keychain_fix": {
+      "startup_keychain_read_calls_before": 2,
+      "startup_keychain_read_calls_after": 1,
+      "stable_codesign": true,
+      "first_stable_signed_launch_prompts_observed": 2,
+      "documents_prompt_observed": true,
+      "same_build_second_launch_zero_prompt_verification": "pending_user_relaunch"
+    },
+    "lifecycle_parallelization": {
+      "package_prepare_parallelized": true,
+      "package_cleanup_parallelized": true,
+      "integration_cleanup_remains_sequential": true,
+      "ewma_version_reset_after_change": true
+    },
+    "8s": {
+      "sequential_runtime_ms": 29914,
+      "sequential_connector_ms": 31821,
+      "adaptive_runtime_ms": 24829,
+      "adaptive_connector_ms": 27366,
+      "adaptive_speedup_runtime_pct": 17.0,
+      "adaptive_speedup_connector_pct": 14.0,
+      "package_workspace_prepare_wall_ms": 7106,
+      "package_cleanup_wall_ms": 3868,
+      "integration_cleanup_ms": 1972,
+      "cleanup_total_ms": 5844,
+      "measured_parallel_overhead_ms": 16273,
+      "pre_lifecycle_parallel_runtime_ms": 28140,
+      "pre_lifecycle_measured_parallel_overhead_ms": 21800,
+      "lifecycle_runtime_improvement_pct": 11.8,
+      "parallel_overhead_reduction_pct": 25.4
+    },
+    "12s": {
+      "sequential_runtime_ms": 41578,
+      "sequential_connector_ms": 44090,
+      "adaptive_runtime_ms": 28498,
+      "adaptive_connector_ms": 30313,
+      "adaptive_speedup_runtime_pct": 31.5,
+      "adaptive_speedup_connector_pct": 31.2,
+      "package_workspace_prepare_wall_ms": 6570,
+      "package_cleanup_wall_ms": 4271,
+      "integration_cleanup_ms": 1908,
+      "cleanup_total_ms": 6184,
+      "measured_parallel_overhead_ms": 15930,
+      "pre_lifecycle_parallel_runtime_ms": 30700,
+      "pre_lifecycle_parallel_connector_ms": 34350,
+      "pre_lifecycle_cleanup_ms": 7890,
+      "lifecycle_runtime_improvement_pct": 7.2,
+      "lifecycle_connector_improvement_pct": 11.8,
+      "cleanup_reduction_pct": 21.6
+    }
+  },
+  "connected_runtime_task3_aggregate_two_runs": {
+    "eight_second_packages": {
+      "sequential_runtime_median_ms": 29914.0,
+      "sequential_connector_median_ms": 31821.0,
+      "adaptive_runtime_median_ms": 24391.0,
+      "adaptive_connector_median_ms": 26748.0,
+      "parallel_overhead_median_ms": 15814.5,
+      "prepare_wall_median_ms": 6892.5,
+      "cleanup_total_median_ms": 5674.0,
+      "runtime_improvement_pct": 18.5,
+      "connector_improvement_pct": 15.9,
+      "overhead_reduction_vs_pre_lifecycle_pct": 27.5
+    },
+    "twelve_second_packages": {
+      "sequential_runtime_median_ms": 42545.5,
+      "sequential_connector_median_ms": 44890.5,
+      "adaptive_runtime_median_ms": 28048.0,
+      "adaptive_connector_median_ms": 30028.5,
+      "parallel_overhead_median_ms": 15485.5,
+      "prepare_wall_median_ms": 6565.0,
+      "cleanup_total_median_ms": 5827.5,
+      "runtime_improvement_pct": 34.1,
+      "connector_improvement_pct": 33.1,
+      "cleanup_reduction_vs_pre_lifecycle_pct": 26.1,
+      "runtime_reduction_vs_pre_lifecycle_parallel_pct": 8.6,
+      "connector_reduction_vs_pre_lifecycle_parallel_pct": 12.6
+    }
+  }
+}

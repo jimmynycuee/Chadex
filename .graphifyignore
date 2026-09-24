@@ -1,0 +1,19 @@
+# Graphify output and local caches
+graphify-out/
+.graphify_analysis.json
+.graphify_labels.json
+
+# Build products and toolchain state
+.build/
+.swiftpm/
+.toolchain/
+dist/
+dist-test/
+rust-helper/target/
+vendor/webcodex/target/
+vendor/webcodex/frontend/dist/
+vendor/webcodex/node_modules/
+
+# Repository metadata and local OS noise
+.git/
+.DS_Store

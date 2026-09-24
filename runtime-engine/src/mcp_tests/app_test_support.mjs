@@ -1,0 +1,127 @@
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import { webcrypto } from "node:crypto";
+
+export const flush = () => new Promise(resolve => setImmediate(resolve));
+
+// Execute the shipped App script with deterministic Host messages and timers.
+export function app(filename, { deliverToolMeta = true, deliverToolStructuredContent = true, crypto = webcrypto } = {}) {
+  const html = readFileSync(new URL(`../${filename}`, import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const nodes = {};
+  const listeners = new Map();
+  const timers = new Map();
+  const sent = [];
+  let nextTimer = 1;
+  const parent = { postMessage(message) { sent.push(message); } };
+  function element(tagName = "div") {
+    const attributes = new Map();
+    return {
+      tagName: String(tagName).toUpperCase(),
+      textContent: "", hidden: false, children: [], className: "", type: "", onclick: null,
+      append(...children) { this.children.push(...children); },
+      appendChild(child) { this.children.push(child); return child; },
+      replaceChildren(...children) { this.children = [...children]; this.textContent = ""; },
+      setAttribute(name, value) { attributes.set(name, String(value)); },
+      getAttribute(name) { return attributes.get(name); },
+    };
+  }
+  const document = {
+    hidden: false,
+    getElementById: id => nodes[id] ||= element(),
+    createElement: tagName => element(tagName),
+  };
+  function addEventListener(name, listener) {
+    if (!listeners.has(name)) listeners.set(name, []);
+    listeners.get(name).push(listener);
+  }
+  function emit(name, event) {
+    for (const listener of listeners.get(name) || []) listener(event);
+  }
+  function setTimer(callback, delay, interval = false) {
+    const id = nextTimer++;
+    timers.set(id, { callback, delay, interval });
+    return id;
+  }
+  runInNewContext(script, {
+    document, parent, addEventListener, TextEncoder, crypto, btoa,
+    setTimeout: setTimer,
+    clearTimeout: id => timers.delete(id),
+    setInterval: (callback, delay) => setTimer(callback, delay, true),
+    clearInterval: id => timers.delete(id),
+  });
+  function deliver(message, source = parent) {
+    emit("message", { source, data: { jsonrpc: "2.0", ...message } });
+  }
+  return {
+    nodes, timers, sent,
+    calls(name) { return sent.filter(message => message.method === "tools/call" && message.params.name === name); },
+    notification(method, params, source) {
+      deliver({ method, params }, source);
+    },
+    toolInput(args, source) {
+      deliver({ method: "ui/notifications/tool-input", params: { arguments: args } }, source);
+    },
+    toolResult(output, source) {
+      deliver({ method: "ui/notifications/tool-result", params: toolResult(output) }, source);
+    },
+    async reply(request, result) {
+      // Only App-originated tools/call crosses this policy. Initial model-tool
+      // result notifications remain a separate lifecycle with their own shape.
+      if (request.method === "tools/call") {
+        if (!deliverToolMeta) result = stripToolResultMeta(result);
+        if (!deliverToolStructuredContent) result = stripToolResultStructuredContent(result);
+      }
+      deliver({ id: request.id, result });
+      await flush();
+    },
+    async reject(request, error = { code: -32000, message: "Host request failed" }) {
+      deliver({ id: request.id, error });
+      await flush();
+    },
+    async initialize(outcome = "success") {
+      if (outcome === "timeout") await this.fireTimers(10000);
+      else {
+        deliver({ id: sent[0].id, ...(outcome === "success"
+          ? { result: { protocolVersion: "2026-01-26" } }
+          : { error: { message: "Host initialization rejected" } }) });
+        await flush();
+      }
+    },
+    async fireTimers(delay) {
+      for (const [id, timer] of [...timers]) {
+        if (timer.delay !== delay) continue;
+        if (!timer.interval) timers.delete(id);
+        timer.callback();
+      }
+      await flush();
+    },
+    async visibility(hidden) {
+      document.hidden = hidden;
+      emit("visibilitychange", {});
+      await flush();
+    },
+    async teardown(method = "ui/resource-teardown") {
+      if (method === "ui/resource-teardown") deliver({ method, id: "host-teardown" });
+      else emit(method, {});
+      await flush();
+    },
+  };
+}
+
+export function stripToolResultMeta(result) {
+  const { _meta, ...standard } = result;
+  return standard;
+}
+
+export function stripToolResultStructuredContent(result) {
+  const { structuredContent, structured_content, ...standard } = result;
+  return standard;
+}
+
+export function toolResult(output, privateMeta) {
+  return {
+    structuredContent: { success: true, output },
+    ...(privateMeta ? { _meta: { "webcodex/agentContinuation": privateMeta } } : {}),
+  };
+}

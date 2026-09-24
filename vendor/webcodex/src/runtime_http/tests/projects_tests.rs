@@ -1,0 +1,293 @@
+use salvo::http::StatusCode;
+use salvo::test::{ResponseExt, TestClient};
+use salvo::Service;
+use serde_json::{json, Value};
+use std::sync::Arc;
+
+// =========================================================================
+// listProjects
+// =========================================================================
+
+#[tokio::test]
+async fn http_projects_list_rejects_wrong_bearer() {
+    let _env = crate::auth::AuthEnvGuard::auth_required();
+    let config = super::test_config(Some("secret"));
+    let (_tmp, db) = super::test_db();
+    let tmp_proj = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(super::runtime_with_local_project(tmp_proj.path(), "demo"));
+    let service = Service::new(super::build_projects_router(config, db, runtime));
+
+    let resp = TestClient::post("http://localhost/api/projects/list")
+        .bearer_auth("wrong")
+        .json(&json!({}))
+        .send(&service)
+        .await;
+    assert_eq!(super::effective_status(&resp), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn http_projects_list_ignores_server_configured_projects() {
+    let config = super::test_config(Some("secret"));
+    let (_tmp, db) = super::test_db();
+    let tmp_proj = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(super::runtime_with_local_project(tmp_proj.path(), "demo"));
+    let service = Service::new(super::build_projects_router(config, db, runtime));
+
+    let mut resp = TestClient::post("http://localhost/api/projects/list")
+        .bearer_auth("secret")
+        .json(&json!({}))
+        .send(&service)
+        .await;
+    assert_eq!(super::effective_status(&resp), StatusCode::OK);
+    let body: Value = resp.take_json().await.unwrap();
+    assert_eq!(body["success"], true);
+    let list = body["output"]["projects"]
+        .as_array()
+        .expect("output.projects is a project array");
+    assert_eq!(body["output"]["count"], 0);
+    assert!(
+        list.is_empty(),
+        "runtime project discovery is agent-registered only"
+    );
+}
+
+#[tokio::test]
+async fn http_projects_list_optional_body_accepts_empty_and_rejects_malformed_json() {
+    let config = super::test_config(Some("secret"));
+    let (_tmp, db) = super::test_db();
+    let tmp_proj = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(super::runtime_with_local_project(tmp_proj.path(), "demo"));
+    let service = Service::new(super::build_projects_router(config, db, runtime));
+
+    let resp = TestClient::post("http://localhost/api/projects/list")
+        .bearer_auth("secret")
+        .send(&service)
+        .await;
+    assert_eq!(super::effective_status(&resp), StatusCode::OK);
+
+    let mut resp = TestClient::post("http://localhost/api/projects/list")
+        .bearer_auth("secret")
+        .add_header("content-type", "application/json", true)
+        .body("{\"client_id\":")
+        .send(&service)
+        .await;
+    assert_eq!(super::effective_status(&resp), StatusCode::BAD_REQUEST);
+    let body: Value = resp.take_json().await.unwrap();
+    assert_eq!(body["status"], 400);
+    assert!(body["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("Invalid JSON")));
+}
+
+// =========================================================================
+// register_project / create_project REST endpoints
+// =========================================================================
+
+#[tokio::test]
+async fn http_projects_register_rejects_unknown_client_id() {
+    let config = super::test_config(Some("secret"));
+    let (_tmp, db) = super::test_db();
+    let tmp_proj = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(super::runtime_with_local_project(tmp_proj.path(), "demo"));
+    let service = Service::new(super::build_projects_router(config, db, runtime));
+
+    let mut resp = TestClient::post("http://localhost/api/projects/register")
+        .bearer_auth("secret")
+        .json(&json!({
+            "client_id": "no-such-agent",
+            "id": "my-project",
+            "name": "My Project",
+            "path": "/root/git/my-project"
+        }))
+        .send(&service)
+        .await;
+    assert_eq!(super::effective_status(&resp), StatusCode::BAD_REQUEST);
+    let body: Value = resp.take_json().await.unwrap();
+    assert_eq!(body["success"], false);
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("unknown Runner")),
+        "register_project should reject unknown client_id: {:?}",
+        body["error"]
+    );
+}
+
+#[tokio::test]
+async fn http_projects_create_rejects_unknown_client_id() {
+    let config = super::test_config(Some("secret"));
+    let (_tmp, db) = super::test_db();
+    let tmp_proj = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(super::runtime_with_local_project(tmp_proj.path(), "demo"));
+    let service = Service::new(super::build_projects_router(config, db, runtime));
+
+    let mut resp = TestClient::post("http://localhost/api/projects/create")
+        .bearer_auth("secret")
+        .json(&json!({
+            "client_id": "no-such-agent",
+            "id": "hello",
+            "name": "Hello",
+            "path": "/root/git/hello"
+        }))
+        .send(&service)
+        .await;
+    assert_eq!(super::effective_status(&resp), StatusCode::BAD_REQUEST);
+    let body: Value = resp.take_json().await.unwrap();
+    assert_eq!(body["success"], false);
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("unknown Runner")),
+        "create_project should reject unknown client_id: {:?}",
+        body["error"]
+    );
+}
+
+#[tokio::test]
+async fn http_projects_create_keeps_unrelated_unknown_field_tolerance() {
+    let config = super::test_config(Some("secret"));
+    let (_tmp, db) = super::test_db();
+    let tmp_proj = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(super::runtime_with_local_project(tmp_proj.path(), "demo"));
+    let service = Service::new(super::build_projects_router(config, db, runtime));
+
+    let mut resp = TestClient::post("http://localhost/api/projects/create")
+        .bearer_auth("secret")
+        .json(&json!({
+            "client_id": "no-such-agent",
+            "id": "hello",
+            "name": "Hello",
+            "path": "/root/git/hello",
+            "unrelated_legacy_field": "ignored"
+        }))
+        .send(&service)
+        .await;
+
+    assert_eq!(super::effective_status(&resp), StatusCode::BAD_REQUEST);
+    let body: Value = resp.take_json().await.unwrap();
+    assert_eq!(body["success"], false);
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("unknown Runner")),
+        "unrelated unknown fields should keep the endpoint's historical tolerance: {:?}",
+        body["error"]
+    );
+}
+
+#[tokio::test]
+async fn http_projects_create_rejects_retired_managed_temporary_field_before_dispatch() {
+    let config = super::test_config(Some("secret"));
+    let (_tmp, db) = super::test_db();
+    let tmp_proj = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(super::runtime_with_local_project(tmp_proj.path(), "demo"));
+    let service = Service::new(super::build_projects_router(config, db, runtime));
+
+    let mut resp = TestClient::post("http://localhost/api/projects/create")
+        .bearer_auth("secret")
+        .json(&json!({
+            "client_id": "no-such-agent",
+            "id": "legacy-temp",
+            "name": "Legacy Temp",
+            "path": "/root/git/legacy-temp",
+            "managed_temporary_project": true
+        }))
+        .send(&service)
+        .await;
+
+    assert_eq!(super::effective_status(&resp), StatusCode::BAD_REQUEST);
+    let body: Value = resp.take_json().await.unwrap();
+    assert_eq!(body["success"], false);
+    let error = body["error"].as_str().unwrap_or_default();
+    assert!(error.contains("managed_temporary_project"), "{error}");
+    assert!(error.contains("no longer supported"), "{error}");
+    assert!(
+        !error.contains("unknown agent"),
+        "retired field must fail before project dispatch: {error}"
+    );
+}
+
+#[tokio::test]
+async fn http_projects_create_rejects_retired_allow_existing_empty_before_dispatch() {
+    let config = super::test_config(Some("secret"));
+    let (_tmp, db) = super::test_db();
+    let tmp_proj = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(super::runtime_with_local_project(tmp_proj.path(), "demo"));
+    let service = Service::new(super::build_projects_router(config, db, runtime));
+
+    let mut resp = TestClient::post("http://localhost/api/projects/create")
+        .bearer_auth("secret")
+        .json(&json!({
+            "client_id": "no-such-agent",
+            "id": "existing-empty",
+            "name": "Existing Empty",
+            "path": "/root/git/existing-empty",
+            "allow_existing_empty": true
+        }))
+        .send(&service)
+        .await;
+
+    assert_eq!(super::effective_status(&resp), StatusCode::BAD_REQUEST);
+    let body: Value = resp.take_json().await.unwrap();
+    assert_eq!(body["success"], false);
+    let error = body["error"].as_str().unwrap_or_default();
+    assert!(error.contains("allow_existing_empty"), "{error}");
+    assert!(error.contains("adopt_existing_empty"), "{error}");
+    assert!(
+        !error.contains("unknown Runner"),
+        "retired field must fail before project dispatch: {error}"
+    );
+}
+
+#[tokio::test]
+async fn http_projects_register_rejects_unsafe_id() {
+    let config = super::test_config(Some("secret"));
+    let (_tmp, db) = super::test_db();
+    let tmp_proj = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(super::runtime_with_local_project(tmp_proj.path(), "demo"));
+    let service = Service::new(super::build_projects_router(config, db, runtime));
+
+    let mut resp = TestClient::post("http://localhost/api/projects/register")
+        .bearer_auth("secret")
+        .json(&json!({
+            "client_id": "oe",
+            "id": "a/b",
+            "name": "Test",
+            "path": "/root/git/test"
+        }))
+        .send(&service)
+        .await;
+    assert_eq!(super::effective_status(&resp), StatusCode::BAD_REQUEST);
+    let body: Value = resp.take_json().await.unwrap();
+    assert_eq!(body["success"], false);
+}
+
+#[tokio::test]
+async fn http_projects_create_rejects_relative_path() {
+    let config = super::test_config(Some("secret"));
+    let (_tmp, db) = super::test_db();
+    let tmp_proj = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(super::runtime_with_local_project(tmp_proj.path(), "demo"));
+    let service = Service::new(super::build_projects_router(config, db, runtime));
+
+    let mut resp = TestClient::post("http://localhost/api/projects/create")
+        .bearer_auth("secret")
+        .json(&json!({
+            "client_id": "oe",
+            "id": "hello",
+            "name": "Hello",
+            "path": "relative/path"
+        }))
+        .send(&service)
+        .await;
+    assert_eq!(super::effective_status(&resp), StatusCode::BAD_REQUEST);
+    let body: Value = resp.take_json().await.unwrap();
+    assert_eq!(body["success"], false);
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("absolute")),
+        "create_project should reject relative path: {:?}",
+        body["error"]
+    );
+}

@@ -1,0 +1,894 @@
+<div id="app" style="font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:16px;border:1px solid color-mix(in srgb,var(--color-border-primary,#8b8b8b) 72%,#d99742 28%);border-radius:14px;max-width:760px;color:var(--color-text-primary,inherit);background:var(--color-background-primary,#fff);background:linear-gradient(145deg,color-mix(in srgb,var(--color-background-primary,#fff) 96%,#d99742 4%),var(--color-background-primary,#fff));box-shadow:0 10px 30px rgba(0,0,0,.055)">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <strong id="title" style="font-size:17px;letter-spacing:-.01em">WebCodex Changes</strong>
+    <span id="state" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-variant-numeric:tabular-nums;font-weight:600">HTML loaded</span>
+  </div>
+  <div id="summary" style="margin-top:8px;font-size:13px;color:var(--color-text-secondary,inherit)">Waiting for a bounded Changes presentation</div>
+  <div id="cards" style="display:grid;gap:10px;margin-top:12px"></div>
+</div>
+<script>
+(() => {
+  const APP_PROTOCOL = "2026-01-26";
+  const PRESENTATION_KEY = "webcodex/presentation";
+  const MAX_ITEMS = 8;
+  const MAX_TEXT = 256;
+  const DEFAULT_VISIBLE_FILES = 3;
+  const MAX_DIFF_HUNKS = 8;
+  const MAX_DIFF_LINES = 80;
+  const MAX_DIFF_TEXT = 12 * 1024;
+  const stateEl = document.getElementById("state");
+  const titleEl = document.getElementById("title");
+  const summaryEl = document.getElementById("summary");
+  const cardsEl = document.getElementById("cards");
+  const pending = new Map();
+  let nextId = 1;
+  let receivedToolResult = false;
+
+  function boundedString(value) {
+    if (typeof value !== "string") return null;
+    const chars = Array.from(value);
+    return chars.length <= MAX_TEXT ? value : chars.slice(0, MAX_TEXT - 1).join("") + "…";
+  }
+
+  function boundedDiffString(value) {
+    if (typeof value !== "string" || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)) return null;
+    const lines = value.split(/\r?\n/).slice(0, MAX_DIFF_LINES);
+    const lineBounded = lines.join("\n");
+    const chars = Array.from(lineBounded);
+    return chars.length <= MAX_DIFF_TEXT ? lineBounded : chars.slice(0, MAX_DIFF_TEXT).join("");
+  }
+
+  function request(method, params, timeoutMs = 10000) {
+    const id = nextId++;
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(method + " timed out"));
+      }, timeoutMs);
+      pending.set(id, { resolve, reject, timeout });
+      try {
+        window.parent.postMessage({ jsonrpc: "2.0", id, method, params: params || {} }, "*");
+      } catch (error) {
+        pending.delete(id);
+        clearTimeout(timeout);
+        reject(error);
+      }
+    });
+  }
+
+  function notify(method, params) {
+    window.parent.postMessage({ jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) }, "*");
+  }
+
+  function clearCards() {
+    while (cardsEl.firstChild) cardsEl.removeChild(cardsEl.firstChild);
+    cardsEl.style.maxHeight = "";
+    cardsEl.style.overflowY = "visible";
+    cardsEl.style.paddingRight = "";
+    cardsEl.scrollTop = 0;
+  }
+
+  function addRow(card, label, value) {
+    if (value === undefined || value === null || value === "") return;
+    const row = document.createElement("div");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "minmax(100px, 140px) 1fr";
+    row.style.gap = "10px";
+    row.style.fontSize = "13px";
+    const key = document.createElement("span");
+    key.style.opacity = ".68";
+    key.textContent = label;
+    const text = document.createElement("span");
+    text.style.overflowWrap = "anywhere";
+    text.textContent = typeof value === "string" ? (boundedString(value) || "") : String(value);
+    row.appendChild(key);
+    row.appendChild(text);
+    card.appendChild(row);
+  }
+
+  function toolTitle(tool) {
+    if (tool === "cargo_check") return "Cargo Check";
+    if (tool === "cargo_test") return "Cargo Test";
+    if (tool === "go_test") return "Go Test";
+    return boundedString(tool) || "Validation";
+  }
+
+  function durationText(value) {
+    if (!Number.isFinite(value)) return null;
+    if (value < 1000) return String(value) + " ms";
+    return (value / 1000).toFixed(value < 10000 ? 2 : 1) + " s";
+  }
+
+  function validationRunState(presentation) {
+    const execution = boundedString(presentation.execution_state);
+    const failure = boundedString(presentation.failure_kind);
+    if (execution === "queued") return "Queued";
+    if (execution === "running") return "Running";
+    if (execution === "timed_out") return "Timed out";
+    if (execution === "outcome_unknown") return "Outcome unknown";
+    if (execution === "not_started") return "Not started";
+    if (execution === "completed" && presentation.passed === true) return "Passed";
+    if (execution === "completed" && failure === "validation_failed") return "Validation failed";
+    if (execution === "completed" && failure === "process_exit") return "Process exited";
+    if (execution === "completed" && presentation.passed === false) return failure || "Completed · not passed";
+    return execution || failure || "Validation result";
+  }
+
+  function appendDetailsCard(configure) {
+    const details = document.createElement("details");
+    details.style.border = "1px solid var(--color-border-secondary,rgba(127,127,127,.25))";
+    details.style.borderRadius = "10px";
+    details.style.padding = "10px 12px";
+    const summary = document.createElement("summary");
+    summary.style.cursor = "pointer";
+    summary.style.fontSize = "13px";
+    summary.style.fontWeight = "600";
+    summary.textContent = "Details";
+    details.appendChild(summary);
+    const body = document.createElement("div");
+    body.style.display = "grid";
+    body.style.gap = "6px";
+    body.style.marginTop = "10px";
+    configure(body);
+    details.appendChild(body);
+    cardsEl.appendChild(details);
+  }
+
+  function addDiagnostic(body, item) {
+    if (!item || typeof item !== "object") return;
+    const severity = boundedString(item.severity) || "diagnostic";
+    const code = boundedString(item.code);
+    const message = boundedString(item.message);
+    if (!message) return;
+    const line = document.createElement("div");
+    line.style.fontSize = "12px";
+    line.style.overflowWrap = "anywhere";
+    line.textContent = severity + (code ? " [" + code + "]" : "") + ": " + message;
+    body.appendChild(line);
+  }
+
+  function addFailedTest(body, item) {
+    if (!item || typeof item !== "object") return;
+    const name = boundedString(item.name);
+    if (!name) return;
+    const kind = boundedString(item.failure_kind);
+    const line = document.createElement("div");
+    line.style.fontSize = "12px";
+    line.style.overflowWrap = "anywhere";
+    line.textContent = "Test: " + name + (kind ? " · " + kind : "");
+    body.appendChild(line);
+  }
+
+  function renderValidationRun(presentation) {
+    titleEl.textContent = toolTitle(presentation.tool);
+    const state = validationRunState(presentation);
+    stateEl.textContent = state;
+    const parts = [];
+    if (Number.isInteger(presentation.tests_run_count)) {
+      parts.push(String(presentation.tests_run_count) + " tests");
+      if (Number.isInteger(presentation.tests_passed)) parts.push(String(presentation.tests_passed) + " passed");
+      if (Number.isInteger(presentation.tests_failed)) parts.push(String(presentation.tests_failed) + " failed");
+    } else if (Number.isInteger(presentation.errors_count) || Number.isInteger(presentation.warnings_count)) {
+      if (Number.isInteger(presentation.errors_count)) parts.push(String(presentation.errors_count) + " errors");
+      if (Number.isInteger(presentation.warnings_count)) parts.push(String(presentation.warnings_count) + " warnings");
+    }
+    const duration = durationText(presentation.duration_ms);
+    if (duration) parts.push(duration);
+    summaryEl.textContent = parts.length ? parts.join(" · ") : state;
+
+    appendDetailsCard((body) => {
+      addRow(body, "Execution", boundedString(presentation.execution_state));
+      addRow(body, "Failure kind", boundedString(presentation.failure_kind));
+      addRow(body, "Terminal", typeof presentation.terminal === "boolean" ? (presentation.terminal ? "yes" : "no") : null);
+      addRow(body, "Command started", typeof presentation.command_started === "boolean" ? (presentation.command_started ? "yes" : "no") : null);
+      addRow(body, "Command completed", typeof presentation.command_completed === "boolean" ? (presentation.command_completed ? "yes" : "no") : null);
+      addRow(body, "Job", boundedString(presentation.job_id));
+      addRow(body, "Job status", boundedString(presentation.job_status));
+      addRow(body, "Exit code", Number.isInteger(presentation.exit_code) ? presentation.exit_code : null);
+      const diagnostics = presentation.diagnostics && typeof presentation.diagnostics === "object" ? presentation.diagnostics : null;
+      if (!diagnostics) return;
+      addRow(body, "Diagnostics available", typeof diagnostics.available === "boolean" ? (diagnostics.available ? "yes" : "no") : null);
+      addRow(body, "Diagnostics", Number.isInteger(diagnostics.diagnostic_count) ? diagnostics.diagnostic_count : null);
+      addRow(body, "Diagnostics returned", Number.isInteger(diagnostics.returned_diagnostic_count) ? diagnostics.returned_diagnostic_count : null);
+      const items = Array.isArray(diagnostics.items) ? diagnostics.items.slice(0, MAX_ITEMS) : [];
+      const remaining = Math.max(0, MAX_ITEMS - items.length);
+      const failed = Array.isArray(diagnostics.failed_tests) ? diagnostics.failed_tests.slice(0, remaining) : [];
+      items.forEach((item) => addDiagnostic(body, item));
+      failed.forEach((item) => addFailedTest(body, item));
+      if (diagnostics.diagnostics_truncated === true || diagnostics.failed_test_details_truncated === true || diagnostics.presentation_items_truncated === true) {
+        addRow(body, "Diagnostic detail", "bounded/truncated");
+      }
+    });
+  }
+
+  function addEvidenceEvent(body, event) {
+    if (!event || typeof event !== "object") return;
+    const name = toolTitle(event.tool_name);
+    const failure = boundedString(event.failure_kind);
+    const line = document.createElement("div");
+    line.style.fontSize = "12px";
+    line.style.overflowWrap = "anywhere";
+    const facts = [];
+    if (typeof event.validation_passed === "boolean") facts.push("validation " + (event.validation_passed ? "passed" : "not passed"));
+    if (typeof event.expectation_satisfied === "boolean") facts.push("expectation " + (event.expectation_satisfied ? "satisfied" : "not satisfied"));
+    if (failure) facts.push(failure);
+    if (Number.isInteger(event.tests_run_count)) facts.push(String(event.tests_run_count) + " tests");
+    if (Number.isInteger(event.tests_failed)) facts.push(String(event.tests_failed) + " failed");
+    line.textContent = name + (facts.length ? " · " + facts.join(" · ") : "");
+    body.appendChild(line);
+  }
+
+  function renderValidationSummary(presentation) {
+    const validation = presentation.validation && typeof presentation.validation === "object" ? presentation.validation : {};
+    const status = boundedString(validation.status) || "unknown";
+    const current = validation.current_evidence && typeof validation.current_evidence === "object" ? validation.current_evidence : null;
+    const currentStatus = current ? boundedString(current.status) : null;
+    const historical = validation.historical_failures && typeof validation.historical_failures === "object" ? validation.historical_failures : null;
+    titleEl.textContent = "Validation evidence";
+    stateEl.textContent = status;
+    const parts = [];
+    if (currentStatus) parts.push("current: " + currentStatus);
+    if (current && Number.isInteger(current.events_total)) parts.push(String(current.events_total) + " current events");
+    if (historical && Number.isInteger(historical.count)) parts.push(String(historical.count) + " historical failures");
+    summaryEl.textContent = parts.length ? parts.join(" · ") : "Ledger status: " + status;
+
+    appendDetailsCard((body) => {
+      addRow(body, "Ledger status", status);
+      addRow(body, "Latest status", boundedString(validation.latest_status));
+      addRow(body, "Available", typeof validation.available === "boolean" ? (validation.available ? "yes" : "no") : null);
+      if (current) {
+        addRow(body, "Current status", currentStatus);
+        addRow(body, "Current reason", boundedString(current.reason));
+        addRow(body, "Current latest", boundedString(current.latest_status));
+        addRow(body, "Boundary", boundedString(current.boundary_reason));
+        addRow(body, "Current successes", Number.isInteger(current.successes) ? current.successes : null);
+        addRow(body, "Current failures", Number.isInteger(current.failures) ? current.failures : null);
+        addRow(body, "Resolved failures", Number.isInteger(current.resolved_failure_count) ? current.resolved_failure_count : null);
+        addRow(body, "Unresolved failures", Number.isInteger(current.unresolved_failure_count) ? current.unresolved_failure_count : null);
+        addRow(body, "Evidence gaps", Number.isInteger(current.evidence_gap_event_count) ? current.evidence_gap_event_count : null);
+        addRow(body, "Evidence after content change", typeof current.evidence_after_latest_content_change === "boolean" ? (current.evidence_after_latest_content_change ? "yes" : "no") : null);
+      }
+      if (historical) {
+        addRow(body, "Historical failures", Number.isInteger(historical.count) ? historical.count : null);
+        addRow(body, "History resolved", typeof historical.resolved === "boolean" ? (historical.resolved ? "yes" : "no") : null);
+        addRow(body, "History unresolved", typeof historical.unresolved === "boolean" ? (historical.unresolved ? "yes" : "no") : null);
+      }
+      const resolved = validation.resolved_failures && typeof validation.resolved_failures === "object" ? validation.resolved_failures : null;
+      const unresolved = validation.unresolved_failures && typeof validation.unresolved_failures === "object" ? validation.unresolved_failures : null;
+      const gaps = validation.evidence_gaps && typeof validation.evidence_gaps === "object" ? validation.evidence_gaps : null;
+      addRow(body, "Resolved failures (all)", resolved && Number.isInteger(resolved.count) ? resolved.count : null);
+      addRow(body, "Unresolved failures (all)", unresolved && Number.isInteger(unresolved.count) ? unresolved.count : null);
+      addRow(body, "Evidence gaps (all)", gaps && Number.isInteger(gaps.count) ? gaps.count : null);
+      addRow(body, "Cargo test zero tests", typeof validation.cargo_test_zero_tests_run === "boolean" ? (validation.cargo_test_zero_tests_run ? "yes" : "no") : null);
+      const events = Array.isArray(validation.events) ? validation.events.slice(0, MAX_ITEMS) : [];
+      events.forEach((event) => addEvidenceEvent(body, event));
+      if (validation.events_truncated === true) addRow(body, "Event detail", "card subset bounded");
+    });
+  }
+
+  function addGitFile(body, item, reviewMode) {
+    if (!item || typeof item !== "object") return;
+    const path = boundedString(item.path);
+    const status = boundedString(item.status);
+    const oldPath = boundedString(reviewMode ? item.previous_path : item.old_path);
+    const line = document.createElement("div");
+    line.style.fontSize = "12px";
+    line.style.overflowWrap = "anywhere";
+    const facts = [];
+    if (status) facts.push(status);
+    if (reviewMode) {
+      if (Number.isInteger(item.additions)) facts.push("+" + String(item.additions));
+      if (Number.isInteger(item.deletions)) facts.push("−" + String(item.deletions));
+      if (item.binary === true) facts.push("binary");
+      if (item.gitlink === true) facts.push("gitlink");
+      const classes = Array.isArray(item.classes) ? item.classes.slice(0, MAX_ITEMS).map(boundedString).filter(Boolean) : [];
+      if (classes.length) facts.push(classes.join(", "));
+    } else {
+      if (item.staged === true) facts.push("staged");
+      if (item.unstaged === true) facts.push("unstaged");
+    }
+    line.textContent = (path || (item.path_omitted === true ? "path omitted" : "changed file"))
+      + (oldPath ? " ← " + oldPath : "")
+      + (facts.length ? " · " + facts.join(" · ") : "");
+    body.appendChild(line);
+  }
+
+  function changeKindLabel(item) {
+    const status = boundedString(item && item.status);
+    if (status === "added") return "A";
+    if (status === "deleted") return "D";
+    if (status === "renamed") return "R";
+    if (status === "copied") return "C";
+    if (status === "untracked") return "?";
+    if (status === "conflicted") return "!";
+    if (status === "modified") return "M";
+    return "?";
+  }
+
+  function changeTone(item) {
+    const status = boundedString(item && item.status);
+    if (status === "added") {
+      return {
+        foreground: "var(--color-success-text,#2f9e44)",
+        background: "color-mix(in srgb,var(--color-success-text,#2f9e44) 13%,transparent)",
+        border: "color-mix(in srgb,var(--color-success-text,#2f9e44) 28%,transparent)"
+      };
+    }
+    if (status === "deleted" || status === "conflicted") {
+      return {
+        foreground: "var(--color-danger-text,#d9485f)",
+        background: "color-mix(in srgb,var(--color-danger-text,#d9485f) 12%,transparent)",
+        border: "color-mix(in srgb,var(--color-danger-text,#d9485f) 26%,transparent)"
+      };
+    }
+    if (status === "modified" || status === "renamed" || status === "copied") {
+      return {
+        foreground: "var(--color-warning-text,#d99742)",
+        background: "color-mix(in srgb,var(--color-warning-text,#d99742) 13%,transparent)",
+        border: "color-mix(in srgb,var(--color-warning-text,#d99742) 28%,transparent)"
+      };
+    }
+    return {
+      foreground: "var(--color-text-secondary,#6b7280)",
+      background: "color-mix(in srgb,var(--color-text-secondary,#6b7280) 9%,transparent)",
+      border: "color-mix(in srgb,var(--color-text-secondary,#6b7280) 20%,transparent)"
+    };
+  }
+
+  function addChangeStat(stats, prefix, value, color) {
+    if (!Number.isInteger(value) || value < 0) return;
+    const span = document.createElement("span");
+    span.style.color = color;
+    span.style.fontWeight = "650";
+    span.textContent = prefix + String(value);
+    stats.appendChild(span);
+  }
+
+  function appendDiffLine(pre, line) {
+    const span = document.createElement("span");
+    span.style.display = "block";
+    span.style.minHeight = "1.45em";
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      span.style.color = "var(--color-success-text,#2f9e44)";
+      span.style.background = "color-mix(in srgb,var(--color-success-text,#2f9e44) 8%,transparent)";
+    } else if (line.startsWith("-") && !line.startsWith("---")) {
+      span.style.color = "var(--color-danger-text,#d9485f)";
+      span.style.background = "color-mix(in srgb,var(--color-danger-text,#d9485f) 8%,transparent)";
+    } else if (line.startsWith("@@")) {
+      span.style.color = "var(--color-warning-text,#d99742)";
+      span.style.fontWeight = "600";
+    } else {
+      span.style.color = "var(--color-text-secondary,inherit)";
+    }
+    span.textContent = line || " ";
+    pre.appendChild(span);
+  }
+
+  function appendChangeDiff(card, item) {
+    const hunks = Array.isArray(item.diff_hunks) ? item.diff_hunks.slice(0, MAX_DIFF_HUNKS) : [];
+    if (!hunks.length) return;
+    const details = document.createElement("details");
+    details.style.marginTop = "9px";
+    details.style.borderTop = "1px solid color-mix(in srgb,var(--color-warning-text,#d99742) 18%,var(--color-border-secondary,rgba(127,127,127,.18)))";
+    details.style.paddingTop = "8px";
+    const summary = document.createElement("summary");
+    summary.style.cursor = "pointer";
+    summary.style.fontSize = "12px";
+    summary.style.fontWeight = "650";
+    summary.style.color = "var(--color-warning-text,#d99742)";
+    summary.textContent = "View diff";
+    details.appendChild(summary);
+    details.addEventListener("toggle", () => {
+      summary.textContent = details.open ? "Hide diff" : "View diff";
+    });
+    hunks.forEach((hunk) => {
+      if (!hunk || typeof hunk !== "object") return;
+      const diff = boundedDiffString(hunk.diff);
+      if (diff === null) return;
+      const pre = document.createElement("pre");
+      pre.style.margin = "8px 0 0";
+      pre.style.padding = "9px 10px";
+      pre.style.border = "1px solid var(--color-border-secondary,rgba(127,127,127,.16))";
+      pre.style.borderRadius = "8px";
+      pre.style.overflowX = "auto";
+      pre.style.maxHeight = "320px";
+      pre.style.overflowY = "auto";
+      pre.style.fontFamily = "var(--font-mono,ui-monospace,SFMono-Regular,Consolas,monospace)";
+      pre.style.fontSize = "11px";
+      pre.style.lineHeight = "1.45";
+      pre.style.background = "color-mix(in srgb,var(--color-background-secondary,#f5f5f5) 78%,transparent)";
+      diff.split(/\r?\n/).forEach((line) => appendDiffLine(pre, line));
+      details.appendChild(pre);
+    });
+    if (item.diff_truncated === true) {
+      const note = document.createElement("div");
+      note.style.marginTop = "7px";
+      note.style.fontSize = "11px";
+      note.style.color = "var(--color-text-tertiary,var(--color-text-secondary,inherit))";
+      note.textContent = "Bounded diff preview";
+      details.appendChild(note);
+    }
+    if (details.childNodes.length > 1) card.appendChild(details);
+  }
+
+  function changeFileCard(item) {
+    if (!item || typeof item !== "object") return null;
+    const path = boundedString(item.path);
+    if (!path) return null;
+    const tone = changeTone(item);
+    const card = document.createElement("div");
+    card.style.border = "1px solid color-mix(in srgb,var(--color-border-secondary,#b7b7b7) 82%," + tone.foreground + " 18%)";
+    card.style.borderRadius = "10px";
+    card.style.padding = "10px 12px";
+    card.style.background = "color-mix(in srgb,var(--color-background-secondary,#f5f5f5) 62%,transparent)";
+    const row = document.createElement("div");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "24px minmax(0,1fr) auto";
+    row.style.alignItems = "center";
+    row.style.gap = "9px";
+    const kind = document.createElement("strong");
+    kind.style.display = "grid";
+    kind.style.width = "22px";
+    kind.style.height = "22px";
+    kind.style.placeItems = "center";
+    kind.style.border = "1px solid " + tone.border;
+    kind.style.borderRadius = "6px";
+    kind.style.background = tone.background;
+    kind.style.color = tone.foreground;
+    kind.style.fontFamily = "var(--font-mono,ui-monospace,SFMono-Regular,Consolas,monospace)";
+    kind.style.fontSize = "11px";
+    kind.style.fontWeight = "750";
+    kind.textContent = changeKindLabel(item);
+    const name = document.createElement("span");
+    name.style.fontFamily = "var(--font-mono,ui-monospace,SFMono-Regular,Consolas,monospace)";
+    name.style.fontSize = "12px";
+    name.style.fontWeight = "600";
+    name.style.overflowWrap = "anywhere";
+    const oldPath = boundedString(item.old_path);
+    name.textContent = path + (oldPath && oldPath !== path ? " ← " + oldPath : "");
+    const stats = document.createElement("span");
+    stats.style.display = "inline-flex";
+    stats.style.gap = "6px";
+    stats.style.fontFamily = "var(--font-mono,ui-monospace,SFMono-Regular,Consolas,monospace)";
+    stats.style.fontSize = "12px";
+    stats.style.fontVariantNumeric = "tabular-nums";
+    stats.style.whiteSpace = "nowrap";
+    addChangeStat(stats, "+", item.additions, "var(--color-success-text,#2f9e44)");
+    addChangeStat(stats, "−", item.deletions, "var(--color-danger-text,#d9485f)");
+    row.appendChild(kind);
+    row.appendChild(name);
+    row.appendChild(stats);
+    card.appendChild(row);
+    appendChangeDiff(card, item);
+    return card;
+  }
+
+  function renderGitChanges(presentation) {
+    const branch = boundedString(presentation.branch);
+    const files = Array.isArray(presentation.files) ? presentation.files.slice(0, MAX_ITEMS) : [];
+    const total = Number.isInteger(presentation.files_total) && presentation.files_total >= 0
+      ? presentation.files_total
+      : files.length;
+    if (presentation.git_available === false) {
+      titleEl.textContent = "Changes unavailable";
+      stateEl.textContent = presentation.non_git_project === true ? "Non-Git" : "Git unavailable";
+      summaryEl.textContent = branch || "No reliable Git worktree presentation is available.";
+      return;
+    }
+    if (presentation.clean === true) {
+      titleEl.textContent = "No changes";
+      stateEl.textContent = "Clean";
+      summaryEl.textContent = branch || "Working tree is clean";
+      return;
+    }
+
+    titleEl.textContent = "Changed " + String(total) + (total === 1 ? " file" : " files");
+    const hasLineStats = Number.isInteger(presentation.additions) && presentation.additions >= 0
+      && Number.isInteger(presentation.deletions) && presentation.deletions >= 0;
+    stateEl.replaceChildren();
+    if (hasLineStats) {
+      addChangeStat(stateEl, "+", presentation.additions, "var(--color-success-text,#2f9e44)");
+      addChangeStat(stateEl, "−", presentation.deletions, "var(--color-danger-text,#d9485f)");
+      if (presentation.line_stats_partial === true) {
+        const partial = document.createElement("span");
+        partial.style.color = "var(--color-text-tertiary,var(--color-text-secondary,inherit))";
+        partial.style.fontWeight = "500";
+        partial.textContent = "partial";
+        stateEl.appendChild(partial);
+      }
+    } else {
+      stateEl.textContent = "Changes";
+    }
+    const parts = [];
+    if (branch) parts.push(branch);
+    if (total > files.length) parts.push(String(files.length) + " of " + String(total) + " files shown");
+    const counts = presentation.counts && typeof presentation.counts === "object" ? presentation.counts : null;
+    if (counts && Number.isInteger(counts.conflicted) && counts.conflicted > 0) {
+      parts.push(String(counts.conflicted) + " conflicts");
+    }
+    if (presentation.files_truncated === true || presentation.output_truncated === true || presentation.items_truncated === true || presentation.diff_truncated === true) {
+      parts.push("bounded view");
+    }
+    summaryEl.textContent = parts.length ? parts.join(" · ") : "Review the changed files below";
+
+    const safeCards = files.map(changeFileCard).filter(Boolean);
+    const initiallyVisible = Math.min(DEFAULT_VISIBLE_FILES, safeCards.length);
+    safeCards.forEach((card, index) => {
+      if (index >= initiallyVisible) card.style.display = "none";
+      cardsEl.appendChild(card);
+    });
+    if (safeCards.length > initiallyVisible) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.style.justifySelf = "stretch";
+      button.style.padding = "7px 11px";
+      button.style.borderRadius = "8px";
+      button.style.border = "1px solid color-mix(in srgb,var(--color-warning-text,#d99742) 28%,var(--color-border-secondary,rgba(127,127,127,.28)))";
+      button.style.background = "color-mix(in srgb,var(--color-warning-text,#d99742) 8%,transparent)";
+      button.style.color = "var(--color-warning-text,#d99742)";
+      button.style.fontWeight = "650";
+      button.style.cursor = "pointer";
+      button.style.textAlign = "left";
+      button.style.position = "sticky";
+      button.style.bottom = "0";
+      button.style.zIndex = "3";
+      let expanded = false;
+      const hiddenCount = safeCards.length - initiallyVisible;
+      const syncExpandedFiles = () => {
+        safeCards.slice(initiallyVisible).forEach((card) => {
+          card.style.display = expanded ? "block" : "none";
+        });
+        button.setAttribute("aria-expanded", expanded ? "true" : "false");
+        cardsEl.style.maxHeight = expanded ? "520px" : "";
+        cardsEl.style.overflowY = expanded ? "auto" : "visible";
+        cardsEl.style.paddingRight = expanded ? "3px" : "";
+        if (!expanded) cardsEl.scrollTop = 0;
+        button.textContent = expanded
+          ? "Show fewer files"
+          : "Show " + String(hiddenCount) + " more files";
+      };
+      syncExpandedFiles();
+      button.addEventListener("click", () => {
+        expanded = !expanded;
+        syncExpandedFiles();
+      });
+      cardsEl.appendChild(button);
+    }
+  }
+
+  function renderGitReview(presentation) {
+    titleEl.textContent = "Committed review";
+    stateEl.textContent = boundedString(presentation.reason_code)
+      ? "Unavailable"
+      : presentation.truncated === true
+        ? "Partial"
+        : presentation.deterministic === true ? "Mapped" : "Review metadata";
+    const scope = presentation.scope && typeof presentation.scope === "object" ? presentation.scope : null;
+    const stats = presentation.stats && typeof presentation.stats === "object" ? presentation.stats : null;
+    const parts = [];
+    if (scope && Number.isInteger(scope.commit_count)) parts.push(String(scope.commit_count) + " commits");
+    if (stats && Number.isInteger(stats.files_changed)) parts.push(String(stats.files_changed) + " files");
+    if (stats && Number.isInteger(stats.insertions)) parts.push("+" + String(stats.insertions));
+    if (stats && Number.isInteger(stats.deletions)) parts.push("−" + String(stats.deletions));
+    if (presentation.truncated === true || presentation.items_truncated === true) parts.push("bounded view");
+    summaryEl.textContent = parts.length ? parts.join(" · ") : "Committed-range metadata";
+
+    appendDetailsCard((body) => {
+      if (scope) {
+        const base = boundedString(scope.base);
+        const head = boundedString(scope.head);
+        const mergeBase = boundedString(scope.merge_base);
+        addRow(body, "Requested range", base && head ? base + " → " + head : base || head);
+        addRow(body, "Diff range", mergeBase && head ? mergeBase + " → " + head : null);
+        addRow(body, "Base is ancestor", typeof scope.base_is_ancestor === "boolean" ? (scope.base_is_ancestor ? "yes" : "no") : null);
+      }
+      addRow(body, "Deterministic", typeof presentation.deterministic === "boolean" ? (presentation.deterministic ? "yes" : "no") : null);
+      addRow(body, "Reason", boundedString(presentation.reason_code));
+      if (stats) {
+        addRow(body, "Files changed", Number.isInteger(stats.files_changed) ? stats.files_changed : null);
+        addRow(body, "Insertions", Number.isInteger(stats.insertions) ? stats.insertions : null);
+        addRow(body, "Deletions", Number.isInteger(stats.deletions) ? stats.deletions : null);
+        addRow(body, "Binary files", Number.isInteger(stats.binary_files) ? stats.binary_files : null);
+      }
+      const coverage = presentation.coverage && typeof presentation.coverage === "object" ? presentation.coverage : null;
+      if (coverage) {
+        addRow(body, "Production changed", typeof coverage.production_changed === "boolean" ? (coverage.production_changed ? "yes" : "no") : null);
+        addRow(body, "Tests changed", typeof coverage.tests_changed === "boolean" ? (coverage.tests_changed ? "yes" : "no") : null);
+        addRow(body, "Docs changed", typeof coverage.docs_changed === "boolean" ? (coverage.docs_changed ? "yes" : "no") : null);
+        addRow(body, "Coverage partial", typeof coverage.partial === "boolean" ? (coverage.partial ? "yes" : "no") : null);
+      }
+      const classes = presentation.file_classes && typeof presentation.file_classes === "object" ? presentation.file_classes : null;
+      if (classes && classes.counts_observed && typeof classes.counts_observed === "object") {
+        Object.entries(classes.counts_observed).slice(0, MAX_ITEMS).forEach(([name, count]) => addRow(body, "Class " + boundedString(name), Number.isInteger(count) ? count : null));
+        if (classes.counts_truncated === true) addRow(body, "File classes", "bounded/truncated");
+      }
+      const truncation = presentation.truncation && typeof presentation.truncation === "object" ? presentation.truncation : null;
+      if (truncation) {
+        addRow(body, "Files returned", Number.isInteger(truncation.files_returned) ? truncation.files_returned : null);
+        addRow(body, "Files total", Number.isInteger(truncation.files_total) ? truncation.files_total : null);
+        addRow(body, "Files truncated", typeof truncation.files_truncated === "boolean" ? (truncation.files_truncated ? "yes" : "no") : null);
+      }
+      const files = Array.isArray(presentation.files) ? presentation.files.slice(0, MAX_ITEMS) : [];
+      files.forEach((item) => addGitFile(body, item, true));
+      if (presentation.items_truncated === true) addRow(body, "Review files", "bounded/truncated");
+    });
+  }
+
+  function jobKindLabel(value) {
+    const kind = boundedString(value);
+    if (!kind) return null;
+    if (kind === "test") return "Test";
+    if (kind === "check") return "Check";
+    if (kind === "format") return "Format";
+    if (kind === "build") return "Build";
+    if (kind === "validation") return "Validation";
+    if (kind === "release") return "Release";
+    if (kind === "diagnostic") return "Diagnostic";
+    if (kind === "operation") return "Operation";
+    return null;
+  }
+
+  function jobState(item) {
+    const execution = boundedString(item.command_execution_state);
+    const recovery = boundedString(item.recovery_state);
+    const status = boundedString(item.status);
+    if (execution === "outcome_unknown") return "Outcome unknown";
+    if (recovery === "recovering") return "Recovering";
+    if (item.error_kind) return "Unavailable";
+    if (status === "queued" || status === "agent_queued") return "Queued";
+    if (status === "recovering") return "Recovering";
+    if (status === "started" || status === "running") return "Running";
+    if (status === "stop_requested") return "Stopping";
+    if (status === "completed") return "Completed";
+    if (status === "failed") return "Failed";
+    if (status === "stopped") return "Stopped";
+    if (status === "timeout" || status === "timed_out") return "Timed out";
+    if (status === "lost") return "State lost";
+    if (status === "cancelled") return "Cancelled";
+    return status || "Job";
+  }
+
+  function jobWorkText(item) {
+    const progress = item.progress && typeof item.progress === "object" ? item.progress : null;
+    const progressSummary = progress ? boundedString(progress.summary) : null;
+    if (progressSummary) return progressSummary;
+    const work = item.work && typeof item.work === "object" ? item.work : null;
+    if (!work) return null;
+    const parts = [];
+    const kind = jobKindLabel(work.kind);
+    const outcome = boundedString(work.outcome);
+    if (kind) parts.push(kind);
+    if (outcome) parts.push(outcome.replaceAll("_", " "));
+    if (Number.isInteger(work.tests_run_count)) parts.push(String(work.tests_run_count) + " tests");
+    if (Number.isInteger(work.tests_passed)) parts.push(String(work.tests_passed) + " passed");
+    if (Number.isInteger(work.tests_failed)) parts.push(String(work.tests_failed) + " failed");
+    if (work.zero_tests_run === true) parts.push("zero tests");
+    return parts.length ? parts.join(" · ") : null;
+  }
+
+  function appendJobDetails(card, item) {
+    const details = document.createElement("details");
+    details.style.marginTop = "10px";
+    details.style.borderTop = "1px solid var(--color-border-secondary,rgba(127,127,127,.2))";
+    details.style.paddingTop = "8px";
+    const summary = document.createElement("summary");
+    summary.style.cursor = "pointer";
+    summary.style.fontSize = "12px";
+    summary.style.fontWeight = "600";
+    summary.textContent = "Details";
+    details.appendChild(summary);
+    const body = document.createElement("div");
+    body.style.display = "grid";
+    body.style.gap = "6px";
+    body.style.marginTop = "8px";
+    addRow(body, "Job", boundedString(item.job_id));
+    addRow(body, "Status", boundedString(item.status));
+    addRow(body, "Project", boundedString(item.project));
+    addRow(body, "Terminal", typeof item.terminal === "boolean" ? (item.terminal ? "yes" : "no") : null);
+    addRow(body, "Active", typeof item.active === "boolean" ? (item.active ? "yes" : "no") : null);
+    addRow(body, "Blocking", typeof item.blocking_active === "boolean" ? (item.blocking_active ? "yes" : "no") : null);
+    addRow(body, "Stop pending", typeof item.terminal_pending === "boolean" ? (item.terminal_pending ? "yes" : "no") : null);
+    addRow(body, "Execution", boundedString(item.command_execution_state));
+    addRow(body, "Exit code", Number.isInteger(item.exit_code) ? item.exit_code : null);
+    addRow(body, "Duration", Number.isFinite(item.duration_ms) ? durationText(item.duration_ms) : null);
+    addRow(body, "Elapsed", Number.isFinite(item.elapsed_secs) ? String(item.elapsed_secs) + " s" : null);
+    addRow(body, "Recovery", boundedString(item.recovery_state));
+    addRow(body, "Recovery reason", boundedString(item.recovery_reason));
+    addRow(body, "Wait/log update", boundedString(item.log_delta_status));
+    addRow(body, "stdout lines", Number.isInteger(item.stdout_lines) ? item.stdout_lines : null);
+    addRow(body, "stderr lines", Number.isInteger(item.stderr_lines) ? item.stderr_lines : null);
+    addRow(body, "Error", boundedString(item.error_kind));
+    addRow(body, "Recovery action", boundedString(item.recovery_kind));
+    const suggestedCall = item.suggested_call && typeof item.suggested_call === "object" ? item.suggested_call : null;
+    addRow(body, "Suggested call", suggestedCall ? boundedString(suggestedCall.tool) : null);
+    const progress = item.progress && typeof item.progress === "object" ? item.progress : null;
+    if (progress) {
+      addRow(body, "Progress state", boundedString(progress.state));
+      addRow(body, "Progress reason", boundedString(progress.reason_code));
+    }
+    details.appendChild(body);
+    card.appendChild(details);
+  }
+
+  function renderItem(item) {
+    if (!item || typeof item !== "object") return;
+    const card = document.createElement("div");
+    card.style.border = "1px solid var(--color-border-secondary,rgba(127,127,127,.25))";
+    card.style.borderRadius = "10px";
+    card.style.padding = "12px";
+
+    const header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.alignItems = "baseline";
+    header.style.justifyContent = "space-between";
+    header.style.gap = "12px";
+    const state = document.createElement("strong");
+    state.style.fontSize = "14px";
+    state.textContent = jobState(item);
+    const identity = document.createElement("span");
+    identity.style.fontSize = "11px";
+    identity.style.opacity = ".62";
+    identity.style.overflowWrap = "anywhere";
+    identity.textContent = boundedString(item.job_id) || "Job";
+    header.appendChild(state);
+    header.appendChild(identity);
+    card.appendChild(header);
+
+    const work = jobWorkText(item);
+    if (work && work !== state.textContent) {
+      const headline = document.createElement("div");
+      headline.style.marginTop = "5px";
+      headline.style.fontSize = "13px";
+      headline.textContent = work;
+      card.appendChild(headline);
+    }
+
+    const facts = [];
+    const project = boundedString(item.project);
+    if (project) facts.push(project);
+    if (Number.isFinite(item.elapsed_secs)) facts.push(String(item.elapsed_secs) + " s elapsed");
+    else if (Number.isFinite(item.duration_ms)) facts.push(durationText(item.duration_ms));
+    if (item.blocking_active === true) facts.push("blocking");
+    if (item.terminal_pending === true) facts.push("stop pending");
+    if (facts.length) {
+      const meta = document.createElement("div");
+      meta.style.marginTop = "5px";
+      meta.style.fontSize = "12px";
+      meta.style.opacity = ".68";
+      meta.textContent = facts.join(" · ");
+      card.appendChild(meta);
+    }
+
+    const guidance = boundedString(item.guidance);
+    if (guidance) {
+      const note = document.createElement("div");
+      note.style.marginTop = "8px";
+      note.style.fontSize = "12px";
+      note.style.lineHeight = "1.4";
+      note.textContent = guidance;
+      card.appendChild(note);
+    }
+    appendJobDetails(card, item);
+    cardsEl.appendChild(card);
+  }
+
+  function renderPresentation(presentation) {
+    if (!presentation || typeof presentation !== "object" || presentation.version !== 1) {
+      stateEl.textContent = "changes unavailable";
+      summaryEl.textContent = "No bounded WebCodex presentation metadata was attached.";
+      clearCards();
+      return;
+    }
+    clearCards();
+    if (presentation.kind === "validation_run") {
+      renderValidationRun(presentation);
+      return;
+    }
+    if (presentation.kind === "validation_summary") {
+      renderValidationSummary(presentation);
+      return;
+    }
+    if (presentation.kind === "git_changes") {
+      renderGitChanges(presentation);
+      return;
+    }
+    if (presentation.kind === "git_review") {
+      renderGitReview(presentation);
+      return;
+    }
+    const items = Array.isArray(presentation.items) ? presentation.items.slice(0, MAX_ITEMS) : [];
+    if (presentation.kind === "job_list") {
+      titleEl.textContent = "WebCodex Jobs";
+      const returned = Number.isInteger(presentation.count) ? presentation.count : items.length;
+      const matched = Number.isInteger(presentation.matched_count) ? presentation.matched_count : returned;
+      const presented = Number.isInteger(presentation.presented_count) ? presentation.presented_count : items.length;
+      const active = Number.isInteger(presentation.shown_active_count) ? presentation.shown_active_count : items.filter((item) => item && item.active === true).length;
+      const terminal = Number.isInteger(presentation.shown_terminal_count) ? presentation.shown_terminal_count : items.filter((item) => item && item.terminal === true).length;
+      const attention = Number.isInteger(presentation.shown_attention_count) ? presentation.shown_attention_count : 0;
+      stateEl.textContent = active > 0
+        ? String(active) + " active"
+        : attention > 0
+          ? String(attention) + " attention"
+          : presentation.truncated === true ? "No active jobs shown" : "No active jobs";
+      const parts = [String(presented) + " active/attention", String(matched) + " matched"];
+      if (terminal > 0) parts.push(String(terminal) + " terminal");
+      if (attention > 0) parts.push(String(attention) + " need attention");
+      if (presentation.truncated === true) parts.push("canonical result truncated");
+      if (presentation.items_truncated === true) parts.push("card subset bounded");
+      summaryEl.textContent = parts.join(" · ");
+    } else if (presentation.kind === "job_observation") {
+      titleEl.textContent = items.length === 1 ? "WebCodex Job" : "WebCodex Jobs";
+      const wait = presentation.wait && typeof presentation.wait === "object" ? boundedString(presentation.wait.outcome) : null;
+      const terminal = Number.isInteger(presentation.terminal_count) ? presentation.terminal_count : null;
+      if (items.length === 1) {
+        stateEl.textContent = jobState(items[0]);
+        const parts = [];
+        const work = jobWorkText(items[0]);
+        if (work) parts.push(work);
+        if (wait) parts.push("observation: " + wait);
+        if (terminal !== null && terminal > 0) parts.push("terminal");
+        if (presentation.output_truncated === true) parts.push("canonical result truncated");
+        if (presentation.items_truncated === true) parts.push("card subset bounded");
+        summaryEl.textContent = parts.length ? parts.join(" · ") : "Job observation";
+      } else {
+        stateEl.textContent = String(items.length) + " jobs";
+        summaryEl.textContent = (wait ? "Observation: " + wait : "Job observation")
+          + (terminal === null ? "" : " · " + String(terminal) + " terminal")
+          + (presentation.output_truncated === true ? " · canonical result truncated" : "")
+          + (presentation.items_truncated === true ? " · card subset bounded" : "");
+      }
+    } else {
+      stateEl.textContent = "result rejected";
+      summaryEl.textContent = "Unsupported WebCodex presentation kind.";
+      return;
+    }
+    items.forEach(renderItem);
+  }
+
+  function renderToolResult(result) {
+    receivedToolResult = true;
+    const meta = result && typeof result === "object" && result._meta && typeof result._meta === "object"
+      ? result._meta
+      : null;
+    renderPresentation(meta ? meta[PRESENTATION_KEY] : null);
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window.parent) return;
+    const message = event.data;
+    if (!message || typeof message !== "object" || message.jsonrpc !== "2.0") return;
+    if (message.id !== undefined && pending.has(message.id)) {
+      const item = pending.get(message.id);
+      pending.delete(message.id);
+      clearTimeout(item.timeout);
+      if (message.error !== undefined) item.reject(message.error);
+      else item.resolve(message.result);
+      return;
+    }
+    if (message.method === "ui/notifications/tool-result") renderToolResult(message.params);
+  }, { passive: true });
+
+  async function initialize() {
+    try {
+      const result = await request("ui/initialize", {
+        protocolVersion: APP_PROTOCOL,
+        appInfo: { name: "webcodex-changes-app", title: "WebCodex Changes", version: "2.1.0" },
+        appCapabilities: {}
+      });
+      const protocol = result && typeof result === "object" ? boundedString(result.protocolVersion) : null;
+      notify("ui/notifications/initialized", {});
+      if (!receivedToolResult) {
+        stateEl.textContent = "initialized";
+        summaryEl.textContent = "MCP Apps initialized" + (protocol ? " · " + protocol : "") + " · waiting for bounded Changes";
+      }
+    } catch (error) {
+      if (!receivedToolResult) {
+        stateEl.textContent = "init failed";
+        summaryEl.textContent = "ui/initialize failed: " + boundedString(String(error && error.message ? error.message : error));
+      }
+    }
+  }
+
+  void initialize();
+})();
+</script>

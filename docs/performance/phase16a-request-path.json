@@ -1,0 +1,45 @@
+{
+  "confirmed_shorter_path": {
+    "difference": "WebCodex tunnel-client targets the Runtime Server /mcp directly; Chadex tunnel-client targets a helper-owned local MCP ingress which forwards to the Runtime Server.",
+    "harness": "webcodex",
+    "quantitative_contribution_to_round3_first_tool_ms": null
+  },
+  "evidence": [
+    "Current process inspection: WebCodex tunnel-client command targets its Runtime Server /mcp directly.",
+    "Current process inspection: Chadex tunnel-client targets a helper-owned loopback MCP endpoint while a separate Chadex Runtime Server process is present.",
+    "Chadex rust-helper/src/chadex_core/tunnel.rs constructs backend_mcp_url, starts McpIngress for that backend, then gives ingress.mcp_url() to tunnel-client.",
+    "Vendored WebCodex project_entry_regular_tunnel.rs passes mcp_url(local_server_url) directly to start_openai_tunnel; project_entry_openai_tunnel.rs passes that URL as --mcp.server-url."
+  ],
+  "host_and_relay_boundaries": {
+    "chatgpt_model_request": "unattributed",
+    "first_token": "unattributed",
+    "host_connector_dispatch": "unattributed",
+    "hosted_relay": "unattributed",
+    "tool_decision": "unattributed"
+  },
+  "observed_at": "2026-09-24T00:00:00+08:00",
+  "phase": "16A",
+  "request_paths": {
+    "chadex": [
+      "ChatGPT host",
+      "OpenAI Secure MCP Tunnel / tunnel-client",
+      "Chadex native helper McpIngress proxy",
+      "Chadex Runtime Server /mcp",
+      "Runner when the selected tool requires Runner work"
+    ],
+    "webcodex": [
+      "ChatGPT host",
+      "OpenAI Secure MCP Tunnel / tunnel-client",
+      "WebCodex Runtime Server /mcp",
+      "Runner when the selected tool requires Runner work"
+    ]
+  },
+  "round3_helper_boundary": {
+    "classification": "unresolved_quantitatively",
+    "exact_join_available_in_phase15_design": true,
+    "export_mechanism_verified": "rust-helper queryPerformanceTraces -> app diagnostics export, including server_trace_id",
+    "export_present_in_round3_artifacts": false,
+    "join_key": "server_trace_id"
+  },
+  "schema_version": 1
+}

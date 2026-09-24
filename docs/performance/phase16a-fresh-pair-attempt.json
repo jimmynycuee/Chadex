@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "phase": "16A",
+  "fresh_pair_status": "accepted_for_first_tool_latency_only",
+  "accepted_paired_evidence": [
+    "Round 3 Small/Medium/Large connected pairs",
+    "Fresh Round 3 Small first-tool pair with exact structured project markers plus exact client_window_key/server_trace_id joins"
+  ],
+  "scope_limit": "WebCodex browser recorder was stopped after first-tool evidence was captured; full-task completion is not required for the Phase 16A first-tool metric.",
+  "repo_seed": {
+    "head": "51336aa88fca2e0a601be90077158ada3ee9065c",
+    "tree": "376110e3ecb095b1babcf6bfa0a35da8cfdeb9eb"
+  },
+  "model_effort": "Extra High / 極高, verified by browser driver",
+  "prompt": {
+    "chadex": {
+      "bytes": 1760,
+      "sha256": "f6a82efbc8d77eb8bbc744ce6b3c23b135ceb5785b55d549be8478d4af9d0b08"
+    },
+    "webcodex": {
+      "bytes": 1769,
+      "sha256": "a3f9c5ba8933df8ede29fa8bcb4a52f752f7b61898a04a3acc626ca4e7e58c0c"
+    },
+    "semantic_difference": "only workspace path and connector name; WebCodex probe path adds probe1 suffix"
+  },
+  "fresh_first_tool_pair": {
+    "chadex_profile": "docs/performance/phase16a-chadex-valid1.json",
+    "webcodex_profile": "docs/performance/phase16a-webcodex-probe1.json",
+    "chadex_prompt_to_server_received_ms": 15432.869,
+    "webcodex_prompt_to_server_received_ms": 6936.979,
+    "chadex_minus_webcodex_ms": 8495.89,
+    "same_semantic_boundary": "prompt submit -> first exact server_trace_id mcp_tool_request_received",
+    "chadex_first_tool": "runtime_status",
+    "webcodex_first_tool": "runtime_status",
+    "chadex_server_trace_id": "1290541e-f4be-47f0-801b-dce81ca6a2f9",
+    "webcodex_server_trace_id": "e8889057-b756-470f-9eec-cab5f7cc8ba5",
+    "chadex_client_window_key": "6caade9a8f22f677607da0150d40d4534f66011d6878fa18a0f4043c4a6f5ec2",
+    "webcodex_client_window_key": "95412562368419606b63754c5b4955f17b003e44f831c64eb04b45e3c123f641",
+    "helper_ingress_join": "unavailable for both fresh arms"
+  },
+  "reproduction": {
+    "chadex_driver": "../agent-harness-benchmark/round3/phase16a/runs/20260924-small-pair/chadex-valid1/ui/driver.json",
+    "chadex_runtime_trace_root": "../agent-harness-benchmark/round3/results/runtime-traces/chadex-large-manual",
+    "webcodex_driver_progress": "../agent-harness-benchmark/round3/phase16a/runs/20260924-small-pair/webcodex-probe1/ui/progress.json",
+    "webcodex_runtime_trace_root": "../agent-harness-benchmark/round3/results/runtime-traces/webcodex-large-manual",
+    "webcodex_cutoff_ms": 1790183570000,
+    "cutoff_reason": "Freeze the first-tool profiling window before later requests from the same ChatGPT window were appended after the browser recorder had been stopped."
+  },
+  "discarded_exploratory_attempt": {
+    "reason": "An earlier Chadex submission occurred before reliable connector selection and is retained only as diagnostic history.",
+    "driver_snapshot": "../agent-harness-benchmark/round3/phase16a/runs/20260924-small-pair/chadex/driver-success-recovered.json"
+  },
+  "evidence_policy": "Only exact structured marker selection plus exact client_window_key/server_trace_id joins are accepted for the fresh first-tool pair. Host/model/relay sub-boundaries remain unattributed."
+}

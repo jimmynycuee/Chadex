@@ -1,0 +1,141 @@
+//! Shared-key and open-anonymous lightweight auth helpers.
+
+use sha2::{Digest, Sha256};
+
+use super::context::{AuthContext, AuthKind};
+use super::scopes::{
+    SCOPE_AGENT_JOB_UPDATE, SCOPE_AGENT_POLL, SCOPE_AGENT_REGISTER, SCOPE_AGENT_RESULT,
+    SCOPE_COMMUNICATION_MANAGE, SCOPE_COMMUNICATION_READ, SCOPE_COMPUTER_CONTROL,
+    SCOPE_COMPUTER_READ, SCOPE_JOB_RUN, SCOPE_MEMORY_MANAGE, SCOPE_MEMORY_READ, SCOPE_PROJECT_READ,
+    SCOPE_PROJECT_WRITE, SCOPE_RUNNER_MANAGE, SCOPE_RUNTIME_READ, SCOPE_SESSION_COLLABORATE,
+};
+
+/// Read the explicit-anonymous (`--open`) flag from the environment. When true,
+/// the server allows anonymous GPT/MCP and anonymous client access under the
+/// open group. Default false — the server never offers anonymous service unless
+/// the operator explicitly opts in.
+pub(crate) fn allow_anonymous_enabled() -> bool {
+    crate::config::env_flag("WEBCODEX_ALLOW_ANONYMOUS").unwrap_or(false)
+}
+
+/// Read the shared-key quick-start flag from the environment. When true,
+/// unknown bearer tokens that do not look like WebCodex managed credentials
+/// (`wc_*`) are accepted as lightweight shared keys instead of being rejected.
+/// Default false — the server rejects unknown tokens unless the operator
+/// explicitly enables quick-start mode (e.g. via `server init`).
+pub(crate) fn shared_key_enabled() -> bool {
+    crate::config::env_flag("WEBCODEX_SHARED_KEY_ENABLED").unwrap_or(false)
+}
+
+/// True when `token` uses a WebCodex managed-credential prefix. Tokens with
+/// these prefixes that fail verifier-chain validation are rejected outright
+/// rather than falling back to shared-key mode.
+pub(crate) fn is_managed_token_prefix(token: &str) -> bool {
+    token.starts_with("wc_")
+}
+
+/// SHA-256 hex of a shared key, used for lightweight group isolation. Two
+/// requests presenting the same key land in the same group. The shared key is
+/// trimmed before hashing so direct shared-key visibility and the OAuth bridge
+/// derive the same group hash from the same submitted secret.
+pub(crate) fn shared_key_hash_of(token: &str) -> String {
+    let token = token.trim();
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+/// Model-facing authority of a direct hosted shared key. The OAuth shared-key
+/// bridge uses this exact closed set, so browser OAuth never inherits Agent
+/// transport scopes or unrelated future OAuth permissions.
+pub(crate) const DIRECT_SHARED_KEY_MODEL_SCOPES: &[&str] = &[
+    SCOPE_RUNTIME_READ,
+    SCOPE_RUNNER_MANAGE,
+    SCOPE_SESSION_COLLABORATE,
+    SCOPE_PROJECT_READ,
+    SCOPE_PROJECT_WRITE,
+    SCOPE_MEMORY_READ,
+    SCOPE_MEMORY_MANAGE,
+    SCOPE_COMMUNICATION_READ,
+    SCOPE_COMMUNICATION_MANAGE,
+    SCOPE_JOB_RUN,
+    SCOPE_COMPUTER_READ,
+    SCOPE_COMPUTER_CONTROL,
+];
+
+/// Scopes granted to interactive shared-key callers. These include the Agent
+/// transport needed by a local Runner, but remain intentionally below account
+/// management and admin. The transport surface still admits only direct
+/// `AuthKind::SharedKey`, never open-anonymous or OAuth bridge identities.
+fn shared_key_scopes() -> Vec<String> {
+    DIRECT_SHARED_KEY_MODEL_SCOPES
+        .iter()
+        .copied()
+        .chain([
+            SCOPE_AGENT_REGISTER,
+            SCOPE_AGENT_POLL,
+            SCOPE_AGENT_RESULT,
+            SCOPE_AGENT_JOB_UPDATE,
+        ])
+        .map(str::to_string)
+        .collect()
+}
+
+/// Open-anonymous callers retain interactive runtime/project access but may
+/// never register or drive a Runner.
+fn open_anonymous_scopes() -> Vec<String> {
+    vec![
+        SCOPE_RUNTIME_READ.to_string(),
+        SCOPE_SESSION_COLLABORATE.to_string(),
+        SCOPE_COMMUNICATION_READ.to_string(),
+        SCOPE_COMMUNICATION_MANAGE.to_string(),
+        SCOPE_PROJECT_READ.to_string(),
+        SCOPE_PROJECT_WRITE.to_string(),
+        SCOPE_JOB_RUN.to_string(),
+    ]
+}
+
+/// Scopes granted to a project-scoped model credential. Project/Runner visibility
+/// is separately constrained by its ProjectGrant.
+fn project_credential_scopes() -> Vec<String> {
+    vec![
+        SCOPE_RUNTIME_READ.to_string(),
+        SCOPE_SESSION_COLLABORATE.to_string(),
+        SCOPE_PROJECT_READ.to_string(),
+        SCOPE_PROJECT_WRITE.to_string(),
+        SCOPE_JOB_RUN.to_string(),
+    ]
+}
+
+/// Build a shared-key [`AuthContext`] for a lightweight bearer token. The caller
+/// is non-admin and grouped by `shared_key_hash`.
+pub(crate) fn shared_key_context(token: &str) -> AuthContext {
+    AuthContext {
+        role: Some("shared-key".to_string()),
+        scopes: shared_key_scopes(),
+        token_kind: Some("shared-key".to_string()),
+        shared_key_hash: Some(shared_key_hash_of(token)),
+        ..AuthContext::new(AuthKind::SharedKey)
+    }
+}
+
+pub(crate) fn project_credential_context(grant_id: &str) -> AuthContext {
+    AuthContext {
+        role: Some("project".to_string()),
+        scopes: project_credential_scopes(),
+        token_kind: Some("project".to_string()),
+        project_grant_id: Some(grant_id.to_string()),
+        ..AuthContext::new(AuthKind::ProjectCredential)
+    }
+}
+
+/// Build the open-anonymous [`AuthContext`] used only when the server is
+/// started with explicit `--open`. Non-admin, single open group.
+pub(crate) fn open_anonymous_context() -> AuthContext {
+    AuthContext {
+        role: Some("open".to_string()),
+        scopes: open_anonymous_scopes(),
+        token_kind: Some("open".to_string()),
+        ..AuthContext::new(AuthKind::OpenAnonymous)
+    }
+}

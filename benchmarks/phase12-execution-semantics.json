@@ -1,0 +1,92 @@
+{
+  "kind": "local Rust integration harness",
+  "limitations": [
+    "includes fixture and test-process startup",
+    "not ChatGPT Web or connector E2E",
+    "test builds isolate state; Phase 12 receipts are real fsync-backed files",
+    "legacy UI state/log persistence disabled equally in both test builds",
+    "Phase 12 test storage also persists recovery plans; Phase 11 test builds skipped this existing production I/O"
+  ],
+  "method": "one warmup each, alternating AB/BA pairs, no concurrent builds",
+  "samples_per_variant": 11,
+  "binary_sha256": {
+    "phase11": "e06a31fd7e6d1b43517e4e0972c1a5130ae72fc33fa812de488f02a001f6e119",
+    "phase12": "8ac02b797f8132e7cd09955f4ee5135fc5ebdfbc935d3e16c152563508f57495"
+  },
+  "cases": {
+    "small_read_cancel": {
+      "filter": "tool_runtime::tests::chadex_task_executor::execute_task_cancellation_is_cooperative_between_steps",
+      "samples_ms": {
+        "phase11": [
+          32.85766698536463,
+          26.5960420074407,
+          23.156957991886884,
+          24.56574997631833,
+          22.2600830020383,
+          23.94179199473001,
+          22.5049169966951,
+          22.074041015002877,
+          21.37329097604379,
+          24.254666990600526,
+          23.07375002419576
+        ],
+        "phase12": [
+          64.11079099052586,
+          61.183374986285344,
+          51.03683299967088,
+          54.521707992535084,
+          51.85766701470129,
+          54.231999994954094,
+          52.36754199722782,
+          51.94633299834095,
+          54.49112501810305,
+          56.355541019001976,
+          53.066916996613145
+        ]
+      },
+      "median_ms": {
+        "phase11": 23.156957991886884,
+        "phase12": 54.231999994954094
+      },
+      "delta_ms": 31.07504200306721,
+      "delta_pct": 134.19310953517493
+    },
+    "small_edit_validate_review": {
+      "filter": "tool_runtime::tests::chadex_task_executor::execute_task_runs_read_guarded_edit_validation_and_review",
+      "samples_ms": {
+        "phase11": [
+          1051.1970829975326,
+          1061.30416598171,
+          1052.0699160115328,
+          1051.3642920122948,
+          1046.6401250159834,
+          1044.2293749947567,
+          1037.866541009862,
+          1063.4865000029095,
+          1050.3897910239175,
+          1050.465832988266,
+          1046.970416995464
+        ],
+        "phase12": [
+          1071.7932079860475,
+          1052.8665000165347,
+          1102.9679580242373,
+          1070.5627079878468,
+          1081.0476249898784,
+          1079.1389160149265,
+          1099.073707999196,
+          1078.7530000088736,
+          1103.0904999934137,
+          1060.5770830006804,
+          1084.6595829934813
+        ]
+      },
+      "median_ms": {
+        "phase11": 1050.465832988266,
+        "phase12": 1079.1389160149265
+      },
+      "delta_ms": 28.673083026660606,
+      "delta_pct": 2.72955884201338
+    }
+  }
+}

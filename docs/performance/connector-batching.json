@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "surface": "Codex connected Chadex tool; live installed runtime; not ChatGPT web end-to-end or deployed patch",
+  "samples_per_variant": 5,
+  "comparison": "existing single calls vs existing batches; alternating order; warm connection",
+  "rows": [
+    {
+      "iteration": 0,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "elapsed_ms": 2121,
+      "result_json_characters": 1999
+    },
+    {
+      "iteration": 0,
+      "scenario": "search",
+      "batch": false,
+      "calls": 2,
+      "elapsed_ms": 2051,
+      "result_json_characters": 2899
+    },
+    {
+      "iteration": 0,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "elapsed_ms": 1033,
+      "result_json_characters": 1532
+    },
+    {
+      "iteration": 0,
+      "scenario": "search",
+      "batch": true,
+      "calls": 1,
+      "elapsed_ms": 1116,
+      "result_json_characters": 2736
+    },
+    {
+      "iteration": 1,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "elapsed_ms": 1014,
+      "result_json_characters": 1532
+    },
+    {
+      "iteration": 1,
+      "scenario": "search",
+      "batch": true,
+      "calls": 1,
+      "elapsed_ms": 1000,
+      "result_json_characters": 2736
+    },
+    {
+      "iteration": 1,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "elapsed_ms": 2388,
+      "result_json_characters": 1999
+    },
+    {
+      "iteration": 1,
+      "scenario": "search",
+      "batch": false,
+      "calls": 2,
+      "elapsed_ms": 2128,
+      "result_json_characters": 2899
+    },
+    {
+      "iteration": 2,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "elapsed_ms": 1478,
+      "result_json_characters": 1999
+    },
+    {
+      "iteration": 2,
+      "scenario": "search",
+      "batch": false,
+      "calls": 2,
+      "elapsed_ms": 1852,
+      "result_json_characters": 2899
+    },
+    {
+      "iteration": 2,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "elapsed_ms": 1057,
+      "result_json_characters": 1532
+    },
+    {
+      "iteration": 2,
+      "scenario": "search",
+      "batch": true,
+      "calls": 1,
+      "elapsed_ms": 1164,
+      "result_json_characters": 2736
+    },
+    {
+      "iteration": 3,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "elapsed_ms": 1168,
+      "result_json_characters": 1532
+    },
+    {
+      "iteration": 3,
+      "scenario": "search",
+      "batch": true,
+      "calls": 1,
+      "elapsed_ms": 1049,
+      "result_json_characters": 2736
+    },
+    {
+      "iteration": 3,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "elapsed_ms": 1984,
+      "result_json_characters": 1999
+    },
+    {
+      "iteration": 3,
+      "scenario": "search",
+      "batch": false,
+      "calls": 2,
+      "elapsed_ms": 1781,
+      "result_json_characters": 2899
+    },
+    {
+      "iteration": 4,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "elapsed_ms": 2012,
+      "result_json_characters": 1999
+    },
+    {
+      "iteration": 4,
+      "scenario": "search",
+      "batch": false,
+      "calls": 2,
+      "elapsed_ms": 1936,
+      "result_json_characters": 2899
+    },
+    {
+      "iteration": 4,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "elapsed_ms": 1021,
+      "result_json_characters": 1532
+    },
+    {
+      "iteration": 4,
+      "scenario": "search",
+      "batch": true,
+      "calls": 1,
+      "elapsed_ms": 722,
+      "result_json_characters": 2736
+    }
+  ]
+}

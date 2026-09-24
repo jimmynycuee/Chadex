@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "source": "Round 3 official manual traces",
+  "pairs": [
+    {
+      "task": "small",
+      "chadex": {
+        "prompt_to_first_tool_ms": 27513.466,
+        "first_tool": "runtime_status",
+        "first_tool_id": "cbf21883-a57c-4ade-aef3-622e60ec37c2",
+        "first_tool_duration_ms": 33.0
+      },
+      "webcodex": {
+        "prompt_to_first_tool_ms": 10377.978,
+        "first_tool": "runtime_status",
+        "first_tool_id": "af8078a1-8be6-4684-b27a-638a975afdc5",
+        "first_tool_duration_ms": 26.0
+      },
+      "chadex_minus_webcodex_ms": 17135.488
+    },
+    {
+      "task": "medium",
+      "chadex": {
+        "prompt_to_first_tool_ms": 25603.395,
+        "first_tool": "runtime_status",
+        "first_tool_id": "6b0d9d6d-02e0-44d9-b045-58f12cfa80b4",
+        "first_tool_duration_ms": 44.0
+      },
+      "webcodex": {
+        "prompt_to_first_tool_ms": 9326.76,
+        "first_tool": "runtime_status",
+        "first_tool_id": "56c3ecfc-6f8b-463b-a06d-f0c3d975da75",
+        "first_tool_duration_ms": 30.0
+      },
+      "chadex_minus_webcodex_ms": 16276.635
+    },
+    {
+      "task": "large",
+      "chadex": {
+        "prompt_to_first_tool_ms": 21507.817,
+        "first_tool": "runtime_status",
+        "first_tool_id": "1908c3dd-fb5d-43a1-8556-447fa0f0d764",
+        "first_tool_duration_ms": 40.0
+      },
+      "webcodex": {
+        "prompt_to_first_tool_ms": 14453.472,
+        "first_tool": "tool_manifest",
+        "first_tool_id": "b27d9f90-d9e5-4385-ab08-dd367fe0e6fc",
+        "first_tool_duration_ms": 41.0
+      },
+      "chadex_minus_webcodex_ms": 7054.345
+    }
+  ]
+}

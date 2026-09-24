@@ -1,0 +1,182 @@
+name: Optional Notarized Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag label, for example v0.1.0-rc.1"
+        required: true
+        type: string
+      app_version:
+        description: "CFBundleShortVersionString, for example 0.1.0"
+        required: true
+        type: string
+      build_number:
+        description: "CFBundleVersion; leave empty to use the Actions run number"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  notarized-arm64:
+    name: Sign, notarize, and package ARM64 app
+    runs-on: macos-15
+    env:
+      INPUT_TAG: ${{ inputs.tag }}
+      INPUT_APP_VERSION: ${{ inputs.app_version }}
+      INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+      APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+      APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+      APPLE_NOTARY_API_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+            raw="${tag#v}"
+            version="${raw%%-*}"
+          else
+            tag="$INPUT_TAG"
+            version="$INPUT_APP_VERSION"
+          fi
+          build="${INPUT_BUILD_NUMBER:-$GITHUB_RUN_NUMBER}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          [[ "$version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]
+          [[ "$build" =~ ^[0-9]+(\.[0-9]+)*$ ]]
+          echo "CHADEX_RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "CHADEX_APP_VERSION=$version" >> "$GITHUB_ENV"
+          echo "CHADEX_APP_BUILD_NUMBER=$build" >> "$GITHUB_ENV"
+          echo "CHADEX_APP_OUTPUT=$RUNNER_TEMP/Chadex.app" >> "$GITHUB_ENV"
+          echo "CHADEX_NOTARIZED_ZIP_OUTPUT=$RUNNER_TEMP/Chadex-${tag}-macos-arm64.zip" >> "$GITHUB_ENV"
+
+      - name: Verify signing secrets are configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          for value in \
+            "$APPLE_DEVELOPER_ID_P12_BASE64" \
+            "$APPLE_DEVELOPER_ID_P12_PASSWORD" \
+            "$APPLE_NOTARY_API_KEY_P8_BASE64" \
+            "$APPLE_NOTARY_KEY_ID" \
+            "$APPLE_NOTARY_ISSUER_ID"
+          do
+            test -n "$value" || { echo "required Apple release secret is missing" >&2; exit 2; }
+          done
+
+      - name: Bootstrap pinned Rust
+        run: ./scripts/bootstrap_rust.sh
+
+      - name: Import Developer ID certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cert="$RUNNER_TEMP/developer-id.p12"
+          keychain="$RUNNER_TEMP/chadex-build.keychain-db"
+          keychain_password="$(uuidgen)$(uuidgen)"
+          python3 - <<'PY'
+          import base64, os, pathlib
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'developer-id.p12').write_bytes(
+              base64.b64decode(os.environ['APPLE_DEVELOPER_ID_P12_BASE64'])
+          )
+          PY
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$cert" -k "$keychain" -P "$APPLE_DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk -F '"' '/Developer ID Application:/ {print $2; exit}')"
+          test -n "$identity" || { echo "Developer ID Application identity not found after import" >&2; exit 2; }
+          echo "CHADEX_CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "CHADEX_TEMP_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Materialize App Store Connect API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          python3 - <<'PY'
+          import base64, os, pathlib
+          key = pathlib.Path(os.environ['RUNNER_TEMP'], f"AuthKey_{os.environ['APPLE_NOTARY_KEY_ID']}.p8")
+          key.write_bytes(base64.b64decode(os.environ['APPLE_NOTARY_API_KEY_P8_BASE64']))
+          PY
+          chmod 600 "$key"
+          echo "CHADEX_NOTARY_API_KEY_PATH=$key" >> "$GITHUB_ENV"
+          echo "CHADEX_NOTARY_KEY_ID=$APPLE_NOTARY_KEY_ID" >> "$GITHUB_ENV"
+          echo "CHADEX_NOTARY_ISSUER_ID=$APPLE_NOTARY_ISSUER_ID" >> "$GITHUB_ENV"
+
+      - name: Install pinned Gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=8.29.1
+          archive="gitleaks_${version}_darwin_arm64.tar.gz"
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
+          curl -fsSL "$url" -o "$RUNNER_TEMP/$archive"
+          echo "69836c841d7e648fb30ff4846f8c3587855c5754ed02b8510caaf6008f65d177  $RUNNER_TEMP/$archive" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          echo "GITLEAKS_BIN=$RUNNER_TEMP/gitleaks/gitleaks" >> "$GITHUB_ENV"
+
+      - name: Public history gate
+        env:
+          CHADEX_REQUIRE_GITLEAKS: "1"
+        run: ./scripts/public_release_check.sh HEAD
+
+      - name: Run source release gate
+        env:
+          CHADEX_RELEASE_CHECK_BUILD_APP: "0"
+        run: ./scripts/release_check.sh
+
+      - name: Build Developer ID package
+        env:
+          CHADEX_CODESIGN_MODE: distribution
+          CHADEX_RUNTIME_PROFILE: release
+        run: ./scripts/build_app.sh
+
+      - name: Verify Developer ID package
+        run: ./scripts/distribution_check.sh "$CHADEX_APP_OUTPUT"
+
+      - name: Notarize and staple
+        run: ./scripts/notarize_app.sh "$CHADEX_APP_OUTPUT"
+
+      - name: Upload notarized artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Chadex-${{ env.CHADEX_RELEASE_TAG }}-macos-arm64
+          path: |
+            ${{ env.CHADEX_NOTARIZED_ZIP_OUTPUT }}
+            ${{ env.CHADEX_NOTARIZED_ZIP_OUTPUT }}.sha256
+          if-no-files-found: error
+
+      - name: Publish GitHub prerelease/release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(release create "$CHADEX_RELEASE_TAG" "$CHADEX_NOTARIZED_ZIP_OUTPUT" "$CHADEX_NOTARIZED_ZIP_OUTPUT.sha256" --title "Chadex $CHADEX_RELEASE_TAG" --notes-file docs/releases/0.1.0-rc.1.md)
+          if [[ "$CHADEX_RELEASE_TAG" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}"
+
+      - name: Remove temporary keychain
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${CHADEX_TEMP_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$CHADEX_TEMP_KEYCHAIN" || true
+          fi

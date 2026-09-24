@@ -1,0 +1,1215 @@
+use super::cli::{run_json, run_json_until, run_project_activation_json, ResolvedBinaries};
+use super::models::{
+    LegacyProjectRegisterOutput, LoginOutput, OpsProjectsOutput, OpsWindowsOutput,
+    PairingCreateOutput, ProjectActivationOutput, RunnerStatusOutput, ServerStatusOutput,
+};
+use crate::deadline::Deadline;
+use crate::error::{DesktopError, DesktopResult};
+use crate::models::ProjectSelection;
+use crate::operation::CancellationContext;
+use crate::platform;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use url::Url;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectRuntimeIdentity {
+    pub project_id: String,
+    pub runtime_project_id: String,
+    pub project_path: String,
+    pub runner_config: PathBuf,
+    pub user_token_file: PathBuf,
+    pub server_url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunnerConnectionObservation {
+    pub client_id: String,
+    pub online: bool,
+}
+
+pub struct WebCodexAdapter {
+    binaries: Option<ResolvedBinaries>,
+    bundled_runtime_dir: Option<PathBuf>,
+}
+
+impl WebCodexAdapter {
+    pub fn new(bundled_runtime_dir: Option<PathBuf>) -> Self {
+        Self {
+            binaries: None,
+            bundled_runtime_dir,
+        }
+    }
+
+    pub async fn ensure_binaries(
+        &mut self,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<&ResolvedBinaries> {
+        if self.binaries.is_none() {
+            self.binaries = Some(
+                ResolvedBinaries::resolve(self.bundled_runtime_dir.as_deref(), cancellation)
+                    .await?,
+            );
+        }
+        Ok(self.binaries.as_ref().expect("resolved above"))
+    }
+
+    pub async fn ensure_binaries_until(
+        &mut self,
+        cancellation: &CancellationContext,
+        deadline: Deadline,
+    ) -> DesktopResult<&ResolvedBinaries> {
+        if self.binaries.is_none() {
+            self.binaries = Some(
+                ResolvedBinaries::resolve_until(
+                    self.bundled_runtime_dir.as_deref(),
+                    cancellation,
+                    deadline,
+                )
+                .await?,
+            );
+        }
+        Ok(self.binaries.as_ref().expect("resolved above"))
+    }
+
+    pub fn binaries(&self) -> DesktopResult<&ResolvedBinaries> {
+        self.binaries.as_ref().ok_or_else(|| {
+            DesktopError::new(
+                "binaries_not_checked",
+                "WebCodex binaries have not been verified yet",
+                "Refresh Desktop diagnostics or start setup.",
+            )
+        })
+    }
+
+    pub async fn inspect_project(&self, path: &str) -> DesktopResult<ProjectSelection> {
+        inspect_project_path(path).await
+    }
+
+    pub async fn init_local_server(
+        &mut self,
+        listen: &str,
+        data_dir: &Path,
+        env_file: &Path,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<ServerStatusOutput> {
+        let webcodex = self.ensure_binaries(cancellation).await?.webcodex.clone();
+        cancellation.check()?;
+        tokio::fs::create_dir_all(
+            data_dir
+                .parent()
+                .ok_or_else(|| invalid_runtime_path(data_dir))?,
+        )
+        .await
+        .map_err(|_| invalid_runtime_path(data_dir))?;
+        #[derive(serde::Deserialize)]
+        struct InitOutput {
+            env_file: String,
+            listen: String,
+        }
+        let init: InitOutput = run_json(
+            &webcodex,
+            &[
+                "server".into(),
+                "init".into(),
+                "--listen".into(),
+                listen.into(),
+                "--data-dir".into(),
+                data_dir.to_string_lossy().to_string(),
+                "--env-file".into(),
+                env_file.to_string_lossy().to_string(),
+                "--json".into(),
+            ],
+            None,
+            false,
+            cancellation,
+        )
+        .await?;
+        if init.env_file.trim().is_empty() || init.listen.trim().is_empty() {
+            return Err(invalid_contract("server init"));
+        }
+        self.server_status_with_deadline(None, Some(env_file), None, cancellation, None, true)
+            .await
+    }
+
+    pub async fn server_status(
+        &mut self,
+        server_url: Option<&str>,
+        env_file: Option<&Path>,
+        token_file: Option<&Path>,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<ServerStatusOutput> {
+        self.server_status_with_deadline(
+            server_url,
+            env_file,
+            token_file,
+            cancellation,
+            None,
+            false,
+        )
+        .await
+    }
+
+    pub async fn server_status_until(
+        &mut self,
+        server_url: Option<&str>,
+        env_file: Option<&Path>,
+        token_file: Option<&Path>,
+        cancellation: &CancellationContext,
+        deadline: Deadline,
+    ) -> DesktopResult<ServerStatusOutput> {
+        self.server_status_with_deadline(
+            server_url,
+            env_file,
+            token_file,
+            cancellation,
+            Some(deadline),
+            false,
+        )
+        .await
+    }
+
+    async fn server_status_with_deadline(
+        &mut self,
+        server_url: Option<&str>,
+        env_file: Option<&Path>,
+        token_file: Option<&Path>,
+        cancellation: &CancellationContext,
+        deadline: Option<Deadline>,
+        force_direct: bool,
+    ) -> DesktopResult<ServerStatusOutput> {
+        let webcodex = match deadline {
+            Some(deadline) => self
+                .ensure_binaries_until(cancellation, deadline)
+                .await?
+                .webcodex
+                .clone(),
+            None => self.ensure_binaries(cancellation).await?.webcodex.clone(),
+        };
+        let mut args = vec!["server".into(), "status".into()];
+        if let Some(url) = server_url {
+            args.extend(["--url".into(), url.into()]);
+        }
+        if let Some(path) = env_file {
+            args.extend(["--env-file".into(), path.to_string_lossy().to_string()]);
+        }
+        if let Some(path) = token_file {
+            args.extend(["--token-file".into(), path.to_string_lossy().to_string()]);
+        }
+        if force_direct || server_url.is_some_and(server_url_is_loopback) {
+            args.push("--no-system-proxy".into());
+        }
+        args.push("--json".into());
+        let output: ServerStatusOutput = match deadline {
+            Some(deadline) => {
+                run_json_until(&webcodex, &args, None, false, cancellation, deadline).await?
+            }
+            None => run_json(&webcodex, &args, None, false, cancellation).await?,
+        };
+        if output.probe_url.trim().is_empty() {
+            return Err(invalid_contract("server status"));
+        }
+        if output
+            .revision_check
+            .as_deref()
+            .is_some_and(|value| value.starts_with("warning:"))
+        {
+            return Err(DesktopError::new(
+                "binary_version_mismatch",
+                "The running Server does not match this Desktop WebCodex CLI build",
+                "Stop the old Server or point Desktop at a matching Server before continuing.",
+            ));
+        }
+        Ok(output)
+    }
+
+    pub fn local_server_command(&self, env_file: &Path) -> DesktopResult<Command> {
+        let binaries = self.binaries()?;
+        let mut command = Command::new(&binaries.server);
+        command.arg("--stop-on-stdin-eof");
+        command.env("WEBCODEX_ENV_FILE", env_file);
+        remove_tunnel_credentials(&mut command);
+        Ok(command)
+    }
+
+    pub fn local_runner_command(&self, config: &Path) -> DesktopResult<Command> {
+        let binaries = self.binaries()?;
+        let mut command = Command::new(&binaries.runner);
+        command
+            .arg("--config")
+            .arg(config)
+            .arg("--stop-on-stdin-eof");
+        configure_local_loopback_bypass_environment(&mut command);
+        remove_tunnel_credentials(&mut command);
+        Ok(command)
+    }
+
+    pub fn quick_share_command(
+        &self,
+        project: &Path,
+        provider: &str,
+        tunnel_proxy: Option<&str>,
+    ) -> DesktopResult<Command> {
+        let binaries = self.binaries()?;
+        let tunnel = match provider {
+            "cloudflare" | "openai" | "none" => provider,
+            _ => {
+                return Err(DesktopError::new(
+                    "quick_share_provider_invalid",
+                    "Unsupported Quick Share provider",
+                    "Choose Cloudflare, OpenAI Secure Tunnel, or no external tunnel.",
+                ))
+            }
+        };
+        let mut command = Command::new(&binaries.webcodex);
+        command
+            .arg("share")
+            .arg("--root")
+            .arg(project)
+            .arg("--tunnel")
+            .arg(tunnel)
+            .arg("--auth")
+            .arg("bearer")
+            .arg("--json")
+            .arg("--stop-on-stdin-eof");
+        if tunnel == "openai" {
+            command
+                .env_remove("OPENAI_ADMIN_KEY")
+                .env_remove("OPENAI_API_KEY");
+            configure_tunnel_proxy_environment(&mut command, tunnel_proxy);
+        } else {
+            remove_tunnel_credentials(&mut command);
+        }
+        Ok(command)
+    }
+
+    pub fn regular_tunnel_command(
+        &self,
+        env_file: &Path,
+        tunnel_proxy: Option<&str>,
+    ) -> DesktopResult<Command> {
+        let binaries = self.binaries()?;
+        let mut command = Command::new(&binaries.webcodex);
+        command
+            .arg("server")
+            .arg("tunnel")
+            .arg("--provider")
+            .arg("openai")
+            .arg("--env-file")
+            .arg(env_file)
+            .arg("--json")
+            .arg("--stop-on-stdin-eof")
+            .env_remove("OPENAI_ADMIN_KEY")
+            .env_remove("OPENAI_API_KEY");
+        configure_tunnel_proxy_environment(&mut command, tunnel_proxy);
+        Ok(command)
+    }
+
+    pub async fn create_local_pairing(
+        &mut self,
+        server_url: &str,
+        env_file: &Path,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<String> {
+        let webcodex = self.ensure_binaries(cancellation).await?.webcodex.clone();
+        let username = platform::current_username();
+        let mut args = vec![
+            "pairing".into(),
+            "create".into(),
+            "--server-url".into(),
+            server_url.into(),
+            "--env-file".into(),
+            env_file.to_string_lossy().to_string(),
+            "--username".into(),
+            username,
+            "--ttl-secs".into(),
+            "600".into(),
+            "--json".into(),
+        ];
+        args.push("--no-system-proxy".into());
+        let output: PairingCreateOutput =
+            run_json(&webcodex, &args, None, true, cancellation).await?;
+        if !output.pairing_code.starts_with("wc_pair_") {
+            return Err(invalid_contract("pairing create"));
+        }
+        Ok(output.pairing_code)
+    }
+
+    pub async fn login_with_pairing(
+        &mut self,
+        server_url: &str,
+        pairing_code: &str,
+        connections_dir: &Path,
+        project: &ProjectSelection,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<ProjectRuntimeIdentity> {
+        validate_server_url(server_url)?;
+        if pairing_code.trim().is_empty() {
+            return Err(DesktopError::new(
+                "pairing_code_invalid",
+                "One-time login code is empty",
+                "Enter the wc_pair_… code issued by the Server.",
+            ));
+        }
+        let webcodex = self.ensure_binaries(cancellation).await?.webcodex.clone();
+        cancellation.check()?;
+        tokio::fs::create_dir_all(connections_dir)
+            .await
+            .map_err(|_| {
+                DesktopError::new(
+                    "desktop_state_unavailable",
+                    "Desktop could not prepare its protected connection directory",
+                    "Check local app-data permissions and retry.",
+                )
+            })?;
+        let mut args = vec![
+            "login".into(),
+            server_url.into(),
+            "--code-stdin".into(),
+            "--dir".into(),
+            connections_dir.to_string_lossy().to_string(),
+            // Desktop owns this connection directory and may intentionally
+            // re-enroll the same device only when its saved connection identity
+            // is no longer reusable. Project changes alone are not enrollment
+            // replacement. The one-shot pairing code remains the authority for
+            // a true replacement; --overwrite never broadens Server authority.
+            "--overwrite".into(),
+            "--allowed-root".into(),
+            project.allowed_root.clone(),
+            "--project".into(),
+            project.path.clone(),
+            "--json".into(),
+        ];
+        if server_url_is_loopback(server_url) {
+            args.push("--no-system-proxy".into());
+        }
+        let output: LoginOutput = run_json(
+            &webcodex,
+            &args,
+            Some(pairing_code.as_bytes()),
+            true,
+            cancellation,
+        )
+        .await?;
+        validate_login_output(&output, project)
+    }
+
+    pub async fn runner_ready(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<bool> {
+        self.runner_ready_with_deadline(identity, cancellation, None)
+            .await
+    }
+
+    pub async fn runner_ready_until(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        cancellation: &CancellationContext,
+        deadline: Deadline,
+    ) -> DesktopResult<bool> {
+        self.runner_ready_with_deadline(identity, cancellation, Some(deadline))
+            .await
+    }
+
+    pub async fn observe_runner_connection(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        expected_client_id: Option<&str>,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<RunnerConnectionObservation> {
+        self.observe_runner_connection_with_deadline(
+            identity,
+            expected_client_id,
+            cancellation,
+            None,
+        )
+        .await
+    }
+
+    async fn observe_runner_connection_with_deadline(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        expected_client_id: Option<&str>,
+        cancellation: &CancellationContext,
+        deadline: Option<Deadline>,
+    ) -> DesktopResult<RunnerConnectionObservation> {
+        let webcodex = match deadline {
+            Some(deadline) => self
+                .ensure_binaries_until(cancellation, deadline)
+                .await?
+                .webcodex
+                .clone(),
+            None => self.ensure_binaries(cancellation).await?.webcodex.clone(),
+        };
+        let mut args = vec![
+            "runner".into(),
+            "status".into(),
+            "--config".into(),
+            identity.runner_config.to_string_lossy().to_string(),
+            "--server-url".into(),
+            identity.server_url.clone(),
+            "--user-token-file".into(),
+            identity.user_token_file.to_string_lossy().to_string(),
+            "--json".into(),
+        ];
+        if server_url_is_loopback(&identity.server_url) {
+            args.push("--no-system-proxy".into());
+        }
+        let output: RunnerStatusOutput = match deadline {
+            Some(deadline) => {
+                run_json_until(&webcodex, &args, None, false, cancellation, deadline).await?
+            }
+            None => run_json(&webcodex, &args, None, false, cancellation).await?,
+        };
+        if output.config.path.trim().is_empty()
+            || output.config.client_id.trim().is_empty()
+            || output.config.server_url.trim().is_empty()
+        {
+            return Err(invalid_contract("runner status"));
+        }
+        if !same_existing_file(Path::new(&output.config.path), &identity.runner_config)
+            || !same_server(&output.config.server_url, &identity.server_url)
+            || expected_client_id.is_some_and(|expected| expected != output.config.client_id)
+        {
+            return Err(DesktopError::new(
+                "runner_identity_mismatch",
+                "The saved Desktop connection no longer matches the configured Runner identity",
+                "Refresh this Runner connection before activating another project.",
+            ));
+        }
+        let runtime = output
+            .runtime
+            .unwrap_or(super::models::RunnerRuntimeOutput {
+                checked: false,
+                reachable: None,
+                client_online: None,
+            });
+        Ok(RunnerConnectionObservation {
+            client_id: output.config.client_id,
+            online: runtime.checked
+                && runtime.reachable == Some(true)
+                && runtime.client_online == Some(true),
+        })
+    }
+
+    async fn runner_ready_with_deadline(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        cancellation: &CancellationContext,
+        deadline: Option<Deadline>,
+    ) -> DesktopResult<bool> {
+        self.observe_runner_connection_with_deadline(identity, None, cancellation, deadline)
+            .await
+            .map(|observation| observation.online)
+    }
+
+    pub async fn activate_project(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        expected_client_id: &str,
+        project: &ProjectSelection,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<ProjectRuntimeIdentity> {
+        let webcodex = self.ensure_binaries(cancellation).await?.webcodex.clone();
+        let args = [
+            "project".into(),
+            "activate".into(),
+            "--config".into(),
+            identity.runner_config.to_string_lossy().to_string(),
+            "--user-token-file".into(),
+            identity.user_token_file.to_string_lossy().to_string(),
+            project.path.clone(),
+            "--json".into(),
+        ];
+        let output: ProjectActivationOutput =
+            run_project_activation_json(&webcodex, &args, cancellation).await?;
+        if output.client_id != expected_client_id
+            || output.project.id.trim().is_empty()
+            || output.project.runtime_project.trim().is_empty()
+            || !same_path(&output.project.path, &project.path)
+        {
+            return Err(invalid_contract("project activation"));
+        }
+        Ok(ProjectRuntimeIdentity {
+            project_id: output.project.id,
+            runtime_project_id: output.project.runtime_project,
+            project_path: output.project.path,
+            runner_config: identity.runner_config.clone(),
+            user_token_file: identity.user_token_file.clone(),
+            server_url: identity.server_url.clone(),
+        })
+    }
+
+    pub async fn legacy_register_project(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        client_id: &str,
+        project: &ProjectSelection,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<ProjectRuntimeIdentity> {
+        let webcodex = self.ensure_binaries(cancellation).await?.webcodex.clone();
+        let args = [
+            "project".into(),
+            "register".into(),
+            "--config".into(),
+            identity.runner_config.to_string_lossy().to_string(),
+            project.path.clone(),
+            "--json".into(),
+        ];
+        let output: LegacyProjectRegisterOutput =
+            run_json(&webcodex, &args, None, false, cancellation).await?;
+        if output.project.id.trim().is_empty() || !same_path(&output.project.path, &project.path) {
+            return Err(invalid_contract("legacy project registration"));
+        }
+        Ok(ProjectRuntimeIdentity {
+            runtime_project_id: format!("agent:{client_id}:{}", output.project.id),
+            project_id: output.project.id,
+            project_path: output.project.path,
+            runner_config: identity.runner_config.clone(),
+            user_token_file: identity.user_token_file.clone(),
+            server_url: identity.server_url.clone(),
+        })
+    }
+
+    pub async fn chatgpt_activity(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<Option<i64>> {
+        let webcodex = self.ensure_binaries(cancellation).await?.webcodex.clone();
+        Self::chatgpt_activity_with_binary(&webcodex, identity, cancellation).await
+    }
+
+    pub async fn chatgpt_activity_with_binary(
+        webcodex: &Path,
+        identity: &ProjectRuntimeIdentity,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<Option<i64>> {
+        let mut args = vec![
+            "ops".into(),
+            "windows".into(),
+            "--server-url".into(),
+            identity.server_url.clone(),
+            "--token-file".into(),
+            identity.user_token_file.to_string_lossy().to_string(),
+            "--project".into(),
+            identity.runtime_project_id.clone(),
+            "--limit".into(),
+            "64".into(),
+            "--json".into(),
+        ];
+        if server_url_is_loopback(&identity.server_url) {
+            args.push("--no-system-proxy".into());
+        }
+        let output: OpsWindowsOutput = run_json(webcodex, &args, None, false, cancellation).await?;
+        Ok(latest_chatgpt_activity(&output))
+    }
+
+    pub async fn project_ready(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<bool> {
+        self.project_ready_with_deadline(identity, cancellation, None)
+            .await
+    }
+
+    pub async fn project_ready_until(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        cancellation: &CancellationContext,
+        deadline: Deadline,
+    ) -> DesktopResult<bool> {
+        self.project_ready_with_deadline(identity, cancellation, Some(deadline))
+            .await
+    }
+
+    async fn project_ready_with_deadline(
+        &mut self,
+        identity: &ProjectRuntimeIdentity,
+        cancellation: &CancellationContext,
+        deadline: Option<Deadline>,
+    ) -> DesktopResult<bool> {
+        let webcodex = match deadline {
+            Some(deadline) => self
+                .ensure_binaries_until(cancellation, deadline)
+                .await?
+                .webcodex
+                .clone(),
+            None => self.ensure_binaries(cancellation).await?.webcodex.clone(),
+        };
+        let mut args = vec![
+            "ops".into(),
+            "projects".into(),
+            "--server-url".into(),
+            identity.server_url.clone(),
+            "--token-file".into(),
+            identity.user_token_file.to_string_lossy().to_string(),
+            "--json".into(),
+        ];
+        if server_url_is_loopback(&identity.server_url) {
+            args.push("--no-system-proxy".into());
+        }
+        let output: OpsProjectsOutput = match deadline {
+            Some(deadline) => {
+                run_json_until(&webcodex, &args, None, false, cancellation, deadline).await?
+            }
+            None => run_json(&webcodex, &args, None, false, cancellation).await?,
+        };
+        Ok(output
+            .summary
+            .projects
+            .iter()
+            .any(|candidate| ops_project_is_ready(candidate, identity)))
+    }
+}
+
+fn server_url_is_loopback(server_url: &str) -> bool {
+    Url::parse(server_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some_and(|host| {
+            let host = host.trim_start_matches('[').trim_end_matches(']');
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        })
+}
+
+fn default_allowed_root(canonical: &Path) -> PathBuf {
+    // An explicit local selection grants only this project on every platform.
+    canonical.to_path_buf()
+}
+
+pub async fn inspect_project_path(path: &str) -> DesktopResult<ProjectSelection> {
+    let requested = PathBuf::from(path);
+    webcodex_runner_config::paths::validate_project_path_ingress(&requested).map_err(|_| {
+        DesktopError::new(
+            "project_invalid_path",
+            "Unsupported project path",
+            "Choose a local directory or supported network share.",
+        )
+    })?;
+    if requested
+        .components()
+        .any(|part| matches!(part, std::path::Component::ParentDir))
+    {
+        return Err(DesktopError::new(
+            "project_invalid_path",
+            "Project path contains parent traversal",
+            "Choose the project directory directly.",
+        ));
+    }
+    let canonical = tokio::fs::canonicalize(&requested).await.map_err(|_| {
+        DesktopError::new(
+            "project_unavailable",
+            "The selected project directory could not be resolved",
+            "Choose an existing directory that this account can access.",
+        )
+    })?;
+    let metadata = tokio::fs::metadata(&canonical).await.map_err(|_| {
+        DesktopError::new(
+            "project_unavailable",
+            "The selected project directory could not be inspected",
+            "Check its filesystem permissions and retry.",
+        )
+    })?;
+    if !metadata.is_dir() {
+        return Err(DesktopError::new(
+            "project_not_directory",
+            "The selected project is not a directory",
+            "Choose a project directory.",
+        ));
+    }
+    let allowed_root = default_allowed_root(&canonical);
+    let is_git_repository = tokio::fs::symlink_metadata(canonical.join(".git"))
+        .await
+        .is_ok();
+    Ok(ProjectSelection {
+        path: display_path(&canonical),
+        allowed_root: display_path(&allowed_root),
+        is_git_repository,
+        runtime_project_id: None,
+    })
+}
+
+fn ops_project_is_ready(
+    candidate: &super::models::OpsProject,
+    identity: &ProjectRuntimeIdentity,
+) -> bool {
+    candidate.id == identity.runtime_project_id
+        && same_path(&candidate.path, &identity.project_path)
+        && candidate.connected == Some(true)
+        && candidate.agent_status.as_deref() == Some("online")
+}
+
+fn validate_login_output(
+    output: &LoginOutput,
+    project: &ProjectSelection,
+) -> DesktopResult<ProjectRuntimeIdentity> {
+    if output.server_url.trim().is_empty()
+        || output.runner_config.trim().is_empty()
+        || output.user_token_file.trim().is_empty()
+    {
+        return Err(invalid_contract("login"));
+    }
+    let registered = output
+        .registered_projects
+        .iter()
+        .find(|candidate| same_path(&candidate.path, &project.path))
+        .ok_or_else(|| invalid_contract("login project registration"))?;
+    if registered.id.trim().is_empty() || registered.runtime_project.trim().is_empty() {
+        return Err(invalid_contract("login project identity"));
+    }
+    Ok(ProjectRuntimeIdentity {
+        project_id: registered.id.clone(),
+        runtime_project_id: registered.runtime_project.clone(),
+        project_path: registered.path.clone(),
+        runner_config: PathBuf::from(&output.runner_config),
+        user_token_file: PathBuf::from(&output.user_token_file),
+        server_url: output.server_url.clone(),
+    })
+}
+
+pub fn validate_server_url(value: &str) -> DesktopResult<String> {
+    let value = value.trim().trim_end_matches('/');
+    let parsed = Url::parse(value).map_err(|_| {
+        DesktopError::new(
+            "server_url_invalid",
+            "Server URL is not a valid absolute URL",
+            "Enter a WebCodex Server URL such as https://webcodex.example.com.",
+        )
+    })?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || !matches!(parsed.path(), "" | "/")
+    {
+        return Err(DesktopError::new(
+            "server_url_invalid",
+            "Server URL must be a plain http(s) origin without credentials, path, query, or fragment",
+            "Enter only the WebCodex Server origin.",
+        ));
+    }
+    Ok(value.to_string())
+}
+
+fn configure_local_loopback_bypass_environment(command: &mut Command) {
+    for key in ["NO_PROXY", "no_proxy"] {
+        let mut entries = std::env::var(key)
+            .ok()
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|entry| !entry.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for loopback in ["127.0.0.1", "localhost", "::1"] {
+            if !entries
+                .iter()
+                .any(|entry| entry.eq_ignore_ascii_case(loopback))
+            {
+                entries.push(loopback.to_string());
+            }
+        }
+        command.env(key, entries.join(","));
+    }
+}
+
+fn configure_tunnel_proxy_environment(command: &mut Command, proxy: Option<&str>) {
+    for key in [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+    ] {
+        command.env_remove(key);
+    }
+    if let Some(proxy) = proxy {
+        command
+            .env("HTTP_PROXY", proxy)
+            .env("HTTPS_PROXY", proxy)
+            .env("http_proxy", proxy)
+            .env("https_proxy", proxy)
+            .env("NO_PROXY", "127.0.0.1,localhost,::1")
+            .env("no_proxy", "127.0.0.1,localhost,::1");
+    }
+}
+
+fn remove_tunnel_credentials(command: &mut Command) {
+    for name in [
+        "CONTROL_PLANE_API_KEY",
+        "CONTROL_PLANE_TUNNEL_ID",
+        "OPENAI_ADMIN_KEY",
+        "OPENAI_API_KEY",
+    ] {
+        command.env_remove(name);
+    }
+}
+
+fn same_server(left: &str, right: &str) -> bool {
+    left.trim_end_matches('/')
+        .eq_ignore_ascii_case(right.trim_end_matches('/'))
+}
+
+fn same_existing_file(left: &Path, right: &Path) -> bool {
+    match (left.canonicalize(), right.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ if cfg!(windows) => display_path(left).eq_ignore_ascii_case(&display_path(right)),
+        _ => left == right,
+    }
+}
+
+fn same_path(left: &str, right: &str) -> bool {
+    if cfg!(windows) {
+        display_path(Path::new(left)).eq_ignore_ascii_case(&display_path(Path::new(right)))
+    } else {
+        left == right
+    }
+}
+
+fn display_path(path: &Path) -> String {
+    let value = path.to_string_lossy();
+    #[cfg(windows)]
+    {
+        if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{rest}");
+        }
+        if let Some(rest) = value.strip_prefix(r"\\?\") {
+            return rest.to_string();
+        }
+    }
+    value.into_owned()
+}
+
+fn invalid_contract(operation: &str) -> DesktopError {
+    DesktopError::new(
+        "webcodex_contract_invalid",
+        format!("WebCodex returned an incomplete {operation} identity"),
+        "Verify that Desktop and the WebCodex binaries come from the same source baseline.",
+    )
+}
+
+fn latest_chatgpt_activity(output: &OpsWindowsOutput) -> Option<i64> {
+    output
+        .summary
+        .windows
+        .iter()
+        .filter(|window| {
+            matches!(
+                window.source.as_str(),
+                "openai-session" | "openai-conversation"
+            )
+        })
+        .filter_map(|window| window.last_meaningful_activity_at_ms)
+        .max()
+}
+
+fn invalid_runtime_path(path: &Path) -> DesktopError {
+    DesktopError::new(
+        "desktop_state_unavailable",
+        format!("Desktop cannot prepare {}", path.display()),
+        "Check local app-data permissions and retry.",
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_url_validation_rejects_credential_and_path_smuggling() {
+        assert!(validate_server_url("https://example.com").is_ok());
+        assert!(validate_server_url("https://user:pass@example.com").is_err());
+        assert!(validate_server_url("https://example.com/admin").is_err());
+        assert!(validate_server_url("file:///tmp/server").is_err());
+    }
+
+    #[test]
+    fn loopback_server_urls_bypass_system_proxy_only_for_local_origins() {
+        assert!(server_url_is_loopback("http://127.0.0.1:8080"));
+        assert!(server_url_is_loopback("http://localhost:8080"));
+        assert!(server_url_is_loopback("http://[::1]:8080"));
+        assert!(!server_url_is_loopback("https://example.com"));
+    }
+
+    #[test]
+    fn quick_share_only_inherits_control_plane_credentials_for_openai_provider() {
+        let binaries = ResolvedBinaries {
+            directory: PathBuf::from("bin"),
+            webcodex: PathBuf::from("webcodex"),
+            server: PathBuf::from("webcodex-server"),
+            runner: PathBuf::from("webcodex-runner"),
+            version: "0.3.9".to_string(),
+            git_commit: "0123456789abcdef".to_string(),
+            source: super::super::cli::ResolvedBinarySource::Environment,
+        };
+        let adapter = WebCodexAdapter {
+            binaries: Some(binaries),
+            bundled_runtime_dir: None,
+        };
+        let local = adapter
+            .quick_share_command(Path::new("repo"), "none", None)
+            .unwrap();
+        let local_env: Vec<_> = local.get_envs().collect();
+        for key in [
+            "CONTROL_PLANE_API_KEY",
+            "CONTROL_PLANE_TUNNEL_ID",
+            "OPENAI_ADMIN_KEY",
+            "OPENAI_API_KEY",
+        ] {
+            assert!(local_env
+                .iter()
+                .any(|(name, value)| name.to_str() == Some(key) && value.is_none()));
+        }
+
+        let openai = adapter
+            .quick_share_command(Path::new("repo"), "openai", Some("http://127.0.0.1:7890"))
+            .unwrap();
+        let openai_env: Vec<_> = openai.get_envs().collect();
+        for key in ["OPENAI_ADMIN_KEY", "OPENAI_API_KEY"] {
+            assert!(openai_env
+                .iter()
+                .any(|(name, value)| name.to_str() == Some(key) && value.is_none()));
+        }
+        for key in ["CONTROL_PLANE_API_KEY", "CONTROL_PLANE_TUNNEL_ID"] {
+            assert!(!openai_env
+                .iter()
+                .any(|(name, _)| name.to_str() == Some(key)));
+        }
+        for key in ["http_proxy", "https_proxy"] {
+            assert!(openai_env.iter().any(|(name, value)| {
+                name.to_string_lossy().eq_ignore_ascii_case(key)
+                    && value.and_then(|value| value.to_str()) == Some("http://127.0.0.1:7890")
+            }));
+        }
+        assert!(openai_env.iter().any(|(name, value)| {
+            name.to_str() == Some("NO_PROXY")
+                && value.and_then(|value| value.to_str()) == Some("127.0.0.1,localhost,::1")
+        }));
+    }
+
+    #[test]
+    fn local_runner_bypasses_loopback_without_overriding_proxy_servers() {
+        let binaries = ResolvedBinaries {
+            directory: PathBuf::from("bin"),
+            webcodex: PathBuf::from("webcodex"),
+            server: PathBuf::from("webcodex-server"),
+            runner: PathBuf::from("webcodex-runner"),
+            version: "0.4.1".to_string(),
+            git_commit: "0123456789abcdef".to_string(),
+            source: super::super::cli::ResolvedBinarySource::Environment,
+        };
+        let adapter = WebCodexAdapter {
+            binaries: Some(binaries),
+            bundled_runtime_dir: None,
+        };
+        let command = adapter
+            .local_runner_command(Path::new("runner.toml"))
+            .unwrap();
+        let env: Vec<_> = command.get_envs().collect();
+        let no_proxy = env
+            .iter()
+            .find(|(name, _)| {
+                name.to_str()
+                    .is_some_and(|name| name.eq_ignore_ascii_case("NO_PROXY"))
+            })
+            .and_then(|(_, value)| *value)
+            .and_then(|value| value.to_str())
+            .expect("local Runner should define a loopback bypass");
+        for loopback in ["127.0.0.1", "localhost", "::1"] {
+            assert!(
+                no_proxy.split(',').any(|entry| entry == loopback),
+                "NO_PROXY={no_proxy}"
+            );
+        }
+        for key in [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+        ] {
+            assert!(
+                !env.iter().any(|(name, _)| name.to_str() == Some(key)),
+                "Desktop must not override {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn regular_tunnel_uses_local_server_bootstrap_auth_and_only_inherits_control_plane_credentials()
+    {
+        let binaries = ResolvedBinaries {
+            directory: PathBuf::from("bin"),
+            webcodex: PathBuf::from("webcodex"),
+            server: PathBuf::from("webcodex-server"),
+            runner: PathBuf::from("webcodex-runner"),
+            version: "0.3.9".to_string(),
+            git_commit: "0123456789abcdef".to_string(),
+            source: super::super::cli::ResolvedBinarySource::Environment,
+        };
+        let adapter = WebCodexAdapter {
+            binaries: Some(binaries),
+            bundled_runtime_dir: None,
+        };
+        let command = adapter
+            .regular_tunnel_command(Path::new("server.env"), Some("http://127.0.0.1:7890"))
+            .unwrap();
+        let args: Vec<_> = command
+            .get_args()
+            .map(|value| value.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(
+            args,
+            vec![
+                "server",
+                "tunnel",
+                "--provider",
+                "openai",
+                "--env-file",
+                "server.env",
+                "--json",
+                "--stop-on-stdin-eof",
+            ]
+        );
+        let env: Vec<_> = command.get_envs().collect();
+        for key in ["OPENAI_ADMIN_KEY", "OPENAI_API_KEY"] {
+            assert!(env
+                .iter()
+                .any(|(name, value)| name.to_str() == Some(key) && value.is_none()));
+        }
+        for key in ["CONTROL_PLANE_API_KEY", "CONTROL_PLANE_TUNNEL_ID"] {
+            assert!(!env.iter().any(|(name, _)| name.to_str() == Some(key)));
+        }
+        assert!(env.iter().any(|(name, value)| {
+            name.to_str() == Some("HTTPS_PROXY")
+                && value.and_then(|value| value.to_str()) == Some("http://127.0.0.1:7890")
+        }));
+    }
+
+    #[test]
+    fn ops_project_readiness_uses_runtime_project_identity() {
+        let identity = ProjectRuntimeIdentity {
+            project_id: "repo".to_string(),
+            runtime_project_id: "agent:desktop:repo".to_string(),
+            project_path: r"C:\repo".to_string(),
+            runner_config: PathBuf::from("runner.toml"),
+            user_token_file: PathBuf::from("user-token"),
+            server_url: "https://example.test".to_string(),
+        };
+        let ready = super::super::models::OpsProject {
+            id: "agent:desktop:repo".to_string(),
+            path: r"C:\repo".to_string(),
+            connected: Some(true),
+            agent_status: Some("online".to_string()),
+        };
+        assert!(ops_project_is_ready(&ready, &identity));
+
+        let short_id = super::super::models::OpsProject {
+            id: "repo".to_string(),
+            ..ready
+        };
+        assert!(!ops_project_is_ready(&short_id, &identity));
+    }
+
+    #[test]
+    fn chatgpt_activity_requires_an_explicit_openai_window_source() {
+        let output: OpsWindowsOutput = serde_json::from_value(serde_json::json!({
+            "summary": {
+                "windows": [
+                    {"source": "http-cookie", "last_meaningful_activity_at_ms": 9000},
+                    {"source": "mcp", "last_meaningful_activity_at_ms": 8000},
+                    {"source": "openai-session", "last_meaningful_activity_at_ms": 2000},
+                    {"source": "openai-conversation", "last_meaningful_activity_at_ms": 3000},
+                    {"last_meaningful_activity_at_ms": 10000}
+                ]
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(latest_chatgpt_activity(&output), Some(3000));
+    }
+
+    #[test]
+    fn login_identity_fails_closed_when_registered_project_is_missing() {
+        let output = LoginOutput {
+            server_url: "https://example.com".to_string(),
+            runner_config: "runner.toml".to_string(),
+            user_token_file: "user-token".to_string(),
+            registered_projects: Vec::new(),
+        };
+        let project = ProjectSelection {
+            path: "C:\\repo".to_string(),
+            allowed_root: "C:\\".to_string(),
+            is_git_repository: true,
+            runtime_project_id: None,
+        };
+        assert_eq!(
+            validate_login_output(&output, &project).unwrap_err().code,
+            "webcodex_contract_invalid"
+        );
+    }
+
+    #[test]
+    fn local_project_selection_does_not_grant_parent_tree() {
+        let project = Path::new("/home/operator/projects/repo");
+        assert_eq!(default_allowed_root(project), project);
+        assert_ne!(default_allowed_root(project), project.parent().unwrap());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_network_and_local_projects_use_exact_roots() {
+        let network = Path::new(r"\\?\UNC\server\share\repo");
+        assert!(webcodex_runner_config::paths::paths_equal(
+            &default_allowed_root(network),
+            network
+        ));
+        assert!(!webcodex_runner_config::paths::paths_equal(
+            &default_allowed_root(network),
+            Path::new(r"\\server\share")
+        ));
+
+        let local = Path::new(r"C:\work\repo");
+        assert_eq!(default_allowed_root(local), local);
+    }
+
+    #[test]
+    fn windows_extended_and_display_paths_match_the_same_project() {
+        if cfg!(windows) {
+            assert!(same_path(
+                r"\\?\C:\Users\example\repo",
+                r"C:\Users\example\repo"
+            ));
+        }
+    }
+
+    #[test]
+    fn windows_extended_paths_are_presented_as_normal_user_paths() {
+        if cfg!(windows) {
+            assert_eq!(
+                display_path(Path::new(r"\\?\C:\Users\example\repo")),
+                r"C:\Users\example\repo"
+            );
+            assert_eq!(
+                display_path(Path::new(r"\\?\UNC\server\share\repo")),
+                r"\\server\share\repo"
+            );
+        }
+    }
+}

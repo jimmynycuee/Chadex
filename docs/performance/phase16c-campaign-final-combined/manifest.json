@@ -1,0 +1,205 @@
+{
+  "runs": [
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "order_position": 1,
+      "pair_id": "pair01",
+      "profile": "profiles/pair01-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair01-chadex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "order_position": 2,
+      "pair_id": "pair01",
+      "profile": "profiles/pair01-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair01-webcodex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "order_position": 1,
+      "pair_id": "pair02",
+      "profile": "profiles/pair02-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair02-chadex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "order_position": 2,
+      "pair_id": "pair02",
+      "profile": "profiles/pair02-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair02-webcodex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "order_position": 1,
+      "pair_id": "pair03",
+      "profile": "profiles/pair03-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair03-webcodex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "order_position": 2,
+      "pair_id": "pair03",
+      "profile": "profiles/pair03-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair03-chadex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "order_position": 1,
+      "pair_id": "pair04",
+      "profile": "profiles/pair04-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair04-chadex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "order_position": 2,
+      "pair_id": "pair04",
+      "profile": "profiles/pair04-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair04-webcodex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "order_position": 1,
+      "pair_id": "pair05",
+      "profile": "profiles/pair05-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair05-chadex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "order_position": 2,
+      "pair_id": "pair05",
+      "profile": "profiles/pair05-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair05-webcodex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "order_position": 1,
+      "pair_id": "pair06",
+      "profile": "profiles/pair06-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair06-webcodex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "order_position": 2,
+      "pair_id": "pair06",
+      "profile": "profiles/pair06-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair06-chadex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "order_position": 1,
+      "pair_id": "pair07",
+      "profile": "profiles/pair07-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair07-webcodex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "order_position": 2,
+      "pair_id": "pair07",
+      "profile": "profiles/pair07-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair07-chadex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "order_position": 1,
+      "pair_id": "pair08",
+      "profile": "profiles/pair08-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "pair08-webcodex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "order_position": 2,
+      "pair_id": "pair08",
+      "profile": "profiles/pair08-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "pair08-chadex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "order_position": 1,
+      "pair_id": "replacement-pair01",
+      "profile": "profiles/replacement-pair01-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "replacement-pair01-webcodex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "order_position": 2,
+      "pair_id": "replacement-pair01",
+      "profile": "profiles/replacement-pair01-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "replacement-pair01-chadex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "chadex",
+      "order_position": 1,
+      "pair_id": "replacement-pair02",
+      "profile": "profiles/replacement-pair02-chadex.json",
+      "registry_state": "unknown",
+      "run_id": "replacement-pair02-chadex"
+    },
+    {
+      "chat_state": "fresh",
+      "connector_state": "unknown",
+      "harness": "webcodex",
+      "order_position": 2,
+      "pair_id": "replacement-pair02",
+      "profile": "profiles/replacement-pair02-webcodex.json",
+      "registry_state": "unknown",
+      "run_id": "replacement-pair02-webcodex"
+    }
+  ],
+  "schema_version": 1
+}

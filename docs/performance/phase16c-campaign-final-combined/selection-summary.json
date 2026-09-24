@@ -1,0 +1,29 @@
+{
+  "balanced_order": {
+    "chadex_first": 5,
+    "webcodex_first": 5
+  },
+  "excluded": {
+    "phase16c-campaign-final-pinned-v2/pair09": "incomplete pair; WebCodex submission produced no exact tool trace within 90s",
+    "phase16c-campaign-final-pinned-v2/pair10": "not executed after pair09 campaign stop"
+  },
+  "launcher_identity": {
+    "descriptor_path": "~/.codex-chatgpt-web/runtime/launcher-browser.json",
+    "endpoint": "http://127.0.0.1:50065",
+    "pid": 38777,
+    "schema_version": 1
+  },
+  "paired_count": 10,
+  "replacement_launcher_identity": {
+    "descriptor_path": "~/.codex-chatgpt-web/runtime/launcher-browser.json",
+    "endpoint": "http://127.0.0.1:50065",
+    "pid": 38777,
+    "schema_version": 1
+  },
+  "run_count": 20,
+  "schema_version": 1,
+  "source_campaigns": [
+    "phase16c-campaign-final-pinned-v2: pairs01-08 only",
+    "phase16c-campaign-final-pinned-replacements: both pairs"
+  ]
+}

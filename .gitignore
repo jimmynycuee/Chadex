@@ -1,0 +1,59 @@
+.build/
+.swiftpm/
+.toolchain/
+/dist/
+rust-helper/target/
+runtime-engine/target/
+chadex-runtime/target/
+vendor/webcodex/target/
+vendor/webcodex/frontend/dist/
+graphify-out/cache/
+graphify-out/costs*
+graphify-out/manifest*
+.DS_Store
+
+# Local benchmark/runtime artifacts
+.phase9-candidate/
+dist-test/
+__pycache__/
+*.pyc
+benchmarks/**/.data-*/
+benchmarks/**/.git/
+benchmarks/**/__pycache__/
+benchmarks/**/graphify-out/cache/
+
+# Graphify machine-generated state; keep human-readable GRAPH_REPORT.md files
+# available for history/portfolio documentation.
+graphify-out/graph.json
+graphify-out/graph.html
+graphify-out/.graphify_*
+graphify-out/*/graph.json
+graphify-out/*/.graphify_*
+graphify-out/*/manifest.json
+
+# Ephemeral local runtime diagnostics
+runtime-engine/data/tool-request-traces/
+
+# Local Obsidian workspace metadata
+.obsidian/
+
+# Local raw benchmark campaign sources; canonical combined outputs are tracked separately
+docs/performance/phase16c-campaign-final-pinned*/
+docs/performance/*.lock
+
+# Machine-local benchmark inputs / diagnostic profiles
+# Keep public summaries and canonical combined evidence under docs/performance tracked.
+docs/performance/phase16c-live-config.json
+docs/performance/phase16a-chadex-valid1.json
+docs/performance/phase16a-connected-small-pair.json
+docs/performance/phase16a-first-tool-profile.json
+docs/performance/phase16a-webcodex-probe1.json
+docs/performance/phase16b-connected-small-profile.json
+docs/performance/phase16b-connected-small-r2-profile.json
+docs/performance/phase16b-connected-small-r3-profile.json
+
+# IDE / editor user state
+.idea/
+.vscode/
+xcuserdata/
+*.xcuserstate

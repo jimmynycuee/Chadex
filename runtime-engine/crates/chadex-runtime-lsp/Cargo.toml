@@ -1,0 +1,31 @@
+[package]
+name = "chadex-runtime-lsp"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+publish = false
+
+[features]
+default = []
+real-process-tests = []
+
+[dependencies]
+webcodex-core = { path = "../chadex-runtime-core", package = "chadex-runtime-core" }
+webcodex-process = { path = "../chadex-runtime-process", package = "chadex-runtime-process" }
+webcodex-runner-config = { path = "../chadex-runtime-runner-config", package = "chadex-runtime-runner-config" }
+serde_json = "1"
+sha2 = "0.10"
+tracing = "0.1"
+url = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }

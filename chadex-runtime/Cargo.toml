@@ -1,0 +1,31 @@
+[package]
+name = "chadex-runtime"
+version = "0.1.0"
+license = "Apache-2.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "chadex-runtime-cli"
+path = "src/bin/chadex-runtime-cli.rs"
+
+[[bin]]
+name = "chadex-runtime-server"
+path = "src/bin/chadex-runtime-server.rs"
+
+[[bin]]
+name = "chadex-runtime-runner"
+path = "src/bin/chadex-runtime-runner.rs"
+
+[dependencies]
+chadex-runtime-engine = { path = "../runtime-engine" }
+chadex-runtime-cli = { path = "../runtime-engine/crates/chadex-runtime-cli" }
+chadex-runtime-core = { path = "../runtime-engine/crates/chadex-runtime-core" }
+chadex-runtime-runner = { path = "../runtime-engine/crates/chadex-runtime-runner" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[profile.dogfood]
+inherits = "release"
+lto = "off"
+codegen-units = 16
+incremental = true

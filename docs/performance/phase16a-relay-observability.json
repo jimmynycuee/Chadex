@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "tunnel_client": {
+    "chadex_version": "0.0.12+881c9a8fed7cccbe6607cd419863bbca506b8215",
+    "webcodex_version": "0.0.12+881c9a8fed7cccbe6607cd419863bbca506b8215",
+    "chadex_sha256": "b1757220cf4722cec9085ee4a908cf0ee4c1a499a33bd99979b9a9c7669e29b1",
+    "webcodex_sha256": "b1757220cf4722cec9085ee4a908cf0ee4c1a499a33bd99979b9a9c7669e29b1",
+    "same_binary": true
+  },
+  "paths": {
+    "chadex": [
+      "ChatGPT host",
+      "OpenAI Secure MCP relay",
+      "tunnel-client",
+      "chadex-helper McpIngress proxy",
+      "Chadex Runtime Server /mcp",
+      "ToolRuntime",
+      "Runner"
+    ],
+    "webcodex": [
+      "ChatGPT host",
+      "OpenAI Secure MCP relay",
+      "tunnel-client",
+      "WebCodex Runtime Server /mcp",
+      "ToolRuntime",
+      "Runner"
+    ]
+  },
+  "tunnel_log_fields": [
+    "client_instance_id",
+    "cmd_request_id",
+    "component",
+    "level",
+    "msg",
+    "request_id",
+    "rpc_request_id",
+    "time",
+    "tunnel_id"
+  ],
+  "exact_join_to_server": false,
+  "reason": "tunnel request identifiers are not propagated into current Server ToolRequestLifecycle events; temporal correlation is intentionally not used",
+  "chadex_helper_exact_join": "Phase 15 helper traces carry server_trace_id, but the running app exposes them only through the GUI Diagnostics export. macOS accessibility denied automated export in Phase 16A; fresh helper envelope therefore remains unavailable."
+}

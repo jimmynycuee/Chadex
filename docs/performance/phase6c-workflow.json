@@ -1,0 +1,34 @@
+{
+  "helper_get_status_ms": {
+    "median": 0.049,
+    "p95": 0.066
+  },
+  "helper_owned_runtime_processes": 0,
+  "iterations": 30,
+  "schema": 1,
+  "tool_calls_per_workflow": 4,
+  "tools_ms": {
+    "git_status": {
+      "median": 17.165,
+      "p95": 20.875
+    },
+    "read_files": {
+      "median": 1.666,
+      "p95": 2.035
+    },
+    "runtime_status": {
+      "median": 16.89,
+      "p95": 18.666
+    },
+    "search_project_texts": {
+      "median": 5.945,
+      "p95": 6.97
+    }
+  },
+  "workflow_ms": {
+    "max": 47.163,
+    "median": 42.489,
+    "min": 35.141,
+    "p95": 46.426
+  }
+}

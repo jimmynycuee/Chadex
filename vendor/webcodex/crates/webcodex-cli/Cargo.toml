@@ -1,0 +1,43 @@
+[package]
+name = "webcodex-cli"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "webcodex"
+path = "src/main.rs"
+
+[dependencies]
+webcodex = { path = "../.." }
+webcodex-admin = { path = "../webcodex-admin" }
+webcodex-runner-config = { path = "../webcodex-runner-config" }
+webcodex-core = { path = "../webcodex-core" }
+chrono = "0.4"
+fs2 = "0.4"
+os_pipe = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rustls = "0.23"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["full"] }
+toml = "0.8"
+toml_edit = "0.22"
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = "3"

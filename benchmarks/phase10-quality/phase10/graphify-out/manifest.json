@@ -1,0 +1,68 @@
+{
+  "taskdesk/__init__.py": {
+    "mtime": 1789899971.0457044,
+    "seen": 1789899972.471711,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "taskdesk/bridge.py": {
+    "mtime": 1789899971.0468102,
+    "seen": 1789899972.4717162,
+    "ast_hash": "e1a2bbcc7df6c291d435605b2ca009fb",
+    "semantic_hash": ""
+  },
+  "taskdesk/models.py": {
+    "mtime": 1789899971.0459583,
+    "seen": 1789899972.4717178,
+    "ast_hash": "3fd43d2e325f445960441d957615f5a1",
+    "semantic_hash": ""
+  },
+  "taskdesk/runtime.py": {
+    "mtime": 1789899971.0461657,
+    "seen": 1789899972.471719,
+    "ast_hash": "a6b55c32ecb77028794c93663e09a7bd",
+    "semantic_hash": ""
+  },
+  "taskdesk/service.py": {
+    "mtime": 1789899971.0465944,
+    "seen": 1789899972.471719,
+    "ast_hash": "2c56367ce26345de63f9f52974a64906",
+    "semantic_hash": ""
+  },
+  "taskdesk/store.py": {
+    "mtime": 1789899971.0463903,
+    "seen": 1789899972.47172,
+    "ast_hash": "8f5fb13ea1c456e541ce080b2586ba0e",
+    "semantic_hash": ""
+  },
+  "taskdesk/viewmodel.py": {
+    "mtime": 1789899971.0470235,
+    "seen": 1789899972.471721,
+    "ast_hash": "24ec3ca2afe0ba6ec295b3c5ea559304",
+    "semantic_hash": ""
+  },
+  "tests/__init__.py": {
+    "mtime": 1789899971.0473495,
+    "seen": 1789899972.471721,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "tests/test_existing_behavior.py": {
+    "mtime": 1789899971.047597,
+    "seen": 1789899972.471722,
+    "ast_hash": "ffd1b1187c62bfb078fb4c1b6b68cf5c",
+    "semantic_hash": ""
+  },
+  "tests/test_task_history_visible.py": {
+    "mtime": 1789899971.047855,
+    "seen": 1789899972.471722,
+    "ast_hash": "530cd7fbe1024e0d726b9c17b9edabc1",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1789899971.045232,
+    "seen": 1789899972.471723,
+    "ast_hash": "1939d27bebc4106883aae87e924f8dc9",
+    "semantic_hash": ""
+  }
+}

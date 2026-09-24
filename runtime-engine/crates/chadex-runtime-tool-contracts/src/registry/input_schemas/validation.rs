@@ -1,0 +1,266 @@
+use serde_json::{json, Value};
+
+use super::common::{object_schema, with_optional_session_id};
+use webcodex_core::workflow_session_contract::TOOL_RESULT_EXPECTATION_FIELD;
+
+/// `timeout_secs` for read-only structured validation tools is the total
+/// runtime budget. `sync_wait_secs` optionally selects the bounded synchronous
+/// grace before same-execution Job handoff; omission preserves the existing
+/// grace capped by the effective timeout.
+const VALIDATION_TIMEOUT_SECS_DESCRIPTION: &str =
+    "Total validation runtime budget in seconds (minimum 1). Values above 3600 are accepted and clamped to 3600. Short validation returns immediately; longer validation keeps the same execution and returns job_id for observation. Defaults vary per tool.";
+const VALIDATION_TIMEOUT_MIN: u64 = 1;
+const VALIDATION_SYNC_WAIT_SECS_DESCRIPTION: &str =
+    "Optional synchronous grace in seconds. Positive values above 60 or above the effective timeout_secs are accepted and clamped to the smaller bound. Omission uses min(60, effective timeout_secs). It bounds the wait for the submitted validation, which may still be queued; unfinished work returns as the same execution Job when handoff is available. It never extends timeout_secs or starts a second validation. For cargo_fmt, accepted only with check=true.";
+const VALIDATION_SYNC_WAIT_MIN: u64 = 1;
+
+fn with_validation_timeout_bounds(mut schema: Value, default: u64) -> Value {
+    schema["properties"]["timeout_secs"]["minimum"] = json!(VALIDATION_TIMEOUT_MIN);
+    schema["properties"]["timeout_secs"]["default"] = json!(default);
+    schema["properties"]["timeout_secs"]["description"] =
+        json!(VALIDATION_TIMEOUT_SECS_DESCRIPTION);
+    schema
+}
+
+fn with_validation_sync_wait(mut schema: Value) -> Value {
+    schema["properties"]["sync_wait_secs"] = json!({
+        "type": "integer",
+        "minimum": VALIDATION_SYNC_WAIT_MIN,
+        "description": VALIDATION_SYNC_WAIT_SECS_DESCRIPTION,
+    });
+    schema
+}
+
+fn with_optional_result_expectation(mut schema: Value) -> Value {
+    schema["properties"][TOOL_RESULT_EXPECTATION_FIELD] = json!({
+        "type": "string",
+        "enum": ["success", "failure", "observe"],
+        "description": "Optional pre-execution validation-result expectation. Omit (or use success) for the normal success-required path; failure is for negative tests that must reach a completed known failing validation result; observe accepts either completed known validation result. The real validation ToolResult and process outcome remain unchanged, and pre-execution rejection, timeout, cancellation, transport failure, malformed output, or outcome-unknown never satisfy the expectation."
+    });
+    schema
+}
+
+pub fn cargo_fmt_input_schema() -> Value {
+    // `cargo_fmt(check=false)` synchronously ensures formatting: a read-only
+    // precheck avoids mutation when already formatted, and a proven rustfmt diff
+    // triggers `cargo fmt`. `sync_wait_secs` is accepted in both modes for a stable
+    // caller shape, but only `check=true` uses it for read-only Job handoff.
+    let mut schema = object_schema(with_optional_session_id(vec![
+        ("project", "string", "Runner-registered project id.", true),
+        (
+            "cwd",
+            "string",
+            "Optional project-relative working directory.",
+            false,
+        ),
+        (
+            "check",
+            "boolean",
+            "When true, perform pure read-only `cargo fmt -- --check` validation. Omit or use false during coding to ensure formatting: WebCodex first checks, then runs mutating `cargo fmt` only when a stable rustfmt diff is proven.",
+            false,
+        ),
+        (
+            "timeout_secs",
+            "integer",
+            "For check=false ensure-format, this is the shared synchronous budget for precheck plus any required mutation; minimum 1, default 120, values above 120 clamp to 120. With check=true, values above the 3600-second read-only validation budget clamp to 3600 and a long check may return job_id.",
+            false,
+        ),
+        (
+            "sync_wait_secs",
+            "integer",
+            "Optional synchronous grace in seconds. With check=true it controls same-execution Job handoff; positive values above 60 or above the effective timeout_secs are accepted and clamped to the smaller bound, and it never extends timeout_secs. With check=false it is accepted for caller-shape compatibility but ignored; ensure-format remains synchronous and timeout_secs remains the full precheck-plus-mutation budget.",
+            false,
+        ),
+    ]));
+    schema["properties"]["timeout_secs"]["minimum"] = json!(1);
+    schema["properties"]["timeout_secs"]["default"] = json!(120);
+    schema["properties"]["sync_wait_secs"]["minimum"] = json!(VALIDATION_SYNC_WAIT_MIN);
+    schema["allOf"] = json!([{
+        "if": {
+            "required": ["check"],
+            "properties": { "check": { "const": true } }
+        },
+        "then": {
+            "properties": {
+                "timeout_secs": { "type": "integer", "minimum": 1 }
+            }
+        },
+        "else": {
+            "properties": {
+                "timeout_secs": { "type": "integer", "minimum": 1 }
+            }
+        }
+    }, {
+        "if": {
+            "required": ["check"],
+            "properties": { "check": { "const": true } }
+        },
+        "else": {
+            "properties": {
+                "result_expectation": { "type": "null" }
+            }
+        }
+    }]);
+    let mut schema = with_optional_result_expectation(schema);
+    schema["properties"][TOOL_RESULT_EXPECTATION_FIELD]["description"] = json!(
+        "Optional pre-execution validation-result expectation, available only with check=true. Ensure-format mode (check=false) never accepts result_expectation. The real ToolResult and process outcome remain unchanged."
+    );
+    schema
+}
+
+pub fn cargo_check_input_schema() -> Value {
+    with_optional_result_expectation(with_validation_sync_wait(with_validation_timeout_bounds(
+        object_schema(with_optional_session_id(vec![
+            ("project", "string", "Runner-registered project id.", true),
+            (
+                "cwd",
+                "string",
+                "Optional project-relative working directory.",
+                false,
+            ),
+            (
+                "all_targets",
+                "boolean",
+                "Include --all-targets (default true).",
+                false,
+            ),
+            ("all_features", "boolean", "Include --all-features.", false),
+            (
+                "no_default_features",
+                "boolean",
+                "Include --no-default-features.",
+                false,
+            ),
+            (
+                "features",
+                "string",
+                "Feature list passed to --features.",
+                false,
+            ),
+            ("package", "string", "Package passed to -p.", false),
+            (
+                "timeout_secs",
+                "integer",
+                VALIDATION_TIMEOUT_SECS_DESCRIPTION,
+                false,
+            ),
+        ])),
+        600,
+    )))
+}
+
+pub fn cargo_test_input_schema() -> Value {
+    let mut schema = with_validation_sync_wait(with_validation_timeout_bounds(
+        object_schema(with_optional_session_id(vec![
+            ("project", "string", "Runner-registered project id.", true),
+            (
+                "cwd",
+                "string",
+                "Optional project-relative working directory.",
+                false,
+            ),
+            (
+                "filter",
+                "string",
+                "Optional Rust test substring passed as `cargo test FILTER`. This is not a CLI-argument field: do not include `--exact`, `--nocapture`, or other Cargo/libtest flags. Omit it to run the selected Cargo test target normally; if zero tests run, broaden or remove the filter, or use the test's full qualified name.",
+                false,
+            ),
+            (
+                "lib",
+                "boolean",
+                "When true, include Cargo's --lib target selector. Omission and false have the same ordinary target-selection semantics.",
+                false,
+            ),
+            ("all_targets", "boolean", "Include --all-targets.", false),
+            ("all_features", "boolean", "Include --all-features.", false),
+            (
+                "no_default_features",
+                "boolean",
+                "Include --no-default-features.",
+                false,
+            ),
+            (
+                "features",
+                "string",
+                "Feature list passed to --features.",
+                false,
+            ),
+            ("package", "string", "Package passed to -p.", false),
+            (
+                "no_run",
+                "boolean",
+                "When true, compile tests with --no-run. A successful compile-only validation does not require executed-test-count proof.",
+                false,
+            ),
+            (
+                "require_tests",
+                "boolean",
+                "Controls executed-test proof explicitly. Omission keeps the normal requirement for non-zero executed-test evidence; false is an explicit opt-out that allows zero tests to count as proof when no min_tests minimum is requested; true requires proof that at least one test executed.",
+                false,
+            ),
+            (
+                "min_tests",
+                "integer",
+                "Require proof that at least this many tests executed. Combined with require_tests using the stricter minimum.",
+                false,
+            ),
+            (
+                "timeout_secs",
+                "integer",
+                VALIDATION_TIMEOUT_SECS_DESCRIPTION,
+                false,
+            ),
+        ])),
+        1800,
+    ));
+    schema["properties"]["min_tests"]["minimum"] = json!(1);
+    schema["properties"]["min_tests"]["maximum"] =
+        json!(webcodex_core::runner_protocol::CARGO_TEST_MIN_TESTS_MAX);
+    schema["allOf"] = json!([{
+        "if": {
+            "properties": { "no_run": { "const": true } },
+            "required": ["no_run"]
+        },
+        "then": {
+            "properties": {
+                "require_tests": { "enum": [false] },
+                "min_tests": { "enum": [] }
+            }
+        }
+    }]);
+    with_optional_result_expectation(schema)
+}
+
+pub fn go_test_input_schema() -> Value {
+    let mut schema = with_validation_sync_wait(with_validation_timeout_bounds(
+        object_schema(with_optional_session_id(vec![
+            ("project", "string", "Runner-registered project id.", true),
+            (
+                "cwd",
+                "string",
+                "Optional project-relative working directory.",
+                false,
+            ),
+            (
+                "packages",
+                "array",
+                "Optional 1..8 project-relative Go package patterns: '.', './path', './...', or './path/...'.",
+                false,
+            ),
+            (
+                "timeout_secs",
+                "integer",
+                VALIDATION_TIMEOUT_SECS_DESCRIPTION,
+                false,
+            ),
+        ])),
+        1800,
+    ));
+    schema["properties"]["packages"]["minItems"] = json!(1);
+    schema["properties"]["packages"]["maxItems"] =
+        json!(webcodex_core::runner_protocol::GO_TEST_PACKAGE_MAX_ITEMS);
+    schema["properties"]["packages"]["items"]["minLength"] = json!(1);
+    schema["properties"]["packages"]["items"]["maxLength"] =
+        json!(webcodex_core::runner_protocol::GO_TEST_PACKAGE_MAX_BYTES);
+    with_optional_result_expectation(schema)
+}

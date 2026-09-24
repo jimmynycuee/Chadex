@@ -1,0 +1,10 @@
+{
+  "iterations": 50,
+  "same_project_switch_ms": {
+    "max": 38.755,
+    "median": 24.953,
+    "min": 17.957,
+    "p95": 32.547
+  },
+  "schema": 1
+}

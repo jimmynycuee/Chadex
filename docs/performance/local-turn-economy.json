@@ -1,0 +1,6364 @@
+{
+  "schema": 1,
+  "surface": "isolated local MCP; no tunnel or model",
+  "comparison": "equivalent sequential vs batched tool workflows; alternating order; one warmup",
+  "helper_sha256": "d2a707cccea7284c26f8e739184e98ef38a0b0d44185465e0aa07509084966af",
+  "iterations_per_variant": 30,
+  "cold_setup_ms_single_sample": 3158.902457995282,
+  "guards": {
+    "stale_write_rejected": true,
+    "traversal_rejected": true,
+    "symlink_escape_rejected": true
+  },
+  "summary_ms": {
+    "search_explain": {
+      "false": {
+        "median": 23.799,
+        "p95": 68.481,
+        "min": 19.062,
+        "max": 82.64
+      },
+      "true": {
+        "median": 12.946,
+        "p95": 26.025,
+        "min": 10.207,
+        "max": 82.934
+      }
+    },
+    "multi_read": {
+      "false": {
+        "median": 4.741,
+        "p95": 13.773,
+        "min": 2.977,
+        "max": 19.484
+      },
+      "true": {
+        "median": 2.569,
+        "p95": 6.764,
+        "min": 1.814,
+        "max": 10.008
+      }
+    },
+    "read_edit_verify": {
+      "false": {
+        "median": 28.588,
+        "p95": 70.729,
+        "min": 17.067,
+        "max": 74.557
+      },
+      "true": {
+        "median": 19.616,
+        "p95": 51.734,
+        "min": 15.484,
+        "max": 77.161
+      }
+    }
+  },
+  "rows": [
+    {
+      "iteration": 1,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 12.21958299720427,
+      "request_bytes": 568,
+      "response_bytes": 990,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 328,
+          "response_bytes": 572,
+          "headers_ms": 9.880167002847884,
+          "total_ms": 9.890833003737498,
+          "stream_ms": 0.010666000889614224
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 418,
+          "headers_ms": 2.2485000008600764,
+          "total_ms": 2.254916005767882,
+          "stream_ms": 0.006416004907805473
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 2.2269999972195365,
+      "request_bytes": 240,
+      "response_bytes": 418,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 418,
+          "headers_ms": 2.1856669991393574,
+          "total_ms": 2.1914169992669486,
+          "stream_ms": 0.005750000127591193
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 19.591083997511305,
+      "request_bytes": 837,
+      "response_bytes": 1983,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 239,
+          "response_bytes": 484,
+          "headers_ms": 2.0548340035020374,
+          "total_ms": 2.0589999985531904,
+          "stream_ms": 0.004165995051153004
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 358,
+          "response_bytes": 1077,
+          "headers_ms": 15.43554200179642,
+          "total_ms": 15.441791998455301,
+          "stream_ms": 0.006249996658880264
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 422,
+          "headers_ms": 1.9914170043193735,
+          "total_ms": 1.9964169987360947,
+          "stream_ms": 0.004999994416721165
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 19.70291599718621,
+      "request_bytes": 962,
+      "response_bytes": 1386,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 258,
+          "response_bytes": 385,
+          "headers_ms": 8.36262499797158,
+          "total_ms": 8.370166004169732,
+          "stream_ms": 0.0075410061981529
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 258,
+          "response_bytes": 385,
+          "headers_ms": 8.15662500099279,
+          "total_ms": 8.163334001437761,
+          "stream_ms": 0.006709000444971025
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.6775830008555204,
+          "total_ms": 1.6827079962240532,
+          "stream_ms": 0.0051249953685328364
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.3675829977728426,
+          "total_ms": 1.371540995023679,
+          "stream_ms": 0.003957997250836343
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 3.4102079953299835,
+      "request_bytes": 446,
+      "response_bytes": 616,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.642333998461254,
+          "total_ms": 1.6470839982503094,
+          "stream_ms": 0.004749999789055437
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.713707999442704,
+          "total_ms": 1.716874998237472,
+          "stream_ms": 0.0031669987947680056
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 24.161832996469457,
+      "request_bytes": 1408,
+      "response_bytes": 2738,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 222,
+          "response_bytes": 341,
+          "headers_ms": 1.5053330062073655,
+          "total_ms": 1.5089580047060736,
+          "stream_ms": 0.0036249984987080097
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 222,
+          "response_bytes": 341,
+          "headers_ms": 1.4061670008231886,
+          "total_ms": 1.40929199551465,
+          "stream_ms": 0.0031249946914613247
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 259,
+          "response_bytes": 718,
+          "headers_ms": 9.033750000526197,
+          "total_ms": 9.038500000315253,
+          "stream_ms": 0.004749999789055437
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 259,
+          "response_bytes": 718,
+          "headers_ms": 8.715875002963003,
+          "total_ms": 8.721042002434842,
+          "stream_ms": 0.005166999471839517
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 310,
+          "headers_ms": 1.781417005986441,
+          "total_ms": 1.7853340032161213,
+          "stream_ms": 0.003916997229680419
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 310,
+          "headers_ms": 1.5480420042877086,
+          "total_ms": 1.5510830053244717,
+          "stream_ms": 0.0030410010367631912
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 19.598250000854023,
+      "request_bytes": 962,
+      "response_bytes": 1386,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 258,
+          "response_bytes": 385,
+          "headers_ms": 8.48595799470786,
+          "total_ms": 8.494124995195307,
+          "stream_ms": 0.008167000487446785
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 258,
+          "response_bytes": 385,
+          "headers_ms": 8.104750006168615,
+          "total_ms": 8.110333001241088,
+          "stream_ms": 0.0055829950724728405
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.5062500024214387,
+          "total_ms": 1.51012500282377,
+          "stream_ms": 0.0038750004023313522
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.3774580002063885,
+          "total_ms": 1.3803330002701841,
+          "stream_ms": 0.0028750000637955964
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 3.6165830024401657,
+      "request_bytes": 446,
+      "response_bytes": 616,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.7305419969488867,
+          "total_ms": 1.7342080027447082,
+          "stream_ms": 0.0036660057958215475
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.8368340024608187,
+          "total_ms": 1.8412919962429442,
+          "stream_ms": 0.004457993782125413
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 22.645042001386173,
+      "request_bytes": 1408,
+      "response_bytes": 2738,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 222,
+          "response_bytes": 341,
+          "headers_ms": 1.4779160046600737,
+          "total_ms": 1.4817080009379424,
+          "stream_ms": 0.0037919962778687477
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 222,
+          "response_bytes": 341,
+          "headers_ms": 1.6060830021160655,
+          "total_ms": 1.6092920050141402,
+          "stream_ms": 0.0032090028980746865
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 259,
+          "response_bytes": 718,
+          "headers_ms": 6.929625000339001,
+          "total_ms": 6.934791999810841,
+          "stream_ms": 0.005166999471839517
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 259,
+          "response_bytes": 718,
+          "headers_ms": 8.535583001503255,
+          "total_ms": 8.544416996301152,
+          "stream_ms": 0.008833994797896594
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 310,
+          "headers_ms": 2.193041997088585,
+          "total_ms": 2.199374997871928,
+          "stream_ms": 0.006333000783342868
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 310,
+          "headers_ms": 1.7107910025515594,
+          "total_ms": 1.7145000019809231,
+          "stream_ms": 0.0037089994293637574
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 15.17033299751347,
+      "request_bytes": 568,
+      "response_bytes": 990,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 328,
+          "response_bytes": 572,
+          "headers_ms": 13.100750002195127,
+          "total_ms": 13.127541002177168,
+          "stream_ms": 0.026790999982040375
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 418,
+          "headers_ms": 1.94500000361586,
+          "total_ms": 1.9515000021783635,
+          "stream_ms": 0.006499998562503606
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 2.2511249990202487,
+      "request_bytes": 240,
+      "response_bytes": 418,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 418,
+          "headers_ms": 2.2111670041340403,
+          "total_ms": 2.2160840017022565,
+          "stream_ms": 0.004916997568216175
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 17.813958002079744,
+      "request_bytes": 837,
+      "response_bytes": 1983,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 239,
+          "response_bytes": 484,
+          "headers_ms": 2.191665997088421,
+          "total_ms": 2.195583001594059,
+          "stream_ms": 0.003917004505638033
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 358,
+          "response_bytes": 1077,
+          "headers_ms": 13.419875002000481,
+          "total_ms": 13.426833000266925,
+          "stream_ms": 0.00695799826644361
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 422,
+          "headers_ms": 2.0890829982818104,
+          "total_ms": 2.0946249933331273,
+          "stream_ms": 0.005541995051316917
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 10.348834002797958,
+      "request_bytes": 568,
+      "response_bytes": 990,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 328,
+          "response_bytes": 572,
+          "headers_ms": 8.649250004964415,
+          "total_ms": 8.656250000058208,
+          "stream_ms": 0.006999995093792677
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 418,
+          "headers_ms": 1.6164999979082495,
+          "total_ms": 1.622165997105185,
+          "stream_ms": 0.005665999196935445
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 1.8139579988201149,
+      "request_bytes": 240,
+      "response_bytes": 418,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 418,
+          "headers_ms": 1.7823329981183633,
+          "total_ms": 1.7862499953480437,
+          "stream_ms": 0.003916997229680419
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 17.69479199720081,
+      "request_bytes": 837,
+      "response_bytes": 1983,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 239,
+          "response_bytes": 484,
+          "headers_ms": 1.7336250020889565,
+          "total_ms": 1.7387080006301403,
+          "stream_ms": 0.00508299854118377
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 358,
+          "response_bytes": 1077,
+          "headers_ms": 13.937541996710934,
+          "total_ms": 13.942582998424768,
+          "stream_ms": 0.005041001713834703
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 422,
+          "headers_ms": 1.9213339983252808,
+          "total_ms": 1.9251249977969564,
+          "stream_ms": 0.0037909994716756046
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 20.68149999831803,
+      "request_bytes": 962,
+      "response_bytes": 1386,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 258,
+          "response_bytes": 385,
+          "headers_ms": 8.375207995413803,
+          "total_ms": 8.382291998714209,
+          "stream_ms": 0.007084003300406039
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 258,
+          "response_bytes": 385,
+          "headers_ms": 8.262416995421518,
+          "total_ms": 8.268916993984021,
+          "stream_ms": 0.006499998562503606
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 2.1415000010165386,
+          "total_ms": 2.147042003343813,
+          "stream_ms": 0.005542002327274531
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.767707995895762,
+          "total_ms": 1.7718750023050234,
+          "stream_ms": 0.004167006409261376
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 6.0828749992651865,
+      "request_bytes": 446,
+      "response_bytes": 616,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 4.388334004033823,
+          "total_ms": 4.393584000354167,
+          "stream_ms": 0.005249996320344508
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.6373750040656887,
+          "total_ms": 1.6406249997089617,
+          "stream_ms": 0.003249995643272996
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 28.72524999838788,
+      "request_bytes": 1408,
+      "response_bytes": 2738,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 222,
+          "response_bytes": 341,
+          "headers_ms": 1.775749995431397,
+          "total_ms": 1.7795409949030727,
+          "stream_ms": 0.0037909994716756046
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 222,
+          "response_bytes": 341,
+          "headers_ms": 1.9839999949908815,
+          "total_ms": 1.9869999960064888,
+          "stream_ms": 0.0030000010156072676
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 259,
+          "response_bytes": 718,
+          "headers_ms": 13.336125004570931,
+          "total_ms": 13.34179200057406,
+          "stream_ms": 0.005666996003128588
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 259,
+          "response_bytes": 718,
+          "headers_ms": 8.227457998145837,
+          "total_ms": 8.231790998252109,
+          "stream_ms": 0.004333000106271356
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 310,
+          "headers_ms": 1.6678329993737862,
+          "total_ms": 1.6727909969631582,
+          "stream_ms": 0.0049579975893720984
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 310,
+          "headers_ms": 1.561040997330565,
+          "total_ms": 1.5645409948774613,
+          "stream_ms": 0.0034999975468963385
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 19.32120900164591,
+      "request_bytes": 962,
+      "response_bytes": 1386,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 258,
+          "response_bytes": 385,
+          "headers_ms": 8.290292003948707,
+          "total_ms": 8.297542000946123,
+          "stream_ms": 0.0072499969974160194
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 258,
+          "response_bytes": 385,
+          "headers_ms": 8.340041000337806,
+          "total_ms": 8.34624999697553,
+          "stream_ms": 0.00620899663772434
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.374665996991098,
+          "total_ms": 1.3799999942420982,
+          "stream_ms": 0.005333997251000255
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.1807499977294356,
+          "total_ms": 1.1846670022350736,
+          "stream_ms": 0.003917004505638033
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 3.0973750035627745,
+      "request_bytes": 446,
+      "response_bytes": 616,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.6063750008470379,
+          "total_ms": 1.6104160022223368,
+          "stream_ms": 0.004041001375298947
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.4417909987969324,
+          "total_ms": 1.445165995392017,
+          "stream_ms": 0.003374996595084667
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 20.192957999825012,
+      "request_bytes": 1408,
+      "response_bytes": 2738,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 222,
+          "response_bytes": 341,
+          "headers_ms": 1.4767920001759194,
+          "total_ms": 1.4798750053159893,
+          "stream_ms": 0.003083005140069872
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 222,
+          "response_bytes": 341,
+          "headers_ms": 1.510207999672275,
+          "total_ms": 1.5142500051297247,
+          "stream_ms": 0.004042005457449704
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 259,
+          "response_bytes": 718,
+          "headers_ms": 7.202458000392653,
+          "total_ms": 7.207041999208741,
+          "stream_ms": 0.004583998816087842
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 259,
+          "response_bytes": 718,
+          "headers_ms": 6.822084003943019,
+          "total_ms": 6.82687500375323,
+          "stream_ms": 0.0047909998102113605
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 310,
+          "headers_ms": 1.5251250006258488,
+          "total_ms": 1.5290829978766851,
+          "stream_ms": 0.003957997250836343
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 310,
+          "headers_ms": 1.4855420013191178,
+          "total_ms": 1.4887500001350418,
+          "stream_ms": 0.003207998815923929
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 10.206708997429814,
+      "request_bytes": 568,
+      "response_bytes": 990,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 328,
+          "response_bytes": 572,
+          "headers_ms": 8.602750000136439,
+          "total_ms": 8.609832999354694,
+          "stream_ms": 0.0070829992182552814
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 418,
+          "headers_ms": 1.5264579997165129,
+          "total_ms": 1.5309160007745959,
+          "stream_ms": 0.004458001058083028
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 1.8265830003656447,
+      "request_bytes": 240,
+      "response_bytes": 418,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 418,
+          "headers_ms": 1.7979170006583445,
+          "total_ms": 1.8016670001088642,
+          "stream_ms": 0.003749999450519681
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 15.484083000046667,
+      "request_bytes": 837,
+      "response_bytes": 1983,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 239,
+          "response_bytes": 484,
+          "headers_ms": 1.6167499998118728,
+          "total_ms": 1.6204999992623925,
+          "stream_ms": 0.003749999450519681
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 358,
+          "response_bytes": 1077,
+          "headers_ms": 11.91145800112281,
+          "total_ms": 11.916791001567617,
+          "stream_ms": 0.005333000444807112
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 422,
+          "headers_ms": 1.8502500024624169,
+          "total_ms": 1.8539160009822808,
+          "stream_ms": 0.0036659985198639333
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 10.636875005729962,
+      "request_bytes": 568,
+      "response_bytes": 990,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 328,
+          "response_bytes": 572,
+          "headers_ms": 8.861249996698461,
+          "total_ms": 8.869749995938037,
+          "stream_ms": 0.008499999239575118
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 418,
+          "headers_ms": 1.6977080013020895,
+          "total_ms": 1.7025420020218007,
+          "stream_ms": 0.0048340007197111845
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 1.9029169998248108,
+      "request_bytes": 240,
+      "response_bytes": 418,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 418,
+          "headers_ms": 1.8667909971554764,
+          "total_ms": 1.8719159997999668,
+          "stream_ms": 0.005125002644490451
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 15.838666004128754,
+      "request_bytes": 837,
+      "response_bytes": 1983,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 239,
+          "response_bytes": 484,
+          "headers_ms": 1.8857090035453439,
+          "total_ms": 1.8895840039476752,
+          "stream_ms": 0.0038750004023313522
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 358,
+          "response_bytes": 1077,
+          "headers_ms": 12.059542001225054,
+          "total_ms": 12.065666996932123,
+          "stream_ms": 0.006124995707068592
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 422,
+          "headers_ms": 1.7865839981823228,
+          "total_ms": 1.7905420027091168,
+          "stream_ms": 0.003958004526793957
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 19.681790996401105,
+      "request_bytes": 963,
+      "response_bytes": 1387,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 258,
+          "response_bytes": 385,
+          "headers_ms": 8.179791002476122,
+          "total_ms": 8.185041006072424,
+          "stream_ms": 0.005250003596302122
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 258,
+          "response_bytes": 385,
+          "headers_ms": 8.386583001993131,
+          "total_ms": 8.391916999244131,
+          "stream_ms": 0.005333997251000255
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 308,
+          "headers_ms": 1.5110840031411499,
+          "total_ms": 1.5163749994826503,
+          "stream_ms": 0.005290996341500431
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.480124999943655,
+          "total_ms": 1.4829580031801015,
+          "stream_ms": 0.0028330032364465296
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 3.0502080044243485,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.5520829983870499,
+          "total_ms": 1.5555830032099038,
+          "stream_ms": 0.0035000048228539526
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.4456249991781078,
+          "total_ms": 1.4494579954771325,
+          "stream_ms": 0.0038329962990246713
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 17.603000000235625,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.8357080043642782,
+          "total_ms": 1.8417500032228418,
+          "stream_ms": 0.006041998858563602
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.534041999548208,
+          "total_ms": 1.5380839977297,
+          "stream_ms": 0.00404199818149209
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 5.890959000680596,
+          "total_ms": 5.894542002351955,
+          "stream_ms": 0.003583001671358943
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 4.999458004022017,
+          "total_ms": 5.00412499968661,
+          "stream_ms": 0.004666995664592832
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.559959004225675,
+          "total_ms": 1.5633750008419156,
+          "stream_ms": 0.003415996616240591
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.5643329970771447,
+          "total_ms": 1.5673750021960586,
+          "stream_ms": 0.0030420051189139485
+        }
+      ]
+    },
+    {
+      "iteration": 6,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 21.244999996270053,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.891249996144325,
+          "total_ms": 9.901249999529682,
+          "stream_ms": 0.010000003385357559
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.377666999876965,
+          "total_ms": 8.386417001020163,
+          "stream_ms": 0.00875000114319846
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.4416249978239648,
+          "total_ms": 1.446875001420267,
+          "stream_ms": 0.005250003596302122
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.3572919997386634,
+          "total_ms": 1.3614589988719672,
+          "stream_ms": 0.0041669991333037615
+        }
+      ]
+    },
+    {
+      "iteration": 6,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 3.2994580033118837,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.5770000027259812,
+          "total_ms": 1.5814170037629083,
+          "stream_ms": 0.004417001036927104
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.6437090016552247,
+          "total_ms": 1.6473750001750886,
+          "stream_ms": 0.0036659985198639333
+        }
+      ]
+    },
+    {
+      "iteration": 6,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 19.13220799906412,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.457667000067886,
+          "total_ms": 1.4615000036428683,
+          "stream_ms": 0.0038330035749822855
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.4554580047843046,
+          "total_ms": 1.4583750016754493,
+          "stream_ms": 0.002916996891144663
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.187667000631336,
+          "total_ms": 6.193250002979767,
+          "stream_ms": 0.005583002348430455
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.711540998367127,
+          "total_ms": 6.715249997796491,
+          "stream_ms": 0.0037089994293637574
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.5857910038903356,
+          "total_ms": 1.588833001733292,
+          "stream_ms": 0.0030419978429563344
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.5720419978606515,
+          "total_ms": 1.5764170020702295,
+          "stream_ms": 0.004375004209578037
+        }
+      ]
+    },
+    {
+      "iteration": 6,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 11.353165995387826,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 9.559083002386615,
+          "total_ms": 9.567875000357162,
+          "stream_ms": 0.008791997970547527
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.7120830016210675,
+          "total_ms": 1.7178330017486587,
+          "stream_ms": 0.005750000127591193
+        }
+      ]
+    },
+    {
+      "iteration": 6,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 1.9247499949415214,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.8934580002678558,
+          "total_ms": 1.8978330044774339,
+          "stream_ms": 0.004375004209578037
+        }
+      ]
+    },
+    {
+      "iteration": 6,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 15.76333399862051,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 1.8780419995891862,
+          "total_ms": 1.8825000006472692,
+          "stream_ms": 0.004458001058083028
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 11.364875004801434,
+          "total_ms": 11.37308400211623,
+          "stream_ms": 0.008208997314795852
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 2.351916002226062,
+          "total_ms": 2.365624997764826,
+          "stream_ms": 0.013708995538763702
+        }
+      ]
+    },
+    {
+      "iteration": 7,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 18.180916995333973,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 14.583834003133234,
+          "total_ms": 14.605791999201756,
+          "stream_ms": 0.021957996068522334
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.4071249974658713,
+          "total_ms": 3.4277079976163805,
+          "stream_ms": 0.02058300015050918
+        }
+      ]
+    },
+    {
+      "iteration": 7,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 10.00775000284193,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 9.9500829965109,
+          "total_ms": 9.959499999240506,
+          "stream_ms": 0.009417002729605883
+        }
+      ]
+    },
+    {
+      "iteration": 7,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 17.908166999404784,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 2.2800829974585213,
+          "total_ms": 2.2902499986230396,
+          "stream_ms": 0.010167001164518297
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 13.53966700116871,
+          "total_ms": 13.548541995987762,
+          "stream_ms": 0.008874994819052517
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 1.9296249956823885,
+          "total_ms": 1.9354589967406355,
+          "stream_ms": 0.00583400105824694
+        }
+      ]
+    },
+    {
+      "iteration": 7,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 20.199792001221795,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.72450000315439,
+          "total_ms": 8.732750000490341,
+          "stream_ms": 0.008249997335951775
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.25812500261236,
+          "total_ms": 8.267917000921443,
+          "stream_ms": 0.009791998309083283
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.647332996071782,
+          "total_ms": 1.6524160018889233,
+          "stream_ms": 0.005083005817141384
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.4224580008885823,
+          "total_ms": 1.4268329978222027,
+          "stream_ms": 0.004374996933620423
+        }
+      ]
+    },
+    {
+      "iteration": 7,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 3.7883330005570315,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.131583998561837,
+          "total_ms": 2.136667004378978,
+          "stream_ms": 0.005083005817141384
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.6004579956643283,
+          "total_ms": 1.604124998266343,
+          "stream_ms": 0.0036670026020146906
+        }
+      ]
+    },
+    {
+      "iteration": 7,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 24.434708997432608,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.5822080022189766,
+          "total_ms": 1.5855000019655563,
+          "stream_ms": 0.003291999746579677
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.7341659986414015,
+          "total_ms": 1.7372500005876645,
+          "stream_ms": 0.0030840019462630153
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 8.53866699617356,
+          "total_ms": 8.543083000404295,
+          "stream_ms": 0.004416004230733961
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 9.0706670016516,
+          "total_ms": 9.076624999579508,
+          "stream_ms": 0.005957997927907854
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.8079169967677444,
+          "total_ms": 1.8117090003215708,
+          "stream_ms": 0.003792003553826362
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.522041995485779,
+          "total_ms": 1.5274580000550486,
+          "stream_ms": 0.005416004569269717
+        }
+      ]
+    },
+    {
+      "iteration": 8,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 20.2075419947505,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.213499997509643,
+          "total_ms": 8.221915995818563,
+          "stream_ms": 0.00841599830891937
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.515166999131907,
+          "total_ms": 8.524416996806394,
+          "stream_ms": 0.009249997674487531
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.541707999422215,
+          "total_ms": 1.5472500017494895,
+          "stream_ms": 0.005542002327274531
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.763125001161825,
+          "total_ms": 1.7698750016279519,
+          "stream_ms": 0.006750000466126949
+        }
+      ]
+    },
+    {
+      "iteration": 8,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 4.400042002089322,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.1131670000613667,
+          "total_ms": 2.1182919954298995,
+          "stream_ms": 0.0051249953685328364
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.220708003733307,
+          "total_ms": 2.225250005722046,
+          "stream_ms": 0.004542001988738775
+        }
+      ]
+    },
+    {
+      "iteration": 8,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 70.72899999911897,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 4.874083002505358,
+          "total_ms": 4.883790999883786,
+          "stream_ms": 0.009707997378427535
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 21.314541998435743,
+          "total_ms": 21.32816700031981,
+          "stream_ms": 0.013625001884065568
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 21.735625006840564,
+          "total_ms": 21.751542000856716,
+          "stream_ms": 0.015916994016151875
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 10.949333998723887,
+          "total_ms": 10.960874999000225,
+          "stream_ms": 0.011541000276338309
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 8.338542000274174,
+          "total_ms": 8.36195800366113,
+          "stream_ms": 0.02341600338695571
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 3.098959001363255,
+          "total_ms": 3.1159170030150563,
+          "stream_ms": 0.01695800165180117
+        }
+      ]
+    },
+    {
+      "iteration": 8,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 21.728292005718686,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 18.34695800062036,
+          "total_ms": 18.36166699649766,
+          "stream_ms": 0.014708995877299458
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.108165998128243,
+          "total_ms": 3.118124994216487,
+          "stream_ms": 0.009958996088244021
+        }
+      ]
+    },
+    {
+      "iteration": 8,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 3.588832994864788,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.507875000650529,
+          "total_ms": 3.518208999594208,
+          "stream_ms": 0.010333998943679035
+        }
+      ]
+    },
+    {
+      "iteration": 8,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 35.10545899916906,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 7.879834003688302,
+          "total_ms": 7.893624999269377,
+          "stream_ms": 0.013790995581075549
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 23.851124999055173,
+          "total_ms": 23.862833993916865,
+          "stream_ms": 0.01170899486169219
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 3.184041997883469,
+          "total_ms": 3.191749994584825,
+          "stream_ms": 0.0077079967013560236
+        }
+      ]
+    },
+    {
+      "iteration": 9,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 82.93425000010757,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 75.86720800463809,
+          "total_ms": 75.87925000552787,
+          "stream_ms": 0.012042000889778137
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 6.89987499936251,
+          "total_ms": 6.930083000042941,
+          "stream_ms": 0.030208000680431724
+        }
+      ]
+    },
+    {
+      "iteration": 9,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 6.76408399885986,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 6.630083000345621,
+          "total_ms": 6.6394169989507645,
+          "stream_ms": 0.009333998605143279
+        }
+      ]
+    },
+    {
+      "iteration": 9,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 30.783166002947837,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 4.1988750017480925,
+          "total_ms": 4.217583002173342,
+          "stream_ms": 0.018708000425249338
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 22.37800000148127,
+          "total_ms": 22.39029100019252,
+          "stream_ms": 0.012290998711250722
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 4.019208005047403,
+          "total_ms": 4.0272920014103875,
+          "stream_ms": 0.00808399636298418
+        }
+      ]
+    },
+    {
+      "iteration": 9,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 43.497582999407314,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 14.107750001130626,
+          "total_ms": 14.118999999482185,
+          "stream_ms": 0.011249998351559043
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.271916002035141,
+          "total_ms": 9.282166000048164,
+          "stream_ms": 0.010249998013023287
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 17.223875001946,
+          "total_ms": 17.237166997801978,
+          "stream_ms": 0.013291995855979621
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.6420829963171855,
+          "total_ms": 2.6510829993640073,
+          "stream_ms": 0.009000003046821803
+        }
+      ]
+    },
+    {
+      "iteration": 9,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 10.32604200008791,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 7.02583300153492,
+          "total_ms": 7.073583001329098,
+          "stream_ms": 0.04774999979417771
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.127333999145776,
+          "total_ms": 3.1339589986600913,
+          "stream_ms": 0.006624999514315277
+        }
+      ]
+    },
+    {
+      "iteration": 9,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 39.9254590010969,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 9.0402499990887,
+          "total_ms": 9.089083003345877,
+          "stream_ms": 0.04883300425717607
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 7.566750005935319,
+          "total_ms": 7.577958000183571,
+          "stream_ms": 0.011207994248252362
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 9.825082997849677,
+          "total_ms": 9.83487499615876,
+          "stream_ms": 0.009791998309083283
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 9.082917000341695,
+          "total_ms": 9.096874993701931,
+          "stream_ms": 0.013957993360236287
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.2856670038891025,
+          "total_ms": 2.291374999913387,
+          "stream_ms": 0.005707996024284512
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.7755000008037314,
+          "total_ms": 1.7799999986891635,
+          "stream_ms": 0.004499997885432094
+        }
+      ]
+    },
+    {
+      "iteration": 10,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 19.062291998125147,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.2035410014214,
+          "total_ms": 8.209166000597179,
+          "stream_ms": 0.0056249991757795215
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.063749999564607,
+          "total_ms": 8.072125005128328,
+          "stream_ms": 0.00837500556372106
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.3582920000771992,
+          "total_ms": 1.362458999210503,
+          "stream_ms": 0.0041669991333037615
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.3099170027999207,
+          "total_ms": 1.313334003498312,
+          "stream_ms": 0.003417000698391348
+        }
+      ]
+    },
+    {
+      "iteration": 10,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 3.1860829985816963,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.56050000077812,
+          "total_ms": 1.5644160012016073,
+          "stream_ms": 0.003916000423487276
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.5746659992146306,
+          "total_ms": 1.578082999913022,
+          "stream_ms": 0.003417000698391348
+        }
+      ]
+    },
+    {
+      "iteration": 10,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 25.69000000221422,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.3882919956813566,
+          "total_ms": 1.3915829986217432,
+          "stream_ms": 0.0032910029403865337
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.5248749987222254,
+          "total_ms": 1.5292919997591525,
+          "stream_ms": 0.004417001036927104
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.9004169999971054,
+          "total_ms": 6.905499998538289,
+          "stream_ms": 0.00508299854118377
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 10.998167002981063,
+          "total_ms": 11.00208300340455,
+          "stream_ms": 0.003916000423487276
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 3.1500420009251684,
+          "total_ms": 3.155625003273599,
+          "stream_ms": 0.005583002348430455
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.5006659959908575,
+          "total_ms": 1.5041660008137114,
+          "stream_ms": 0.0035000048228539526
+        }
+      ]
+    },
+    {
+      "iteration": 10,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 11.380959003872704,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 9.67208299698541,
+          "total_ms": 9.680374998424668,
+          "stream_ms": 0.008292001439258456
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.6044589938246645,
+          "total_ms": 1.6102919980767183,
+          "stream_ms": 0.005833004252053797
+        }
+      ]
+    },
+    {
+      "iteration": 10,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 1.9213749983464368,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.8825000006472692,
+          "total_ms": 1.8862500000977889,
+          "stream_ms": 0.003749999450519681
+        }
+      ]
+    },
+    {
+      "iteration": 10,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 20.668208002462052,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 1.7358749973936938,
+          "total_ms": 1.7399579955963418,
+          "stream_ms": 0.004082998202648014
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 16.622999995888676,
+          "total_ms": 16.632041995762847,
+          "stream_ms": 0.00904199987417087
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 2.176499998313375,
+          "total_ms": 2.183083997806534,
+          "stream_ms": 0.006583999493159354
+        }
+      ]
+    },
+    {
+      "iteration": 11,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 12.935041995660868,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 11.041290999855846,
+          "total_ms": 11.051250003220048,
+          "stream_ms": 0.009959003364201635
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.782874998752959,
+          "total_ms": 1.7880419982247986,
+          "stream_ms": 0.005166999471839517
+        }
+      ]
+    },
+    {
+      "iteration": 11,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 2.4315410046256147,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.373042007093318,
+          "total_ms": 2.3803330041118897,
+          "stream_ms": 0.007290997018571943
+        }
+      ]
+    },
+    {
+      "iteration": 11,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 17.171833002066705,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 2.0690840028692037,
+          "total_ms": 2.074292002362199,
+          "stream_ms": 0.005207999492995441
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 10.92758299637353,
+          "total_ms": 10.936874998151325,
+          "stream_ms": 0.009292001777794212
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 4.047791000630241,
+          "total_ms": 4.054249999171589,
+          "stream_ms": 0.0064589985413476825
+        }
+      ]
+    },
+    {
+      "iteration": 11,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 23.8028329986264,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.485707996645942,
+          "total_ms": 9.492375000263564,
+          "stream_ms": 0.006667003617621958
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.386125006130897,
+          "total_ms": 9.393750005983748,
+          "stream_ms": 0.007624999852851033
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.2991250007180497,
+          "total_ms": 2.3139160039136186,
+          "stream_ms": 0.01479100319556892
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.43958300416125,
+          "total_ms": 2.4465410024276935,
+          "stream_ms": 0.00695799826644361
+        }
+      ]
+    },
+    {
+      "iteration": 11,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 6.279375003941823,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.958333003334701,
+          "total_ms": 2.964749997772742,
+          "stream_ms": 0.0064169944380410016
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.2474580002599396,
+          "total_ms": 3.2524579946766607,
+          "stream_ms": 0.004999994416721165
+        }
+      ]
+    },
+    {
+      "iteration": 11,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 31.728333000501152,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 3.0108749997452833,
+          "total_ms": 3.016250004293397,
+          "stream_ms": 0.005375004548113793
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 3.7204580003162846,
+          "total_ms": 3.726125003595371,
+          "stream_ms": 0.005667003279086202
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 7.4065420049009845,
+          "total_ms": 7.417667002300732,
+          "stream_ms": 0.011124997399747372
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 11.665708996588364,
+          "total_ms": 11.676417001581285,
+          "stream_ms": 0.010708004992920905
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.769833001366351,
+          "total_ms": 2.7752080059144646,
+          "stream_ms": 0.005375004548113793
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.892250005970709,
+          "total_ms": 2.896834004786797,
+          "stream_ms": 0.004583998816087842
+        }
+      ]
+    },
+    {
+      "iteration": 12,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 27.54570900287945,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.525166999083012,
+          "total_ms": 9.533999997074716,
+          "stream_ms": 0.00883299799170345
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 11.124249998829328,
+          "total_ms": 11.13325000187615,
+          "stream_ms": 0.009000003046821803
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 4.495791996305343,
+          "total_ms": 4.5034590002615005,
+          "stream_ms": 0.007667003956157714
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.24733300274238,
+          "total_ms": 2.2511250062962063,
+          "stream_ms": 0.003792003553826362
+        }
+      ]
+    },
+    {
+      "iteration": 12,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 5.879708995053079,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.3634170031291433,
+          "total_ms": 3.369083999132272,
+          "stream_ms": 0.005666996003128588
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.4448330004815944,
+          "total_ms": 2.44816600024933,
+          "stream_ms": 0.0033329997677356005
+        }
+      ]
+    },
+    {
+      "iteration": 12,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 28.45162499579601,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.51820900302846,
+          "total_ms": 2.523208997445181,
+          "stream_ms": 0.004999994416721165
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.656666998518631,
+          "total_ms": 2.6598330005072057,
+          "stream_ms": 0.0031660019885748625
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 8.418458004598506,
+          "total_ms": 8.423125000263099,
+          "stream_ms": 0.004666995664592832
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 8.426209002209362,
+          "total_ms": 8.432541995716747,
+          "stream_ms": 0.006332993507385254
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.590000003692694,
+          "total_ms": 2.595333004137501,
+          "stream_ms": 0.005333000444807112
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 3.6300840001786128,
+          "total_ms": 3.6361250022309832,
+          "stream_ms": 0.006041002052370459
+        }
+      ]
+    },
+    {
+      "iteration": 12,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 12.306334007007536,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 9.866666005109437,
+          "total_ms": 9.876166004687548,
+          "stream_ms": 0.009499999578110874
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.355875003559049,
+          "total_ms": 2.3617080005351454,
+          "stream_ms": 0.005832996976096183
+        }
+      ]
+    },
+    {
+      "iteration": 12,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 2.920708997407928,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.888750001147855,
+          "total_ms": 2.892750002501998,
+          "stream_ms": 0.0040000013541430235
+        }
+      ]
+    },
+    {
+      "iteration": 12,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 22.27837499958696,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 2.508167002815753,
+          "total_ms": 2.5125829997705296,
+          "stream_ms": 0.004415996954776347
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 16.26599999872269,
+          "total_ms": 16.276333000860177,
+          "stream_ms": 0.010333002137485892
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 3.3728749986039475,
+          "total_ms": 3.3791669993661344,
+          "stream_ms": 0.0062920007621869445
+        }
+      ]
+    },
+    {
+      "iteration": 13,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 15.89558399427915,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 11.235958001634572,
+          "total_ms": 11.244000001170207,
+          "stream_ms": 0.008041999535635114
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 4.5702090064878576,
+          "total_ms": 4.57766700128559,
+          "stream_ms": 0.007457994797732681
+        }
+      ]
+    },
+    {
+      "iteration": 13,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 3.573499998310581,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.5317500005476177,
+          "total_ms": 3.537500000675209,
+          "stream_ms": 0.005750000127591193
+        }
+      ]
+    },
+    {
+      "iteration": 13,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 51.73425000248244,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 3.095957996265497,
+          "total_ms": 3.1008749938337132,
+          "stream_ms": 0.004916997568216175
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 21.79574999900069,
+          "total_ms": 21.8110420028097,
+          "stream_ms": 0.015292003809008747
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 17.189750004035886,
+          "total_ms": 18.12304100167239,
+          "stream_ms": 0.9332909976365045
+        }
+      ]
+    },
+    {
+      "iteration": 13,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 82.63954099675175,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 58.409375000337604,
+          "total_ms": 58.42212499555899,
+          "stream_ms": 0.01274999522138387
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 15.479166999284644,
+          "total_ms": 15.510375000303611,
+          "stream_ms": 0.03120800101896748
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.9078749978216365,
+          "total_ms": 3.9164999980130233,
+          "stream_ms": 0.008625000191386789
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.4645839987206273,
+          "total_ms": 3.471042000455782,
+          "stream_ms": 0.006458001735154539
+        }
+      ]
+    },
+    {
+      "iteration": 13,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 13.77258299908135,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 4.016042003058828,
+          "total_ms": 4.024209003546275,
+          "stream_ms": 0.008167000487446785
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 9.648708000895567,
+          "total_ms": 9.657707996666431,
+          "stream_ms": 0.008999995770864189
+        }
+      ]
+    },
+    {
+      "iteration": 13,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 41.97333299816819,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 4.683874998590909,
+          "total_ms": 4.695957999501843,
+          "stream_ms": 0.01208300091093406
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 8.81570800265763,
+          "total_ms": 8.824625001579989,
+          "stream_ms": 0.008916998922359198
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 12.522167002316564,
+          "total_ms": 12.535208006738685,
+          "stream_ms": 0.01304100442212075
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 10.2690830026404,
+          "total_ms": 10.27750000503147,
+          "stream_ms": 0.008417002391070127
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.940041995316278,
+          "total_ms": 2.9464999970514327,
+          "stream_ms": 0.006458001735154539
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.3502920012106188,
+          "total_ms": 2.3567500029457733,
+          "stream_ms": 0.006458001735154539
+        }
+      ]
+    },
+    {
+      "iteration": 14,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 33.047582997824065,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 12.052666999807116,
+          "total_ms": 12.064749993442092,
+          "stream_ms": 0.012082993634976447
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 16.13754199934192,
+          "total_ms": 16.147875001479406,
+          "stream_ms": 0.010333002137485892
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.3625829999218695,
+          "total_ms": 2.368583001953084,
+          "stream_ms": 0.006000002031214535
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.3211660009110346,
+          "total_ms": 2.32779100042535,
+          "stream_ms": 0.006624999514315277
+        }
+      ]
+    },
+    {
+      "iteration": 14,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 4.6345829978236,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.7081669977633283,
+          "total_ms": 2.7128750007250346,
+          "stream_ms": 0.00470800296170637
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.8454579985700548,
+          "total_ms": 1.8498749996069819,
+          "stream_ms": 0.004417001036927104
+        }
+      ]
+    },
+    {
+      "iteration": 14,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 41.09633299958659,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.8855000016628765,
+          "total_ms": 1.8901250005001202,
+          "stream_ms": 0.004624998837243766
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.593625005625654,
+          "total_ms": 1.5970410022418946,
+          "stream_ms": 0.003415996616240591
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 16.318500005581882,
+          "total_ms": 16.32945800520247,
+          "stream_ms": 0.010957999620586634
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 14.190166999469511,
+          "total_ms": 14.198374999978114,
+          "stream_ms": 0.008208000508602709
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 5.145041999639943,
+          "total_ms": 5.151375000423286,
+          "stream_ms": 0.006333000783342868
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.7229170043719932,
+          "total_ms": 1.7264999987673946,
+          "stream_ms": 0.003582994395401329
+        }
+      ]
+    },
+    {
+      "iteration": 14,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 26.02491700235987,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 23.42904200486373,
+          "total_ms": 23.441875004209578,
+          "stream_ms": 0.012832999345846474
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.443249999487307,
+          "total_ms": 2.4852089991327375,
+          "stream_ms": 0.041958999645430595
+        }
+      ]
+    },
+    {
+      "iteration": 14,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 3.047125006560236,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.9967080045025796,
+          "total_ms": 3.0030000052647665,
+          "stream_ms": 0.0062920007621869445
+        }
+      ]
+    },
+    {
+      "iteration": 14,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 20.171041003777646,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 2.2017079973011278,
+          "total_ms": 2.206457997090183,
+          "stream_ms": 0.004749999789055437
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 14.109250005276408,
+          "total_ms": 14.118709004833363,
+          "stream_ms": 0.00945899955695495
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 3.6878749961033463,
+          "total_ms": 3.702958994836081,
+          "stream_ms": 0.015083998732734472
+        }
+      ]
+    },
+    {
+      "iteration": 15,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 15.693457993620541,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 13.046791005763225,
+          "total_ms": 13.055583003733773,
+          "stream_ms": 0.008791997970547527
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.5522919968352653,
+          "total_ms": 2.5612079989514314,
+          "stream_ms": 0.008916002116166055
+        }
+      ]
+    },
+    {
+      "iteration": 15,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 2.498208006727509,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.431042004900519,
+          "total_ms": 2.43604199931724,
+          "stream_ms": 0.004999994416721165
+        }
+      ]
+    },
+    {
+      "iteration": 15,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 19.168667000485584,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 2.682667000044603,
+          "total_ms": 2.688499997020699,
+          "stream_ms": 0.005832996976096183
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 13.135833003616426,
+          "total_ms": 13.141542003722861,
+          "stream_ms": 0.005709000106435269
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 3.235875003156252,
+          "total_ms": 3.24091700167628,
+          "stream_ms": 0.005041998520027846
+        }
+      ]
+    },
+    {
+      "iteration": 15,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 24.77004200045485,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.44150000193622,
+          "total_ms": 8.447583997622132,
+          "stream_ms": 0.006083995685912669
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 7.935084002383519,
+          "total_ms": 7.93987500219373,
+          "stream_ms": 0.0047909998102113605
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 5.450458003906533,
+          "total_ms": 5.454208003357053,
+          "stream_ms": 0.003749999450519681
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.82866699853912,
+          "total_ms": 2.8320420024101622,
+          "stream_ms": 0.0033750038710422814
+        }
+      ]
+    },
+    {
+      "iteration": 15,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 3.674915998999495,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.7505419964436442,
+          "total_ms": 1.7555000013089739,
+          "stream_ms": 0.004958004865329713
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.8589590035844594,
+          "total_ms": 1.8625840020831674,
+          "stream_ms": 0.0036249984987080097
+        }
+      ]
+    },
+    {
+      "iteration": 15,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 24.778333005087916,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.4658750005764887,
+          "total_ms": 1.4700419997097924,
+          "stream_ms": 0.0041669991333037615
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.2768330018152483,
+          "total_ms": 2.280083004734479,
+          "stream_ms": 0.00325000291923061
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 8.891874997061677,
+          "total_ms": 8.901624998543411,
+          "stream_ms": 0.009750001481734216
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 8.381916995858774,
+          "total_ms": 8.387041998503264,
+          "stream_ms": 0.005125002644490451
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.9318329941597767,
+          "total_ms": 1.9363749961485155,
+          "stream_ms": 0.004542001988738775
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.6405830028816126,
+          "total_ms": 1.6438330058008432,
+          "stream_ms": 0.00325000291923061
+        }
+      ]
+    },
+    {
+      "iteration": 16,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 19.436333001067396,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.473292000417132,
+          "total_ms": 8.479625001200475,
+          "stream_ms": 0.006333000783342868
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.090124996670056,
+          "total_ms": 8.095999997749459,
+          "stream_ms": 0.005875001079402864
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.5454170061275363,
+          "total_ms": 1.549625005281996,
+          "stream_ms": 0.004207999154459685
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.2084999980288558,
+          "total_ms": 1.2121249965275638,
+          "stream_ms": 0.0036249984987080097
+        }
+      ]
+    },
+    {
+      "iteration": 16,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 2.976875002786983,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.4664169939351268,
+          "total_ms": 1.4704169952892698,
+          "stream_ms": 0.0040000013541430235
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.4581670038751327,
+          "total_ms": 1.4612920058425516,
+          "stream_ms": 0.003125001967418939
+        }
+      ]
+    },
+    {
+      "iteration": 16,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 22.521500002767425,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.4388749987119809,
+          "total_ms": 1.4421669984585606,
+          "stream_ms": 0.003291999746579677
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.3812499964842573,
+          "total_ms": 1.3839579987688921,
+          "stream_ms": 0.0027080022846348584
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 8.410292000917252,
+          "total_ms": 8.414957999775652,
+          "stream_ms": 0.004665998858399689
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 8.104708002065308,
+          "total_ms": 8.108166999591049,
+          "stream_ms": 0.003458997525740415
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.5763330011395738,
+          "total_ms": 1.57937499898253,
+          "stream_ms": 0.0030419978429563344
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.4567920006811619,
+          "total_ms": 1.4601250004488975,
+          "stream_ms": 0.0033329997677356005
+        }
+      ]
+    },
+    {
+      "iteration": 16,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 15.054832998430356,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 13.32804200501414,
+          "total_ms": 13.338249998923857,
+          "stream_ms": 0.010207993909716606
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.6446250010631047,
+          "total_ms": 1.649541998631321,
+          "stream_ms": 0.004916997568216175
+        }
+      ]
+    },
+    {
+      "iteration": 16,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 1.9376669952180237,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.9010830001207069,
+          "total_ms": 1.906333003717009,
+          "stream_ms": 0.005250003596302122
+        }
+      ]
+    },
+    {
+      "iteration": 16,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 18.145000001823064,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 2.0562499994412065,
+          "total_ms": 2.06370899832109,
+          "stream_ms": 0.007458998879883438
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 13.966375001473352,
+          "total_ms": 13.972624998132233,
+          "stream_ms": 0.006249996658880264
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 1.9812919999822043,
+          "total_ms": 1.985541995964013,
+          "stream_ms": 0.004249995981808752
+        }
+      ]
+    },
+    {
+      "iteration": 17,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 10.418999998364598,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 8.638249993964564,
+          "total_ms": 8.64487499347888,
+          "stream_ms": 0.006624999514315277
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.6955000028247014,
+          "total_ms": 1.7016670026350766,
+          "stream_ms": 0.006166999810375273
+        }
+      ]
+    },
+    {
+      "iteration": 17,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 1.9161250020260923,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.8777500008582138,
+          "total_ms": 1.8820000041159801,
+          "stream_ms": 0.004250003257766366
+        }
+      ]
+    },
+    {
+      "iteration": 17,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 19.999415999336634,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 2.292707999004051,
+          "total_ms": 2.2984579991316423,
+          "stream_ms": 0.005750000127591193
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 15.00866699643666,
+          "total_ms": 15.021084000181872,
+          "stream_ms": 0.012417003745213151
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 2.5346670008730143,
+          "total_ms": 2.5422920007258654,
+          "stream_ms": 0.007624999852851033
+        }
+      ]
+    },
+    {
+      "iteration": 17,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 22.40466599323554,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.764374993916135,
+          "total_ms": 8.772791996307205,
+          "stream_ms": 0.008417002391070127
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.975207998650149,
+          "total_ms": 9.984541000449099,
+          "stream_ms": 0.009333001798950136
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.899625000078231,
+          "total_ms": 1.906375000544358,
+          "stream_ms": 0.006750000466126949
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.607707999937702,
+          "total_ms": 1.6120419968501665,
+          "stream_ms": 0.0043339969124644995
+        }
+      ]
+    },
+    {
+      "iteration": 17,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 3.1468750021304004,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.6275830057566054,
+          "total_ms": 1.6312910011038184,
+          "stream_ms": 0.003707995347213
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.4689590025227517,
+          "total_ms": 1.4718750026077032,
+          "stream_ms": 0.00291600008495152
+        }
+      ]
+    },
+    {
+      "iteration": 17,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 30.707625002833083,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.4532920031342655,
+          "total_ms": 1.4565000019501895,
+          "stream_ms": 0.003207998815923929
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.0234170006006025,
+          "total_ms": 2.0297500013839453,
+          "stream_ms": 0.006333000783342868
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 12.060000000928994,
+          "total_ms": 12.073500001861248,
+          "stream_ms": 0.013500000932253897
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 10.369417002948467,
+          "total_ms": 10.380167004768737,
+          "stream_ms": 0.010750001820269972
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.454458001011517,
+          "total_ms": 2.461625001160428,
+          "stream_ms": 0.007167000148911029
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.0759170001838356,
+          "total_ms": 2.0817920012632385,
+          "stream_ms": 0.005875001079402864
+        }
+      ]
+    },
+    {
+      "iteration": 18,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 35.151000003679655,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 12.045666997437365,
+          "total_ms": 12.064333997841459,
+          "stream_ms": 0.018667000404093415
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 18.432666001899634,
+          "total_ms": 18.446083005983382,
+          "stream_ms": 0.013417004083748907
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.8224999987287447,
+          "total_ms": 2.8298329998506233,
+          "stream_ms": 0.007333001121878624
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.6344169998774305,
+          "total_ms": 1.640541995584499,
+          "stream_ms": 0.006124995707068592
+        }
+      ]
+    },
+    {
+      "iteration": 18,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 4.84787500317907,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.087416997004766,
+          "total_ms": 3.0970419975346886,
+          "stream_ms": 0.009625000529922545
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.6807080028229393,
+          "total_ms": 1.6860000032465905,
+          "stream_ms": 0.005292000423651189
+        }
+      ]
+    },
+    {
+      "iteration": 18,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 20.91554200160317,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.5294999975594692,
+          "total_ms": 1.5338340017478913,
+          "stream_ms": 0.004334004188422114
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.5659580021747388,
+          "total_ms": 1.5697499984526075,
+          "stream_ms": 0.0037919962778687477
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 7.185541006037965,
+          "total_ms": 7.193875004304573,
+          "stream_ms": 0.008333998266607523
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.80912499956321,
+          "total_ms": 6.816458000685088,
+          "stream_ms": 0.007333001121878624
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.895665998745244,
+          "total_ms": 1.8997910010511987,
+          "stream_ms": 0.004125002305954695
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.72358300187625,
+          "total_ms": 1.728957999148406,
+          "stream_ms": 0.005374997272156179
+        }
+      ]
+    },
+    {
+      "iteration": 18,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 10.796834001666866,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 9.132166000199504,
+          "total_ms": 9.141333001025487,
+          "stream_ms": 0.00916700082598254
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.5793329948792234,
+          "total_ms": 1.5842909997445531,
+          "stream_ms": 0.004958004865329713
+        }
+      ]
+    },
+    {
+      "iteration": 18,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 1.825958999688737,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.7891249954118393,
+          "total_ms": 1.7941670012078248,
+          "stream_ms": 0.00504200579598546
+        }
+      ]
+    },
+    {
+      "iteration": 18,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 16.68812499701744,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 1.9106250038021244,
+          "total_ms": 1.9152919994667172,
+          "stream_ms": 0.004666995664592832
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 12.233041001309175,
+          "total_ms": 12.24000000365777,
+          "stream_ms": 0.0069590023485943675
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 2.3849999997764826,
+          "total_ms": 2.3905829948489554,
+          "stream_ms": 0.0055829950724728405
+        }
+      ]
+    },
+    {
+      "iteration": 19,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 12.288750003790483,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 10.265541000990197,
+          "total_ms": 10.275874999933876,
+          "stream_ms": 0.010333998943679035
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.9272499994258396,
+          "total_ms": 1.9339159989613108,
+          "stream_ms": 0.006665999535471201
+        }
+      ]
+    },
+    {
+      "iteration": 19,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 1.8726249982137233,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.8374159990344197,
+          "total_ms": 1.84162500227103,
+          "stream_ms": 0.004209003236610442
+        }
+      ]
+    },
+    {
+      "iteration": 19,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 19.476749999739695,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 1.7539170003146864,
+          "total_ms": 1.759083999786526,
+          "stream_ms": 0.005166999471839517
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 15.304749998904299,
+          "total_ms": 15.311957999074366,
+          "stream_ms": 0.007208000170066953
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 2.294083999004215,
+          "total_ms": 2.300499996636063,
+          "stream_ms": 0.006415997631847858
+        }
+      ]
+    },
+    {
+      "iteration": 19,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 20.514124997134786,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.679667000251357,
+          "total_ms": 8.689041998877656,
+          "stream_ms": 0.009374998626299202
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.295624997117557,
+          "total_ms": 8.304709001095034,
+          "stream_ms": 0.00908400397747755
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.7765840020729229,
+          "total_ms": 1.7830420038080774,
+          "stream_ms": 0.006458001735154539
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.5988329978426918,
+          "total_ms": 1.6037500026868656,
+          "stream_ms": 0.004917004844173789
+        }
+      ]
+    },
+    {
+      "iteration": 19,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 3.9438749954570085,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.9925839951611124,
+          "total_ms": 1.998208994336892,
+          "stream_ms": 0.0056249991757795215
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.8832089990610257,
+          "total_ms": 1.887124999484513,
+          "stream_ms": 0.003916000423487276
+        }
+      ]
+    },
+    {
+      "iteration": 19,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 18.755124998278916,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.4689580057165585,
+          "total_ms": 1.47283300611889,
+          "stream_ms": 0.0038750004023313522
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.374583000142593,
+          "total_ms": 1.3775830011582002,
+          "stream_ms": 0.0030000010156072676
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.030332995578647,
+          "total_ms": 6.037082996044774,
+          "stream_ms": 0.006750000466126949
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.481500000518281,
+          "total_ms": 6.487291997473221,
+          "stream_ms": 0.0057919969549402595
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.7535829974804074,
+          "total_ms": 1.757332996930927,
+          "stream_ms": 0.003749999450519681
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.4667499999632128,
+          "total_ms": 1.4700409956276417,
+          "stream_ms": 0.0032909956644289196
+        }
+      ]
+    },
+    {
+      "iteration": 20,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 23.794917004124727,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 11.457000000518747,
+          "total_ms": 11.469832999864593,
+          "stream_ms": 0.012832999345846474
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.527291000063997,
+          "total_ms": 8.53641600406263,
+          "stream_ms": 0.009125003998633474
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.870457999757491,
+          "total_ms": 1.8788749948726036,
+          "stream_ms": 0.008416995115112513
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.755958997819107,
+          "total_ms": 1.7613749951124191,
+          "stream_ms": 0.0054159972933121026
+        }
+      ]
+    },
+    {
+      "iteration": 20,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 4.244999996444676,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.2773339951527305,
+          "total_ms": 2.285458998812828,
+          "stream_ms": 0.008125003660097718
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.8737089994829148,
+          "total_ms": 1.8780419995891862,
+          "stream_ms": 0.004333000106271356
+        }
+      ]
+    },
+    {
+      "iteration": 20,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 17.067291999410372,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.50108400703175,
+          "total_ms": 1.5047500055516139,
+          "stream_ms": 0.0036659985198639333
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.4371249999385327,
+          "total_ms": 1.44012500095414,
+          "stream_ms": 0.0030000010156072676
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 5.44600000284845,
+          "total_ms": 5.453707999549806,
+          "stream_ms": 0.0077079967013560236
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 4.6274999986053444,
+          "total_ms": 4.632042000594083,
+          "stream_ms": 0.004542001988738775
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.1603330023935996,
+          "total_ms": 2.1649999980581924,
+          "stream_ms": 0.004666995664592832
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.7138750044978224,
+          "total_ms": 1.719500003673602,
+          "stream_ms": 0.0056249991757795215
+        }
+      ]
+    },
+    {
+      "iteration": 20,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 13.209459000790957,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 10.972125004627742,
+          "total_ms": 10.98229200579226,
+          "stream_ms": 0.010167001164518297
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.086166998196859,
+          "total_ms": 2.103374994476326,
+          "stream_ms": 0.017207996279466897
+        }
+      ]
+    },
+    {
+      "iteration": 20,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 2.121500001521781,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.0762920030392706,
+          "total_ms": 2.0822919977945276,
+          "stream_ms": 0.005999994755256921
+        }
+      ]
+    },
+    {
+      "iteration": 20,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 20.015541005705018,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 1.7608339985599741,
+          "total_ms": 1.7649590008659288,
+          "stream_ms": 0.004125002305954695
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 15.864082997723017,
+          "total_ms": 15.872249998210464,
+          "stream_ms": 0.008167000487446785
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 2.2712080026394688,
+          "total_ms": 2.277833002153784,
+          "stream_ms": 0.006624999514315277
+        }
+      ]
+    },
+    {
+      "iteration": 21,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 10.619207998388447,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 8.931333002692554,
+          "total_ms": 8.941207997850142,
+          "stream_ms": 0.009874995157588273
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.589790997968521,
+          "total_ms": 1.5950000015436672,
+          "stream_ms": 0.005209003575146198
+        }
+      ]
+    },
+    {
+      "iteration": 21,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 1.8320000017411076,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.7969590044231154,
+          "total_ms": 1.8012090004049242,
+          "stream_ms": 0.004249995981808752
+        }
+      ]
+    },
+    {
+      "iteration": 21,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 15.586290995997842,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 1.7758749963832088,
+          "total_ms": 1.793625000573229,
+          "stream_ms": 0.017750004190020263
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 11.43687499279622,
+          "total_ms": 11.444540999946184,
+          "stream_ms": 0.007666007149964571
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 2.1971660025883466,
+          "total_ms": 2.2022080011083744,
+          "stream_ms": 0.005041998520027846
+        }
+      ]
+    },
+    {
+      "iteration": 21,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 23.139124998124316,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.646250000514556,
+          "total_ms": 9.656417001679074,
+          "stream_ms": 0.010167001164518297
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.802208001725376,
+          "total_ms": 8.812250001938082,
+          "stream_ms": 0.010042000212706625
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.1537919965339825,
+          "total_ms": 2.161083997634705,
+          "stream_ms": 0.0072920011007227
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.362709004955832,
+          "total_ms": 2.368459005083423,
+          "stream_ms": 0.005750000127591193
+        }
+      ]
+    },
+    {
+      "iteration": 21,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 5.96508400485618,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.391834005014971,
+          "total_ms": 3.3969170035561547,
+          "stream_ms": 0.00508299854118377
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.512833998480346,
+          "total_ms": 2.51679200300714,
+          "stream_ms": 0.003958004526793957
+        }
+      ]
+    },
+    {
+      "iteration": 21,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 33.77754200482741,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.6506249996600673,
+          "total_ms": 2.654874995641876,
+          "stream_ms": 0.004249995981808752
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.253832994028926,
+          "total_ms": 2.263916998344939,
+          "stream_ms": 0.010084004316013306
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.33058299717959,
+          "total_ms": 6.334792000416201,
+          "stream_ms": 0.004209003236610442
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 18.21879100316437,
+          "total_ms": 18.23079099995084,
+          "stream_ms": 0.011999996786471456
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.156624999770429,
+          "total_ms": 2.1640830018441193,
+          "stream_ms": 0.007458002073690295
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 1.9331250005052425,
+          "total_ms": 1.9390419984119944,
+          "stream_ms": 0.005916997906751931
+        }
+      ]
+    },
+    {
+      "iteration": 22,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 32.87416700186441,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 14.467125001829118,
+          "total_ms": 14.477917000476737,
+          "stream_ms": 0.010791998647619039
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 14.746416003617924,
+          "total_ms": 14.759166006115265,
+          "stream_ms": 0.012750002497341484
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.86208299419377,
+          "total_ms": 1.869166997494176,
+          "stream_ms": 0.007084003300406039
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.622417003090959,
+          "total_ms": 1.6271249987767078,
+          "stream_ms": 0.004707995685748756
+        }
+      ]
+    },
+    {
+      "iteration": 22,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 5.245291999017354,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.1024999950896017,
+          "total_ms": 2.1321659951354377,
+          "stream_ms": 0.029666000045835972
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.040584000700619,
+          "total_ms": 3.0462089998763986,
+          "stream_ms": 0.0056249991757795215
+        }
+      ]
+    },
+    {
+      "iteration": 22,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 41.067499994824175,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 15.127375001611654,
+          "total_ms": 15.136832997086458,
+          "stream_ms": 0.009457995474804193
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.072290997602977,
+          "total_ms": 2.079874997434672,
+          "stream_ms": 0.00758399983169511
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.49975000123959,
+          "total_ms": 6.508457998279482,
+          "stream_ms": 0.00870799703989178
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.880499997350853,
+          "total_ms": 6.888417003210634,
+          "stream_ms": 0.007917005859781057
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 7.229750000988133,
+          "total_ms": 7.237541998620145,
+          "stream_ms": 0.007791997632011771
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 3.0030420020921156,
+          "total_ms": 3.0075829999987036,
+          "stream_ms": 0.004540997906588018
+        }
+      ]
+    },
+    {
+      "iteration": 22,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 14.226750005036592,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 11.024166997231077,
+          "total_ms": 11.033916998712812,
+          "stream_ms": 0.009750001481734216
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.1097079991013743,
+          "total_ms": 3.1160829967120662,
+          "stream_ms": 0.006374997610691935
+        }
+      ]
+    },
+    {
+      "iteration": 22,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 3.26445799873909,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.211415998521261,
+          "total_ms": 3.2224160022451542,
+          "stream_ms": 0.011000003723893315
+        }
+      ]
+    },
+    {
+      "iteration": 22,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 18.48729100311175,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 3.0614999996032566,
+          "total_ms": 3.065750002861023,
+          "stream_ms": 0.004250003257766366
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 10.916541003098246,
+          "total_ms": 10.925458002020605,
+          "stream_ms": 0.008916998922359198
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 4.38541699986672,
+          "total_ms": 4.391417001897935,
+          "stream_ms": 0.006000002031214535
+        }
+      ]
+    },
+    {
+      "iteration": 23,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 15.524874994298443,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 12.152750001405366,
+          "total_ms": 12.163999999756925,
+          "stream_ms": 0.011249998351559043
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.266665997216478,
+          "total_ms": 3.275458002462983,
+          "stream_ms": 0.008792005246505141
+        }
+      ]
+    },
+    {
+      "iteration": 23,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 3.903958000591956,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.8361669940059073,
+          "total_ms": 3.8440829957835376,
+          "stream_ms": 0.0079160017776303
+        }
+      ]
+    },
+    {
+      "iteration": 23,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 18.111457997292746,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 3.079667003476061,
+          "total_ms": 3.0853339994791895,
+          "stream_ms": 0.005666996003128588
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 11.840915998618584,
+          "total_ms": 11.849916001665406,
+          "stream_ms": 0.009000003046821803
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 3.0563750042347237,
+          "total_ms": 3.062290998059325,
+          "stream_ms": 0.005915993824601173
+        }
+      ]
+    },
+    {
+      "iteration": 23,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 26.171166995482054,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 12.03416700445814,
+          "total_ms": 12.043250004353467,
+          "stream_ms": 0.009082999895326793
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.773541998583823,
+          "total_ms": 9.780624997802079,
+          "stream_ms": 0.0070829992182552814
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.1710420041927136,
+          "total_ms": 2.17687500116881,
+          "stream_ms": 0.005832996976096183
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.045832996373065,
+          "total_ms": 2.048999995167833,
+          "stream_ms": 0.0031669987947680056
+        }
+      ]
+    },
+    {
+      "iteration": 23,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 5.039042000134941,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.6461669986019842,
+          "total_ms": 2.6523749984335154,
+          "stream_ms": 0.006207999831531197
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.329666996956803,
+          "total_ms": 2.333500000531785,
+          "stream_ms": 0.0038330035749822855
+        }
+      ]
+    },
+    {
+      "iteration": 23,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 25.685874999908265,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.1073329990031198,
+          "total_ms": 2.1116669959155843,
+          "stream_ms": 0.0043339969124644995
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 5.328084000211675,
+          "total_ms": 5.3323339961934835,
+          "stream_ms": 0.004249995981808752
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.181749995448627,
+          "total_ms": 6.18854200001806,
+          "stream_ms": 0.0067920045694336295
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 7.094083004631102,
+          "total_ms": 7.099667003785726,
+          "stream_ms": 0.005583999154623598
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.653540999745019,
+          "total_ms": 2.657333003298845,
+          "stream_ms": 0.003792003553826362
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.1433329966384917,
+          "total_ms": 2.1459999989019707,
+          "stream_ms": 0.0026670022634789348
+        }
+      ]
+    },
+    {
+      "iteration": 24,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 24.025916995014995,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.246167002653237,
+          "total_ms": 8.255209002527408,
+          "stream_ms": 0.00904199987417087
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 11.0618329999852,
+          "total_ms": 11.076333001255989,
+          "stream_ms": 0.014500001270789653
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.197834000980947,
+          "total_ms": 2.205459000833798,
+          "stream_ms": 0.007624999852851033
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.3467499995604157,
+          "total_ms": 2.3511660037911497,
+          "stream_ms": 0.004416004230733961
+        }
+      ]
+    },
+    {
+      "iteration": 24,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 5.191875003220048,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.9854170061298646,
+          "total_ms": 2.989833999890834,
+          "stream_ms": 0.00441699376096949
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.1532500031753443,
+          "total_ms": 2.156249996914994,
+          "stream_ms": 0.0029999937396496534
+        }
+      ]
+    },
+    {
+      "iteration": 24,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 30.86629199970048,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.4102079987642355,
+          "total_ms": 2.4156660001608543,
+          "stream_ms": 0.0054580013966187835
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.7191660046810284,
+          "total_ms": 2.7254579981672578,
+          "stream_ms": 0.00629199348622933
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 7.162499998230487,
+          "total_ms": 7.1704579968354665,
+          "stream_ms": 0.007957998604979366
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 11.279749996901955,
+          "total_ms": 11.288749999948777,
+          "stream_ms": 0.009000003046821803
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 4.808666002645623,
+          "total_ms": 4.813457999262027,
+          "stream_ms": 0.004791996616404504
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.2705839946866035,
+          "total_ms": 2.2739999985788018,
+          "stream_ms": 0.003416003892198205
+        }
+      ]
+    },
+    {
+      "iteration": 24,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 22.95662499818718,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 11.691583000356331,
+          "total_ms": 11.708541998814326,
+          "stream_ms": 0.016958998457994312
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 11.143292002088856,
+          "total_ms": 11.153750005178154,
+          "stream_ms": 0.010458003089297563
+        }
+      ]
+    },
+    {
+      "iteration": 24,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 4.714082999271341,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 4.660250000597443,
+          "total_ms": 4.668458001106046,
+          "stream_ms": 0.008208000508602709
+        }
+      ]
+    },
+    {
+      "iteration": 24,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 19.641417005914263,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 2.990792003402021,
+          "total_ms": 2.995167000335641,
+          "stream_ms": 0.004374996933620423
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 13.35787499556318,
+          "total_ms": 13.367957995797042,
+          "stream_ms": 0.010083000233862549
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 3.1665000060456805,
+          "total_ms": 3.17091699980665,
+          "stream_ms": 0.00441699376096949
+        }
+      ]
+    },
+    {
+      "iteration": 25,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 12.788542000635061,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 10.266582998156082,
+          "total_ms": 10.279250003804918,
+          "stream_ms": 0.012667005648836493
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.4165829963749275,
+          "total_ms": 2.4219999977503903,
+          "stream_ms": 0.00541700137546286
+        }
+      ]
+    },
+    {
+      "iteration": 25,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 3.1512909990851767,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.110790996288415,
+          "total_ms": 3.115583000180777,
+          "stream_ms": 0.004792003892362118
+        }
+      ]
+    },
+    {
+      "iteration": 25,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 20.71145799709484,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 3.4074159993906505,
+          "total_ms": 3.4119160045520402,
+          "stream_ms": 0.0045000051613897085
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 13.798584004689474,
+          "total_ms": 13.805667003907729,
+          "stream_ms": 0.0070829992182552814
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 3.3917090040631592,
+          "total_ms": 3.3977920029428788,
+          "stream_ms": 0.006082998879719526
+        }
+      ]
+    },
+    {
+      "iteration": 25,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 25.254333006159868,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.622958998079412,
+          "total_ms": 9.632749999582302,
+          "stream_ms": 0.00979100150289014
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 10.351500000979286,
+          "total_ms": 10.360125001170672,
+          "stream_ms": 0.008625000191386789
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.329416998894885,
+          "total_ms": 3.3345000047120266,
+          "stream_ms": 0.005083005817141384
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.7944579958566464,
+          "total_ms": 1.7980420016101561,
+          "stream_ms": 0.0035840057535097003
+        }
+      ]
+    },
+    {
+      "iteration": 25,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 5.362792006053496,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.5612079989514314,
+          "total_ms": 2.5664170025265776,
+          "stream_ms": 0.005209003575146198
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.743833996646572,
+          "total_ms": 2.747375001490582,
+          "stream_ms": 0.0035410048440098763
+        }
+      ]
+    },
+    {
+      "iteration": 25,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 26.682040996092837,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.860874999896623,
+          "total_ms": 2.865541995561216,
+          "stream_ms": 0.004666995664592832
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.144500002032146,
+          "total_ms": 2.148375002434477,
+          "stream_ms": 0.0038750004023313522
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 7.274791001691483,
+          "total_ms": 7.279750003363006,
+          "stream_ms": 0.004959001671522856
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 7.116166001651436,
+          "total_ms": 7.122291004634462,
+          "stream_ms": 0.0061250029830262065
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 4.738750001706649,
+          "total_ms": 4.742458004329819,
+          "stream_ms": 0.0037080026231706142
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.367667002545204,
+          "total_ms": 2.370417001657188,
+          "stream_ms": 0.002749999111983925
+        }
+      ]
+    },
+    {
+      "iteration": 26,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 23.918250000861008,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.572209004545584,
+          "total_ms": 9.581500002241228,
+          "stream_ms": 0.009290997695643455
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.94620900019072,
+          "total_ms": 9.955041998182423,
+          "stream_ms": 0.00883299799170345
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.047541995125357,
+          "total_ms": 2.0531249974737875,
+          "stream_ms": 0.005583002348430455
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.1882500004721805,
+          "total_ms": 2.1942909952485934,
+          "stream_ms": 0.006040994776412845
+        }
+      ]
+    },
+    {
+      "iteration": 26,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 4.632083000615239,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.3841250003897585,
+          "total_ms": 2.3881669985712506,
+          "stream_ms": 0.00404199818149209
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.191584004322067,
+          "total_ms": 2.194667002186179,
+          "stream_ms": 0.003082997864112258
+        }
+      ]
+    },
+    {
+      "iteration": 26,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 29.27941700181691,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 5.397375003667548,
+          "total_ms": 5.40375000127824,
+          "stream_ms": 0.006374997610691935
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.5112919975072145,
+          "total_ms": 2.5157089985441417,
+          "stream_ms": 0.004417001036927104
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 5.997499996738043,
+          "total_ms": 6.0015839990228415,
+          "stream_ms": 0.004084002284798771
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 7.0787090007797815,
+          "total_ms": 7.08229200245114,
+          "stream_ms": 0.003583001671358943
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 5.956082997727208,
+          "total_ms": 5.959957998129539,
+          "stream_ms": 0.0038750004023313522
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.16424999962328,
+          "total_ms": 2.167833998100832,
+          "stream_ms": 0.003583998477552086
+        }
+      ]
+    },
+    {
+      "iteration": 26,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 12.95662500342587,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 10.950750001939014,
+          "total_ms": 10.95799999893643,
+          "stream_ms": 0.0072499969974160194
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 1.9367919958312996,
+          "total_ms": 1.9407079962547868,
+          "stream_ms": 0.003916000423487276
+        }
+      ]
+    },
+    {
+      "iteration": 26,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 2.6397499968879856,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.6087500009452924,
+          "total_ms": 2.6122920025954954,
+          "stream_ms": 0.0035420016502030194
+        }
+      ]
+    },
+    {
+      "iteration": 26,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 51.5394579997519,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 3.1876659995759837,
+          "total_ms": 3.190625000570435,
+          "stream_ms": 0.002959000994451344
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 41.52474999864353,
+          "total_ms": 41.530375005095266,
+          "stream_ms": 0.005625006451737136
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 6.730041997798253,
+          "total_ms": 6.73491699853912,
+          "stream_ms": 0.004875000740867108
+        }
+      ]
+    },
+    {
+      "iteration": 27,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 13.053875001787674,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 9.691167004348245,
+          "total_ms": 9.698084002593532,
+          "stream_ms": 0.006916998245287687
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.2860830033314414,
+          "total_ms": 3.2905410043895245,
+          "stream_ms": 0.004458001058083028
+        }
+      ]
+    },
+    {
+      "iteration": 27,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 3.396000000066124,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.364459000295028,
+          "total_ms": 3.3688749972498044,
+          "stream_ms": 0.004415996954776347
+        }
+      ]
+    },
+    {
+      "iteration": 27,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 41.56900000089081,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 11.122958996566013,
+          "total_ms": 11.133375002827961,
+          "stream_ms": 0.010416006261948496
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 22.309291998681147,
+          "total_ms": 22.321333999570925,
+          "stream_ms": 0.012042000889778137
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 7.787750000716187,
+          "total_ms": 7.8036670020082965,
+          "stream_ms": 0.01591700129210949
+        }
+      ]
+    },
+    {
+      "iteration": 27,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 68.4812499966938,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 15.533000005234499,
+          "total_ms": 15.559125000436325,
+          "stream_ms": 0.026124995201826096
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 43.58199999842327,
+          "total_ms": 43.59854199719848,
+          "stream_ms": 0.01654199877521023
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 4.531083999609109,
+          "total_ms": 4.539499997918028,
+          "stream_ms": 0.00841599830891937
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 4.300542001146823,
+          "total_ms": 4.308625000703614,
+          "stream_ms": 0.008082999556791037
+        }
+      ]
+    },
+    {
+      "iteration": 27,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 19.484249998640735,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 6.754291003744584,
+          "total_ms": 6.968790999962948,
+          "stream_ms": 0.21449999621836469
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 12.054291000822559,
+          "total_ms": 12.06708300014725,
+          "stream_ms": 0.01279199932469055
+        }
+      ]
+    },
+    {
+      "iteration": 27,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 74.5566669938853,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 10.370999996666797,
+          "total_ms": 10.381832995335571,
+          "stream_ms": 0.010832998668774962
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 18.083541996020358,
+          "total_ms": 18.095084000378847,
+          "stream_ms": 0.011542004358489066
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 14.425041001231875,
+          "total_ms": 14.438582998991478,
+          "stream_ms": 0.013541997759602964
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 15.255541999067646,
+          "total_ms": 15.273958000761922,
+          "stream_ms": 0.01841600169427693
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 8.351624994247686,
+          "total_ms": 8.395249999011867,
+          "stream_ms": 0.04362500476418063
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 7.61837499885587,
+          "total_ms": 7.62770800065482,
+          "stream_ms": 0.009333001798950136
+        }
+      ]
+    },
+    {
+      "iteration": 28,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 45.94816700409865,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 20.84804100013571,
+          "total_ms": 20.86000000417698,
+          "stream_ms": 0.011959004041273147
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 18.407791998470202,
+          "total_ms": 18.419583000650164,
+          "stream_ms": 0.011791002179961652
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.470916002697777,
+          "total_ms": 3.4797909975168295,
+          "stream_ms": 0.008874994819052517
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.982291000080295,
+          "total_ms": 2.9896659980295226,
+          "stream_ms": 0.007374997949227691
+        }
+      ]
+    },
+    {
+      "iteration": 28,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 8.011333004105836,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 4.783208001754247,
+          "total_ms": 4.792500003532041,
+          "stream_ms": 0.009292001777794212
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 3.1356660037999973,
+          "total_ms": 3.1405830013682134,
+          "stream_ms": 0.004916997568216175
+        }
+      ]
+    },
+    {
+      "iteration": 28,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 43.44866700557759,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.8709580001304857,
+          "total_ms": 2.875833000871353,
+          "stream_ms": 0.004875000740867108
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.2448749950854108,
+          "total_ms": 2.2483749999082647,
+          "stream_ms": 0.0035000048228539526
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 22.148582997033373,
+          "total_ms": 22.15937499568099,
+          "stream_ms": 0.010791998647619039
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 10.701541999878827,
+          "total_ms": 10.709458001656458,
+          "stream_ms": 0.0079160017776303
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.8394590044626966,
+          "total_ms": 2.86045900429599,
+          "stream_ms": 0.02099999983329326
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.3656659977859817,
+          "total_ms": 2.3711249959887937,
+          "stream_ms": 0.005458998202811927
+        }
+      ]
+    },
+    {
+      "iteration": 28,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 18.30024999799207,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 15.406625003379304,
+          "total_ms": 15.417750000779051,
+          "stream_ms": 0.011124997399747372
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.7924590031034313,
+          "total_ms": 2.799834001052659,
+          "stream_ms": 0.007374997949227691
+        }
+      ]
+    },
+    {
+      "iteration": 28,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 3.639957998530008,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.5979579988634214,
+          "total_ms": 3.6037500030943193,
+          "stream_ms": 0.005792004230897874
+        }
+      ]
+    },
+    {
+      "iteration": 28,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 77.16050000453833,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 7.913792003819253,
+          "total_ms": 7.920875003037509,
+          "stream_ms": 0.0070829992182552814
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 65.89066699962132,
+          "total_ms": 65.90158399922075,
+          "stream_ms": 0.01091699959943071
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 3.214917000150308,
+          "total_ms": 3.220041995518841,
+          "stream_ms": 0.0051249953685328364
+        }
+      ]
+    },
+    {
+      "iteration": 29,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 12.434374999429565,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 10.160874997382052,
+          "total_ms": 10.171916001127101,
+          "stream_ms": 0.011041003745049238
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.1798329980811104,
+          "total_ms": 2.1865829985472374,
+          "stream_ms": 0.006750000466126949
+        }
+      ]
+    },
+    {
+      "iteration": 29,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 2.7945410038228147,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.7017909960704856,
+          "total_ms": 2.736124995863065,
+          "stream_ms": 0.03433399979257956
+        }
+      ]
+    },
+    {
+      "iteration": 29,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 30.421832998399623,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 3.1737500030430965,
+          "total_ms": 3.1797499977983534,
+          "stream_ms": 0.005999994755256921
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 23.773333996359725,
+          "total_ms": 23.78366699849721,
+          "stream_ms": 0.010333002137485892
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 3.346166995470412,
+          "total_ms": 3.351084000314586,
+          "stream_ms": 0.004917004844173789
+        }
+      ]
+    },
+    {
+      "iteration": 29,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 23.707917003775947,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 10.743416998593602,
+          "total_ms": 10.757584001112264,
+          "stream_ms": 0.01416700251866132
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 9.348791994852945,
+          "total_ms": 9.358166993479244,
+          "stream_ms": 0.009374998626299202
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.8490830043447204,
+          "total_ms": 1.8540410019340925,
+          "stream_ms": 0.0049579975893720984
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.5987079968908802,
+          "total_ms": 1.6022920026443899,
+          "stream_ms": 0.0035840057535097003
+        }
+      ]
+    },
+    {
+      "iteration": 29,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 5.093833002320025,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.73816600383725,
+          "total_ms": 2.7430830014054663,
+          "stream_ms": 0.004916997568216175
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.296833001310006,
+          "total_ms": 2.3006659976090305,
+          "stream_ms": 0.0038329962990246713
+        }
+      ]
+    },
+    {
+      "iteration": 29,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 31.322082999395207,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.84987499617273,
+          "total_ms": 2.854667000065092,
+          "stream_ms": 0.004792003892362118
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 2.3582079957122914,
+          "total_ms": 2.361833001486957,
+          "stream_ms": 0.003625005774665624
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 8.667041998705827,
+          "total_ms": 8.672542004205752,
+          "stream_ms": 0.005500005499925464
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 6.890541000757366,
+          "total_ms": 6.897250001202337,
+          "stream_ms": 0.006709000444971025
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 8.015125000383705,
+          "total_ms": 8.021000001463108,
+          "stream_ms": 0.005875001079402864
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.3422919985023327,
+          "total_ms": 2.347499997995328,
+          "stream_ms": 0.005207999492995441
+        }
+      ]
+    },
+    {
+      "iteration": 30,
+      "scenario": "search_explain",
+      "batch": false,
+      "calls": 4,
+      "total_ms": 30.73249999579275,
+      "request_bytes": 966,
+      "response_bytes": 1390,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 10.299791996658314,
+          "total_ms": 10.309917000995483,
+          "stream_ms": 0.01012500433716923
+        },
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 259,
+          "response_bytes": 386,
+          "headers_ms": 8.117125005810522,
+          "total_ms": 8.123125000565778,
+          "stream_ms": 0.005999994755256921
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 10.43999999819789,
+          "total_ms": 10.47229200048605,
+          "stream_ms": 0.03229200228815898
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 1.644500000111293,
+          "total_ms": 1.649999998335261,
+          "stream_ms": 0.00549999822396785
+        }
+      ]
+    },
+    {
+      "iteration": 30,
+      "scenario": "multi_read",
+      "batch": false,
+      "calls": 2,
+      "total_ms": 5.285665996780153,
+      "request_bytes": 448,
+      "response_bytes": 618,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.749084000242874,
+          "total_ms": 2.7568750010686927,
+          "stream_ms": 0.007791000825818628
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 309,
+          "headers_ms": 2.4622089986223727,
+          "total_ms": 2.466042002197355,
+          "stream_ms": 0.0038330035749822855
+        }
+      ]
+    },
+    {
+      "iteration": 30,
+      "scenario": "read_edit_verify",
+      "batch": false,
+      "calls": 6,
+      "total_ms": 29.567457997472957,
+      "request_bytes": 1414,
+      "response_bytes": 2744,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.952749997144565,
+          "total_ms": 1.9559159991331398,
+          "stream_ms": 0.0031660019885748625
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 223,
+          "response_bytes": 342,
+          "headers_ms": 1.9440420001046732,
+          "total_ms": 1.9469580001896247,
+          "stream_ms": 0.00291600008495152
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 13.740333000896499,
+          "total_ms": 13.748833000136074,
+          "stream_ms": 0.008499999239575118
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 260,
+          "response_bytes": 719,
+          "headers_ms": 7.2538750027888454,
+          "total_ms": 7.259999998495914,
+          "stream_ms": 0.006124995707068592
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.3185410027508624,
+          "total_ms": 2.322750005987473,
+          "stream_ms": 0.004209003236610442
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 224,
+          "response_bytes": 311,
+          "headers_ms": 2.1806250006193295,
+          "total_ms": 2.184417004173156,
+          "stream_ms": 0.003792003553826362
+        }
+      ]
+    },
+    {
+      "iteration": 30,
+      "scenario": "search_explain",
+      "batch": true,
+      "calls": 2,
+      "total_ms": 12.33837500330992,
+      "request_bytes": 570,
+      "response_bytes": 992,
+      "tool_samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 329,
+          "response_bytes": 573,
+          "headers_ms": 10.158375000173692,
+          "total_ms": 10.166542000661138,
+          "stream_ms": 0.008167000487446785
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 2.1024580055382103,
+          "total_ms": 2.1073750031064264,
+          "stream_ms": 0.004916997568216175
+        }
+      ]
+    },
+    {
+      "iteration": 30,
+      "scenario": "multi_read",
+      "batch": true,
+      "calls": 1,
+      "total_ms": 3.8980419994913973,
+      "request_bytes": 241,
+      "response_bytes": 419,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 419,
+          "headers_ms": 3.8632080031675287,
+          "total_ms": 3.8692500020260923,
+          "stream_ms": 0.006041998858563602
+        }
+      ]
+    },
+    {
+      "iteration": 30,
+      "scenario": "read_edit_verify",
+      "batch": true,
+      "calls": 3,
+      "total_ms": 29.863750001823064,
+      "request_bytes": 840,
+      "response_bytes": 1986,
+      "tool_samples": [
+        {
+          "tool": "read_files",
+          "request_bytes": 240,
+          "response_bytes": 485,
+          "headers_ms": 2.526250005757902,
+          "total_ms": 2.5300000052084215,
+          "stream_ms": 0.003749999450519681
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 359,
+          "response_bytes": 1078,
+          "headers_ms": 23.32987500267336,
+          "total_ms": 23.33912500034785,
+          "stream_ms": 0.009249997674487531
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 241,
+          "response_bytes": 423,
+          "headers_ms": 3.7936660010018386,
+          "total_ms": 3.866374994686339,
+          "stream_ms": 0.07270899368450046
+        }
+      ]
+    }
+  ],
+  "runtime_sha256": {
+    "webcodex": "60140d8d923d9efb3af7378bd23764b23bc71d287a1538850333c95962df0c9c",
+    "webcodex-server": "ee796ddba4dbef74b86be4d5241b1b707d9cb72c466912df7a7564d57eaebc8c",
+    "webcodex-runner": "f9ab85916136fc71584875c79565139725eb9f5e844e13bf20521b20fed44083"
+  }
+}

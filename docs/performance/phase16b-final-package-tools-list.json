@@ -1,0 +1,39 @@
+{
+  "surface": "isolated loopback MCP; tools/list only; not connected workflow",
+  "rows": [
+    {
+      "variant": "before",
+      "binary_sha256": "5b9091f2133cc3f3dd69e6d2158b8e1f98e4f2a80c540375988f3cf6354c7865",
+      "samples": [
+        {
+          "ms": 6.6879160003736615,
+          "response_bytes": 53665,
+          "tool_count": 22
+        }
+      ],
+      "summary_ms": {
+        "median": 6.688,
+        "p95": 6.688,
+        "min": 6.688,
+        "max": 6.688
+      }
+    },
+    {
+      "variant": "after",
+      "binary_sha256": "5b9091f2133cc3f3dd69e6d2158b8e1f98e4f2a80c540375988f3cf6354c7865",
+      "samples": [
+        {
+          "ms": 7.945667006424628,
+          "response_bytes": 53665,
+          "tool_count": 22
+        }
+      ],
+      "summary_ms": {
+        "median": 7.946,
+        "p95": 7.946,
+        "min": 7.946,
+        "max": 7.946
+      }
+    }
+  ]
+}

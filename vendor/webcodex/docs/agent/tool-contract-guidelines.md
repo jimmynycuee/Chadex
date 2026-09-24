@@ -1,0 +1,377 @@
+# Model-facing tool contract guidelines
+
+Status: standing design guidance for current WebCodex development.
+
+This document defines the default style for model-facing WebCodex tools. It is
+about **turn economy without semantic shortcuts**: a model/tool round trip should
+pay for a real decision, effect, or observation that WebCodex cannot determine
+mechanically. It should not be spent correcting a harmless parameter that the
+runtime can normalize without changing meaning.
+
+The short form is:
+
+> **Strict on semantics and authority; tolerant on ergonomics; truthful about
+> uncertainty; sparse about repetition.**
+
+This guidance does not weaken Project, credential, permission, path, retry,
+Session, Job, or durability boundaries. It tells tool contracts where strictness
+belongs so those boundaries do not leak into unrelated mechanical friction.
+
+## 1. Spend turns on meaning, not syntax
+
+A tool should reject an input when the model must make a new semantic decision.
+If WebCodex already knows the only safe interpretation, prefer deterministic
+normalization and continue the requested work.
+
+The practical test is:
+
+> If accepting, clamping, canonicalizing, or ignoring a **recognized** parameter
+> cannot change target identity, authority, effect class, retry safety, evidence
+> truth, result identity, or confidentiality, rejection needs a concrete reason.
+
+Typical **hard** inputs remain exact and fail closed:
+
+- tool identity and admission;
+- Project, Runner, Workflow Session, Agent, Goal, Job, artifact, or other
+  authority-bearing identities;
+- OAuth scopes, permission/approval gates, destructive confirmations, and
+  sensitive-path policy;
+- commit/SHA/revision/lease/fence/idempotency identities;
+- continuation and observation tokens whose exact scope is part of correctness;
+- mode combinations that select a different target or effect;
+- malformed structures or values whose intended meaning is ambiguous;
+- unknown fields when silently ignoring them could hide a typo in a semantic or
+  consequential parameter.
+
+Typical **ergonomic** inputs should prefer bounded normalization:
+
+- timeouts, wait budgets, page/result byte budgets, tail lengths, display limits,
+  and other presentation/resource ceilings;
+- explicit defaults that are semantically identical to omission, such as a
+  harmless `false` on a non-selected optional mode;
+- over-large bounded knobs where clamping cannot broaden authority or change the
+  selected operation;
+- redundant default spellings that can be canonicalized before business parsing.
+
+When normalization matters to later reasoning, return the effective value. Do not
+force the model to call again merely to discover a server-known clamp.
+
+Unknown fields are different from recognized harmless fields. Closed schemas are
+still the default because silently accepting an unknown name can hide a typo.
+Low-friction design means making the **known contract** forgiving where semantics
+are unchanged, not turning every input object into an open bag.
+
+### Batch predetermined observations; keep adaptive work sequential
+
+One model decision may request several observations when they are already known
+to be needed, tightly related, and an existing primitive naturally supports the
+batch. Examples include several related `read_files` ranges, independent search
+queries, or a short bounded `run_shell` chain of predetermined observations.
+Result-dependent follow-ups stay sequential so the next call can incorporate the
+new evidence. Do not preload unrelated data or combine permission, mutation,
+validation, commit, publish, deploy, or restart boundaries merely to reduce call
+count.
+
+Inspection should narrow before it expands. Known symbols/tests/regions favor
+bounded targeted reads and related-range batching. Broad discovery should prefer
+files/count/small low-context search projections followed by targeted reads.
+`run_process` remains the natural path for one native executable with literal
+argv; `run_shell` is first-class for shell grammar or a short tightly related
+chain, and a bounded deterministic Python heredoc is appropriate when one small
+program expresses one coherent transformation more reliably than many mechanical
+edits. None of these rules means “shell first” or weakens specialized semantics.
+
+## 2. Mechanical repair should be server-owned
+
+Do not spend a model turn on a repair WebCodex can prove locally.
+
+Prefer:
+
+```text
+requested timeout above ceiling
+-> clamp
+-> execute once
+-> report effective timeout
+```
+
+rather than:
+
+```text
+requested timeout above ceiling
+-> schema rejection
+-> model edits one integer
+-> same execution on the next turn
+```
+
+The same principle applies to safe default normalization, bounded list limits,
+empty/no-op edits, and recovery metadata that already proves one exact direct
+retry. If the runtime cannot prove the repair, it must ask for a new observation
+or reject rather than guess.
+
+This rule never authorizes WebCodex to infer missing authority, invent a Workflow
+Session, auto-ACK model context, choose a destructive target, or reinterpret an
+uncertain effect. Those are semantic decisions, not mechanical repair.
+
+## 3. One fact has one canonical representation
+
+Do not make the model reconcile duplicate machine truth.
+
+- Do not emit a canonical field plus a legacy alias for the same fact without a
+  named concrete consumer.
+- Do not keep both a parser-local approximation and an authoritative source fact
+  in the model projection when they can disagree.
+- Do not retain args-only and `{tool, arguments}` variants of the same suggested
+  action.
+- Remove obsolete fields, schemas, tests, and docs together when one canonical
+  representation replaces them.
+
+A model-facing tool contract is not a public SDK compatibility promise by default.
+During active development, a cleaner canonical tool shape is preferred over
+preserving an unused historical shape. Durable persisted truth, mixed-version
+Server/Runner protocol, published artifacts, and named external consumers are
+separate compatibility domains and must be handled explicitly.
+
+### Model-projection deletion test
+
+A model-facing result field should normally survive only when it can change at
+least one of these decisions:
+
+- how the business result is interpreted;
+- which target, authority, fence, retry, or continuation identity is safe;
+- whether the observation is complete, partial, stale, or uncertain;
+- which exact next action the model should take.
+
+If deleting a field leaves all of those decisions unchanged, omit it from the
+default model projection. Keep it in an internal typed contract, test invariant,
+telemetry record, operator/Console view, or exceptional diagnostic when those
+consumers still need it.
+
+Internal proof contracts answer why the Runtime knows an operation, observation,
+or follow-up is safe; the model projection answers what the model must know or do
+next. Do not serialize scope digests, MAC/proof state, cursor/carrier classes, or
+recovery bookkeeping merely to explain the Runtime's own safety proof when they do
+not change a model decision.
+
+One exception to deletion-by-derivation is an intentionally stable semantic
+abstraction over a broader or evolving internal taxonomy. A derived field may stay
+model-facing when its purpose is to let callers reason against a deliberately
+smaller contract than the underlying status/state variants. Treat such a field as
+an explicit semantic firewall with its own documented invariant, not as a
+convenience duplicate.
+
+In particular, a parser-ready `suggested_call` or continuation call should not
+normally be accompanied by a second classification vocabulary such as
+`kind`/`carrier`, `safe_cursor`, `recommended_order`, or a duplicate raw token
+when those fields merely restate the same next action. Internal continuation and
+recovery taxonomies may remain useful implementation SSOTs without becoming
+per-result concepts the model must learn. Likewise, counts that are exactly an
+array length and success booleans fully implied by one authoritative lifecycle
+state should be omitted unless they carry independent meaning.
+
+Prefer **progressive disclosure**: ordinary success returns sparse business truth
+and one actionable follow-up; reset, truncation, reconciliation, malformed-source,
+or other exceptional paths may expose the additional bounded forensic evidence
+needed to explain or safely recover the anomaly.
+
+## 4. Success is sparse; failure is decision-complete
+
+Successful calls should foreground the business result and omit redundant derived
+bookkeeping when the model does not need it.
+
+A useful success projection usually contains:
+
+- the requested observation/effect result;
+- exact identity/fence information needed for a consequential next step;
+- explicit partiality/completeness when relevant;
+- one parser-ready follow-up only when more work is genuinely needed.
+
+Do not repeat the same state through several fields such as `success=true`,
+`status=ok`, `complete=true`, and duplicate returned counts unless each field has
+an independent contract.
+
+Failures should be more structured because the model must decide what to do next.
+Prefer stable bounded fields such as:
+
+```text
+reason_code
+failure_stage
+detail_code
+state_changed
+outcome_unknown
+```
+
+plus the minimum safe recovery evidence. Backend implementation details are not a
+substitute for domain semantics. For example, a proven missing search path is a
+path-resolution fact, not an `rg` process failure merely because `rg` would also
+exit non-zero.
+
+## 5. Business result is primary; protocol maintenance is support
+
+A successful compile, edit, review, or observation should still look successful
+when a secondary protocol concern also needs attention.
+
+Context recovery, recorder guidance, telemetry, and other maintenance metadata may
+be important, but presentation should not make them look like a new business
+failure. Keep them structured and actionable while visually and semantically
+secondary to the tool result.
+
+This is a presentation/projection rule, not permission to weaken the underlying
+protocol. In particular:
+
+- missing Context ACK may return explicit recovery guidance;
+- the Host must not invent or automatically inject an ACK on WebCodex's behalf;
+- a ClientWindow must not select a Workflow Session;
+- support metadata must not become execution authority.
+
+## 6. Follow-up actions use one parser-ready shape
+
+When a domain already knows the next tool and exact bounded arguments, use the
+shared conceptual shape:
+
+```json
+{
+  "tool": "tool_name",
+  "arguments": {}
+}
+```
+
+Natural-language advice may explain *why*, but it should not be the only
+machine-actionable representation.
+
+Keep these concepts distinct:
+
+- **continuation** — continue the same logical observation/execution identity or
+  page with the domain's existing cursor/fence;
+- **refine** — issue a new observation with changed bounded parameters, such as a
+  larger result or hunk limit;
+- **recovery** — repair a failed/lost/invalid state using domain-proven evidence;
+- **checkpoint/ACK** — model-context coherence; not a cursor and not authority.
+
+Do not advertise a continuation that cannot recover the omitted information. Do
+not turn `outcome_unknown` into retry permission. Do not create a universal cursor
+or `NextAction` state machine merely because several domains can express a
+`{tool, arguments}` advisory call.
+
+## 7. Unknown must stay unknown
+
+Tool projections should distinguish:
+
+```text
+false / absent / empty
+```
+
+from:
+
+```text
+unknown / not observed / incomplete
+```
+
+when the distinction affects model decisions.
+
+Examples:
+
+- an unobserved path is not a proven missing path;
+- a producer-truncated hunk is not complete merely because a downstream parser
+  did not truncate it again;
+- a transport timeout does not prove an effect never started;
+- a stale or lost observation token does not prove the underlying Job failed.
+
+Prefer explicit conservative completeness/provenance to a convenient Boolean that
+can overclaim certainty.
+
+## 8. Recovery should skip redundant re-observation when proof already exists
+
+When a failed operation returns authoritative evidence for one exact safe retry,
+make that retry directly actionable. Examples include an exact candidate
+occurrence/range after a guarded edit conflict or a bounded parser-ready call that
+recovers a known omitted page.
+
+Require a reread/reobserve when current truth may have changed or the runtime
+cannot prove a unique repair. A useful recovery contract makes this distinction
+explicit rather than forcing the model to infer it from prose.
+
+The default recovery hierarchy is:
+
+```text
+exact safe retry proven
+-> direct structured retry
+
+current truth required
+-> exact re-observation
+
+prior effect uncertain
+-> inspect/reconcile; never blind retry
+```
+
+## 9. Static semantics belong in ToolDefinition; dynamic truth stays in its domain
+
+`ToolDefinition` is the canonical owner for static tool facts such as model
+visibility/admission, selection metadata, effect/risk, Activity presentation and
+interaction semantics, audit policy, Session evidence policy, and other facts that
+must not be re-created through scattered tool-name lists.
+
+Dynamic request/result truth stays with the authoritative domain. A declaration
+must not replace request parsing, path resolution, Job lifecycle, validation
+parsing, Git scope/fence checks, Session state, or other runtime observations.
+
+Presentation classes are not authority. For example, a Transport activity can
+still be a meaningful model/environment interaction, and a ModelHidden tool can
+still represent real work.
+
+## 10. Compatibility follows concrete consumers, not historical implementation
+
+For model-facing tool contracts, compatibility is opt-in rather than automatic.
+Before retaining an alias, dual shape, legacy argument, or compatibility parser,
+name the consumer or durable/public boundary that requires it.
+
+Valid reasons include, when actually present:
+
+- durable persisted state that must still restore;
+- mixed-version Server/Runner rolling operation;
+- a named external client/workflow or published artifact contract;
+- a required security/privacy migration boundary.
+
+"The old test expects it" and "a previous commit emitted it" are not consumers.
+Historical persisted evidence should remain truthful about the past, but current
+ToolDefinitions and model projections should not carry obsolete tool API baggage
+solely to preserve old model behavior.
+
+## 11. Measure friction before pruning tools
+
+Low usage alone does not prove a tool lacks value. A tool may be avoided because
+its schema rejects harmless inputs, discovery is expensive, recovery requires
+extra turns, or a nearby generic tool is easier to invoke.
+
+Before Direct/Gateway/Retire decisions, use dogfood telemetry and review traces to
+look for:
+
+- schema rejection followed by the same call with one mechanical correction;
+- failure -> reread -> identical retry loops where direct recovery was provable;
+- discovery calls whose result is much larger than the selected contract;
+- success payloads dominated by duplicate metadata;
+- recovery/support metadata that causes an unnecessary extra business turn;
+- repeated tool sequences whose intermediate model decisions add no value.
+
+The north-star measurement is fewer **non-business model/tool round trips** at the
+same or better correctness, authority, and evidence quality.
+
+## 12. Work sequence
+
+Current tool work should proceed in this order:
+
+1. **Input normalization and bounds** — remove harmless schema/parameter friction;
+   keep semantic and authority fences exact.
+2. **Recovery and follow-up shape** — converge parser-ready follow-ups and make
+   safe direct retry vs required re-observation explicit.
+3. **Result projection and common ergonomics** — sparse success, structured
+   failure, exact discovery, common validation selectors, and secondary protocol
+   metadata presentation.
+4. **Surface pruning** — only after the same design standard applies across tools,
+   use telemetry to decide Direct vs Gateway vs Retire.
+5. **Composition** — only after primitive tool friction and surface shape are
+   understood; composition must reduce outer turns without becoming a new
+   authority, retry engine, or workflow runtime.
+
+Do not skip directly to pruning or composition just because a trace contains many
+tool calls. First determine whether the extra calls are real model decisions or
+avoidable contract friction.

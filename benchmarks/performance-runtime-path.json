@@ -1,0 +1,2835 @@
+{
+  "surface": "isolated loopback MCP, not connected workflow",
+  "baseline": "49f793fd66b054a38923c3f6e3ccd9c1aca6579f",
+  "one_warmup": true,
+  "binary_sha256": {
+    "before": {
+      "Helpers/chadex-helper": "7b4f1d3ee4b1aff10c3591ef53ef800b9b4ef103f15c2e5ebf897b0288086139",
+      "Resources/chadex-runtime/chadex-runtime-cli": "20b03d64b7bb721b98fd687378f23e918cbb7eb12c35209b47e71d67dbd3ae7a",
+      "Resources/chadex-runtime/chadex-runtime-server": "654992f64f63e8ee80e4d6705b057d56b7eafeae97652e472088447be62683dc",
+      "Resources/chadex-runtime/chadex-runtime-runner": "ce39bce68e0875cf79ece3230f7e55c7ede159be532343557da4968068af112b"
+    },
+    "after": {
+      "Helpers/chadex-helper": "945382a391aedef6c89646455bb5a319af82dab854b4b585aae22ea9c3c104ac",
+      "Resources/chadex-runtime/chadex-runtime-cli": "a7ea3a9002077ff669036c570640ff084312f2bd29a562528f494e58d489df8f",
+      "Resources/chadex-runtime/chadex-runtime-server": "f8292f9fdc0df0facb99828e7736276366ed916b91ad8123314bb57f4828a2f6",
+      "Resources/chadex-runtime/chadex-runtime-runner": "df945eeea841a68068e773cb438c93d2f1ce74e3089ae5d763589fab313c2f2e"
+    }
+  },
+  "summary": {
+    "before": {
+      "workflow_ms": {
+        "median": 244.077,
+        "p95": 293.596,
+        "min": 229.976,
+        "max": 377.26
+      },
+      "runtime_status_ms": {
+        "median": 17.729,
+        "p95": 38.447,
+        "min": 17.21,
+        "max": 115.534
+      },
+      "tools_ms": {
+        "search_project_texts": {
+          "median": 13.222,
+          "p95": 15.074,
+          "min": 9.671,
+          "max": 19.975
+        },
+        "read_files": {
+          "median": 3.468,
+          "p95": 3.872,
+          "min": 1.755,
+          "max": 4.004
+        },
+        "apply_text_edits": {
+          "median": 13.925,
+          "p95": 16.561,
+          "min": 10.185,
+          "max": 16.572
+        },
+        "run_process": {
+          "median": 52.111,
+          "p95": 57.779,
+          "min": 46.446,
+          "max": 58.313
+        },
+        "show_changes": {
+          "median": 158.99,
+          "p95": 214.508,
+          "min": 151.854,
+          "max": 294.553
+        }
+      }
+    },
+    "after": {
+      "workflow_ms": {
+        "median": 199.252,
+        "p95": 296.728,
+        "min": 186.231,
+        "max": 306.781
+      },
+      "runtime_status_ms": {
+        "median": 1.197,
+        "p95": 2.387,
+        "min": 1.042,
+        "max": 11.607
+      },
+      "tools_ms": {
+        "search_project_texts": {
+          "median": 13.633,
+          "p95": 15.571,
+          "min": 9.129,
+          "max": 15.619
+        },
+        "read_files": {
+          "median": 3.39,
+          "p95": 4.399,
+          "min": 1.717,
+          "max": 4.75
+        },
+        "apply_text_edits": {
+          "median": 13.91,
+          "p95": 21.384,
+          "min": 11.075,
+          "max": 23.408
+        },
+        "run_process": {
+          "median": 52.094,
+          "p95": 72.146,
+          "min": 50.753,
+          "max": 98.883
+        },
+        "show_changes": {
+          "median": 115.184,
+          "p95": 157.402,
+          "min": 108.99,
+          "max": 223.665
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "variant": "after",
+      "iteration": 1,
+      "workflow_ms": 206.80762501433492,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "headers_ms": 11.039125034585595,
+          "stream_ms": 0.014792021829634905,
+          "total_ms": 11.05391705641523
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 270,
+          "response_bytes": 2113,
+          "headers_ms": 2.0282090408727527,
+          "stream_ms": 0.01029099803417921,
+          "total_ms": 2.038500038906932
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1007,
+          "response_bytes": 1140,
+          "headers_ms": 14.231416978873312,
+          "stream_ms": 0.013708020560443401,
+          "total_ms": 14.245124999433756
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.392249985132366,
+          "stream_ms": 0.013792014215141535,
+          "total_ms": 52.40604199934751
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 126.75862497417256,
+          "stream_ms": 0.012416974641382694,
+          "total_ms": 126.77104194881395
+        }
+      ],
+      "runtime_status_ms": 1.291208027396351,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 1,
+      "workflow_ms": 377.25995801156387,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "headers_ms": 9.654208028223366,
+          "stream_ms": 0.016458972822874784,
+          "total_ms": 9.67066700104624
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 270,
+          "response_bytes": 2114,
+          "headers_ms": 1.992291014175862,
+          "stream_ms": 0.009167008101940155,
+          "total_ms": 2.0014580222778022
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1007,
+          "response_bytes": 1140,
+          "headers_ms": 12.41095899604261,
+          "stream_ms": 0.008040980901569128,
+          "total_ms": 12.418999976944178
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 58.30154201248661,
+          "stream_ms": 0.011249969247728586,
+          "total_ms": 58.312791981734335
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 294.48033298831433,
+          "stream_ms": 0.07216702215373516,
+          "total_ms": 294.55250001046807
+        }
+      ],
+      "runtime_status_ms": 115.53408298641443,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 2,
+      "workflow_ms": 293.59579097945243,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 10.70583303226158,
+          "stream_ms": 0.015166995581239462,
+          "total_ms": 10.72100002784282
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 1.7473330372013152,
+          "stream_ms": 0.0077919685281813145,
+          "total_ms": 1.7551250057294965
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 12.311667029280216,
+          "stream_ms": 0.008040980901569128,
+          "total_ms": 12.319708010181785
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 53.94966702442616,
+          "stream_ms": 0.010124989785254002,
+          "total_ms": 53.959792014211416
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 214.49599997140467,
+          "stream_ms": 0.011500029359012842,
+          "total_ms": 214.50750000076368
+        }
+      ],
+      "runtime_status_ms": 24.573166971094906,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 2,
+      "workflow_ms": 296.728124958463,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 15.603749954607338,
+          "stream_ms": 0.015000056009739637,
+          "total_ms": 15.618750010617077
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 2.989833999890834,
+          "stream_ms": 0.018040998838841915,
+          "total_ms": 3.007874998729676
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 21.367250010371208,
+          "stream_ms": 0.016624981071799994,
+          "total_ms": 21.383874991443008
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 98.86920900316909,
+          "stream_ms": 0.013791024684906006,
+          "total_ms": 98.883000027854
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 157.39100001519546,
+          "stream_ms": 0.010624993592500687,
+          "total_ms": 157.40162500878796
+        }
+      ],
+      "runtime_status_ms": 1.4233750407584012,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 3,
+      "workflow_ms": 221.80862503591925,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 9.115582972299308,
+          "stream_ms": 0.013042008504271507,
+          "total_ms": 9.128624980803579
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 1.707417017314583,
+          "stream_ms": 0.00929197994992137,
+          "total_ms": 1.7167089972645044
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 23.398708028253168,
+          "stream_ms": 0.00925001222640276,
+          "total_ms": 23.40795804047957
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 72.13512499583885,
+          "stream_ms": 0.011208001524209976,
+          "total_ms": 72.14633299736306
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 115.11229199822992,
+          "stream_ms": 0.011208001524209976,
+          "total_ms": 115.12349999975413
+        }
+      ],
+      "runtime_status_ms": 1.177083991933614,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 3,
+      "workflow_ms": 238.16562502179295,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 11.886291962582618,
+          "stream_ms": 0.016625039279460907,
+          "total_ms": 11.902917001862079
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 2.1103749750182033,
+          "stream_ms": 0.010917021427303553,
+          "total_ms": 2.121291996445507
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 13.567041954956949,
+          "stream_ms": 0.010750023648142815,
+          "total_ms": 13.577791978605092
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.39379103295505,
+          "stream_ms": 0.009124982170760632,
+          "total_ms": 52.40291601512581
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 157.8518750029616,
+          "stream_ms": 0.010333023965358734,
+          "total_ms": 157.86220802692696
+        }
+      ],
+      "runtime_status_ms": 21.83754200814292,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 4,
+      "workflow_ms": 233.04558300878853,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 9.734499966725707,
+          "stream_ms": 0.015583995264023542,
+          "total_ms": 9.75008396198973
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 1.8450000206939876,
+          "stream_ms": 0.009999959729611874,
+          "total_ms": 1.8549999804235995
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 16.087124997284263,
+          "stream_ms": 0.01008401159197092,
+          "total_ms": 16.097209008876234
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 51.54995800694451,
+          "stream_ms": 0.009541981853544712,
+          "total_ms": 51.55949998879805
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 153.48924999125302,
+          "stream_ms": 0.010292045772075653,
+          "total_ms": 153.4995420370251
+        }
+      ],
+      "runtime_status_ms": 17.795249994378537,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 4,
+      "workflow_ms": 202.81666703522205,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 13.832500029820949,
+          "stream_ms": 0.017499958630651236,
+          "total_ms": 13.8499999884516
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 2.8427079669199884,
+          "stream_ms": 0.008000002708286047,
+          "total_ms": 2.8507079696282744
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 13.304249965585768,
+          "stream_ms": 0.009124982170760632,
+          "total_ms": 13.313374947756529
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.244291990064085,
+          "stream_ms": 0.00920804450288415,
+          "total_ms": 52.25350003456697
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 120.26416702428833,
+          "stream_ms": 0.013416982255876064,
+          "total_ms": 120.2775840065442
+        }
+      ],
+      "runtime_status_ms": 1.0781250311993062,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 5,
+      "workflow_ms": 186.23129196930677,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 11.54154201503843,
+          "stream_ms": 0.013874960131943226,
+          "total_ms": 11.555416975170374
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 2.21725000301376,
+          "stream_ms": 0.006875023245811462,
+          "total_ms": 2.2241250262595713
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 11.263082968071103,
+          "stream_ms": 0.007459020707756281,
+          "total_ms": 11.27054198877886
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 50.9590829606168,
+          "stream_ms": 0.008708040695637465,
+          "total_ms": 50.967791001312435
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 109.96229195734486,
+          "stream_ms": 0.009083014447242022,
+          "total_ms": 109.9713749717921
+        }
+      ],
+      "runtime_status_ms": 1.1002499959431589,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 5,
+      "workflow_ms": 246.025083004497,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 15.05899999756366,
+          "stream_ms": 0.015083001926541328,
+          "total_ms": 15.074082999490201
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.993417019955814,
+          "stream_ms": 0.010500021744519472,
+          "total_ms": 4.003917041700333
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 16.56237500719726,
+          "stream_ms": 0.009917013812810183,
+          "total_ms": 16.57229202101007
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.46633297065273,
+          "stream_ms": 0.00966701190918684,
+          "total_ms": 52.475999982561916
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 157.59583399631083,
+          "stream_ms": 0.011458003427833319,
+          "total_ms": 157.60729199973866
+        }
+      ],
+      "runtime_status_ms": 17.30408298317343,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 6,
+      "workflow_ms": 229.9761670292355,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 14.358000014908612,
+          "stream_ms": 0.01087499549612403,
+          "total_ms": 14.368875010404736
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.128624986857176,
+          "stream_ms": 0.005749985575675964,
+          "total_ms": 3.134374972432852
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 13.575667049735785,
+          "stream_ms": 0.003999972250312567,
+          "total_ms": 13.579667021986097
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 46.81062500458211,
+          "stream_ms": 0.008584000170230865,
+          "total_ms": 46.81920900475234
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 151.84504201170057,
+          "stream_ms": 0.00904203625395894,
+          "total_ms": 151.85408404795453
+        }
+      ],
+      "runtime_status_ms": 17.644584004301578,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 6,
+      "workflow_ms": 189.28275001235306,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 12.752540991641581,
+          "stream_ms": 0.011834024917334318,
+          "total_ms": 12.764375016558915
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 2.9232079978100955,
+          "stream_ms": 0.006791960913687944,
+          "total_ms": 2.9299999587237835
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 12.448958004824817,
+          "stream_ms": 0.004332978278398514,
+          "total_ms": 12.453290983103216
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 51.783083006739616,
+          "stream_ms": 0.008541974239051342,
+          "total_ms": 51.79162498097867
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 109.10566698294133,
+          "stream_ms": 0.013125012628734112,
+          "total_ms": 109.11879199557006
+        }
+      ],
+      "runtime_status_ms": 1.2818750110454857,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 7,
+      "workflow_ms": 200.18141699256375,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 13.561707979533821,
+          "stream_ms": 0.014416989870369434,
+          "total_ms": 13.57612496940419
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 2.9534579953178763,
+          "stream_ms": 0.008541974239051342,
+          "total_ms": 2.9619999695569277
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 14.60387499537319,
+          "stream_ms": 0.00862503657117486,
+          "total_ms": 14.612500031944364
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 53.515082981903106,
+          "stream_ms": 0.009792041964828968,
+          "total_ms": 53.524875023867935
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 115.23491697153077,
+          "stream_ms": 0.010083022061735392,
+          "total_ms": 115.2449999935925
+        }
+      ],
+      "runtime_status_ms": 1.1121249990537763,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 7,
+      "workflow_ms": 262.2478340053931,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 11.209583026356995,
+          "stream_ms": 0.013499986380338669,
+          "total_ms": 11.223083012737334
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.0985419871285558,
+          "stream_ms": 0.01025001984089613,
+          "total_ms": 3.108792006969452
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 15.081292018294334,
+          "stream_ms": 0.010041985660791397,
+          "total_ms": 15.091334003955126
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 57.77004099218175,
+          "stream_ms": 0.00925001222640276,
+          "total_ms": 57.77929100440815
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 174.74729201057926,
+          "stream_ms": 0.015332945622503757,
+          "total_ms": 174.76262495620176
+        }
+      ],
+      "runtime_status_ms": 17.657166987191886,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 8,
+      "workflow_ms": 249.99012501211837,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 12.892249971628189,
+          "stream_ms": 0.011458003427833319,
+          "total_ms": 12.903707975056022
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.485749999526888,
+          "stream_ms": 0.00908400397747755,
+          "total_ms": 3.4948340035043657
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 10.17891603987664,
+          "stream_ms": 0.006208952981978655,
+          "total_ms": 10.185124992858618
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.050250000320375,
+          "stream_ms": 0.008875038474798203,
+          "total_ms": 52.05912503879517
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 171.0402499884367,
+          "stream_ms": 0.012166972737759352,
+          "total_ms": 171.05241696117446
+        }
+      ],
+      "runtime_status_ms": 17.209957994055003,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 8,
+      "workflow_ms": 194.22050000866875,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 15.018375008367002,
+          "stream_ms": 0.011582975275814533,
+          "total_ms": 15.029957983642817
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 3.9392089820466936,
+          "stream_ms": 0.007166003342717886,
+          "total_ms": 3.9463749853894114
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 13.595499971415848,
+          "stream_ms": 0.004917033948004246,
+          "total_ms": 13.600417005363852
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 51.492041966412216,
+          "stream_ms": 0.009417010005563498,
+          "total_ms": 51.50145897641778
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 109.89949997747317,
+          "stream_ms": 0.010417017620056868,
+          "total_ms": 109.90991699509323
+        }
+      ],
+      "runtime_status_ms": 1.1019579833373427,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 9,
+      "workflow_ms": 197.0622080261819,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 14.220707991626114,
+          "stream_ms": 0.011083029676228762,
+          "total_ms": 14.231791021302342
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 3.1220830278471112,
+          "stream_ms": 0.00762502895668149,
+          "total_ms": 3.1297080568037927
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 12.80345901614055,
+          "stream_ms": 0.004541012458503246,
+          "total_ms": 12.808000028599054
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 51.941624958999455,
+          "stream_ms": 0.010583025868982077,
+          "total_ms": 51.95220798486844
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 114.6805839962326,
+          "stream_ms": 0.011166033800691366,
+          "total_ms": 114.69175003003329
+        }
+      ],
+      "runtime_status_ms": 11.606874992139637,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 9,
+      "workflow_ms": 241.7368749738671,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 13.759082998149097,
+          "stream_ms": 0.011124997399747372,
+          "total_ms": 13.770207995548844
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 2.9513330082409084,
+          "stream_ms": 0.0070420210249722,
+          "total_ms": 2.9583750292658806
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 14.295917004346848,
+          "stream_ms": 0.004207948222756386,
+          "total_ms": 14.300124952569604
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.15204204432666,
+          "stream_ms": 0.00891595846042037,
+          "total_ms": 52.16095800278708
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 158.31262501887977,
+          "stream_ms": 0.009500014130026102,
+          "total_ms": 158.3221250330098
+        }
+      ],
+      "runtime_status_ms": 18.624333024490625,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 10,
+      "workflow_ms": 258.3740419941023,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 19.96287499787286,
+          "stream_ms": 0.011958007235080004,
+          "total_ms": 19.97483300510794
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.674709005281329,
+          "stream_ms": 0.006457965355366468,
+          "total_ms": 3.6811669706366956
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 16.55695802764967,
+          "stream_ms": 0.004208995960652828,
+          "total_ms": 16.561167023610324
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 51.898458041250706,
+          "stream_ms": 0.010374991688877344,
+          "total_ms": 51.90883303293958
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 165.99645902169868,
+          "stream_ms": 0.013290962669998407,
+          "total_ms": 166.00974998436868
+        }
+      ],
+      "runtime_status_ms": 38.44674996798858,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 10,
+      "workflow_ms": 207.53945800242946,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 13.294417003635317,
+          "stream_ms": 0.014582998119294643,
+          "total_ms": 13.309000001754612
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 4.388917004689574,
+          "stream_ms": 0.010124989785254002,
+          "total_ms": 4.399041994474828
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 14.788958011195064,
+          "stream_ms": 0.004334026016294956,
+          "total_ms": 14.793292037211359
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 53.692583984229714,
+          "stream_ms": 0.008957984391599894,
+          "total_ms": 53.701541968621314
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 121.0721250390634,
+          "stream_ms": 0.009500014130026102,
+          "total_ms": 121.08162505319342
+        }
+      ],
+      "runtime_status_ms": 1.399208966176957,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 11,
+      "workflow_ms": 199.15908400435,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 14.669249998405576,
+          "stream_ms": 0.011208001524209976,
+          "total_ms": 14.680457999929786
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 2.8678750386461616,
+          "stream_ms": 0.0072919647209346294,
+          "total_ms": 2.875167003367096
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 14.111458032857627,
+          "stream_ms": 0.004583969712257385,
+          "total_ms": 14.116042002569884
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 51.95487500168383,
+          "stream_ms": 0.008833943866193295,
+          "total_ms": 51.963708945550025
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 115.26200000662357,
+          "stream_ms": 0.020791951101273298,
+          "total_ms": 115.28279195772484
+        }
+      ],
+      "runtime_status_ms": 1.2217079638503492,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 11,
+      "workflow_ms": 255.0474579911679,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 14.865332981571555,
+          "stream_ms": 0.011834024917334318,
+          "total_ms": 14.87716700648889
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.6334169562906027,
+          "stream_ms": 0.009417010005563498,
+          "total_ms": 3.642833966296166
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 16.08579105231911,
+          "stream_ms": 0.00608398113399744,
+          "total_ms": 16.091875033453107
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.53712501144037,
+          "stream_ms": 0.010624993592500687,
+          "total_ms": 52.54775000503287
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 167.6182079827413,
+          "stream_ms": 0.01629203325137496,
+          "total_ms": 167.63450001599267
+        }
+      ],
+      "runtime_status_ms": 17.51141605200246,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 12,
+      "workflow_ms": 241.99783301446587,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 12.234875001013279,
+          "stream_ms": 0.0140840420499444,
+          "total_ms": 12.248959043063223
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.863333025947213,
+          "stream_ms": 0.008791976142674685,
+          "total_ms": 3.872125002089888
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 14.264707977417856,
+          "stream_ms": 0.005792011506855488,
+          "total_ms": 14.270499988924712
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.10041702957824,
+          "stream_ms": 0.009707990102469921,
+          "total_ms": 52.11012501968071
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 159.22658401541412,
+          "stream_ms": 0.010457995813339949,
+          "total_ms": 159.23704201122746
+        }
+      ],
+      "runtime_status_ms": 18.473000032827258,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 12,
+      "workflow_ms": 197.7637080126442,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 13.522708031814545,
+          "stream_ms": 0.010416959412395954,
+          "total_ms": 13.533124991226941
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 3.3413749770261347,
+          "stream_ms": 0.007792026735842228,
+          "total_ms": 3.349167003761977
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 13.689332990907133,
+          "stream_ms": 0.0037080026231706142,
+          "total_ms": 13.693040993530303
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 51.65599996689707,
+          "stream_ms": 0.014249992091208696,
+          "total_ms": 51.67024995898828
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 115.24812498828396,
+          "stream_ms": 0.01283304300159216,
+          "total_ms": 115.26095803128555
+        }
+      ],
+      "runtime_status_ms": 2.241290989331901,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 13,
+      "workflow_ms": 198.32224998390302,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 13.387707993388176,
+          "stream_ms": 0.011499971151351929,
+          "total_ms": 13.399207964539528
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 3.469458024483174,
+          "stream_ms": 0.007583992555737495,
+          "total_ms": 3.4770420170389116
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 13.364665966946632,
+          "stream_ms": 0.003500026650726795,
+          "total_ms": 13.368165993597358
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.484082989394665,
+          "stream_ms": 0.012625008821487427,
+          "total_ms": 52.49670799821615
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 115.29816704569384,
+          "stream_ms": 0.01295795664191246,
+          "total_ms": 115.31112500233576
+        }
+      ],
+      "runtime_status_ms": 1.2163749779574573,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 13,
+      "workflow_ms": 243.4799579787068,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 14.498666976578534,
+          "stream_ms": 0.012375006917864084,
+          "total_ms": 14.511041983496398
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.5101670073345304,
+          "stream_ms": 0.008416012860834599,
+          "total_ms": 3.518583020195365
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 16.3617089856416,
+          "stream_ms": 0.004915986210107803,
+          "total_ms": 16.366624971851707
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.014707995112985,
+          "stream_ms": 0.008750008419156075,
+          "total_ms": 52.02345800353214
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 156.80029103532434,
+          "stream_ms": 0.009167008101940155,
+          "total_ms": 156.80945804342628
+        }
+      ],
+      "runtime_status_ms": 17.815375002101064,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 14,
+      "workflow_ms": 237.47225000988692,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 11.914166039787233,
+          "stream_ms": 0.010791991371661425,
+          "total_ms": 11.924958031158894
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.2058749930001795,
+          "stream_ms": 0.0072499969974160194,
+          "total_ms": 3.2131249899975955
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 11.54041598783806,
+          "stream_ms": 0.005959009286016226,
+          "total_ms": 11.546374997124076
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.10070899920538,
+          "stream_ms": 0.01025001984089613,
+          "total_ms": 52.11095901904628
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 158.4323329734616,
+          "stream_ms": 0.009750016033649445,
+          "total_ms": 158.44208298949525
+        }
+      ],
+      "runtime_status_ms": 17.628292029257864,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 14,
+      "workflow_ms": 199.34420904610306,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 14.125167042948306,
+          "stream_ms": 0.01133297337219119,
+          "total_ms": 14.136500016320497
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 3.6634589778259397,
+          "stream_ms": 0.009166018571704626,
+          "total_ms": 3.6726249963976443
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 14.707333000842482,
+          "stream_ms": 0.004458008334040642,
+          "total_ms": 14.711791009176522
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.036624983884394,
+          "stream_ms": 0.009000010322779417,
+          "total_ms": 52.045624994207174
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 114.52570802066475,
+          "stream_ms": 0.009917013812810183,
+          "total_ms": 114.53562503447756
+        }
+      ],
+      "runtime_status_ms": 1.0498749907128513,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 15,
+      "workflow_ms": 202.37412495771423,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 13.75866704620421,
+          "stream_ms": 0.01087499549612403,
+          "total_ms": 13.769542041700333
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 3.7620830116793513,
+          "stream_ms": 0.0070420210249722,
+          "total_ms": 3.7691250327043235
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 17.973458976484835,
+          "stream_ms": 0.004208006430417299,
+          "total_ms": 17.977666982915252
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 52.047125005628914,
+          "stream_ms": 0.007916009053587914,
+          "total_ms": 52.0550410146825
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 114.56054204609245,
+          "stream_ms": 0.010624993592500687,
+          "total_ms": 114.57116703968495
+        }
+      ],
+      "runtime_status_ms": 1.0675000376068056,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 15,
+      "workflow_ms": 244.3529999582097,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 14.403791050426662,
+          "stream_ms": 0.011625001206994057,
+          "total_ms": 14.415416051633656
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.578250005375594,
+          "stream_ms": 0.006375019438564777,
+          "total_ms": 3.5846250248141587
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 15.56612498825416,
+          "stream_ms": 0.004959001671522856,
+          "total_ms": 15.571083989925683
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "headers_ms": 51.99537496082485,
+          "stream_ms": 0.008583010639995337,
+          "total_ms": 52.00395797146484
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "headers_ms": 158.5181250120513,
+          "stream_ms": 0.016624981071799994,
+          "total_ms": 158.5347499931231
+        }
+      ],
+      "runtime_status_ms": 17.494000028818846,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 16,
+      "workflow_ms": 243.8003330025822,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 14.077375002671033,
+          "stream_ms": 0.016042031347751617,
+          "total_ms": 14.093417034018785
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "headers_ms": 3.407832991797477,
+          "stream_ms": 0.032957992516458035,
+          "total_ms": 3.440790984313935
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 14.940832974389195,
+          "stream_ms": 0.01795799471437931,
+          "total_ms": 14.958790969103575
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "headers_ms": 52.58562497328967,
+          "stream_ms": 0.008500006515532732,
+          "total_ms": 52.5941249798052
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "headers_ms": 158.33604102954268,
+          "stream_ms": 0.009916955605149269,
+          "total_ms": 158.34595798514783
+        }
+      ],
+      "runtime_status_ms": 17.66262500314042,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 16,
+      "workflow_ms": 203.0572920339182,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "headers_ms": 15.557290986180305,
+          "stream_ms": 0.013249984476715326,
+          "total_ms": 15.57054097065702
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "headers_ms": 3.9563749451190233,
+          "stream_ms": 0.008333998266607523,
+          "total_ms": 3.964708943385631
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "headers_ms": 16.043458017520607,
+          "stream_ms": 0.005292007699608803,
+          "total_ms": 16.048750025220215
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "headers_ms": 52.41729196859524,
+          "stream_ms": 0.008125032763928175,
+          "total_ms": 52.425417001359165
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "headers_ms": 114.77975000161678,
+          "stream_ms": 0.016833015251904726,
+          "total_ms": 114.79658301686868
+        }
+      ],
+      "runtime_status_ms": 1.0937090264633298,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 17,
+      "workflow_ms": 306.78087496198714,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "headers_ms": 14.020874979905784,
+          "stream_ms": 0.013417040463536978,
+          "total_ms": 14.034292020369321
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2115,
+          "headers_ms": 3.9998750435188413,
+          "stream_ms": 0.007582944817841053,
+          "total_ms": 4.007457988336682
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "headers_ms": 12.698083999566734,
+          "stream_ms": 0.00458303838968277,
+          "total_ms": 12.702667037956417
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "headers_ms": 52.125041955150664,
+          "stream_ms": 0.008166010957211256,
+          "total_ms": 52.133207966107875
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "headers_ms": 223.65433303639293,
+          "stream_ms": 0.01087499549612403,
+          "total_ms": 223.66520803188905
+        }
+      ],
+      "runtime_status_ms": 2.3867080453783274,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 17,
+      "workflow_ms": 245.55545899784192,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "headers_ms": 12.594665982760489,
+          "stream_ms": 0.014625024050474167,
+          "total_ms": 12.609291006810963
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2116,
+          "headers_ms": 3.313250024802983,
+          "stream_ms": 0.013249984476715326,
+          "total_ms": 3.326500009279698
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "headers_ms": 12.792249966878444,
+          "stream_ms": 0.005375011824071407,
+          "total_ms": 12.797624978702515
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "headers_ms": 52.86816699663177,
+          "stream_ms": 0.00825000461190939,
+          "total_ms": 52.87641700124368
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "headers_ms": 163.66987500805408,
+          "stream_ms": 0.010208983439952135,
+          "total_ms": 163.68008399149403
+        }
+      ],
+      "runtime_status_ms": 18.404208007268608,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 18,
+      "workflow_ms": 289.167917042505,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "headers_ms": 13.074042042717338,
+          "stream_ms": 0.016624981071799994,
+          "total_ms": 13.090667023789138
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2116,
+          "headers_ms": 3.590208012610674,
+          "stream_ms": 0.0077500008046627045,
+          "total_ms": 3.5979580134153366
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "headers_ms": 13.398500042967498,
+          "stream_ms": 0.00608398113399744,
+          "total_ms": 13.404584024101496
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "headers_ms": 51.98958399705589,
+          "stream_ms": 0.009374984074383974,
+          "total_ms": 51.99895898113027
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "headers_ms": 206.80454204557464,
+          "stream_ms": 0.012458011042326689,
+          "total_ms": 206.81700005661696
+        }
+      ],
+      "runtime_status_ms": 18.479667021892965,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 18,
+      "workflow_ms": 198.4559170086868,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "headers_ms": 13.678707997314632,
+          "stream_ms": 0.011791998986154795,
+          "total_ms": 13.690499996300787
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2115,
+          "headers_ms": 4.742500022985041,
+          "stream_ms": 0.007541966624557972,
+          "total_ms": 4.750041989609599
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "headers_ms": 11.070790991652757,
+          "stream_ms": 0.004125002305954695,
+          "total_ms": 11.074915993958712
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "headers_ms": 52.505417028442025,
+          "stream_ms": 0.04358298610895872,
+          "total_ms": 52.549000014550984
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "headers_ms": 116.08958296710625,
+          "stream_ms": 0.011209049262106419,
+          "total_ms": 116.10079201636836
+        }
+      ],
+      "runtime_status_ms": 1.4428750146180391,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 19,
+      "workflow_ms": 199.0094999782741,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "headers_ms": 13.230499986093491,
+          "stream_ms": 0.012583041097968817,
+          "total_ms": 13.24308302719146
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2115,
+          "headers_ms": 3.4214170300401747,
+          "stream_ms": 0.009207986295223236,
+          "total_ms": 3.430625016335398
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "headers_ms": 15.906207961961627,
+          "stream_ms": 0.004250032361596823,
+          "total_ms": 15.910457994323224
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "headers_ms": 51.51454103179276,
+          "stream_ms": 0.00908400397747755,
+          "total_ms": 51.52362503577024
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "headers_ms": 114.64604100910947,
+          "stream_ms": 0.009417010005563498,
+          "total_ms": 114.65545801911503
+        }
+      ],
+      "runtime_status_ms": 1.1222080211155117,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 19,
+      "workflow_ms": 242.11854202440009,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "headers_ms": 13.340917008463293,
+          "stream_ms": 0.011708005331456661,
+          "total_ms": 13.35262501379475
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2116,
+          "headers_ms": 3.839332959614694,
+          "stream_ms": 0.006749993190169334,
+          "total_ms": 3.8460829528048635
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "headers_ms": 13.380166026763618,
+          "stream_ms": 0.0040839659050107,
+          "total_ms": 13.384249992668629
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "headers_ms": 52.08658298943192,
+          "stream_ms": 0.0075830030255019665,
+          "total_ms": 52.09416599245742
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "headers_ms": 159.21041602268815,
+          "stream_ms": 0.011334021110087633,
+          "total_ms": 159.22175004379824
+        }
+      ],
+      "runtime_status_ms": 17.3864170210436,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 20,
+      "workflow_ms": 235.84762500831857,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "headers_ms": 13.580458995420486,
+          "stream_ms": 0.012165983207523823,
+          "total_ms": 13.59262497862801
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2116,
+          "headers_ms": 3.4966659732162952,
+          "stream_ms": 0.008875038474798203,
+          "total_ms": 3.5055410116910934
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "headers_ms": 13.291833049152046,
+          "stream_ms": 0.004499976057559252,
+          "total_ms": 13.296333025209606
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "headers_ms": 46.432208037003875,
+          "stream_ms": 0.014041957911103964,
+          "total_ms": 46.44624999491498
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "headers_ms": 158.74920901842415,
+          "stream_ms": 0.009040988516062498,
+          "total_ms": 158.75825000694022
+        }
+      ],
+      "runtime_status_ms": 17.577624996192753,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 20,
+      "workflow_ms": 189.94545802706853,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "headers_ms": 12.181749974843115,
+          "stream_ms": 0.016791047528386116,
+          "total_ms": 12.1985410223715
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2115,
+          "headers_ms": 4.043499997351319,
+          "stream_ms": 0.012625008821487427,
+          "total_ms": 4.056125006172806
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "headers_ms": 13.698750000912696,
+          "stream_ms": 0.00462500611320138,
+          "total_ms": 13.703375007025898
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "headers_ms": 50.74479099130258,
+          "stream_ms": 0.007916998583823442,
+          "total_ms": 50.7527079898864
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "headers_ms": 108.98079199250787,
+          "stream_ms": 0.009500014130026102,
+          "total_ms": 108.9902920066379
+        }
+      ],
+      "runtime_status_ms": 1.0422079940326512,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    }
+  ]
+}

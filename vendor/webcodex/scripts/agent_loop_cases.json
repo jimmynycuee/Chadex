@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "fixture_reference": {
+    "name": "coding-loop-eval-v1",
+    "source": "scripts/eval_coding_loop.sh",
+    "description": "Reuse the disposable Rust project recipe already owned by eval_coding_loop.sh; do not create a second runtime eval harness."
+  },
+  "protocol": {
+    "same_case_requires_same_base_revision": true,
+    "fresh_clean_workspace_per_run": true,
+    "variants": [
+      "direct",
+      "code_mode"
+    ]
+  },
+  "cases": [
+    {
+      "id": "readonly_review",
+      "title": "Read-only review",
+      "target": "webcodex_repository",
+      "prompt": "Perform a read-only review. Inspect git status, read src/tool_runtime/window_activity.rs and docs/architecture/tool-composition-research.md, search for project_window_loop_timings references, inspect the current git diff, and report concrete findings. Do not modify files and do not run mutation tools.",
+      "correctness": {
+        "workspace_must_remain_clean": true,
+        "required_observations": [
+          "git status",
+          "window_activity implementation",
+          "tool-composition research timing contract",
+          "git diff"
+        ]
+      },
+      "validation": {
+        "required": false,
+        "expectation": "No code validation is required; final workspace must remain unchanged."
+      }
+    },
+    {
+      "id": "focused_edit_validation",
+      "title": "Focused structured edit plus validation",
+      "target": "coding_loop_eval_fixture",
+      "prompt": "In the disposable coding-loop eval Rust project, change greeting() from \"hello\" to \"hello baseline\" without changing topic(). Inspect the resulting diff, run cargo check successfully, and report the final changed file and validation result.",
+      "correctness": {
+        "changed_files": [
+          "src/lib.rs"
+        ],
+        "required_final_text": "\"hello baseline\"",
+        "forbidden_final_text": "\"hello\" as the greeting return value",
+        "topic_must_remain_unchanged": true
+      },
+      "validation": {
+        "required": true,
+        "command": "cargo check",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "failed_validation_recovery",
+      "title": "Failed validation recovery",
+      "target": "coding_loop_eval_fixture",
+      "prompt": "Use test-first recovery in the disposable coding-loop eval Rust project. First add a unit test named greeting_matches_recovery_target asserting greeting() == \"hello recovered\" and run cargo test while greeting() still returns \"hello\"; inspect the expected failing diagnostic. Then change greeting() to \"hello recovered\", rerun cargo test successfully, inspect the final diff, and report both the observed failing validation and the successful rerun.",
+      "correctness": {
+        "changed_files": [
+          "src/lib.rs"
+        ],
+        "required_final_text": "\"hello recovered\"",
+        "required_test_name": "greeting_matches_recovery_target",
+        "must_observe_failed_validation_before_fix": true
+      },
+      "validation": {
+        "required": true,
+        "command": "cargo test",
+        "expected_sequence": [
+          "failed",
+          "success"
+        ]
+      }
+    },
+    {
+      "id": "long_validation_handoff",
+      "title": "Long validation and same-execution Job handoff",
+      "target": "webcodex_repository",
+      "prompt": "Do not modify files. Start cargo test --lib with sync_wait_secs=1 and a sufficient total timeout. If it hands off, preserve that exact Job identity; while it runs, independently inspect the timing terminology in docs/architecture/tool-composition-research.md, then observe the same Job to terminal completion. Do not redispatch cargo test. If the validation finishes synchronously before handoff, report that this run does not satisfy the handoff case instead of fabricating one.",
+      "correctness": {
+        "workspace_must_remain_clean": true,
+        "same_execution_must_be_preserved": true,
+        "redispatch_forbidden": true,
+        "requires_real_handoff_for_valid_case": true
+      },
+      "validation": {
+        "required": true,
+        "command": "cargo test --lib",
+        "sync_wait_secs": 1,
+        "expected_terminal_result": "success"
+      }
+    }
+  ]
+}

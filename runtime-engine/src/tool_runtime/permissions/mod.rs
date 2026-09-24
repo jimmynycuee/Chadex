@@ -1,0 +1,224 @@
+//! Authority decision layer for permission-bearing tool execution.
+//!
+//! Module layout:
+//! - [`model`] — canonical authority modes, outcomes, [`PermissionDecision`]
+//! - [`evaluator`] — single evaluation entry ([`PermissionEvaluator`])
+//! - [`policy`] — mode behavior (`trusted_agent`, `restricted`)
+//! - [`risk`] — coarse risk classification facade
+//!
+//! Hard safety (session guard, path policy, scopes) lives outside this module
+//! and is never bypassed by authority mode. See
+//! `docs/agent/permission-model.md`.
+
+mod evaluator;
+mod model;
+mod policy;
+mod risk;
+
+#[cfg(test)]
+mod tests;
+
+pub(crate) use evaluator::PermissionEvaluator;
+pub(crate) use model::{PermissionDecision, DEFAULT_PERMISSION_RECENT_LIMIT};
+pub(crate) use policy::EffectiveAuthorityConfig;
+
+#[cfg(test)]
+pub(crate) use model::AuthorityMode;
+#[cfg(test)]
+pub(crate) use policy::TRUSTED_AGENT_AUTO_REASON;
+
+// Test-facing surface: mode parsing, outcomes, constants, compatibility wrapper.
+#[cfg(test)]
+pub(crate) use evaluator::permission_decision_for_tool;
+#[cfg(test)]
+pub(crate) use model::{PermissionOutcome, AUTHORITY_MODE_ENV};
+#[cfg(test)]
+pub(crate) use policy::{resolve_authority_mode, RESTRICTED_DENY_REASON};
+
+use serde_json::{json, Value};
+
+use super::metadata::ToolApprovalPolicy;
+use super::sessions::{canonical_tool_call_finished_events, SessionEvent};
+use super::tool_definition::runtime_tool_approval_policy;
+use super::tool_result::{RecoveryKind, ToolResult};
+
+/// Canonical authority profile (runtime_status / coding-task startup).
+pub(crate) fn authority_profile_payload() -> Value {
+    policy::authority_profile_payload_for(&EffectiveAuthorityConfig::from_env())
+}
+
+/// Evaluate interactive permission only when the canonical tool approval
+/// contract requires a fresh decision. `InheritFromStart` is deliberately
+/// distinct from `None` even though neither enters the evaluator here.
+pub(crate) fn evaluate_permission_for_tool(
+    evaluator: &PermissionEvaluator,
+    tool_name: &str,
+    project: Option<&str>,
+) -> Option<PermissionDecision> {
+    match runtime_tool_approval_policy(tool_name) {
+        ToolApprovalPolicy::Standard | ToolApprovalPolicy::Unknown => {
+            evaluator.evaluate(tool_name, project)
+        }
+        ToolApprovalPolicy::None | ToolApprovalPolicy::InheritFromStart => None,
+    }
+}
+
+pub(crate) fn add_permission_to_result(result: &mut ToolResult, permission: &PermissionDecision) {
+    let mut output = match std::mem::take(&mut result.output) {
+        Value::Object(map) => map,
+        other => {
+            let mut map = serde_json::Map::new();
+            map.insert("value".to_string(), other);
+            map
+        }
+    };
+    output.insert(
+        "permission".to_string(),
+        serde_json::to_value(permission).unwrap_or(Value::Null),
+    );
+    result.output = Value::Object(output);
+}
+
+/// Structured denial when the authority layer blocks execution before mutation.
+///
+/// Stable, diagnostic messages without tool parameters or sensitive content.
+/// Callers attach the same [`PermissionDecision`] via [`add_permission_to_result`].
+pub(crate) fn permission_execution_denied_result(decision: &PermissionDecision) -> ToolResult {
+    let message = match decision.reason.as_str() {
+        policy::RESTRICTED_DENY_REASON => {
+            "permission denied: restricted authority mode requires human authorization \
+             for consequential tools"
+                .to_string()
+        }
+        reason if reason.starts_with("invalid_authority_mode:") => format!(
+            "permission denied: invalid {env} configuration; tool execution blocked",
+            env = model::AUTHORITY_MODE_ENV
+        ),
+        other => format!("permission denied: {other}"),
+    };
+    ToolResult::err_with_output(
+        message.clone(),
+        json!({
+            "error": message,
+            "error_kind": "permission_denied",
+            "failure_kind": "permission_denied",
+            "permission_reason": decision.reason,
+            "permission_policy": decision.policy,
+            "permission_status": decision.status,
+        }),
+    )
+    .with_recovery(RecoveryKind::UserAction)
+}
+
+/// Deserialize a permission decision previously attached to tool output.
+///
+/// Used to reuse the single authoritative decision (e.g. outer recording
+/// session) without re-evaluating.
+pub(crate) fn permission_decision_from_output(output: &Value) -> Option<PermissionDecision> {
+    let value = output.get("permission")?;
+    serde_json::from_value(value.clone()).ok()
+}
+
+/// Detect hard-safety denials on tool output. Independent of authority mode:
+/// auto-authorization must never suppress these outcomes.
+pub(crate) fn is_hard_denied_output(output: &Value, error: Option<&str>) -> bool {
+    let structured_hard_deny = [
+        "policy_rejected",
+        "session_guard_denied",
+        "unknown_session_id",
+        "session_project_mismatch",
+        "confirmation_required",
+        "job_not_found",
+        "job_project_mismatch",
+        "job_stop_forbidden",
+    ];
+    for key in ["error_kind", "failure_kind"] {
+        if output
+            .get(key)
+            .and_then(Value::as_str)
+            .is_some_and(|kind| structured_hard_deny.contains(&kind))
+        {
+            return true;
+        }
+    }
+    let Some(error) = error else {
+        return false;
+    };
+    let lower = error.to_lowercase();
+    lower.contains("sensitive path")
+        || lower.contains("sensitive artifact path")
+        || lower.contains("path must be project-relative")
+        || lower.contains("path cannot contain parent traversal")
+        || lower.contains("absolute paths are not allowed")
+        || lower.contains("path traversal")
+}
+
+pub(crate) fn permission_summary_from_events(events: &[SessionEvent], limit: usize) -> Value {
+    let mut events_total = 0usize;
+    let mut required_count = 0usize;
+    let mut auto_approved_count = 0usize;
+    let mut manual_approved_count = 0usize;
+    let mut denied_count = 0usize;
+    let mut pending_count = 0usize;
+    let mut hard_denied_count = 0usize;
+    let mut recent = Vec::new();
+
+    for event in canonical_tool_call_finished_events(events)
+        .into_iter()
+        .rev()
+    {
+        let Some(permission) = event.permission.as_ref() else {
+            continue;
+        };
+        events_total += 1;
+        if permission.required {
+            required_count += 1;
+        }
+        match permission.status.as_str() {
+            "auto_approved" => auto_approved_count += 1,
+            "approved" => manual_approved_count += 1,
+            "denied" | "expired" => denied_count += 1,
+            "requested" => pending_count += 1,
+            "hard_denied" => hard_denied_count += 1,
+            _ => {}
+        }
+        if recent.len() < limit {
+            recent.push(json!({
+                "tool_name": permission.tool_name.clone(),
+                "status": permission.status.clone(),
+                "risk": permission.risk.clone(),
+                "project": permission.project.clone(),
+            }));
+        }
+    }
+
+    let total_approved_count = manual_approved_count + auto_approved_count;
+    let config = EffectiveAuthorityConfig::from_env();
+
+    json!({
+        "policy": config.mode_name(),
+        "events_total": events_total,
+        "required_count": required_count,
+        "auto_approved_count": auto_approved_count,
+        "manual_approved_count": manual_approved_count,
+        "total_approved_count": total_approved_count,
+        "denied_count": denied_count,
+        "pending_count": pending_count,
+        "hard_denied_count": hard_denied_count,
+        "human_approval_required": config.human_approval_required(),
+        "recent": recent,
+    })
+}
+
+pub(crate) fn edit_path_policy_rejected_result(path: &str, message: String) -> ToolResult {
+    ToolResult::err_with_output(
+        message.clone(),
+        json!({
+            "path": path,
+            "error": message,
+            "failure_kind": "policy_rejected",
+            "error_kind": "policy_rejected",
+            "state_changed": false,
+        }),
+    )
+}

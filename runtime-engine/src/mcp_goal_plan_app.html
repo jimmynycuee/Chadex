@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>WebCodex Goal Plan</title>
+<style>
+:root { color-scheme: light dark; font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 12px; color: CanvasText; background: Canvas; }
+.card { display: grid; gap: 10px; }
+.header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+h1 { margin: 0; font-size: 15px; font-weight: 650; overflow-wrap: anywhere; }
+.badge { padding: 2px 7px; border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 999px; font-size: 11px; white-space: nowrap; }
+.objective { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 11em; overflow: auto; }
+.meta { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px 14px; font-size: 12px; color: color-mix(in srgb, CanvasText 72%, transparent); }
+.meta b { color: CanvasText; font-weight: 600; }
+.status { min-height: 1.4em; font-size: 11px; color: color-mix(in srgb, CanvasText 60%, transparent); }
+.activity { padding: 7px 9px; border: 1px solid color-mix(in srgb, CanvasText 16%, transparent); border-radius: 7px; font-size: 12px; color: color-mix(in srgb, CanvasText 76%, transparent); }
+.activity-attention_needed { border-style: dashed; color: CanvasText; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main class="card" aria-live="polite">
+  <div class="header"><h1 id="title">Goal</h1><span id="lifecycle" class="badge">Loading</span></div>
+  <p id="objective" class="objective">Waiting for Goal state…</p>
+  <div id="meta" class="meta" hidden>
+    <span>Agent Tasks <b id="tasks">0</b></span>
+    <span>Workflow Sessions <b id="sessions">0</b></span>
+    <span>Revision <b id="revision">—</b></span>
+    <span>Updated <b id="updated">—</b></span>
+  </div>
+  <div id="activity" class="activity" hidden></div>
+  <div id="status" class="status">Initializing…</div>
+</main>
+<script>
+(() => {
+  "use strict";
+  const GOAL_ID = /^wc_goal_[A-Za-z0-9_-]{16}$/;
+  const APP_PROTOCOL = "2026-01-26";
+  const LIFECYCLES = new Set(["active", "completed", "cancelled"]);
+  const ACTIVITY_STATES = new Set(["active", "attention_needed", "unobserved", "not_applicable"]);
+  const ACTIVITY_IDLE_THRESHOLD_MS = 300000;
+  const POLL_MS = 3000;
+  const CALL_TIMEOUT_MS = 10000;
+  let nextId = 1;
+  let goalId = null;
+  let lastRevision = 0;
+  let lastLifecycle = null;
+  let hostInitialized = false;
+  let pollTimer = null;
+  let pollInFlight = false;
+  let tornDown = false;
+  const pending = new Map();
+  const utf8Encoder = new TextEncoder();
+  const el = id => document.getElementById(id);
+  el("status").textContent = "App active · initializing Host";
+
+  function send(method, params) {
+    if (tornDown) return Promise.reject(new Error("App torn down"));
+    const id = nextId++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error("Host request timed out"));
+      }, CALL_TIMEOUT_MS);
+      pending.set(id, { resolve, reject, timer });
+      parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+    });
+  }
+
+  function notify(method, params) {
+    if (!tornDown) parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+  }
+
+  function validGoalId(value) {
+    return typeof value === "string" && GOAL_ID.test(value);
+  }
+
+  function acceptIdentity(candidate) {
+    if (tornDown) return false;
+    if (!validGoalId(candidate) || (goalId && goalId !== candidate)) {
+      teardown();
+      el("status").textContent = "Invalid or conflicting Goal identity";
+      return false;
+    }
+    goalId = candidate;
+    return true;
+  }
+
+  function nullableSafeInteger(value) {
+    return value === null || Number.isSafeInteger(value);
+  }
+
+  function validActivity(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    if (typeof value.available !== "boolean" || !ACTIVITY_STATES.has(value.state)) return false;
+    if (value.idle_threshold_ms !== ACTIVITY_IDLE_THRESHOLD_MS || typeof value.coverage_partial !== "boolean") return false;
+    for (const key of ["last_seen_at_ms", "last_meaningful_activity_at_ms", "quiet_for_ms"]) {
+      if (!nullableSafeInteger(value[key]) || (value[key] !== null && value[key] < 0 && key === "quiet_for_ms")) return false;
+    }
+    if (!(value.linked_window_count === null || (Number.isSafeInteger(value.linked_window_count) && value.linked_window_count >= 0 && value.linked_window_count <= 16))) return false;
+    if (!(value.active_meaningful_request_count === null || (Number.isSafeInteger(value.active_meaningful_request_count) && value.active_meaningful_request_count >= 0 && value.active_meaningful_request_count <= 64))) return false;
+    if (!value.available && [value.last_seen_at_ms, value.last_meaningful_activity_at_ms, value.quiet_for_ms, value.linked_window_count, value.active_meaningful_request_count].some(v => v !== null)) return false;
+    return true;
+  }
+
+  function validPlan(value) {
+    if (!value || typeof value !== "object") return null;
+    if (value.version !== 1 || !validGoalId(value.goal_id)) return null;
+    if (typeof value.title !== "string" || Array.from(value.title).length < 1 || Array.from(value.title).length > 200) return null;
+    if (typeof value.objective !== "string" || utf8Encoder.encode(value.objective).length < 1 || utf8Encoder.encode(value.objective).length > 8192) return null;
+    if (!LIFECYCLES.has(value.lifecycle) || !Number.isSafeInteger(value.revision) || value.revision < 1) return null;
+    if (!Number.isSafeInteger(value.updated_at_unix_ms)) return null;
+    if (!(value.terminal_at_unix_ms === null || Number.isSafeInteger(value.terminal_at_unix_ms))) return null;
+    for (const key of ["agent_task_count", "workflow_session_count"]) {
+      if (!Number.isSafeInteger(value[key]) || value[key] < 0 || value[key] > 64) return null;
+    }
+    if (!validActivity(value.activity)) return null;
+    if (value.lifecycle === "active" && value.activity.state === "not_applicable") return null;
+    if (value.lifecycle !== "active" && value.activity.state !== "not_applicable") return null;
+    return value;
+  }
+
+  function callToolResultOf(result) {
+    if (!result || typeof result !== "object" || Array.isArray(result)) return result;
+    const nested = result.result;
+    if (nested && typeof nested === "object" && !Array.isArray(nested) && (
+      nested.structuredContent || nested.structured_content || Array.isArray(nested.content)
+      || typeof nested.success === "boolean" || Object.prototype.hasOwnProperty.call(nested, "isError")
+    )) return nested;
+    return result;
+  }
+
+  function extractPlan(result) {
+    const callResult = callToolResultOf(result);
+    const structured = callResult && (callResult.structuredContent || callResult.structured_content || callResult);
+    const output = structured && (structured.output || structured);
+    return validPlan(output && output.goal_plan);
+  }
+
+  function labelLifecycle(value) {
+    return value === "active" ? "Active" : value === "completed" ? "Completed" : "Cancelled";
+  }
+
+  function formatQuiet(ms) {
+    if (!Number.isSafeInteger(ms) || ms < 0) return "an unknown interval";
+    if (ms < 60000) return "less than 1m";
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder === 0 ? `${hours}h` : `${hours}h ${remainder}m`;
+  }
+
+  function renderActivity(activity) {
+    const node = el("activity");
+    node.hidden = false;
+    node.className = `activity activity-${activity.state}`;
+    if (activity.state === "not_applicable") {
+      node.textContent = "Window activity observation is not applicable to this terminal Goal.";
+      return;
+    }
+    if (!activity.available) {
+      node.textContent = "Window activity observation unavailable.";
+      return;
+    }
+    if (activity.state === "unobserved") {
+      node.textContent = activity.coverage_partial
+        ? "Window activity evidence is partial; no inactivity conclusion is safe."
+        : "No observable correlated Window activity yet.";
+      return;
+    }
+    if (activity.state === "active") {
+      node.textContent = (activity.active_meaningful_request_count || 0) > 0
+        ? "Meaningful WebCodex work is currently running."
+        : "Meaningful WebCodex activity was observed recently.";
+      return;
+    }
+    const quiet = formatQuiet(activity.quiet_for_ms);
+    node.textContent = activity.last_seen_at_ms !== null
+      && activity.last_meaningful_activity_at_ms !== null
+      && activity.last_seen_at_ms > activity.last_meaningful_activity_at_ms
+      ? `Window still recently observed; no meaningful WebCodex work for ${quiet}. This Goal may need attention.`
+      : `No meaningful WebCodex activity for ${quiet}. This Goal may need attention.`;
+  }
+
+  function render(plan) {
+    if (tornDown) return;
+    el("title").textContent = plan.title;
+    el("lifecycle").textContent = labelLifecycle(plan.lifecycle);
+    el("objective").textContent = plan.objective;
+    el("tasks").textContent = String(plan.agent_task_count);
+    el("sessions").textContent = String(plan.workflow_session_count);
+    el("revision").textContent = String(plan.revision);
+    const date = new Date(plan.updated_at_unix_ms);
+    el("updated").textContent = Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+    el("meta").hidden = false;
+    renderActivity(plan.activity);
+    if (hostInitialized) showTrackingStatus();
+  }
+
+  function showTrackingStatus() {
+    el("status").textContent = lastLifecycle === null ? "Exact identity received · reading authoritative Goal state"
+      : lastLifecycle === "active" ? "Tracking authoritative Goal state" : "Terminal Goal state";
+  }
+
+  function isTerminal() {
+    return lastLifecycle !== null && lastLifecycle !== "active";
+  }
+
+  function stopPolling() {
+    if (pollTimer !== null) clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
+  async function poll() {
+    if (tornDown || !hostInitialized || !goalId || isTerminal() || pollInFlight) return;
+    pollInFlight = true;
+    try {
+      const response = await send("tools/call", { name: "goal_plan_state", arguments: { goal_id: goalId } });
+      const plan = extractPlan(response);
+      if (!plan || !acceptIdentity(plan.goal_id)) throw new Error("Invalid Goal Plan state");
+      if (plan.revision < lastRevision || (plan.revision === lastRevision && lastLifecycle !== null && plan.lifecycle !== lastLifecycle)) {
+        throw new Error("Stale or inconsistent Goal Plan state");
+      }
+      lastRevision = plan.revision;
+      lastLifecycle = plan.lifecycle;
+      render(plan);
+      if (isTerminal()) stopPolling();
+    } catch (_) {
+      if (!tornDown) el("status").textContent = "State refresh pending";
+    } finally {
+      pollInFlight = false;
+    }
+  }
+
+  function ensurePolling() {
+    if (!hostInitialized || !goalId || isTerminal() || tornDown) return stopPolling();
+    if (pollTimer === null) {
+      showTrackingStatus();
+      pollTimer = setInterval(poll, POLL_MS);
+      void poll();
+    }
+  }
+
+  function acceptToolInput(params) {
+    // MCP Apps 2026-01-26 supplies complete arguments here, never authority.
+    const args = params && params.arguments;
+    if (!acceptIdentity(args && !Array.isArray(args) && args.goal_id)) return;
+    ensurePolling();
+  }
+
+  function acceptToolResult(result) {
+    if (tornDown) return;
+    const plan = extractPlan(result);
+    if (!plan || !acceptIdentity(plan.goal_id)) return;
+    if (plan.revision >= lastRevision && (lastLifecycle === null || plan.revision > lastRevision || plan.lifecycle === lastLifecycle)) {
+      lastRevision = plan.revision;
+      lastLifecycle = plan.lifecycle;
+      render(plan);
+    }
+    ensurePolling();
+  }
+
+  function teardown() {
+    tornDown = true;
+    stopPolling();
+    for (const entry of pending.values()) {
+      clearTimeout(entry.timer);
+      entry.reject(new Error("App torn down"));
+    }
+    pending.clear();
+  }
+
+  addEventListener("message", event => {
+    if (event.source !== parent) return;
+    const msg = event.data;
+    if (!msg || msg.jsonrpc !== "2.0") return;
+    if (Object.prototype.hasOwnProperty.call(msg, "id") && pending.has(msg.id)) {
+      const entry = pending.get(msg.id);
+      pending.delete(msg.id);
+      clearTimeout(entry.timer);
+      if (msg.error) entry.reject(new Error(String(msg.error.message || "Host error")));
+      else entry.resolve(msg.result);
+      return;
+    }
+    if (msg.method === "ui/notifications/tool-input") {
+      acceptToolInput(msg.params);
+      return;
+    }
+    if (msg.method === "ui/notifications/tool-result") {
+      acceptToolResult(msg.params);
+      return;
+    }
+    if (msg.method === "ui/resource-teardown") {
+      teardown();
+      if (Object.prototype.hasOwnProperty.call(msg, "id")) {
+        parent.postMessage({ jsonrpc: "2.0", id: msg.id, result: {} }, "*");
+      }
+    }
+  });
+
+  addEventListener("visibilitychange", () => {
+    if (!document.hidden) void poll();
+  });
+  addEventListener("pagehide", teardown, { once: true });
+  addEventListener("beforeunload", teardown, { once: true });
+
+  send("ui/initialize", { protocolVersion: APP_PROTOCOL, appInfo: { name: "webcodex-goal-plan-app", title: "WebCodex Goal Plan", version: "2.0.0" }, appCapabilities: {} })
+    .then(() => {
+      if (tornDown) return;
+      hostInitialized = true;
+      if (goalId) showTrackingStatus();
+      else el("status").textContent = "Host initialized · waiting for exact tool identity";
+      notify("ui/notifications/initialized", {});
+      ensurePolling();
+    })
+    .catch(() => { if (!tornDown) el("status").textContent = "Host initialization unavailable"; });
+})();
+</script>
+</body>
+</html>

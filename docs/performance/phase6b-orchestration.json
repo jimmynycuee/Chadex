@@ -1,0 +1,17 @@
+{
+  "cold_resume_iterations": 30,
+  "cold_resume_ms": {
+    "max": 10.016,
+    "median": 2.165,
+    "min": 1.193,
+    "p95": 3.222
+  },
+  "refresh_iterations": 50,
+  "refresh_runtime_ms": {
+    "max": 2.137,
+    "median": 0.648,
+    "min": 0.379,
+    "p95": 1.499
+  },
+  "schema": 1
+}

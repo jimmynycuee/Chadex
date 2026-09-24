@@ -1,0 +1,60 @@
+{
+  "classification_rule": "target window selected only by exact structured argument marker in 'instruction' for tool 'work_on_project'; request boundaries joined by exact client_window_key/server_trace_id; unobserved pre-Server time remains unattributed",
+  "driver": {
+    "accepted_at_ms": 1790224082468,
+    "confirmed_final_at_ms": null,
+    "connector": "WebCodex",
+    "effort": {
+      "observed": {
+        "observed_label": "極高",
+        "requested": "extra-high",
+        "verified_by": "button_text"
+      },
+      "requested": "extra-high"
+    },
+    "submitted_at_ms": 1790224082016
+  },
+  "first_tool": {
+    "helper_ingress": null,
+    "helper_join_status": "unavailable",
+    "helper_timing": null,
+    "prompt_to_server_parsed_ms": 8109.711,
+    "prompt_to_server_received_ms": 8109.578,
+    "response_serialized_at_ns": 1790224092427702016,
+    "runner_request_ids": [
+      "ecc86410-0104-4a03-bd41-181a3ae37f03",
+      "a04c31e1-88c1-4eb9-ad9a-81a846916d8a",
+      "5e15b072-9125-477d-96ce-3d14bebb5310",
+      "cfa44942-df42-43fd-adf0-ca7e20b83f39",
+      "b090e0b4-cb24-4e75-821b-0e8ce7849b92",
+      "8520185d-3f16-4871-bd0e-e9773f6bbc31",
+      "631dd074-7eca-4f10-8268-1762b6f9761b",
+      "4b0aa1c8-9377-4dfe-aa01-8abfbd952cf4"
+    ],
+    "server_dispatch_ms": 2301.86,
+    "server_parse_to_dispatch_ms": 0.094,
+    "server_receive_to_parse_ms": 0.133,
+    "server_total_to_handler_return_ms": 2302.134,
+    "server_trace_id": "6a2c0d60-278c-463b-9258-b939d76f3975",
+    "tool_name": "work_on_project"
+  },
+  "schema_version": 1,
+  "selection": {
+    "client_window_key": "e0e210d4ea923bc9dc7e01805d4f23e543eb66473eaa6954907884d9895b156d",
+    "exact_marker_trace_count": 1,
+    "exact_marker_trace_ids": [
+      "6a2c0d60-278c-463b-9258-b939d76f3975"
+    ],
+    "exact_markers": [
+      "PHASE16C_6eb04af0d009408e96c26c31fee4e3ac"
+    ],
+    "expected_tool_name": "work_on_project",
+    "marker_argument_key": "instruction",
+    "window_trace_count": 1
+  },
+  "unattributed": {
+    "label": "prompt-to-helper remains host/relay/model-side unattributed when helper timing is present; never label this span as model reasoning time",
+    "prompt_to_helper_ingress_ms": null,
+    "prompt_to_server_received_ms": 8109.578
+  }
+}

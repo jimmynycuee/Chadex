@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-09-24",
+  "direct_host_callable_surface": {
+    "measurement": "ChatGPT Code Mode ALL_TOOLS connector namespace snapshot; character count is tool-definition text proxy, not token count or host context bytes",
+    "chadex": {
+      "tool_count": 46,
+      "tool_definition_text_chars": 163429
+    },
+    "webcodex": {
+      "tool_count": 21,
+      "tool_definition_text_chars": 68230
+    },
+    "ratios": {
+      "tool_count_chadex_over_webcodex": 2.19,
+      "text_chars_chadex_over_webcodex": 2.395
+    },
+    "only_chadex": [
+      "import_conversation_files_to_project",
+      "memory_delete",
+      "memory_read",
+      "memory_scope_list",
+      "memory_scope_purge",
+      "memory_search",
+      "memory_set",
+      "present_agent_continuation",
+      "present_changes",
+      "present_goal_plan",
+      "present_work_result",
+      "project_artifact",
+      "read_tool_trace",
+      "rotate_agent_continuation_endpoint",
+      "run_detached_process",
+      "run_shell",
+      "run_skill_resource",
+      "session_handoff_summary",
+      "skill_activate",
+      "skill_install",
+      "skill_list",
+      "skill_load",
+      "skill_read_file",
+      "skill_remove_revision",
+      "skill_versions",
+      "wait_for_agent_events"
+    ],
+    "only_webcodex": [
+      "apply_patch"
+    ],
+    "common_count": 20
+  },
+  "canonical_runtime_catalog": {
+    "measurement": "full canonical list_tools response observed through each connector; this is not the same as initial host-visible model context",
+    "chadex": {
+      "tool_count": 129,
+      "serialized_result_chars": 1490294,
+      "serialized_tool_chars": 1480686
+    },
+    "webcodex": {
+      "tool_count": 135,
+      "serialized_result_chars": 1462136,
+      "serialized_tool_chars": 1452456
+    },
+    "serialized_result_ratio_chadex_over_webcodex": 1.0193
+  },
+  "interpretation": "The backend catalogs are similar in aggregate size, while the directly exposed ChatGPT callable surface is much larger for Chadex. Causality to model/tool-decision latency remains unobservable."
+}

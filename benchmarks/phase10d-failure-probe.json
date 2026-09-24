@@ -1,0 +1,50 @@
+{
+  "results": [
+    {
+      "variant": "phase9_fixed1",
+      "outer_success": false,
+      "task_status": "failed_validation",
+      "wall_ms": 195.529,
+      "total_steps": 13,
+      "completed_steps": 8,
+      "failure_step": 8,
+      "failure_package": 0,
+      "failure_kind": "step_failed",
+      "requested_package_count": 1,
+      "effective_package_count": 1,
+      "graphify_status": "skipped_single_package",
+      "graphify_adjusted": false,
+      "graphify_planning_ms": 0,
+      "failed_package_range": {
+        "start_step": 0,
+        "end_step": 12,
+        "step_count": 13
+      },
+      "tool_calls": 1
+    },
+    {
+      "variant": "phase10_adaptive",
+      "outer_success": false,
+      "task_status": "failed_validation",
+      "wall_ms": 298.308,
+      "total_steps": 13,
+      "completed_steps": 8,
+      "failure_step": 8,
+      "failure_package": 1,
+      "failure_kind": "step_failed",
+      "requested_package_count": 4,
+      "effective_package_count": 2,
+      "graphify_status": "used",
+      "graphify_adjusted": true,
+      "graphify_planning_ms": 78,
+      "failed_package_range": {
+        "start_step": 6,
+        "end_step": 12,
+        "step_count": 7
+      },
+      "tool_calls": 1
+    }
+  ],
+  "failed_package_step_reduction_percent": 46.15,
+  "production_app_replaced": false
+}

@@ -1,0 +1,18 @@
+id = "webcodex"
+path = "/path/to/webcodex"
+name = "webcodex"
+kind = "rust"
+shell_profile = "rust"
+description = "WebCodex server and agent"
+disabled = false
+
+[hooks]
+doctor = [
+  "git status --short",
+  "git log --oneline -5"
+]
+
+precommit = [
+  ". /root/.cargo/env && cargo fmt --check",
+  ". /root/.cargo/env && cargo test"
+]

@@ -1,0 +1,277 @@
+{
+  "benchmark": "phase11_phase13_phase14_webcodex_executor_comparison",
+  "kind": "local Rust integration harness",
+  "method": "Phase 13/14/WebCodex-derived compatibility runtime: one warmup each, 11 samples each, balanced rotating order, no concurrent builds; Phase 11: preserved historical 11-sample run using the same measure() contract",
+  "samples_per_variant": 11,
+  "limitations": [
+    "Includes disposable fixture and test-process startup; not ChatGPT Web/network latency.",
+    "Phase 11 samples are preserved historical measurements from benchmarks/phase12-execution-semantics.json rather than freshly rerun because the preserved Phase 11 executable is no longer present.",
+    "Phase 13/14 and the WebCodex-derived Phase 12 compatibility runtime were freshly rebuilt with dogfood profile on the current machine; build time is excluded.",
+    "A pristine upstream WebCodex 1bdc05e4 checkout does not contain the Chadex execute_task benchmark cases and cannot directly participate in this executor micro-benchmark."
+  ],
+  "source_identity": {
+    "phase11": {
+      "measurement": "historical preserved samples",
+      "binary_sha256": "e06a31fd7e6d1b43517e4e0972c1a5130ae72fc33fa812de488f02a001f6e119"
+    },
+    "phase13": {
+      "commit": "b717b1c",
+      "binary_sha256": "58fdac2958c6bb7f4f2f7665e74c3460ea06b73de24e0fd72b9a26a5aed5d256"
+    },
+    "phase14": {
+      "commit": "c0b8297",
+      "binary_sha256": "046da14e2b84aa209997e0a9f42ff13e5a5316299ea5447fe4d9bd4e0523c407"
+    },
+    "webcodex": {
+      "measurement_label": "WebCodex-derived Phase 12 compatibility runtime",
+      "pristine_upstream_directly_comparable": false,
+      "base_upstream_revision": "1bdc05e488ee56bca358bc6ba455cebd5831917d",
+      "version": "0.4.1",
+      "binary_sha256": "8d3950d2f0522add2b0c7c052b26065e454b8a3146819d0d38c128e3f0f58934"
+    }
+  },
+  "cases": {
+    "small_read_cancel": {
+      "filter": "tool_runtime::tests::chadex_task_executor::execute_task_cancellation_is_cooperative_between_steps",
+      "samples_ms": {
+        "phase11": [
+          32.85766698536463,
+          26.5960420074407,
+          23.156957991886884,
+          24.56574997631833,
+          22.2600830020383,
+          23.94179199473001,
+          22.5049169966951,
+          22.074041015002877,
+          21.37329097604379,
+          24.254666990600526,
+          23.07375002419576
+        ],
+        "phase13": [
+          37.25733401370235,
+          37.904333003098145,
+          34.827499999664724,
+          41.62379101035185,
+          38.21366699412465,
+          39.15324999252334,
+          41.02262499509379,
+          38.896334008313715,
+          41.43370798556134,
+          39.470290997996926,
+          38.38087499025278
+        ],
+        "phase14": [
+          37.26179202203639,
+          37.10200000205077,
+          37.2722499887459,
+          39.89275000640191,
+          37.05866698874161,
+          39.6707080071792,
+          38.892250013304874,
+          34.67616598936729,
+          39.98970799148083,
+          39.10245900624432,
+          38.08612501597963
+        ],
+        "webcodex": [
+          42.91804201784544,
+          35.82091597490944,
+          42.74908298975788,
+          38.61304098973051,
+          36.89008401124738,
+          37.03395798220299,
+          38.11749999294989,
+          37.35987501568161,
+          38.376707991119474,
+          36.55712498584762,
+          37.721125001553446
+        ]
+      },
+      "summary": {
+        "phase11": {
+          "median_ms": 23.156957991886884,
+          "mean_ms": 24.2417234509379,
+          "p25_ms": 22.3824999993667,
+          "p75_ms": 24.410208483459428,
+          "min_ms": 21.37329097604379,
+          "max_ms": 32.85766698536463
+        },
+        "phase13": {
+          "median_ms": 38.896334008313715,
+          "mean_ms": 38.925791635516696,
+          "p25_ms": 38.0589999986114,
+          "p75_ms": 40.24645799654536,
+          "min_ms": 34.827499999664724,
+          "max_ms": 41.62379101035185
+        },
+        "phase14": {
+          "median_ms": 38.08612501597963,
+          "mean_ms": 38.091352275593884,
+          "p25_ms": 37.18189601204358,
+          "p75_ms": 39.38658350671176,
+          "min_ms": 34.67616598936729,
+          "max_ms": 39.98970799148083
+        },
+        "webcodex": {
+          "median_ms": 37.721125001553446,
+          "mean_ms": 38.37795063207688,
+          "p25_ms": 36.96202099672519,
+          "p75_ms": 38.49487449042499,
+          "min_ms": 35.82091597490944,
+          "max_ms": 42.91804201784544
+        }
+      },
+      "comparison": {
+        "phase13": {
+          "vs_phase11_pct": 67.96823668264706,
+          "vs_webcodex_pct": 3.1155195045531325
+        },
+        "phase14": {
+          "vs_phase11_pct": 64.46946541649913,
+          "vs_webcodex_pct": 0.9676275943815371
+        },
+        "phase14_vs_phase13_pct": -2.0829957706577362
+      }
+    },
+    "small_edit_validate_review": {
+      "filter": "tool_runtime::tests::chadex_task_executor::execute_task_runs_read_guarded_edit_validation_and_review",
+      "samples_ms": {
+        "phase11": [
+          1051.1970829975326,
+          1061.30416598171,
+          1052.0699160115328,
+          1051.3642920122948,
+          1046.6401250159834,
+          1044.2293749947567,
+          1037.866541009862,
+          1063.4865000029095,
+          1050.3897910239175,
+          1050.465832988266,
+          1046.970416995464
+        ],
+        "phase13": [
+          928.6944580089767,
+          998.7963330058847,
+          940.8537079871166,
+          1005.2150419796817,
+          1106.1477080220357,
+          1082.0454579952639,
+          1025.163792015519,
+          1075.364208983956,
+          1078.9250409870874,
+          1075.8948749862611,
+          1047.5537500169594
+        ],
+        "phase14": [
+          943.6086250061635,
+          967.93750001234,
+          956.4567919878755,
+          1085.220709006535,
+          1093.7335409980733,
+          1086.3353750028182,
+          1073.6429579847027,
+          1062.2917500149924,
+          1050.3362910239957,
+          1080.383749998873,
+          1070.9512079774868
+        ],
+        "webcodex": [
+          939.9599170137662,
+          6043.057458009571,
+          971.9639160030056,
+          1062.5005000038072,
+          1037.8883330267854,
+          1053.7414999853354,
+          1059.8022500053048,
+          1083.0057080020197,
+          1078.358250000747,
+          1069.930708996253,
+          1074.6040829981212
+        ]
+      },
+      "summary": {
+        "phase11": {
+          "median_ms": 1050.465832988266,
+          "mean_ms": 1050.5440035485663,
+          "p25_ms": 1046.8052710057236,
+          "p75_ms": 1051.7171040119138,
+          "min_ms": 1037.866541009862,
+          "max_ms": 1063.4865000029095
+        },
+        "phase13": {
+          "median_ms": 1047.5537500169594,
+          "mean_ms": 1033.1503976353401,
+          "p25_ms": 1002.0056874927832,
+          "p75_ms": 1077.4099579866743,
+          "min_ms": 928.6944580089767,
+          "max_ms": 1106.1477080220357
+        },
+        "phase14": {
+          "median_ms": 1070.9512079774868,
+          "mean_ms": 1042.8089544558052,
+          "p25_ms": 1009.1368955181679,
+          "p75_ms": 1082.802229502704,
+          "min_ms": 943.6086250061635,
+          "max_ms": 1093.7335409980733
+        },
+        "webcodex": {
+          "median_ms": 1062.5005000038072,
+          "mean_ms": 1497.7102385495198,
+          "p25_ms": 1045.8149165060604,
+          "p75_ms": 1076.481166499434,
+          "min_ms": 939.9599170137662,
+          "max_ms": 6043.057458009571
+        }
+      },
+      "comparison": {
+        "phase13": {
+          "vs_phase11_pct": -0.2772182473581797,
+          "vs_webcodex_pct": -1.4067522779325103
+        },
+        "phase14": {
+          "vs_phase11_pct": 1.9501229212706583,
+          "vs_webcodex_pct": 0.7953603761738703
+        },
+        "phase14_vs_phase13_pct": 2.233532929470061
+      },
+      "confirmation_7_samples": {
+        "samples_ms": {
+          "phase13": [
+            1048.7222080118954,
+            1036.459915980231,
+            1047.3992500046734,
+            1041.0641670168843,
+            1084.7736669820733,
+            1073.5461250005756,
+            1042.5869169994257
+          ],
+          "phase14": [
+            1036.7978750145994,
+            1042.7462499937974,
+            1066.6164999711327,
+            1031.528708001133,
+            1087.8012080211192,
+            1066.2489589885809,
+            1084.4397080072667
+          ],
+          "webcodex": [
+            1038.289749994874,
+            1040.9679160220549,
+            1052.3886670125648,
+            1062.6104999973904,
+            1056.1365000030492,
+            1079.0513750107493,
+            1064.2139579867944
+          ]
+        },
+        "median_ms": {
+          "phase13": 1047.3992500046734,
+          "phase14": 1066.2489589885809,
+          "webcodex": 1056.1365000030492
+        },
+        "phase14_vs_phase13_pct": 1.799667985615172,
+        "phase14_vs_webcodex_pct": 0.9574954549437908
+      }
+    }
+  }
+}

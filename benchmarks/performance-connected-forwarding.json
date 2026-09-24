@@ -1,0 +1,205 @@
+{
+  "method": "Temporal correlation only, not request-ID correlation. The tunnel log emission boundary has not been verified; do not interpret to_forward_ms as pre-execution latency. Use native ingress traces in performance-connected-attribution.json for measured local duration.",
+  "rows": [
+    {
+      "tool": "search_project_texts",
+      "total_ms": 844,
+      "started_at_ms": 1790079900719,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 822.62,
+      "after_forward_ms": 21.38
+    },
+    {
+      "tool": "read_files",
+      "total_ms": 911,
+      "started_at_ms": 1790079901564,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 782.793,
+      "after_forward_ms": 128.207
+    },
+    {
+      "tool": "apply_text_edits",
+      "total_ms": 6266,
+      "started_at_ms": 1790079902476,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 6239.262,
+      "after_forward_ms": 26.738
+    },
+    {
+      "tool": "run_process",
+      "total_ms": 5570,
+      "started_at_ms": 1790079908742,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 5554.629,
+      "after_forward_ms": 15.371
+    },
+    {
+      "tool": "show_changes",
+      "total_ms": 1420,
+      "started_at_ms": 1790079914313,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 1396.994,
+      "after_forward_ms": 23.006
+    },
+    {
+      "tool": "search_project_texts",
+      "total_ms": 1689,
+      "started_at_ms": 1790079997994,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 1601.717,
+      "after_forward_ms": 87.283
+    },
+    {
+      "tool": "read_files",
+      "total_ms": 1175,
+      "started_at_ms": 1790079999683,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 1129.361,
+      "after_forward_ms": 45.639
+    },
+    {
+      "tool": "apply_text_edits",
+      "total_ms": 4337,
+      "started_at_ms": 1790080000858,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 4293.73,
+      "after_forward_ms": 43.27
+    },
+    {
+      "tool": "run_process",
+      "total_ms": 4048,
+      "started_at_ms": 1790080005195,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 4004.37,
+      "after_forward_ms": 43.63
+    },
+    {
+      "tool": "show_changes",
+      "total_ms": 1186,
+      "started_at_ms": 1790080009243,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 1139.068,
+      "after_forward_ms": 46.932
+    },
+    {
+      "tool": "search_project_texts",
+      "total_ms": 1098,
+      "started_at_ms": 1790080042849,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 1053.396,
+      "after_forward_ms": 44.604
+    },
+    {
+      "tool": "read_files",
+      "total_ms": 5782,
+      "started_at_ms": 1790080043947,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 1001.841,
+      "after_forward_ms": 4780.159
+    },
+    {
+      "tool": "apply_text_edits",
+      "total_ms": 14669,
+      "started_at_ms": 1790080049729,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 14627.258,
+      "after_forward_ms": 41.742
+    },
+    {
+      "tool": "run_process",
+      "total_ms": 8633,
+      "started_at_ms": 1790080064398,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 8582.655,
+      "after_forward_ms": 50.345
+    },
+    {
+      "tool": "show_changes",
+      "total_ms": 1353,
+      "started_at_ms": 1790080073031,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 1324.169,
+      "after_forward_ms": 28.831
+    },
+    {
+      "tool": "search_project_texts",
+      "total_ms": 1105,
+      "started_at_ms": 1790080116524,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 1082.584,
+      "after_forward_ms": 22.416
+    },
+    {
+      "tool": "read_files",
+      "total_ms": 1011,
+      "started_at_ms": 1790080117629,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 978.791,
+      "after_forward_ms": 32.209
+    },
+    {
+      "tool": "apply_text_edits",
+      "total_ms": 4806,
+      "started_at_ms": 1790080118641,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 4718.453,
+      "after_forward_ms": 87.547
+    },
+    {
+      "tool": "run_process",
+      "total_ms": 4672,
+      "started_at_ms": 1790080123447,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 4578.939,
+      "after_forward_ms": 93.061
+    },
+    {
+      "tool": "show_changes",
+      "total_ms": 1313,
+      "started_at_ms": 1790080128119,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 1237.089,
+      "after_forward_ms": 75.911
+    },
+    {
+      "tool": "search_project_texts",
+      "total_ms": 944,
+      "started_at_ms": 1790080133490,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 918.498,
+      "after_forward_ms": 25.502
+    },
+    {
+      "tool": "read_files",
+      "total_ms": 975,
+      "started_at_ms": 1790080134434,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 946.699,
+      "after_forward_ms": 28.301
+    },
+    {
+      "tool": "apply_text_edits",
+      "total_ms": 4868,
+      "started_at_ms": 1790080135409,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 4822.606,
+      "after_forward_ms": 45.394
+    },
+    {
+      "tool": "run_process",
+      "total_ms": 7174,
+      "started_at_ms": 1790080140277,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 7156.691,
+      "after_forward_ms": 17.309
+    },
+    {
+      "tool": "show_changes",
+      "total_ms": 943,
+      "started_at_ms": 1790080147451,
+      "forward_events_in_window": 1,
+      "to_forward_ms": 904.408,
+      "after_forward_ms": 38.592
+    }
+  ]
+}

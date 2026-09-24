@@ -1,0 +1,3435 @@
+{
+  "surface": "isolated loopback MCP, not connected workflow",
+  "baseline": "49f793fd66b054a38923c3f6e3ccd9c1aca6579f",
+  "one_warmup": true,
+  "binary_sha256": {
+    "before": {
+      "Helpers/chadex-helper": "806748765b8e9fee16cd924d86e090c83e1d4025d104325cd41560ca3cb5b479",
+      "Resources/chadex-runtime/chadex-runtime-cli": "d913b48ad17e8cce064a02676a9272f4c33e05dd2fc8f5c08b23d20f2f44e56b",
+      "Resources/chadex-runtime/chadex-runtime-server": "14c016401395613b4a3cface8bf4c8bbe14cb3b818f3cc688852ea415d483154",
+      "Resources/chadex-runtime/chadex-runtime-runner": "df945eeea841a68068e773cb438c93d2f1ce74e3089ae5d763589fab313c2f2e"
+    },
+    "after": {
+      "Helpers/chadex-helper": "81b6e9802186e50650ba954575f68428ed9c7f423cde635f8b5a2a88cd17e5d0",
+      "Resources/chadex-runtime/chadex-runtime-cli": "2bdd511df67a43486a40f396f77e05620af64192242a7a1576de0646d6b5201a",
+      "Resources/chadex-runtime/chadex-runtime-server": "f98639dd3fd0bbd976b64def552e3b79d4971c25bb5965ecb69bf726a3f08924",
+      "Resources/chadex-runtime/chadex-runtime-runner": "03eaa81084cc36c0283920c97562b14034b0fd4e71f033d16feebcd1facd8f0d"
+    }
+  },
+  "summary": {
+    "before": {
+      "workflow_ms": {
+        "median": 194.453,
+        "p95": 200.939,
+        "min": 182.795,
+        "max": 201.237
+      },
+      "runtime_status_ms": {
+        "median": 1.03,
+        "p95": 1.115,
+        "min": 0.966,
+        "max": 1.335
+      },
+      "tools_ms": {
+        "search_project_texts": {
+          "median": 12.561,
+          "p95": 13.7,
+          "min": 9.064,
+          "max": 13.764
+        },
+        "read_files": {
+          "median": 3.123,
+          "p95": 3.502,
+          "min": 1.994,
+          "max": 3.591
+        },
+        "apply_text_edits": {
+          "median": 13.862,
+          "p95": 16.929,
+          "min": 10.765,
+          "max": 17.241
+        },
+        "run_process": {
+          "median": 49.828,
+          "p95": 49.987,
+          "min": 48.223,
+          "max": 54.339
+        },
+        "show_changes": {
+          "median": 115.598,
+          "p95": 118.023,
+          "min": 108.666,
+          "max": 118.188
+        }
+      }
+    },
+    "after": {
+      "workflow_ms": {
+        "median": 191.798,
+        "p95": 197.457,
+        "min": 185.167,
+        "max": 203.111
+      },
+      "runtime_status_ms": {
+        "median": 1.036,
+        "p95": 1.106,
+        "min": 0.97,
+        "max": 1.132
+      },
+      "tools_ms": {
+        "search_project_texts": {
+          "median": 13.422,
+          "p95": 13.85,
+          "min": 9.643,
+          "max": 14.009
+        },
+        "read_files": {
+          "median": 3.176,
+          "p95": 3.668,
+          "min": 1.952,
+          "max": 3.774
+        },
+        "apply_text_edits": {
+          "median": 13.244,
+          "p95": 16.712,
+          "min": 10.911,
+          "max": 17.725
+        },
+        "run_process": {
+          "median": 49.848,
+          "p95": 50.391,
+          "min": 48.327,
+          "max": 52.064
+        },
+        "show_changes": {
+          "median": 110.612,
+          "p95": 117.976,
+          "min": 108.877,
+          "max": 119.435
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "variant": "after",
+      "iteration": 1,
+      "workflow_ms": 197.45737499761162,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790125398391,
+          "request_id_hash": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+          "server_trace_id": "62ea5d12-b807-4c45-a954-55ca5f59dff0",
+          "headers_ms": 11.841999999887776,
+          "stream_ms": 0.010166004358325154,
+          "total_ms": 11.8521660042461
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 270,
+          "response_bytes": 2113,
+          "started_at_ms": 1790125398403,
+          "request_id_hash": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3",
+          "server_trace_id": "2f73edef-a4a9-4028-969d-c8b229df6407",
+          "headers_ms": 2.554165999754332,
+          "stream_ms": 0.008584000170230865,
+          "total_ms": 2.562749999924563
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1007,
+          "response_bytes": 1140,
+          "started_at_ms": 1790125398405,
+          "request_id_hash": "19581e27de7ced00ff1ce50b2047e7a567c76b1cbaebabe5ef03f7c3017bb5b7",
+          "server_trace_id": "b8f34bc8-80d7-4556-90cf-c77e6a3091df",
+          "headers_ms": 16.70791599462973,
+          "stream_ms": 0.0037089994293637574,
+          "total_ms": 16.711624994059093
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125398422,
+          "request_id_hash": "4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5",
+          "server_trace_id": "b95074d7-b99c-4e54-840c-d005bde6cb39",
+          "headers_ms": 49.82529200060526,
+          "stream_ms": 0.0079160017776303,
+          "total_ms": 49.83320800238289
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125398472,
+          "request_id_hash": "4fc82b26aecb47d2868c4efbe3581732a3e7cbcc6c2efb32062c08170a05eeb8",
+          "server_trace_id": "06841498-0897-42c1-9bf2-1656b9b6cd74",
+          "headers_ms": 116.22274999535875,
+          "stream_ms": 0.008875002095010132,
+          "total_ms": 116.23162499745376
+        }
+      ],
+      "runtime_status_ms": 1.0427500019432046,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 1,
+      "workflow_ms": 190.96104199707042,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790125398726,
+          "request_id_hash": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+          "server_trace_id": null,
+          "headers_ms": 13.55570900341263,
+          "stream_ms": 0.010249998013023287,
+          "total_ms": 13.565959001425654
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 270,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125398740,
+          "request_id_hash": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3",
+          "server_trace_id": null,
+          "headers_ms": 2.711499997531064,
+          "stream_ms": 0.006084002961870283,
+          "total_ms": 2.717584000492934
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1007,
+          "response_bytes": 1140,
+          "started_at_ms": 1790125398742,
+          "request_id_hash": "19581e27de7ced00ff1ce50b2047e7a567c76b1cbaebabe5ef03f7c3017bb5b7",
+          "server_trace_id": null,
+          "headers_ms": 13.950917003967334,
+          "stream_ms": 0.0034579934435896575,
+          "total_ms": 13.954374997410923
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125398756,
+          "request_id_hash": "4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5",
+          "server_trace_id": null,
+          "headers_ms": 49.84429100295529,
+          "stream_ms": 0.006124995707068592,
+          "total_ms": 49.850415998662356
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125398806,
+          "request_id_hash": "4fc82b26aecb47d2868c4efbe3581732a3e7cbcc6c2efb32062c08170a05eeb8",
+          "server_trace_id": null,
+          "headers_ms": 110.61566600255901,
+          "stream_ms": 0.01087499549612403,
+          "total_ms": 110.62654099805513
+        }
+      ],
+      "runtime_status_ms": 1.0006250013248064,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 2,
+      "workflow_ms": 188.64941599895246,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125399044,
+          "request_id_hash": "3fdba35f04dc8c462986c992bcf875546257113072a909c162f7e470e581e278",
+          "server_trace_id": null,
+          "headers_ms": 13.53887499863049,
+          "stream_ms": 0.00941600592341274,
+          "total_ms": 13.548291004553903
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125399057,
+          "request_id_hash": "8527a891e224136950ff32ca212b45bc93f69fbb801c3b1ebedac52775f99e61",
+          "server_trace_id": null,
+          "headers_ms": 3.0364170015673153,
+          "stream_ms": 0.008374998287763447,
+          "total_ms": 3.0447919998550788
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125399060,
+          "request_id_hash": "e629fa6598d732768f7c726b4b621285f9c3b85303900aa912017db7617d8bdb",
+          "server_trace_id": null,
+          "headers_ms": 12.82566599547863,
+          "stream_ms": 0.0036670026020146906,
+          "total_ms": 12.829332998080645
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125399073,
+          "request_id_hash": "b17ef6d19c7a5b1ee83b907c595526dcb1eb06db8227d650d5dda0a9f4ce8cd9",
+          "server_trace_id": null,
+          "headers_ms": 49.822665998362936,
+          "stream_ms": 0.007041999197099358,
+          "total_ms": 49.829707997560035
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125399123,
+          "request_id_hash": "4523540f1504cd17100c4835e85b7eefd49911580f8efff0599a8f283be6b9e3",
+          "server_trace_id": null,
+          "headers_ms": 109.14583300473168,
+          "stream_ms": 0.01058299676515162,
+          "total_ms": 109.15641600149684
+        }
+      ],
+      "runtime_status_ms": 1.0529170031077228,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 2,
+      "workflow_ms": 203.11070800380548,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125399370,
+          "request_id_hash": "3fdba35f04dc8c462986c992bcf875546257113072a909c162f7e470e581e278",
+          "server_trace_id": "ee0691f0-9da1-46e3-950d-1b0c0e15f753",
+          "headers_ms": 13.589750000392087,
+          "stream_ms": 0.009916999260894954,
+          "total_ms": 13.599666999652982
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125399384,
+          "request_id_hash": "8527a891e224136950ff32ca212b45bc93f69fbb801c3b1ebedac52775f99e61",
+          "server_trace_id": "ede30f98-7746-4d5d-8f00-66aa85855404",
+          "headers_ms": 3.658667003037408,
+          "stream_ms": 0.009707997378427535,
+          "total_ms": 3.6683750004158355
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125399387,
+          "request_id_hash": "e629fa6598d732768f7c726b4b621285f9c3b85303900aa912017db7617d8bdb",
+          "server_trace_id": "3f9e4392-e8a8-427e-a719-09cc9827845e",
+          "headers_ms": 17.72124999843072,
+          "stream_ms": 0.0036669953260570765,
+          "total_ms": 17.72491699375678
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125399405,
+          "request_id_hash": "b17ef6d19c7a5b1ee83b907c595526dcb1eb06db8227d650d5dda0a9f4ce8cd9",
+          "server_trace_id": "11b8dcb4-4c99-46a8-bc1b-b880683a1835",
+          "headers_ms": 49.86395900050411,
+          "stream_ms": 0.006541005859617144,
+          "total_ms": 49.87050000636373
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125399455,
+          "request_id_hash": "4523540f1504cd17100c4835e85b7eefd49911580f8efff0599a8f283be6b9e3",
+          "server_trace_id": "df69cf88-c52f-4cb9-9e57-2cdf2ddc1925",
+          "headers_ms": 117.96741699799895,
+          "stream_ms": 0.009082999895326793,
+          "total_ms": 117.97649999789428
+        }
+      ],
+      "runtime_status_ms": 1.0422909981571138,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 3,
+      "workflow_ms": 186.6938749953988,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125399713,
+          "request_id_hash": "9400f1b21cb527d7fa3d3eabba93557a18ebe7a2ca4e471cfe5e4c5b4ca7f767",
+          "server_trace_id": "ff75fbd6-2f87-48c2-bf93-36ede3e144fe",
+          "headers_ms": 12.068083000485785,
+          "stream_ms": 0.00912499672267586,
+          "total_ms": 12.077207997208461
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125399725,
+          "request_id_hash": "f5ca38f748a1d6eaf726b8a42fb575c3c71f1864a8143301782de13da2d9202b",
+          "server_trace_id": "437f5f9f-e992-4eec-b6b6-42aac10bb6b2",
+          "headers_ms": 2.9887499986216426,
+          "stream_ms": 0.005708003300242126,
+          "total_ms": 2.9944580019218847
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125399728,
+          "request_id_hash": "6f4b6612125fb3a0daecd2799dfd6c9c299424fd920f9b308110a2c1fbd8f443",
+          "server_trace_id": "5b0bfa8b-8b6f-4f1b-931c-7a46aa49af5e",
+          "headers_ms": 12.646625000343192,
+          "stream_ms": 0.003459004801698029,
+          "total_ms": 12.65008400514489
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125399741,
+          "request_id_hash": "785f3ec7eb32f30b90cd0fcf3657d388b5ff4297f2f9716ff66e9b69c05ddd09",
+          "server_trace_id": "a7c3a2d8-72a9-4815-8add-8b79cba732cb",
+          "headers_ms": 49.84487500041723,
+          "stream_ms": 0.005916997906751931,
+          "total_ms": 49.850791998323984
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125399791,
+          "request_id_hash": "535fa30d7e25dd8a49f1536779734ec8286108d115da5045d77f3b4185d8f790",
+          "server_trace_id": "fa17e018-96e9-4bcc-b012-a925b8fd0366",
+          "headers_ms": 108.86741699505365,
+          "stream_ms": 0.009208000847138464,
+          "total_ms": 108.87662499590078
+        }
+      ],
+      "runtime_status_ms": 0.9698750000097789,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 3,
+      "workflow_ms": 182.79541600350058,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125400027,
+          "request_id_hash": "9400f1b21cb527d7fa3d3eabba93557a18ebe7a2ca4e471cfe5e4c5b4ca7f767",
+          "server_trace_id": null,
+          "headers_ms": 9.053041998413391,
+          "stream_ms": 0.010875002772081643,
+          "total_ms": 9.063917001185473
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125400037,
+          "request_id_hash": "f5ca38f748a1d6eaf726b8a42fb575c3c71f1864a8143301782de13da2d9202b",
+          "server_trace_id": null,
+          "headers_ms": 1.9864589994540438,
+          "stream_ms": 0.0077079967013560236,
+          "total_ms": 1.9941669961553998
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125400039,
+          "request_id_hash": "6f4b6612125fb3a0daecd2799dfd6c9c299424fd920f9b308110a2c1fbd8f443",
+          "server_trace_id": null,
+          "headers_ms": 12.9201669988106,
+          "stream_ms": 0.003917004505638033,
+          "total_ms": 12.924084003316239
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125400052,
+          "request_id_hash": "785f3ec7eb32f30b90cd0fcf3657d388b5ff4297f2f9716ff66e9b69c05ddd09",
+          "server_trace_id": null,
+          "headers_ms": 49.88712500198744,
+          "stream_ms": 0.00758399983169511,
+          "total_ms": 49.89470900181914
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125400102,
+          "request_id_hash": "535fa30d7e25dd8a49f1536779734ec8286108d115da5045d77f3b4185d8f790",
+          "server_trace_id": null,
+          "headers_ms": 108.65499999636086,
+          "stream_ms": 0.011042000551242381,
+          "total_ms": 108.6660419969121
+        }
+      ],
+      "runtime_status_ms": 1.065500000549946,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 4,
+      "workflow_ms": 200.58329199673608,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125400344,
+          "request_id_hash": "b7a56873cd771f2c446d369b649430b65a756ba278ff97ec81bb6f55b2e73569",
+          "server_trace_id": null,
+          "headers_ms": 13.451250000798609,
+          "stream_ms": 0.011750002158805728,
+          "total_ms": 13.463000002957415
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125400358,
+          "request_id_hash": "5f9c4ab08cac7457e9111a30e4664920607ea2c115a1433d7be98e97e64244ca",
+          "server_trace_id": null,
+          "headers_ms": 3.1494170034420677,
+          "stream_ms": 0.005957997927907854,
+          "total_ms": 3.1553750013699755
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125400361,
+          "request_id_hash": "670671cd97404156226e507973f2ab8330d3022ca96e0c93bdbdb320c41adcaf",
+          "server_trace_id": null,
+          "headers_ms": 16.74708399514202,
+          "stream_ms": 0.0034580007195472717,
+          "total_ms": 16.750541995861568
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125400378,
+          "request_id_hash": "59e19706d51d39f66711c2653cd7eb1291c94d9b55eb14bda74ce4dc636d015a",
+          "server_trace_id": null,
+          "headers_ms": 49.396582995541394,
+          "stream_ms": 0.0077500008046627045,
+          "total_ms": 49.40433299634606
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125400427,
+          "request_id_hash": "35135aaa6cc23891b40cb3f378c53a17a1127210ce60e125ccf03efcfdaec458",
+          "server_trace_id": null,
+          "headers_ms": 117.55141599860508,
+          "stream_ms": 0.010374998964834958,
+          "total_ms": 117.56179099756991
+        }
+      ],
+      "runtime_status_ms": 1.1153339946758933,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 4,
+      "workflow_ms": 190.00933300412726,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125400682,
+          "request_id_hash": "b7a56873cd771f2c446d369b649430b65a756ba278ff97ec81bb6f55b2e73569",
+          "server_trace_id": "d503664a-7838-4083-8e2e-2a39f505686e",
+          "headers_ms": 13.834875004249625,
+          "stream_ms": 0.01424999936716631,
+          "total_ms": 13.849125003616791
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125400696,
+          "request_id_hash": "5f9c4ab08cac7457e9111a30e4664920607ea2c115a1433d7be98e97e64244ca",
+          "server_trace_id": "542f9d36-a631-4a25-9bd4-52e2565a0aec",
+          "headers_ms": 2.354291995288804,
+          "stream_ms": 0.011666998034343123,
+          "total_ms": 2.3659589933231473
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125400698,
+          "request_id_hash": "670671cd97404156226e507973f2ab8330d3022ca96e0c93bdbdb320c41adcaf",
+          "server_trace_id": "a8ce17d7-c2ce-4d13-86ce-b887068d20bb",
+          "headers_ms": 12.895750005554873,
+          "stream_ms": 0.0057919969549402595,
+          "total_ms": 12.901542002509814
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125400711,
+          "request_id_hash": "59e19706d51d39f66711c2653cd7eb1291c94d9b55eb14bda74ce4dc636d015a",
+          "server_trace_id": "94a4368c-52a1-4a75-ac41-70d4ee61f7f0",
+          "headers_ms": 50.13508300180547,
+          "stream_ms": 0.007167000148911029,
+          "total_ms": 50.14225000195438
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125400761,
+          "request_id_hash": "35135aaa6cc23891b40cb3f378c53a17a1127210ce60e125ccf03efcfdaec458",
+          "server_trace_id": "2e7c1a0b-9ac8-4fe2-9f06-ec6dc0c88e25",
+          "headers_ms": 110.42583299422404,
+          "stream_ms": 0.010167001164518297,
+          "total_ms": 110.43599999538856
+        }
+      ],
+      "runtime_status_ms": 1.0002079943660647,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 5,
+      "workflow_ms": 193.08691599871963,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125400999,
+          "request_id_hash": "eb1e33e8a81b697b75855af6bfcdbcbf7cbbde9f94962ceaec1ed8af21f5a50f",
+          "server_trace_id": "4ca413be-eb81-4394-94e5-c1eb5327bc2a",
+          "headers_ms": 13.55429099930916,
+          "stream_ms": 0.009250004950445145,
+          "total_ms": 13.563541004259605
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125401013,
+          "request_id_hash": "e29c9c180c6279b0b02abd6a1801c7c04082cf486ec027aa13515e4f3884bb6b",
+          "server_trace_id": "540b7f0d-e6d0-4343-b349-42516ab4daf2",
+          "headers_ms": 3.3722500011208467,
+          "stream_ms": 0.005875001079402864,
+          "total_ms": 3.3781250022002496
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125401016,
+          "request_id_hash": "c6f3ac57944a531490cd39902d0f777715fd005efac9a30622d5f5205e7f6894",
+          "server_trace_id": "79dc6365-ac90-4862-b945-c06bc95ad106",
+          "headers_ms": 15.466207994904835,
+          "stream_ms": 0.003334003849886358,
+          "total_ms": 15.469541998754721
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125401031,
+          "request_id_hash": "86e50149658661312a9e0b35558d84f6c6d3da797f552a9657fe0558ca40cdef",
+          "server_trace_id": "5740c8b7-a193-47f8-a41c-1c7b0bde8404",
+          "headers_ms": 49.85370900249109,
+          "stream_ms": 0.007041002390906215,
+          "total_ms": 49.86075000488199
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125401081,
+          "request_id_hash": "9f14025af0065b30e47e23ebb3b491d39ae8ed17d33739e5ff3827ffb3634953",
+          "server_trace_id": "b4cc461a-1711-49da-ae99-785037f2fa73",
+          "headers_ms": 110.56595900299726,
+          "stream_ms": 0.009040995792020112,
+          "total_ms": 110.57499999878928
+        }
+      ],
+      "runtime_status_ms": 1.0832500047399662,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 5,
+      "workflow_ms": 197.03275000210851,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125401323,
+          "request_id_hash": "eb1e33e8a81b697b75855af6bfcdbcbf7cbbde9f94962ceaec1ed8af21f5a50f",
+          "server_trace_id": null,
+          "headers_ms": 13.40645800519269,
+          "stream_ms": 0.011999996786471456,
+          "total_ms": 13.418458001979161
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125401336,
+          "request_id_hash": "e29c9c180c6279b0b02abd6a1801c7c04082cf486ec027aa13515e4f3884bb6b",
+          "server_trace_id": null,
+          "headers_ms": 3.4124579979106784,
+          "stream_ms": 0.0077500008046627045,
+          "total_ms": 3.420207998715341
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125401340,
+          "request_id_hash": "c6f3ac57944a531490cd39902d0f777715fd005efac9a30622d5f5205e7f6894",
+          "server_trace_id": null,
+          "headers_ms": 14.380041000549681,
+          "stream_ms": 0.004125002305954695,
+          "total_ms": 14.384166002855636
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125401354,
+          "request_id_hash": "86e50149658661312a9e0b35558d84f6c6d3da797f552a9657fe0558ca40cdef",
+          "server_trace_id": null,
+          "headers_ms": 49.80329200043343,
+          "stream_ms": 0.008166003681253642,
+          "total_ms": 49.811458004114684
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125401404,
+          "request_id_hash": "9f14025af0065b30e47e23ebb3b491d39ae8ed17d33739e5ff3827ffb3634953",
+          "server_trace_id": null,
+          "headers_ms": 115.71829199965578,
+          "stream_ms": 0.009542003681417555,
+          "total_ms": 115.7278340033372
+        }
+      ],
+      "runtime_status_ms": 1.054167005349882,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 6,
+      "workflow_ms": 196.66924999910407,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125401653,
+          "request_id_hash": "7a61b53701befdae0eeeffaecc73f14e20b537bb0f8b91ad7c2936dc63562b25",
+          "server_trace_id": null,
+          "headers_ms": 13.442832998407539,
+          "stream_ms": 0.013167002180125564,
+          "total_ms": 13.456000000587665
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125401667,
+          "request_id_hash": "aea92132c4cbeb263e6ac2bf6c183b5d81737f179f21efdc5863739672f0f470",
+          "server_trace_id": null,
+          "headers_ms": 3.487166999548208,
+          "stream_ms": 0.006624999514315277,
+          "total_ms": 3.4937919990625232
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125401670,
+          "request_id_hash": "0b918943df0962bc7a1824c0555a389347b4febdc7cf9d1254406d80ce44e3f9",
+          "server_trace_id": null,
+          "headers_ms": 11.287792003713548,
+          "stream_ms": 0.0032910029403865337,
+          "total_ms": 11.291083006653935
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125401681,
+          "request_id_hash": "d59eced1ded07f84c145592f65bdf854358e009c5cd705f5215bf18697fed103",
+          "server_trace_id": null,
+          "headers_ms": 49.97295799694257,
+          "stream_ms": 0.01445900124963373,
+          "total_ms": 49.9874169981922
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125401731,
+          "request_id_hash": "3d914f9348c9cc0ff8a79716700b9fcd4d2f3e711608004eb8f138bcba7f14d9",
+          "server_trace_id": null,
+          "headers_ms": 118.17887500365032,
+          "stream_ms": 0.008958995749708265,
+          "total_ms": 118.18783399940003
+        }
+      ],
+      "runtime_status_ms": 0.9940839954651892,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 6,
+      "workflow_ms": 191.10212499799673,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125401977,
+          "request_id_hash": "7a61b53701befdae0eeeffaecc73f14e20b537bb0f8b91ad7c2936dc63562b25",
+          "server_trace_id": "1bc63f7b-1469-4201-b792-f84adb490879",
+          "headers_ms": 12.097583996364847,
+          "stream_ms": 0.009458002750761807,
+          "total_ms": 12.107041999115609
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125401989,
+          "request_id_hash": "aea92132c4cbeb263e6ac2bf6c183b5d81737f179f21efdc5863739672f0f470",
+          "server_trace_id": "ea871029-c4bb-4fd5-9480-6093ccf86a32",
+          "headers_ms": 3.2057499993243255,
+          "stream_ms": 0.005458998202811927,
+          "total_ms": 3.2112089975271374
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125401992,
+          "request_id_hash": "0b918943df0962bc7a1824c0555a389347b4febdc7cf9d1254406d80ce44e3f9",
+          "server_trace_id": "27aabdfc-be8d-485d-95bb-41d9eaa7e150",
+          "headers_ms": 15.094750000571366,
+          "stream_ms": 0.0034580007195472717,
+          "total_ms": 15.098208001290914
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125402007,
+          "request_id_hash": "d59eced1ded07f84c145592f65bdf854358e009c5cd705f5215bf18697fed103",
+          "server_trace_id": "e961e1d9-77f7-4c9d-a233-5e9a96ff3e55",
+          "headers_ms": 49.85195799963549,
+          "stream_ms": 0.006084002961870283,
+          "total_ms": 49.85804200259736
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125402057,
+          "request_id_hash": "3d914f9348c9cc0ff8a79716700b9fcd4d2f3e711608004eb8f138bcba7f14d9",
+          "server_trace_id": "ae19a4f1-d61d-4648-bee4-f665511ad35f",
+          "headers_ms": 110.58304100151872,
+          "stream_ms": 0.011584001185838133,
+          "total_ms": 110.59462500270456
+        }
+      ],
+      "runtime_status_ms": 1.0705840031732805,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 7,
+      "workflow_ms": 189.77829199866392,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125402297,
+          "request_id_hash": "44cb730c420480a0477b505ae68af508fb90f96cf0ec54c6ad16949dd427f13a",
+          "server_trace_id": "a4c27a20-b1b9-4ca7-8fc1-9388e46deafe",
+          "headers_ms": 13.719709000724833,
+          "stream_ms": 0.01116600469686091,
+          "total_ms": 13.730875005421694
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125402310,
+          "request_id_hash": "71ee45a3c0db9a9865f7313dd3372cf60dca6479d46261f3542eb9346e4a04d6",
+          "server_trace_id": "9b3a5a16-ac6a-4249-9d5a-6d1afbfde9a5",
+          "headers_ms": 3.2092909968923777,
+          "stream_ms": 0.01049999991664663,
+          "total_ms": 3.2197909968090244
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125402314,
+          "request_id_hash": "811786ad1ae74adfdd20dd0372abaaebc6246e343aebd01da0bfc4c02bf0106c",
+          "server_trace_id": "5d441ee7-f5c7-4b1b-9779-b3ac8993d037",
+          "headers_ms": 12.854542001150548,
+          "stream_ms": 0.003916000423487276,
+          "total_ms": 12.858458001574036
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125402327,
+          "request_id_hash": "25fc0e7096fc653718202dc30b0c580b8ab87eac11a700cba03a7c021bc35b0c",
+          "server_trace_id": "f4328868-e3db-49e7-b2ae-199da47c163b",
+          "headers_ms": 49.838291997730266,
+          "stream_ms": 0.00825000461190939,
+          "total_ms": 49.846542002342176
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125402376,
+          "request_id_hash": "31489056e0916d59fe3add79e63f095af3ffb81604691f21cad442a85c7be617",
+          "server_trace_id": "e37a68ba-4eb3-4376-8f3f-02f727b996ae",
+          "headers_ms": 109.84841699973913,
+          "stream_ms": 0.00870799703989178,
+          "total_ms": 109.85712499677902
+        }
+      ],
+      "runtime_status_ms": 1.0603749979054555,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 7,
+      "workflow_ms": 197.66095800150651,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125402620,
+          "request_id_hash": "44cb730c420480a0477b505ae68af508fb90f96cf0ec54c6ad16949dd427f13a",
+          "server_trace_id": null,
+          "headers_ms": 12.010083002678584,
+          "stream_ms": 0.008957998943515122,
+          "total_ms": 12.0190410016221
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125402632,
+          "request_id_hash": "71ee45a3c0db9a9865f7313dd3372cf60dca6479d46261f3542eb9346e4a04d6",
+          "server_trace_id": null,
+          "headers_ms": 3.399207998882048,
+          "stream_ms": 0.005666996003128588,
+          "total_ms": 3.4048749948851764
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125402635,
+          "request_id_hash": "811786ad1ae74adfdd20dd0372abaaebc6246e343aebd01da0bfc4c02bf0106c",
+          "server_trace_id": null,
+          "headers_ms": 14.463125000474975,
+          "stream_ms": 0.0032089956221170723,
+          "total_ms": 14.466333996097092
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125402650,
+          "request_id_hash": "25fc0e7096fc653718202dc30b0c580b8ab87eac11a700cba03a7c021bc35b0c",
+          "server_trace_id": null,
+          "headers_ms": 49.85399999713991,
+          "stream_ms": 0.007000002369750291,
+          "total_ms": 49.86099999950966
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125402699,
+          "request_id_hash": "31489056e0916d59fe3add79e63f095af3ffb81604691f21cad442a85c7be617",
+          "server_trace_id": null,
+          "headers_ms": 117.65445799392182,
+          "stream_ms": 0.010042000212706625,
+          "total_ms": 117.66449999413453
+        }
+      ],
+      "runtime_status_ms": 1.0292919978382997,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 8,
+      "workflow_ms": 189.90599999960978,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125402948,
+          "request_id_hash": "0e17daca5f3e175f448bacace3bc0da47d0655a74c8dd0dc497a3afbdad95f1f",
+          "server_trace_id": null,
+          "headers_ms": 11.420540999097284,
+          "stream_ms": 0.008834002073854208,
+          "total_ms": 11.429375001171138
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125402960,
+          "request_id_hash": "1a6562590ef19d1045d06c4055742d38288e9e6dcd71ccde5cee80f1d5a774eb",
+          "server_trace_id": null,
+          "headers_ms": 2.9231250009615906,
+          "stream_ms": 0.0056249991757795215,
+          "total_ms": 2.92875000013737
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125402963,
+          "request_id_hash": "031b4af5197ec30a926f48cf40e11a7dbc470048a21e4003b7a3c07c5dab1baa",
+          "server_trace_id": null,
+          "headers_ms": 15.098332994966768,
+          "stream_ms": 0.00325000291923061,
+          "total_ms": 15.101582997885998
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125402978,
+          "request_id_hash": "41cfc0d1f2d127b04555b7246d84019b4d27710a3f3aff6e7764375b1e06e05d",
+          "server_trace_id": null,
+          "headers_ms": 49.822500004665926,
+          "stream_ms": 0.006624999514315277,
+          "total_ms": 49.82912500418024
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125403028,
+          "request_id_hash": "2858dcd1057d3eae7f7d5f782167e24b61153c01551450a628cee722509f6529",
+          "server_trace_id": null,
+          "headers_ms": 110.37987499730662,
+          "stream_ms": 0.009000003046821803,
+          "total_ms": 110.38887500035344
+        }
+      ],
+      "runtime_status_ms": 0.9949579980457202,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 8,
+      "workflow_ms": 193.56687500112457,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125403267,
+          "request_id_hash": "0e17daca5f3e175f448bacace3bc0da47d0655a74c8dd0dc497a3afbdad95f1f",
+          "server_trace_id": "3a80efff-c1e7-4be7-80e4-6a0705888099",
+          "headers_ms": 9.633125002437737,
+          "stream_ms": 0.00945899955695495,
+          "total_ms": 9.642584001994692
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125403276,
+          "request_id_hash": "1a6562590ef19d1045d06c4055742d38288e9e6dcd71ccde5cee80f1d5a774eb",
+          "server_trace_id": "e438514a-7c27-4e43-b762-0e939370258e",
+          "headers_ms": 1.9459589966572821,
+          "stream_ms": 0.005875001079402864,
+          "total_ms": 1.951833997736685
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125403278,
+          "request_id_hash": "031b4af5197ec30a926f48cf40e11a7dbc470048a21e4003b7a3c07c5dab1baa",
+          "server_trace_id": "147036bc-0b0b-4f1e-95d9-415d40016abc",
+          "headers_ms": 11.895291005203035,
+          "stream_ms": 0.003583998477552086,
+          "total_ms": 11.898875003680587
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125403290,
+          "request_id_hash": "41cfc0d1f2d127b04555b7246d84019b4d27710a3f3aff6e7764375b1e06e05d",
+          "server_trace_id": "cc8f67e2-b706-4820-a42e-b744a55f22ee",
+          "headers_ms": 50.384666996251326,
+          "stream_ms": 0.006708003638777882,
+          "total_ms": 50.391374999890104
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125403341,
+          "request_id_hash": "2858dcd1057d3eae7f7d5f782167e24b61153c01551450a628cee722509f6529",
+          "server_trace_id": "f27f97cf-fc51-4a24-bc30-3489f4a3b49c",
+          "headers_ms": 119.42612499842653,
+          "stream_ms": 0.008958006219472736,
+          "total_ms": 119.435083004646
+        }
+      ],
+      "runtime_status_ms": 1.0074160018120892,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 9,
+      "workflow_ms": 195.8563750013127,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125403593,
+          "request_id_hash": "02d20bbd7e394ad5999a4cebabac9619732c343a4cac99470c03e23ba2bdc2bc",
+          "server_trace_id": "b4e7262d-8eaf-4cd6-bf21-2de2b289c464",
+          "headers_ms": 13.380208001763094,
+          "stream_ms": 0.009625000529922545,
+          "total_ms": 13.389833002293017
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125403606,
+          "request_id_hash": "7688b6ef52555962d008fff894223582c484517cea7da49ee67800adc7fc8866",
+          "server_trace_id": "cb23b9a5-9dbd-4e09-b1c8-81ef69f0dca4",
+          "headers_ms": 3.7676659994758666,
+          "stream_ms": 0.006542002665810287,
+          "total_ms": 3.774208002141677
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125403610,
+          "request_id_hash": "c837649cce43f2729138e72cc315207057ac82599a59be72765a477f22d14a54",
+          "server_trace_id": "21590ff7-43ba-4f9f-9f23-51d42d4374ad",
+          "headers_ms": 11.664624995319173,
+          "stream_ms": 0.0038750004023313522,
+          "total_ms": 11.668499995721504
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125403622,
+          "request_id_hash": "6208ef0f7750c111548cf90b6ea1d0d0a66f6bff40dbef07cb45ec436263c7d6",
+          "server_trace_id": "a3dff53d-21e9-4712-ad4d-32861f028b58",
+          "headers_ms": 49.773582999478094,
+          "stream_ms": 0.0070829992182552814,
+          "total_ms": 49.78066599869635
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125403671,
+          "request_id_hash": "3e1e967e9b793e908f8eae83c74dba9bcccce6a5535b4b462bd9994537bfe15c",
+          "server_trace_id": "85fdce2e-e048-43f1-8c07-c44a9ad78704",
+          "headers_ms": 116.98883400094928,
+          "stream_ms": 0.008499999239575118,
+          "total_ms": 116.99733400018886
+        }
+      ],
+      "runtime_status_ms": 1.1321249985485338,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 9,
+      "workflow_ms": 196.85712499631336,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125403919,
+          "request_id_hash": "02d20bbd7e394ad5999a4cebabac9619732c343a4cac99470c03e23ba2bdc2bc",
+          "server_trace_id": null,
+          "headers_ms": 12.027791999571491,
+          "stream_ms": 0.01679100387264043,
+          "total_ms": 12.044583003444131
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125403931,
+          "request_id_hash": "7688b6ef52555962d008fff894223582c484517cea7da49ee67800adc7fc8866",
+          "server_trace_id": null,
+          "headers_ms": 3.494208001939114,
+          "stream_ms": 0.007667003956157714,
+          "total_ms": 3.501875005895272
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125403934,
+          "request_id_hash": "c837649cce43f2729138e72cc315207057ac82599a59be72765a477f22d14a54",
+          "server_trace_id": null,
+          "headers_ms": 13.454583000566345,
+          "stream_ms": 0.0036249984987080097,
+          "total_ms": 13.458207999065053
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125403948,
+          "request_id_hash": "6208ef0f7750c111548cf90b6ea1d0d0a66f6bff40dbef07cb45ec436263c7d6",
+          "server_trace_id": null,
+          "headers_ms": 49.86462499800837,
+          "stream_ms": 0.006166999810375273,
+          "total_ms": 49.87079199781874
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125403998,
+          "request_id_hash": "3e1e967e9b793e908f8eae83c74dba9bcccce6a5535b4b462bd9994537bfe15c",
+          "server_trace_id": null,
+          "headers_ms": 117.69595900113927,
+          "stream_ms": 0.011415999324526638,
+          "total_ms": 117.7073750004638
+        }
+      ],
+      "runtime_status_ms": 1.335458000539802,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 10,
+      "workflow_ms": 194.5348750014091,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125404243,
+          "request_id_hash": "d029fa3a95e174a19934857f535eb9427d967218a36ea014b70ad704bc6c8d1c",
+          "server_trace_id": null,
+          "headers_ms": 13.689583000086714,
+          "stream_ms": 0.009958996088244021,
+          "total_ms": 13.699541996174958
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125404257,
+          "request_id_hash": "81b8a03f97e8787c53fe1a86bda042b6f0de9b0ec9c09357e107c99ba4d6948a",
+          "server_trace_id": null,
+          "headers_ms": 2.740291994996369,
+          "stream_ms": 0.005791000148747116,
+          "total_ms": 2.746082995145116
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125404260,
+          "request_id_hash": "da4ea2a5506f2693eae190d9360a1f31793c98a1adade51d93533a6f520ace1c",
+          "server_trace_id": null,
+          "headers_ms": 10.761500001535751,
+          "stream_ms": 0.003582994395401329,
+          "total_ms": 10.765082995931152
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125404271,
+          "request_id_hash": "a68b412c4282555f15546cf6e1fc42893b7e07f271557ceb021821098dd66c1b",
+          "server_trace_id": null,
+          "headers_ms": 49.79079199983971,
+          "stream_ms": 0.007041002390906215,
+          "total_ms": 49.79783300223062
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125404321,
+          "request_id_hash": "108c995b953c8a35561103e2014cf828eb654a99e310f87fab94c2f4b7d2a04f",
+          "server_trace_id": null,
+          "headers_ms": 117.26862499926938,
+          "stream_ms": 0.011207994248252362,
+          "total_ms": 117.27983299351763
+        }
+      ],
+      "runtime_status_ms": 1.0457500029588118,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 10,
+      "workflow_ms": 193.53637500171317,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125404572,
+          "request_id_hash": "d029fa3a95e174a19934857f535eb9427d967218a36ea014b70ad704bc6c8d1c",
+          "server_trace_id": "6842207f-39a0-416a-bec0-96baf9897f31",
+          "headers_ms": 13.43395900039468,
+          "stream_ms": 0.008916002116166055,
+          "total_ms": 13.442875002510846
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125404586,
+          "request_id_hash": "81b8a03f97e8787c53fe1a86bda042b6f0de9b0ec9c09357e107c99ba4d6948a",
+          "server_trace_id": "595388ba-c1a7-4621-bf6f-6e34f3304433",
+          "headers_ms": 3.134582999336999,
+          "stream_ms": 0.0057919969549402595,
+          "total_ms": 3.140374996291939
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125404589,
+          "request_id_hash": "da4ea2a5506f2693eae190d9360a1f31793c98a1adade51d93533a6f520ace1c",
+          "server_trace_id": "b023cfbf-fcf0-4bee-b753-b3ece6feb3bc",
+          "headers_ms": 11.552459000085946,
+          "stream_ms": 0.003583001671358943,
+          "total_ms": 11.556042001757305
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125404601,
+          "request_id_hash": "a68b412c4282555f15546cf6e1fc42893b7e07f271557ceb021821098dd66c1b",
+          "server_trace_id": "48fd1ccb-b59f-4efb-9157-505976e889dc",
+          "headers_ms": 52.05708299763501,
+          "stream_ms": 0.006667003617621958,
+          "total_ms": 52.06375000125263
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125404653,
+          "request_id_hash": "108c995b953c8a35561103e2014cf828eb654a99e310f87fab94c2f4b7d2a04f",
+          "server_trace_id": "2f4fd74c-ed9e-42f7-8fbb-7c01cc13f52b",
+          "headers_ms": 113.07712500274647,
+          "stream_ms": 0.008625000191386789,
+          "total_ms": 113.08575000293786
+        }
+      ],
+      "runtime_status_ms": 0.9887920023174956,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 11,
+      "workflow_ms": 188.88249999872642,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125404893,
+          "request_id_hash": "49d180ecf56132819571bf39d9b7b342522a2ac6d23c1418d3338251bfe469c8",
+          "server_trace_id": "f2de2cf9-9216-48f4-9fdf-a0f2cda102c8",
+          "headers_ms": 13.391624997893814,
+          "stream_ms": 0.009165996743831784,
+          "total_ms": 13.400790994637646
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125404906,
+          "request_id_hash": "a21855da08cb102d1d217c53dc5824a3a795c1c1a44e971bf01ab9da3a2acbbf",
+          "server_trace_id": "dedfce98-3b01-426e-bae9-2d82f9658b69",
+          "headers_ms": 3.024040997843258,
+          "stream_ms": 0.0056249991757795215,
+          "total_ms": 3.0296659970190376
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125404909,
+          "request_id_hash": "c75cb66ae28d8ebc6eded002c28a8ba0d06d3a78c6b5cbf9b2ade051f0775ac4",
+          "server_trace_id": "37b5222f-1391-46c0-9390-bca8fd7c8d1f",
+          "headers_ms": 12.258083006599918,
+          "stream_ms": 0.003749999450519681,
+          "total_ms": 12.261833006050438
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125404922,
+          "request_id_hash": "ff5a1ae012afa5d4c889c50ad427aaf545d31a4fac04ffc1c4d03d403ba4250a",
+          "server_trace_id": "fc51bf69-d3c7-477d-b02a-b6d6b855b0b0",
+          "headers_ms": 49.45666699495632,
+          "stream_ms": 0.007708003977313638,
+          "total_ms": 49.464374998933636
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125404971,
+          "request_id_hash": "7f2253d7e228b22a08bda1f09c516f6fead81df6536eb02fa991a34bb38d9be8",
+          "server_trace_id": "eebb6e2c-569a-441b-8f05-869a5e6cb815",
+          "headers_ms": 110.48170799767831,
+          "stream_ms": 0.00908400397747755,
+          "total_ms": 110.49079200165579
+        }
+      ],
+      "runtime_status_ms": 1.0184589991695248,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 11,
+      "workflow_ms": 196.01608400262194,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125405208,
+          "request_id_hash": "49d180ecf56132819571bf39d9b7b342522a2ac6d23c1418d3338251bfe469c8",
+          "server_trace_id": null,
+          "headers_ms": 12.093707999156322,
+          "stream_ms": 0.011750002158805728,
+          "total_ms": 12.105458001315128
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125405221,
+          "request_id_hash": "a21855da08cb102d1d217c53dc5824a3a795c1c1a44e971bf01ab9da3a2acbbf",
+          "server_trace_id": null,
+          "headers_ms": 3.1652079997002147,
+          "stream_ms": 0.008374998287763447,
+          "total_ms": 3.173582997987978
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125405224,
+          "request_id_hash": "c75cb66ae28d8ebc6eded002c28a8ba0d06d3a78c6b5cbf9b2ade051f0775ac4",
+          "server_trace_id": null,
+          "headers_ms": 14.16583300306229,
+          "stream_ms": 0.0034580007195472717,
+          "total_ms": 14.169291003781836
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125405238,
+          "request_id_hash": "ff5a1ae012afa5d4c889c50ad427aaf545d31a4fac04ffc1c4d03d403ba4250a",
+          "server_trace_id": null,
+          "headers_ms": 49.76504099613521,
+          "stream_ms": 0.007709000783506781,
+          "total_ms": 49.77274999691872
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125405288,
+          "request_id_hash": "7f2253d7e228b22a08bda1f09c516f6fead81df6536eb02fa991a34bb38d9be8",
+          "server_trace_id": null,
+          "headers_ms": 116.53616699913982,
+          "stream_ms": 0.009458002750761807,
+          "total_ms": 116.54562500189058
+        }
+      ],
+      "runtime_status_ms": 1.0210830005235039,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 12,
+      "workflow_ms": 197.7820829997654,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125405539,
+          "request_id_hash": "96061e92f58e4bdcdee73df36183fe3ac64747c81c26f6c83aada8d2aabb1864",
+          "server_trace_id": null,
+          "headers_ms": 12.51941700320458,
+          "stream_ms": 0.01049999991664663,
+          "total_ms": 12.529917003121227
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125405552,
+          "request_id_hash": "eb624dbe56eb6620ae62080c10a273cab73ae8eca98ab17b731446a31c79393a",
+          "server_trace_id": null,
+          "headers_ms": 3.1047079974086955,
+          "stream_ms": 0.005583002348430455,
+          "total_ms": 3.110290999757126
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125405555,
+          "request_id_hash": "f369cb89fc627e668987007d121ed1eacdc01db9e28f8bb26f358b7d8c4f08ac",
+          "server_trace_id": null,
+          "headers_ms": 14.937584004655946,
+          "stream_ms": 0.003374996595084667,
+          "total_ms": 14.94095900125103
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125405570,
+          "request_id_hash": "f74efabef12ea619e30b79bddef89cffa9dda494761681ca862cff2871a85980",
+          "server_trace_id": null,
+          "headers_ms": 49.10833299800288,
+          "stream_ms": 0.007042006473056972,
+          "total_ms": 49.115375004475936
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125405619,
+          "request_id_hash": "a88a7902cb4ef697ba0b6759c50e8c10297ff58f942243de19b984841bfe1f73",
+          "server_trace_id": null,
+          "headers_ms": 117.82700000185287,
+          "stream_ms": 0.00912499672267586,
+          "total_ms": 117.83612499857554
+        }
+      ],
+      "runtime_status_ms": 0.9785410002223216,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 12,
+      "workflow_ms": 192.49429200135637,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125405865,
+          "request_id_hash": "96061e92f58e4bdcdee73df36183fe3ac64747c81c26f6c83aada8d2aabb1864",
+          "server_trace_id": "ec152bde-bb8e-4d9a-aa12-92610df58183",
+          "headers_ms": 14.000208000652492,
+          "stream_ms": 0.00916700082598254,
+          "total_ms": 14.009375001478475
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125405879,
+          "request_id_hash": "eb624dbe56eb6620ae62080c10a273cab73ae8eca98ab17b731446a31c79393a",
+          "server_trace_id": "bb36e650-4879-4a26-a090-1215caeec53e",
+          "headers_ms": 3.0507920018862933,
+          "stream_ms": 0.005791000148747116,
+          "total_ms": 3.0565830020350404
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125405882,
+          "request_id_hash": "f369cb89fc627e668987007d121ed1eacdc01db9e28f8bb26f358b7d8c4f08ac",
+          "server_trace_id": "09541efd-b2d6-4d2e-881f-673ebe4184d1",
+          "headers_ms": 15.42991599853849,
+          "stream_ms": 0.004417001036927104,
+          "total_ms": 15.434332999575417
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125405897,
+          "request_id_hash": "f74efabef12ea619e30b79bddef89cffa9dda494761681ca862cff2871a85980",
+          "server_trace_id": "b9ffdc14-f795-4d2d-adc3-ad6305111764",
+          "headers_ms": 49.345749997883104,
+          "stream_ms": 0.00650000583846122,
+          "total_ms": 49.352250003721565
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125405947,
+          "request_id_hash": "a88a7902cb4ef697ba0b6759c50e8c10297ff58f942243de19b984841bfe1f73",
+          "server_trace_id": "935262a8-7d35-4d81-a051-5e8a9282201b",
+          "headers_ms": 110.38529100187588,
+          "stream_ms": 0.009666997357271612,
+          "total_ms": 110.39495799923316
+        }
+      ],
+      "runtime_status_ms": 1.0129580041393638,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 13,
+      "workflow_ms": 196.182375002536,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125406192,
+          "request_id_hash": "98a3ab7c340e8a033e7b37b6ef9428751581760af67bbab2b9e05d4964a8874a",
+          "server_trace_id": "221757c5-f559-459f-a620-38b3ed12b136",
+          "headers_ms": 13.490457997249905,
+          "stream_ms": 0.008082999556791037,
+          "total_ms": 13.498540996806696
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125406205,
+          "request_id_hash": "48449a14a4ff7d79bb7a1b6f3d488eba397c36ef25634c111b49baf362511afc",
+          "server_trace_id": "3d51ae3c-27b9-4458-94b9-32e596d35c87",
+          "headers_ms": 3.2937500000116415,
+          "stream_ms": 0.005333000444807112,
+          "total_ms": 3.2990830004564486
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125406208,
+          "request_id_hash": "5316ca1c5ddca8e6ceccfce58f3b8540e540ee22f6180fb89492904051b3d531",
+          "server_trace_id": "0b2a96b1-ab8a-46ba-9ff8-4cab76f429ce",
+          "headers_ms": 13.58391700341599,
+          "stream_ms": 0.003416993422433734,
+          "total_ms": 13.587333996838424
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125406222,
+          "request_id_hash": "a46e37632fa6ca51a13fe39a567b3c23b28c2f47d8af6be9bd63e030e214ba38",
+          "server_trace_id": "58fef994-982a-47ac-b0ee-a04786a37cd6",
+          "headers_ms": 49.80870799772674,
+          "stream_ms": 0.008499999239575118,
+          "total_ms": 49.81720799696632
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125406272,
+          "request_id_hash": "bbb965ab0c80d6538cf2184babad2a564a010376712012bd07b0af92dcd3097d",
+          "server_trace_id": "38f91377-f8ec-4482-b454-bb5ac4235c0e",
+          "headers_ms": 115.72549999982584,
+          "stream_ms": 0.012500000593718141,
+          "total_ms": 115.73800000041956
+        }
+      ],
+      "runtime_status_ms": 1.0655420046532527,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 13,
+      "workflow_ms": 194.37137500062818,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125406521,
+          "request_id_hash": "98a3ab7c340e8a033e7b37b6ef9428751581760af67bbab2b9e05d4964a8874a",
+          "server_trace_id": null,
+          "headers_ms": 13.39587500115158,
+          "stream_ms": 0.010750001820269972,
+          "total_ms": 13.40662500297185
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125406535,
+          "request_id_hash": "48449a14a4ff7d79bb7a1b6f3d488eba397c36ef25634c111b49baf362511afc",
+          "server_trace_id": null,
+          "headers_ms": 3.5842919969582,
+          "stream_ms": 0.006958005542401224,
+          "total_ms": 3.591250002500601
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125406538,
+          "request_id_hash": "5316ca1c5ddca8e6ceccfce58f3b8540e540ee22f6180fb89492904051b3d531",
+          "server_trace_id": null,
+          "headers_ms": 11.82491600047797,
+          "stream_ms": 0.0039590013329871,
+          "total_ms": 11.828875001810957
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125406550,
+          "request_id_hash": "a46e37632fa6ca51a13fe39a567b3c23b28c2f47d8af6be9bd63e030e214ba38",
+          "server_trace_id": null,
+          "headers_ms": 49.81870899791829,
+          "stream_ms": 0.0077079967013560236,
+          "total_ms": 49.82641699461965
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125406600,
+          "request_id_hash": "bbb965ab0c80d6538cf2184babad2a564a010376712012bd07b0af92dcd3097d",
+          "server_trace_id": null,
+          "headers_ms": 115.45941700023832,
+          "stream_ms": 0.009540999599266797,
+          "total_ms": 115.46895799983758
+        }
+      ],
+      "runtime_status_ms": 0.9890000001178123,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 14,
+      "workflow_ms": 183.79537500004517,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125406844,
+          "request_id_hash": "b4944c6ff08dc6f43da2e9c824669b7d927dd1fa976fadc7b456881f51bf5ccc",
+          "server_trace_id": null,
+          "headers_ms": 10.355416001402773,
+          "stream_ms": 0.008916998922359198,
+          "total_ms": 10.364333000325132
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125406855,
+          "request_id_hash": "434c9b5ae514646bbd91b50032ca579efec8f22bf0b4aac12e65997c418e0dd6",
+          "server_trace_id": null,
+          "headers_ms": 2.0360420021461323,
+          "stream_ms": 0.00549999822396785,
+          "total_ms": 2.0415420003701
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125406857,
+          "request_id_hash": "bdd2d3af3a5a1213497d4f1f7bfcda898274fe9cb5401bbc0190885664708fc2",
+          "server_trace_id": null,
+          "headers_ms": 10.951999996905215,
+          "stream_ms": 0.0033339965739287436,
+          "total_ms": 10.955333993479144
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125406868,
+          "request_id_hash": "8b940be7fb78aaa6b6567dd7a3987996947460df1c668e698eb92ca77e425349",
+          "server_trace_id": null,
+          "headers_ms": 49.81137499999022,
+          "stream_ms": 0.007499998901039362,
+          "total_ms": 49.81887499889126
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125406917,
+          "request_id_hash": "cd70bea023f752a0564abb6ed08d42c1440f2e33e29914e55e0be1595e24f45a",
+          "server_trace_id": null,
+          "headers_ms": 110.37812499853317,
+          "stream_ms": 0.008916998922359198,
+          "total_ms": 110.38704199745553
+        }
+      ],
+      "runtime_status_ms": 1.013999994029291,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 14,
+      "workflow_ms": 189.463666996744,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125407157,
+          "request_id_hash": "b4944c6ff08dc6f43da2e9c824669b7d927dd1fa976fadc7b456881f51bf5ccc",
+          "server_trace_id": "b656870d-05f8-48e1-94a6-0ee10dbdd286",
+          "headers_ms": 11.504542002512608,
+          "stream_ms": 0.011249998351559043,
+          "total_ms": 11.515792000864167
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125407168,
+          "request_id_hash": "434c9b5ae514646bbd91b50032ca579efec8f22bf0b4aac12e65997c418e0dd6",
+          "server_trace_id": "dcba4c68-3ef1-497a-b723-06130655f382",
+          "headers_ms": 2.2277919997577555,
+          "stream_ms": 0.008915994840208441,
+          "total_ms": 2.236707994597964
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125407171,
+          "request_id_hash": "bdd2d3af3a5a1213497d4f1f7bfcda898274fe9cb5401bbc0190885664708fc2",
+          "server_trace_id": "3b36bbe2-9651-452e-9e21-bde694403ec3",
+          "headers_ms": 12.77716700133169,
+          "stream_ms": 0.0077079967013560236,
+          "total_ms": 12.784874998033047
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125407184,
+          "request_id_hash": "8b940be7fb78aaa6b6567dd7a3987996947460df1c668e698eb92ca77e425349",
+          "server_trace_id": "db63ff96-a187-4933-8d28-fffe5e4d6fda",
+          "headers_ms": 50.126916998124216,
+          "stream_ms": 0.008124996384140104,
+          "total_ms": 50.135041994508356
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125407234,
+          "request_id_hash": "cd70bea023f752a0564abb6ed08d42c1440f2e33e29914e55e0be1595e24f45a",
+          "server_trace_id": "375c8de7-606b-4529-83bc-94383a453912",
+          "headers_ms": 112.49795800540596,
+          "stream_ms": 0.009374998626299202,
+          "total_ms": 112.50733300403226
+        }
+      ],
+      "runtime_status_ms": 1.075833999493625,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 15,
+      "workflow_ms": 195.683582998754,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125407483,
+          "request_id_hash": "1da51b8d8ff98f6a48f80ae79fe3ca6c26e1abb7b7d125259255d6d2b875ea08",
+          "server_trace_id": "b20b3e7f-0ac2-49ef-84d6-fdbb7ab43e76",
+          "headers_ms": 11.945833997742739,
+          "stream_ms": 0.00875000114319846,
+          "total_ms": 11.954583998885937
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125407495,
+          "request_id_hash": "8241649609f88ccd2a0a5b233a07a538ec313ff6adf695aa44a969dbca39f67d",
+          "server_trace_id": "b283bb0e-e6a5-4fa7-9970-571a091f130c",
+          "headers_ms": 3.262083002482541,
+          "stream_ms": 0.0061250029830262065,
+          "total_ms": 3.268208005465567
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125407498,
+          "request_id_hash": "6e4001871c0cf27c7634ef1dc478408f642410fd3a444e2a88e301f5c4a35a4d",
+          "server_trace_id": "3390f33f-362b-4b48-adb2-5918e75609e4",
+          "headers_ms": 14.743708001333289,
+          "stream_ms": 0.0034999975468963385,
+          "total_ms": 14.747207998880185
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125407513,
+          "request_id_hash": "e3d6c4d4599e00882384ca981ee287ed961fa5f3828e2adb5e9ea890ab0d0525",
+          "server_trace_id": "b83b5b32-0f88-472d-b7f6-1d48551188c9",
+          "headers_ms": 49.842958003864624,
+          "stream_ms": 0.0070829992182552814,
+          "total_ms": 49.85004100308288
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125407563,
+          "request_id_hash": "ad48ff99415b2f007dc35b7eb553fd1eb35ebfa2f2f308acd9488eeb86f71fa8",
+          "server_trace_id": "5f793cb0-cdca-451c-8b7d-7f5ed198d6b9",
+          "headers_ms": 115.6120829982683,
+          "stream_ms": 0.009292001777794212,
+          "total_ms": 115.6213750000461
+        }
+      ],
+      "runtime_status_ms": 1.029207996907644,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 15,
+      "workflow_ms": 190.83045799925458,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125407813,
+          "request_id_hash": "1da51b8d8ff98f6a48f80ae79fe3ca6c26e1abb7b7d125259255d6d2b875ea08",
+          "server_trace_id": null,
+          "headers_ms": 11.540374995092861,
+          "stream_ms": 0.008875002095010132,
+          "total_ms": 11.549249997187871
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125407824,
+          "request_id_hash": "8241649609f88ccd2a0a5b233a07a538ec313ff6adf695aa44a969dbca39f67d",
+          "server_trace_id": null,
+          "headers_ms": 2.522374998079613,
+          "stream_ms": 0.005665999196935445,
+          "total_ms": 2.5280409972765483
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125407827,
+          "request_id_hash": "6e4001871c0cf27c7634ef1dc478408f642410fd3a444e2a88e301f5c4a35a4d",
+          "server_trace_id": null,
+          "headers_ms": 16.9259169997531,
+          "stream_ms": 0.0033750038710422814,
+          "total_ms": 16.92929200362414
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790125407844,
+          "request_id_hash": "e3d6c4d4599e00882384ca981ee287ed961fa5f3828e2adb5e9ea890ab0d0525",
+          "server_trace_id": null,
+          "headers_ms": 49.798082996858284,
+          "stream_ms": 0.006542002665810287,
+          "total_ms": 49.804624999524094
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790125407894,
+          "request_id_hash": "ad48ff99415b2f007dc35b7eb553fd1eb35ebfa2f2f308acd9488eeb86f71fa8",
+          "server_trace_id": null,
+          "headers_ms": 109.75908399996115,
+          "stream_ms": 0.009166004019789398,
+          "total_ms": 109.76825000398094
+        }
+      ],
+      "runtime_status_ms": 0.9822499996516854,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 16,
+      "workflow_ms": 188.73154099856038,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125408133,
+          "request_id_hash": "d6d824abba4afde81129c71dea75b8100e96338da5f416d2f69088f1960cb091",
+          "server_trace_id": null,
+          "headers_ms": 13.673665998794604,
+          "stream_ms": 0.009834002412389964,
+          "total_ms": 13.683500001206994
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125408146,
+          "request_id_hash": "29db0c6782dbd5000559ef4d9e953e300e2b479eed26d887ef3f92b921c06a67",
+          "server_trace_id": null,
+          "headers_ms": 3.0858329992042854,
+          "stream_ms": 0.0062920007621869445,
+          "total_ms": 3.0921249999664724
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125408149,
+          "request_id_hash": "8c1f1046219ddd216a023f792356ddf127fce372a72ec9b4cdac989ee5b0b455",
+          "server_trace_id": null,
+          "headers_ms": 13.980042000184767,
+          "stream_ms": 0.0034999975468963385,
+          "total_ms": 13.983541997731663
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "started_at_ms": 1790125408163,
+          "request_id_hash": "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306",
+          "server_trace_id": null,
+          "headers_ms": 48.216041999694426,
+          "stream_ms": 0.0072499969974160194,
+          "total_ms": 48.22329199669184
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "started_at_ms": 1790125408212,
+          "request_id_hash": "16dc368a89b428b2485484313ba67a3912ca03f2b2b42429174a4f8b3dc84e44",
+          "server_trace_id": null,
+          "headers_ms": 109.4949580001412,
+          "stream_ms": 0.009458002750761807,
+          "total_ms": 109.50441600289196
+        }
+      ],
+      "runtime_status_ms": 1.0408330053905956,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 16,
+      "workflow_ms": 188.3321249988512,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790125408460,
+          "request_id_hash": "d6d824abba4afde81129c71dea75b8100e96338da5f416d2f69088f1960cb091",
+          "server_trace_id": "3ba461d4-dc5c-4b36-b213-bcc7907a9655",
+          "headers_ms": 13.58220799738774,
+          "stream_ms": 0.00916700082598254,
+          "total_ms": 13.591374998213723
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2114,
+          "started_at_ms": 1790125408473,
+          "request_id_hash": "29db0c6782dbd5000559ef4d9e953e300e2b479eed26d887ef3f92b921c06a67",
+          "server_trace_id": "4abec4af-e2b6-4b35-9736-0a35f8ba00bc",
+          "headers_ms": 2.4004160004551522,
+          "stream_ms": 0.008333998266607523,
+          "total_ms": 2.4087499987217598
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790125408476,
+          "request_id_hash": "8c1f1046219ddd216a023f792356ddf127fce372a72ec9b4cdac989ee5b0b455",
+          "server_trace_id": "e0973b71-fdc9-4c8a-9502-819d085ffd1f",
+          "headers_ms": 12.139415994170122,
+          "stream_ms": 0.0038750004023313522,
+          "total_ms": 12.143290994572453
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "started_at_ms": 1790125408488,
+          "request_id_hash": "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306",
+          "server_trace_id": "dbea4e10-6e61-4e61-8b52-7a053041962b",
+          "headers_ms": 49.37237499689218,
+          "stream_ms": 0.007333997928071767,
+          "total_ms": 49.37970899482025
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "started_at_ms": 1790125408537,
+          "request_id_hash": "16dc368a89b428b2485484313ba67a3912ca03f2b2b42429174a4f8b3dc84e44",
+          "server_trace_id": "e134abd9-a979-4c3e-9dba-544596ef997e",
+          "headers_ms": 110.5424170018523,
+          "stream_ms": 0.01245799649041146,
+          "total_ms": 110.55487499834271
+        }
+      ],
+      "runtime_status_ms": 1.054667001881171,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 17,
+      "workflow_ms": 190.3197919964441,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "started_at_ms": 1790125408784,
+          "request_id_hash": "454f63ac30c8322997ef025edff6abd23e0dbe7b8a3d5126a894e4a168c1b59b",
+          "server_trace_id": "d8dc885f-376a-4c89-9fdd-866ab8396cb2",
+          "headers_ms": 12.032874998112675,
+          "stream_ms": 0.008957998943515122,
+          "total_ms": 12.04183299705619
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125408796,
+          "request_id_hash": "5ef6fdf32513aa7cd11f72beccf132b9224d33f271471fff402742887a171edf",
+          "server_trace_id": "335f951a-5b48-4a68-b510-7cb156be3b13",
+          "headers_ms": 3.513707997626625,
+          "stream_ms": 0.005792004230897874,
+          "total_ms": 3.519500001857523
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "started_at_ms": 1790125408800,
+          "request_id_hash": "1253e9373e781b7500266caa55150e08e210bc8cd8cc70d89985e3600155e860",
+          "server_trace_id": "854389df-86d2-4af9-9d91-9c7b79949f24",
+          "headers_ms": 14.728166999702808,
+          "stream_ms": 0.003540997568052262,
+          "total_ms": 14.73170799727086
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "started_at_ms": 1790125408814,
+          "request_id_hash": "482d9673cfee5de391f97fde4d1c84f9f8d6f2cf0784fcffb958b4032de7236c",
+          "server_trace_id": "809cd11d-1362-4989-9c5f-21592e3efc97",
+          "headers_ms": 49.15512500156183,
+          "stream_ms": 0.006709000444971025,
+          "total_ms": 49.1618340020068
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "started_at_ms": 1790125408863,
+          "request_id_hash": "3346f2bbf6c34bd2dbe28bd1bb657d0e9c37392a1d5ec9929e6a5df4763ddc2d",
+          "server_trace_id": "b616ca1e-1084-421f-8ef2-15b7eb097a61",
+          "headers_ms": 110.61950000294019,
+          "stream_ms": 0.008875002095010132,
+          "total_ms": 110.6283750050352
+        }
+      ],
+      "runtime_status_ms": 1.0159160010516644,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 17,
+      "workflow_ms": 188.53012500039767,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "started_at_ms": 1790125409102,
+          "request_id_hash": "454f63ac30c8322997ef025edff6abd23e0dbe7b8a3d5126a894e4a168c1b59b",
+          "server_trace_id": null,
+          "headers_ms": 13.752416001807433,
+          "stream_ms": 0.01129199517890811,
+          "total_ms": 13.76370799698634
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2116,
+          "started_at_ms": 1790125409116,
+          "request_id_hash": "5ef6fdf32513aa7cd11f72beccf132b9224d33f271471fff402742887a171edf",
+          "server_trace_id": null,
+          "headers_ms": 3.128208001726307,
+          "stream_ms": 0.00833300146041438,
+          "total_ms": 3.1365410031867214
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "started_at_ms": 1790125409119,
+          "request_id_hash": "1253e9373e781b7500266caa55150e08e210bc8cd8cc70d89985e3600155e860",
+          "server_trace_id": null,
+          "headers_ms": 11.038000004191417,
+          "stream_ms": 0.003540997568052262,
+          "total_ms": 11.04154100175947
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "started_at_ms": 1790125409130,
+          "request_id_hash": "482d9673cfee5de391f97fde4d1c84f9f8d6f2cf0784fcffb958b4032de7236c",
+          "server_trace_id": null,
+          "headers_ms": 49.80687499482883,
+          "stream_ms": 0.006709000444971025,
+          "total_ms": 49.8135839952738
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "started_at_ms": 1790125409180,
+          "request_id_hash": "3346f2bbf6c34bd2dbe28bd1bb657d0e9c37392a1d5ec9929e6a5df4763ddc2d",
+          "server_trace_id": null,
+          "headers_ms": 110.52787500375416,
+          "stream_ms": 0.009291994501836598,
+          "total_ms": 110.537166998256
+        }
+      ],
+      "runtime_status_ms": 1.0790829983307049,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 18,
+      "workflow_ms": 201.23695799702546,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "started_at_ms": 1790125409432,
+          "request_id_hash": "0fd42b3f73c448b34940b339f87d07adf116b05c0227aad72e8f0ee90533e699",
+          "server_trace_id": null,
+          "headers_ms": 12.580333001096733,
+          "stream_ms": 0.011333002476021647,
+          "total_ms": 12.591666003572755
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2116,
+          "started_at_ms": 1790125409445,
+          "request_id_hash": "9bdb2af6799204a299c603994b8e400e4b1fd625efdb74066cc869fee42c9df3",
+          "server_trace_id": null,
+          "headers_ms": 3.1908330056467094,
+          "stream_ms": 0.008499999239575118,
+          "total_ms": 3.1993330048862845
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "started_at_ms": 1790125409448,
+          "request_id_hash": "f6e0a1e2ac41945a9aa7ff8a8aaa0cebc12a3bcc981a929ad5cf810a090e11ae",
+          "server_trace_id": null,
+          "headers_ms": 17.2374169997056,
+          "stream_ms": 0.0034580007195472717,
+          "total_ms": 17.24087500042515
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "started_at_ms": 1790125409465,
+          "request_id_hash": "b1556dea32e9d0cdbfed038fd7787275775ea40939c146a64e205bcb349ad02f",
+          "server_trace_id": null,
+          "headers_ms": 49.90104099852033,
+          "stream_ms": 0.007208996976260096,
+          "total_ms": 49.90824999549659
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "started_at_ms": 1790125409515,
+          "request_id_hash": "6c658ee83fb7e812482494f3e416a876f63f418a0b8a1f5e76d47ee4177035cb",
+          "server_trace_id": null,
+          "headers_ms": 118.01274999743327,
+          "stream_ms": 0.010666997695807368,
+          "total_ms": 118.02341699512908
+        }
+      ],
+      "runtime_status_ms": 1.0488329935469665,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 18,
+      "workflow_ms": 190.83050000335788,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "started_at_ms": 1790125409769,
+          "request_id_hash": "0fd42b3f73c448b34940b339f87d07adf116b05c0227aad72e8f0ee90533e699",
+          "server_trace_id": "7ba4def0-4ae2-477a-bd63-f81f6064e538",
+          "headers_ms": 13.839957995514851,
+          "stream_ms": 0.009792005585040897,
+          "total_ms": 13.849750001099892
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125409783,
+          "request_id_hash": "9bdb2af6799204a299c603994b8e400e4b1fd625efdb74066cc869fee42c9df3",
+          "server_trace_id": "290c4d2c-0668-4c90-bc70-2ff9dfe84522",
+          "headers_ms": 3.1040829999255948,
+          "stream_ms": 0.00833300146041438,
+          "total_ms": 3.112416001386009
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "started_at_ms": 1790125409786,
+          "request_id_hash": "f6e0a1e2ac41945a9aa7ff8a8aaa0cebc12a3bcc981a929ad5cf810a090e11ae",
+          "server_trace_id": "1c0acb6b-b0a6-419d-9794-e94beb5c6fe9",
+          "headers_ms": 13.709625003684778,
+          "stream_ms": 0.0034999975468963385,
+          "total_ms": 13.713125001231674
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "started_at_ms": 1790125409800,
+          "request_id_hash": "b1556dea32e9d0cdbfed038fd7787275775ea40939c146a64e205bcb349ad02f",
+          "server_trace_id": "28550b6c-1983-4ed0-90f2-89620a42511d",
+          "headers_ms": 49.81750000297325,
+          "stream_ms": 0.006541995389852673,
+          "total_ms": 49.8240419983631
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "started_at_ms": 1790125409850,
+          "request_id_hash": "6c658ee83fb7e812482494f3e416a876f63f418a0b8a1f5e76d47ee4177035cb",
+          "server_trace_id": "d7b51157-8b83-4559-b5ab-400bba63d782",
+          "headers_ms": 110.07391699968139,
+          "stream_ms": 0.008290997357107699,
+          "total_ms": 110.0822079970385
+        }
+      ],
+      "runtime_status_ms": 1.0020830013672821,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 19,
+      "workflow_ms": 185.1669160023448,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "started_at_ms": 1790125410088,
+          "request_id_hash": "28dae7c8bde2f3ca608f86d0e16a214dee74c74bee011cdfdd46bc04b655bc14",
+          "server_trace_id": "0c3c5598-a3c3-4a16-86d2-ed0ee07364e5",
+          "headers_ms": 12.893499995698221,
+          "stream_ms": 0.009000003046821803,
+          "total_ms": 12.902499998745043
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125410101,
+          "request_id_hash": "e5b861a6d8a966dfca7e7341cd3eb6be9901688d547a72ebed0b1f5e14f3d08d",
+          "server_trace_id": "f1e01ce9-ce81-4ff4-8e79-a61d901bf17b",
+          "headers_ms": 3.5647080003400333,
+          "stream_ms": 0.005374997272156179,
+          "total_ms": 3.5700829976121895
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "started_at_ms": 1790125410104,
+          "request_id_hash": "2ac878b0e2180616993b4b6aa71e61166fdc86c28d47e359d0ee537eb11d46d3",
+          "server_trace_id": "7a4ff3d1-da7b-4f04-8c2b-dc0f5668fc01",
+          "headers_ms": 10.907832998782396,
+          "stream_ms": 0.0033339965739287436,
+          "total_ms": 10.911166995356325
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "started_at_ms": 1790125410115,
+          "request_id_hash": "85daaf6f7055cd5736287faed9603d712920092c4f8fd0097ec3b650bf27530e",
+          "server_trace_id": "9a9300a8-3773-4a1b-88de-af0be342a935",
+          "headers_ms": 48.32025000359863,
+          "stream_ms": 0.006791997293476015,
+          "total_ms": 48.327042000892106
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "started_at_ms": 1790125410164,
+          "request_id_hash": "3038bfb575bee6a0e61945eff8784835bb2c720634e42734678c083994b7f018",
+          "server_trace_id": "04704492-f70e-400e-a7db-dac754fdb742",
+          "headers_ms": 109.20554200129118,
+          "stream_ms": 0.009040995792020112,
+          "total_ms": 109.2145829970832
+        }
+      ],
+      "runtime_status_ms": 1.0277080000378191,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 19,
+      "workflow_ms": 200.93937500496395,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "started_at_ms": 1790125410407,
+          "request_id_hash": "28dae7c8bde2f3ca608f86d0e16a214dee74c74bee011cdfdd46bc04b655bc14",
+          "server_trace_id": null,
+          "headers_ms": 11.979542003246024,
+          "stream_ms": 0.017207996279466897,
+          "total_ms": 11.996749999525491
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2116,
+          "started_at_ms": 1790125410419,
+          "request_id_hash": "e5b861a6d8a966dfca7e7341cd3eb6be9901688d547a72ebed0b1f5e14f3d08d",
+          "server_trace_id": null,
+          "headers_ms": 3.4406670019961894,
+          "stream_ms": 0.007916998583823442,
+          "total_ms": 3.448584000580013
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "started_at_ms": 1790125410423,
+          "request_id_hash": "2ac878b0e2180616993b4b6aa71e61166fdc86c28d47e359d0ee537eb11d46d3",
+          "server_trace_id": null,
+          "headers_ms": 13.763374998234212,
+          "stream_ms": 0.00720900425221771,
+          "total_ms": 13.77058400248643
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "started_at_ms": 1790125410437,
+          "request_id_hash": "85daaf6f7055cd5736287faed9603d712920092c4f8fd0097ec3b650bf27530e",
+          "server_trace_id": null,
+          "headers_ms": 54.331416002241895,
+          "stream_ms": 0.007875001756474376,
+          "total_ms": 54.33929100399837
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "started_at_ms": 1790125410491,
+          "request_id_hash": "3038bfb575bee6a0e61945eff8784835bb2c720634e42734678c083994b7f018",
+          "server_trace_id": null,
+          "headers_ms": 117.07562500669155,
+          "stream_ms": 0.00883299799170345,
+          "total_ms": 117.08445800468326
+        }
+      ],
+      "runtime_status_ms": 1.030833002005238,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "before",
+      "iteration": 20,
+      "workflow_ms": 187.51029100531014,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "started_at_ms": 1790125410741,
+          "request_id_hash": "89aa1e580023722db67646e8149eb246c748e180e34a1cf679ab0b41a416d904",
+          "server_trace_id": null,
+          "headers_ms": 11.974041997746099,
+          "stream_ms": 0.012500000593718141,
+          "total_ms": 11.986541998339817
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2116,
+          "started_at_ms": 1790125410753,
+          "request_id_hash": "1be00341082e25c4e251ca6713e767f7131a2823b0052caf9c9b006ec512f6cb",
+          "server_trace_id": null,
+          "headers_ms": 2.3109579997253604,
+          "stream_ms": 0.005583002348430455,
+          "total_ms": 2.316541002073791
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "started_at_ms": 1790125410755,
+          "request_id_hash": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+          "server_trace_id": null,
+          "headers_ms": 12.680959000135772,
+          "stream_ms": 0.004374996933620423,
+          "total_ms": 12.685333997069392
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "started_at_ms": 1790125410768,
+          "request_id_hash": "6affdae3b3c1aa6aa7689e9b6a7b3225a636aa1ac0025f490cca1285ceaf1487",
+          "server_trace_id": null,
+          "headers_ms": 49.89870799909113,
+          "stream_ms": 0.007167000148911029,
+          "total_ms": 49.90587499924004
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "started_at_ms": 1790125410818,
+          "request_id_hash": "0f8ef3377b30fc47f96b48247f463a726a802f62f3faa03d56403751d2f66c67",
+          "server_trace_id": null,
+          "headers_ms": 110.3569159968174,
+          "stream_ms": 0.009334005881100893,
+          "total_ms": 110.36625000269851
+        }
+      ],
+      "runtime_status_ms": 0.9661660005804151,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    },
+    {
+      "variant": "after",
+      "iteration": 20,
+      "workflow_ms": 193.19700000050943,
+      "steps": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 413,
+          "response_bytes": 708,
+          "started_at_ms": 1790125411054,
+          "request_id_hash": "89aa1e580023722db67646e8149eb246c748e180e34a1cf679ab0b41a416d904",
+          "server_trace_id": "4874f119-6785-4798-a9ee-5bc0b154eae1",
+          "headers_ms": 13.61091699800454,
+          "stream_ms": 0.009249997674487531,
+          "total_ms": 13.620166995679028
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 272,
+          "response_bytes": 2115,
+          "started_at_ms": 1790125411068,
+          "request_id_hash": "1be00341082e25c4e251ca6713e767f7131a2823b0052caf9c9b006ec512f6cb",
+          "server_trace_id": "79f159b2-632b-43e3-9f08-9889fda6111b",
+          "headers_ms": 3.4519159962655976,
+          "stream_ms": 0.00837500556372106,
+          "total_ms": 3.4602910018293187
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1009,
+          "response_bytes": 1142,
+          "started_at_ms": 1790125411072,
+          "request_id_hash": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+          "server_trace_id": "79c8ee30-39a6-4a0b-a3b5-9bc13f4e5503",
+          "headers_ms": 15.351207999628969,
+          "stream_ms": 0.0033329997677356005,
+          "total_ms": 15.354540999396704
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 282,
+          "response_bytes": 798,
+          "started_at_ms": 1790125411087,
+          "request_id_hash": "6affdae3b3c1aa6aa7689e9b6a7b3225a636aa1ac0025f490cca1285ceaf1487",
+          "server_trace_id": "9ba44698-faee-4d5e-89ed-c680419cc2c8",
+          "headers_ms": 49.84983300528256,
+          "stream_ms": 0.0059589947341009974,
+          "total_ms": 49.85579200001666
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 190,
+          "response_bytes": 1366,
+          "started_at_ms": 1790125411137,
+          "request_id_hash": "0f8ef3377b30fc47f96b48247f463a726a802f62f3faa03d56403751d2f66c67",
+          "server_trace_id": "a0846039-666d-419a-a43c-ed45c98d28cf",
+          "headers_ms": 110.66145900258562,
+          "stream_ms": 0.008625000191386789,
+          "total_ms": 110.670084002777
+        }
+      ],
+      "runtime_status_ms": 1.1057919982704334,
+      "workflow_result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ],
+        "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"
+      }
+    }
+  ]
+}

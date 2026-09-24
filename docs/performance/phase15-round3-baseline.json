@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "classification_rule": "outer time outside observed tool intervals is unattributed; server envelopes may contain nested runner and handoff durations",
+  "outer": [
+    {
+      "source": "../agent-harness-benchmark/round3/results/small-chadex-manual-trace.jsonl",
+      "task": "small",
+      "harness": "chadex",
+      "total_wall_ms": 228836.791,
+      "prompt_to_first_tool_ms": 27513.466,
+      "tool_count": 14,
+      "tool_wall_union_ms": 3599.854,
+      "command_reported_sum_ms": 456.0,
+      "outside_tool_unattributed_ms": 225236.937,
+      "gaps_over_10s_ms": [
+        15326.357,
+        11059.961,
+        30189.973,
+        38356.874,
+        13120.282,
+        19435.071,
+        24229.075
+      ],
+      "model_backend_ms": null
+    },
+    {
+      "source": "../agent-harness-benchmark/round3/results/runs/medium-chadex/trace.jsonl",
+      "task": "medium",
+      "harness": "chadex",
+      "total_wall_ms": 319242.854,
+      "prompt_to_first_tool_ms": 25603.395,
+      "tool_count": 21,
+      "tool_wall_union_ms": 3034.022,
+      "command_reported_sum_ms": 935.0,
+      "outside_tool_unattributed_ms": 316208.832,
+      "gaps_over_10s_ms": [
+        10859.926,
+        15029.611,
+        31666.686,
+        11098.564,
+        43647.703,
+        11379.837,
+        11145.743,
+        10255.235,
+        14723.727,
+        32458.42,
+        10600.08,
+        25789.284
+      ],
+      "model_backend_ms": null
+    },
+    {
+      "source": "../agent-harness-benchmark/round3/results/runs/large-chadex/trace.jsonl",
+      "task": "large",
+      "harness": "chadex",
+      "total_wall_ms": 390397.66,
+      "prompt_to_first_tool_ms": 21507.817,
+      "tool_count": 21,
+      "tool_wall_union_ms": 5383.721,
+      "command_reported_sum_ms": 3469.0,
+      "outside_tool_unattributed_ms": 385013.939,
+      "gaps_over_10s_ms": [
+        12999.78,
+        39862.171,
+        58720.114,
+        61104.412,
+        10379.773,
+        24713.327,
+        45572.372,
+        13172.133
+      ],
+      "model_backend_ms": null
+    }
+  ],
+  "server_requests": []
+}

@@ -1,0 +1,16 @@
+[package]
+name = "webcodex-code-mode"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+v8-runtime = ["dep:deno_core_icudata", "dep:tokio", "dep:v8"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+deno_core_icudata = { version = "0.77.0", optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"], optional = true }
+v8 = { version = "=149.2.0", optional = true }

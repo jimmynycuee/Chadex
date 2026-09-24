@@ -1,0 +1,130 @@
+{
+  "method": "Ordered one-to-one tool-name matching of sequential connected calls to native ingress traces. Native export rounds timestamps to seconds. Ingress total includes body intake, backend headers, response streaming; remainder is outside this interval, not proof of a specific broker/network cause.",
+  "rows": [
+    {
+      "tool": "search_project_texts",
+      "local_ms": 68.18,
+      "connected_ms": 844
+    },
+    {
+      "tool": "read_files",
+      "local_ms": 132.66,
+      "connected_ms": 911
+    },
+    {
+      "tool": "apply_text_edits",
+      "local_ms": 141.79,
+      "connected_ms": 6266
+    },
+    {
+      "tool": "run_process",
+      "local_ms": 148.85,
+      "connected_ms": 5570
+    },
+    {
+      "tool": "show_changes",
+      "local_ms": 373.57,
+      "connected_ms": 1420
+    },
+    {
+      "tool": "search_project_texts",
+      "local_ms": 39.55,
+      "connected_ms": 1689
+    },
+    {
+      "tool": "read_files",
+      "local_ms": 6.62,
+      "connected_ms": 1175
+    },
+    {
+      "tool": "apply_text_edits",
+      "local_ms": 45.62,
+      "connected_ms": 4337
+    },
+    {
+      "tool": "run_process",
+      "local_ms": 161.73,
+      "connected_ms": 4048
+    },
+    {
+      "tool": "show_changes",
+      "local_ms": 190.96,
+      "connected_ms": 1186
+    },
+    {
+      "tool": "search_project_texts",
+      "local_ms": 38.62,
+      "connected_ms": 1098
+    },
+    {
+      "tool": "read_files",
+      "local_ms": 6.74,
+      "connected_ms": 5782
+    },
+    {
+      "tool": "apply_text_edits",
+      "local_ms": 42.1,
+      "connected_ms": 14669
+    },
+    {
+      "tool": "run_process",
+      "local_ms": 129.95,
+      "connected_ms": 8633
+    },
+    {
+      "tool": "show_changes",
+      "local_ms": 183.65,
+      "connected_ms": 1353
+    },
+    {
+      "tool": "search_project_texts",
+      "local_ms": 46.74,
+      "connected_ms": 1105
+    },
+    {
+      "tool": "read_files",
+      "local_ms": 11.3,
+      "connected_ms": 1011
+    },
+    {
+      "tool": "apply_text_edits",
+      "local_ms": 43.46,
+      "connected_ms": 4806
+    },
+    {
+      "tool": "run_process",
+      "local_ms": 141.78,
+      "connected_ms": 4672
+    },
+    {
+      "tool": "show_changes",
+      "local_ms": 215.29,
+      "connected_ms": 1313
+    },
+    {
+      "tool": "search_project_texts",
+      "local_ms": 31.33,
+      "connected_ms": 944
+    },
+    {
+      "tool": "read_files",
+      "local_ms": 12.56,
+      "connected_ms": 975
+    },
+    {
+      "tool": "apply_text_edits",
+      "local_ms": 106.43,
+      "connected_ms": 4868
+    },
+    {
+      "tool": "run_process",
+      "local_ms": 115.79,
+      "connected_ms": 7174
+    },
+    {
+      "tool": "show_changes",
+      "local_ms": 193.81,
+      "connected_ms": 943
+    }
+  ]
+}

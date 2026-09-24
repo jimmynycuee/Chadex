@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>WebCodex Changes</title>
+<style>
+:root { color-scheme: light dark; font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 12px; color: CanvasText; background: Canvas; overflow-x: hidden; }
+.card { display: grid; gap: 9px; min-width: 0; }
+.header, .summary, .file-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+h1 { margin: 0; font-size: 15px; font-weight: 650; }
+.badge { padding: 2px 7px; border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 999px; font-size: 11px; white-space: nowrap; }
+.summary-main { font-weight: 650; }
+.stats { font-size: 12px; white-space: nowrap; }
+.add { color: color-mix(in srgb, #188038 82%, CanvasText); }
+.del { color: color-mix(in srgb, #c5221f 82%, CanvasText); }
+.files { display: grid; gap: 4px; }
+.file { border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); padding-top: 4px; min-width: 0; }
+.file:first-child { border-top: 0; padding-top: 0; }
+.file-toggle, .more { width: 100%; appearance: none; border: 0; border-radius: 6px; padding: 5px 4px; color: CanvasText; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.file-toggle:hover, .more:hover { background: color-mix(in srgb, CanvasText 6%, Canvas); }
+.file-row { min-width: 0; }
+.status { width: 18px; flex: 0 0 18px; font: 650 11px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; border-radius: 4px; background: color-mix(in srgb, CanvasText 8%, Canvas); }
+.path { min-width: 0; flex: 1; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.file-stats { flex: 0 0 auto; font-size: 11px; white-space: nowrap; }
+.chevron { width: 12px; flex: 0 0 12px; color: color-mix(in srgb, CanvasText 55%, transparent); }
+.diff-wrap { padding: 5px 4px 8px 26px; min-width: 0; }
+.diff-state, .footer { font-size: 11px; color: color-mix(in srgb, CanvasText 62%, transparent); overflow-wrap: anywhere; }
+.diff { margin: 4px 0 0; padding: 7px 8px; border: 1px solid color-mix(in srgb, CanvasText 12%, transparent); border-radius: 6px; background: color-mix(in srgb, CanvasText 3%, Canvas); overflow-x: auto; overflow-y: visible; white-space: pre; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.diff-line { display: block; min-width: max-content; }
+.diff-line.added { background: color-mix(in srgb, #34a853 12%, transparent); }
+.diff-line.deleted { background: color-mix(in srgb, #ea4335 12%, transparent); }
+.diff-line.hunk { color: color-mix(in srgb, #4c6ef5 75%, CanvasText); }
+.more { margin-top: 2px; font-size: 11px; color: color-mix(in srgb, CanvasText 72%, transparent); text-align: center; border: 1px solid color-mix(in srgb, CanvasText 12%, transparent); }
+[hidden] { display: none !important; }
+@media (max-width: 480px) { body { padding: 10px; } .file-stats { font-size: 10px; } .diff-wrap { padding-left: 4px; } }
+</style>
+</head>
+<body>
+<main class="card" aria-live="polite">
+  <div class="header"><h1>Changes</h1><span id="badge" class="badge">Loading</span></div>
+  <div class="summary"><div id="summary" class="summary-main">Waiting for frozen snapshot…</div><div id="stats" class="stats"></div></div>
+  <div id="files" class="files"></div>
+  <button id="more" class="more" type="button" hidden></button>
+  <div id="footer" class="footer">App active · initializing Host</div>
+</main>
+<script>
+(() => {
+  "use strict";
+  const APP_PROTOCOL = "2026-01-26";
+  const SESSION_ID = /^wc_sess_([A-Za-z0-9_-]{16}|[0-9a-f]{32})$/;
+  const SNAPSHOT_ID = /^wc_changes_snapshot_[0-9a-f]{32}$/;
+  const CALL_TIMEOUT_MS = 10000;
+  const MAX_PROJECT = 512;
+  const MAX_PATH = 1024;
+  const MAX_FILES = 24;
+  const INITIAL_FILES = 5;
+  let nextId = 1;
+  let baseIdentity = null;
+  let snapshot = null;
+  let visibleCount = INITIAL_FILES;
+  let hostInitialized = false;
+  let tornDown = false;
+  const pending = new Map();
+  const diffCache = new Map();
+  const diffInFlight = new Set();
+  const el = id => document.getElementById(id);
+
+  function send(method, params) {
+    if (tornDown) return Promise.reject(new Error("App torn down"));
+    const id = nextId++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { pending.delete(id); reject(new Error("Host request timed out")); }, CALL_TIMEOUT_MS);
+      pending.set(id, { resolve, reject, timer });
+      parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+    });
+  }
+  function notify(method, params) { if (!tornDown) parent.postMessage({ jsonrpc: "2.0", method, params }, "*"); }
+  function safeCount(value) { return Number.isSafeInteger(value) && value >= 0 && value <= 1000000000; }
+  function validProject(value) { return typeof value === "string" && value.length > 0 && Array.from(value).length <= MAX_PROJECT && !/[\u0000-\u001f\u007f]/.test(value); }
+  function validSession(value) { return typeof value === "string" && SESSION_ID.test(value); }
+  function validPath(value) {
+    if (typeof value !== "string" || value.length < 1 || Array.from(value).length > MAX_PATH || /[\u0000-\u001f\u007f]/.test(value)) return false;
+    if (value.startsWith("/") || value.startsWith("\\") || /^[A-Za-z]:/.test(value)) return false;
+    return !value.split(/[\\/]/).includes("..");
+  }
+  function pair(project, session_id) { return validProject(project) && validSession(session_id) ? { project, session_id } : null; }
+  function samePair(a, b) { return !!a && !!b && a.project === b.project && a.session_id === b.session_id; }
+  function failClosed(message) {
+    teardown();
+    el("badge").textContent = "Unavailable";
+    el("summary").textContent = "Changes unavailable";
+    el("stats").textContent = "";
+    el("files").replaceChildren();
+    el("more").hidden = true;
+    el("footer").textContent = message;
+  }
+  function acceptBaseIdentity(candidate) {
+    if (tornDown || !candidate || (baseIdentity && !samePair(baseIdentity, candidate))) { failClosed("Invalid or conflicting Changes identity"); return false; }
+    baseIdentity = candidate;
+    return true;
+  }
+  function validFile(file) {
+    if (!file || typeof file !== "object" || Array.isArray(file) || !validPath(file.path)) return false;
+    if (file.previous_path !== undefined && !validPath(file.previous_path)) return false;
+    if (!["added", "modified", "deleted", "renamed"].includes(file.kind)) return false;
+    for (const key of ["additions", "deletions"]) if (file[key] !== null && file[key] !== undefined && !safeCount(file[key])) return false;
+    if (file.binary !== undefined && typeof file.binary !== "boolean") return false;
+    return true;
+  }
+  function validSnapshot(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value) || value.version !== 3) return null;
+    const identity = pair(value.project, value.session_id);
+    if (!identity || typeof value.snapshot_id !== "string" || !SNAPSHOT_ID.test(value.snapshot_id)) return null;
+    if (!safeCount(value.files_changed) || !safeCount(value.files_total) || !safeCount(value.files_returned) || value.files_changed !== value.files_total) return null;
+    if (!safeCount(value.additions) || !safeCount(value.deletions) || typeof value.files_truncated !== "boolean") return null;
+    if (!Array.isArray(value.files) || value.files.length > MAX_FILES || value.files.length !== value.files_returned || !value.files.every(validFile)) return null;
+    return value;
+  }
+  function structured(result) { return result && (result.structuredContent || result.structured_content || result); }
+  function toolSuccess(result) { const value = structured(result); return value && typeof value === "object" && !Array.isArray(value) && typeof value.success === "boolean" ? value.success : null; }
+  function extractSnapshot(result) { const value = structured(result); const output = value && (value.output || value); return validSnapshot(output && output.changes); }
+  function extractDiff(result) {
+    const value = structured(result); const output = value && (value.output || value); const diff = output && output.changes_file_diff;
+    if (!diff || typeof diff !== "object" || Array.isArray(diff) || !snapshot) return null;
+    if (diff.project !== snapshot.project || diff.session_id !== snapshot.session_id || diff.snapshot_id !== snapshot.snapshot_id || !validPath(diff.path)) return null;
+    if (diff.previous_path !== null && diff.previous_path !== undefined && !validPath(diff.previous_path)) return null;
+    if (!["added", "modified", "deleted", "renamed"].includes(diff.kind) || typeof diff.diff !== "string" || typeof diff.truncated !== "boolean") return null;
+    for (const key of ["bytes_total", "bytes_returned", "lines_total", "lines_returned"]) if (!safeCount(diff[key])) return null;
+    return diff;
+  }
+  function statusCode(kind) { return kind === "added" ? "A" : kind === "deleted" ? "D" : kind === "renamed" ? "R" : "M"; }
+  function displayPath(file) { return file.previous_path ? `${file.previous_path} → ${file.path}` : file.path; }
+  function statsText(file) {
+    if (file.binary) return "binary";
+    if (safeCount(file.additions) && safeCount(file.deletions)) return `+${file.additions} −${file.deletions}`;
+    return "";
+  }
+  function renderDiff(pre, diff) {
+    pre.replaceChildren();
+    const text = diff.diff || (diff.binary ? "Binary file changed" : "No textual diff returned");
+    for (const line of text.split("\n")) {
+      const span = document.createElement("span");
+      span.className = "diff-line" + (line.startsWith("+") && !line.startsWith("+++") ? " added" : line.startsWith("-") && !line.startsWith("---") ? " deleted" : line.startsWith("@@") ? " hunk" : "");
+      span.textContent = line;
+      pre.appendChild(span);
+    }
+  }
+  async function loadDiff(file, state, pre) {
+    if (!snapshot || tornDown || diffInFlight.has(file.path)) return;
+    const cached = diffCache.get(file.path);
+    if (cached) { renderDiff(pre, cached); state.textContent = cached.truncated ? `Frozen diff · truncated (${cached.bytes_returned}/${cached.bytes_total} bytes)` : "Frozen diff"; return; }
+    diffInFlight.add(file.path); state.textContent = "Loading frozen diff…";
+    try {
+      const response = await send("tools/call", { name: "changes_file_diff", arguments: { project: snapshot.project, session_id: snapshot.session_id, snapshot_id: snapshot.snapshot_id, path: file.path } });
+      if (tornDown) return;
+      if (toolSuccess(response) === false) { state.textContent = "Frozen diff unavailable"; return; }
+      const diff = extractDiff(response);
+      if (!diff || diff.path !== file.path || diff.previous_path !== (file.previous_path ?? null)) { failClosed("Invalid frozen diff response"); return; }
+      diffCache.set(file.path, diff); renderDiff(pre, diff);
+      state.textContent = diff.truncated ? `Frozen diff · truncated (${diff.bytes_returned}/${diff.bytes_total} bytes)` : "Frozen diff";
+    } catch (_) { if (!tornDown) state.textContent = "Frozen diff unavailable"; }
+    finally { diffInFlight.delete(file.path); }
+  }
+  function fileNode(file) {
+    const root = document.createElement("div"); root.className = "file";
+    const button = document.createElement("button"); button.type = "button"; button.className = "file-toggle"; button.setAttribute("aria-expanded", "false");
+    const row = document.createElement("div"); row.className = "file-row";
+    const status = document.createElement("span"); status.className = "status"; status.textContent = statusCode(file.kind);
+    const path = document.createElement("span"); path.className = "path"; path.textContent = displayPath(file);
+    const stat = document.createElement("span"); stat.className = "file-stats"; stat.textContent = statsText(file);
+    const chev = document.createElement("span"); chev.className = "chevron"; chev.textContent = "›";
+    row.append(status, path, stat, chev); button.append(row);
+    const wrap = document.createElement("div"); wrap.className = "diff-wrap"; wrap.hidden = true;
+    const diffState = document.createElement("div"); diffState.className = "diff-state"; diffState.textContent = "Expand to load frozen diff";
+    const pre = document.createElement("pre"); pre.className = "diff"; pre.hidden = true;
+    wrap.append(diffState, pre); root.append(button, wrap);
+    button.onclick = () => {
+      if (tornDown) return;
+      const opening = wrap.hidden;
+      wrap.hidden = !opening; pre.hidden = !opening; button.setAttribute("aria-expanded", String(opening)); chev.textContent = opening ? "⌄" : "›";
+      if (opening) void loadDiff(file, diffState, pre);
+    };
+    return root;
+  }
+  function render() {
+    if (!snapshot || tornDown) return;
+    el("badge").textContent = "Frozen";
+    el("summary").textContent = `Changed ${snapshot.files_total} ${snapshot.files_total === 1 ? "file" : "files"}`;
+    el("stats").replaceChildren();
+    const plus = document.createElement("span"); plus.className = "add"; plus.textContent = `+${snapshot.additions}`;
+    const minus = document.createElement("span"); minus.className = "del"; minus.textContent = ` −${snapshot.deletions}`;
+    el("stats").append(plus, minus);
+    const shown = snapshot.files.slice(0, visibleCount);
+    el("files").replaceChildren(...shown.map(fileNode));
+    const more = el("more");
+    if (visibleCount < snapshot.files.length) { more.hidden = false; more.textContent = `Show ${snapshot.files.length - visibleCount} more files`; }
+    else { more.hidden = true; }
+    const suffix = snapshot.files_truncated ? ` · showing ${snapshot.files_returned} of ${snapshot.files_total}` : "";
+    el("footer").textContent = `Frozen final workspace snapshot${suffix}`;
+  }
+  function acceptToolInput(params) {
+    const args = params && params.arguments;
+    acceptBaseIdentity(pair(args && !Array.isArray(args) && args.project, args && !Array.isArray(args) && args.session_id));
+  }
+  function acceptToolResult(result) {
+    if (tornDown) return;
+    const next = extractSnapshot(result);
+    if (!next || !acceptBaseIdentity(pair(next.project, next.session_id))) { if (!tornDown) failClosed("Invalid Final Changes snapshot"); return; }
+    if (snapshot && snapshot.snapshot_id !== next.snapshot_id) { failClosed("Conflicting Changes snapshot identity"); return; }
+    snapshot = next; render();
+  }
+  function teardown() {
+    if (tornDown) return;
+    tornDown = true;
+    for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(new Error("App torn down")); }
+    pending.clear(); diffInFlight.clear();
+  }
+  addEventListener("message", event => {
+    if (event.source !== parent) return;
+    const msg = event.data; if (!msg || msg.jsonrpc !== "2.0") return;
+    if (Object.prototype.hasOwnProperty.call(msg, "id") && pending.has(msg.id)) {
+      const entry = pending.get(msg.id); pending.delete(msg.id); clearTimeout(entry.timer);
+      if (msg.error) entry.reject(new Error(String(msg.error.message || "Host error"))); else entry.resolve(msg.result); return;
+    }
+    if (msg.method === "ui/notifications/tool-input") { acceptToolInput(msg.params); return; }
+    if (msg.method === "ui/notifications/tool-result") { acceptToolResult(msg.params); return; }
+    if (msg.method === "ui/resource-teardown") { teardown(); if (Object.prototype.hasOwnProperty.call(msg, "id")) parent.postMessage({ jsonrpc: "2.0", id: msg.id, result: {} }, "*"); }
+  });
+  el("more").onclick = () => { if (snapshot && !tornDown) { visibleCount = snapshot.files.length; render(); } };
+  addEventListener("pagehide", teardown, { once: true });
+  addEventListener("beforeunload", teardown, { once: true });
+  send("ui/initialize", { protocolVersion: APP_PROTOCOL, appInfo: { name: "webcodex-final-changes-app", title: "WebCodex Changes", version: "1.0.0" }, appCapabilities: {} })
+    .then(() => { if (tornDown) return; hostInitialized = true; notify("ui/notifications/initialized", {}); if (!snapshot) el("footer").textContent = baseIdentity ? "Host initialized · waiting for frozen snapshot" : "Host initialized · waiting for exact tool identity"; })
+    .catch(() => { if (!tornDown) el("footer").textContent = "Host initialization unavailable"; });
+})();
+</script>
+</body>
+</html>

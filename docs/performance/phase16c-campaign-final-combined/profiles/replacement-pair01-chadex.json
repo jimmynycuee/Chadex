@@ -1,0 +1,71 @@
+{
+  "classification_rule": "target window selected only by exact structured argument marker in 'instruction' for tool 'work_on_project'; request boundaries joined by exact client_window_key/server_trace_id; unobserved pre-Server time remains unattributed",
+  "driver": {
+    "accepted_at_ms": 1790224445055,
+    "confirmed_final_at_ms": null,
+    "connector": "Chadex",
+    "effort": {
+      "observed": {
+        "observed_label": "極高",
+        "requested": "extra-high",
+        "verified_by": "button_text"
+      },
+      "requested": "extra-high"
+    },
+    "submitted_at_ms": 1790224444599
+  },
+  "first_tool": {
+    "helper_ingress": null,
+    "helper_join_status": "server_projected_exact_trace",
+    "helper_timing": {
+      "backend_send_to_server_received_ms": 4.357,
+      "ingress_pre_backend_ms": 0.214,
+      "ingress_started_unix_ns": 1790224452569231000,
+      "ingress_to_server_received_ms": 4.571,
+      "source": "server_projected_exact_trace"
+    },
+    "prompt_to_server_parsed_ms": 7975.093,
+    "prompt_to_server_received_ms": 7974.802,
+    "response_serialized_at_ns": 1790224454931346000,
+    "runner_request_ids": [
+      "9683f8ae-e930-4965-974f-82f2a1678b4a",
+      "39627869-84f6-4756-96ab-3c6e10f82a64",
+      "687f8f47-6769-4745-aeb8-fffad4a2e9db",
+      "c3b8ede2-aae5-4fc0-9b5c-113d9fa193b2",
+      "d2ed3995-8a39-4620-a02b-989f9b40d492",
+      "d9f40d3d-078e-498c-a826-b69706f18451",
+      "1e500a02-46c1-4819-a1af-a5dee7e1faa6",
+      "b173ebe3-c4d4-4075-8e1c-ba24b944c39b",
+      "772782d2-fa42-4692-a9fe-d7e9799647cc",
+      "6e3355e0-8146-44fc-b0f2-f958320ad05f",
+      "197266d9-ff79-4f39-a8e0-5eecfb060a26",
+      "f2c82e13-0e9f-4b8b-9cfa-c5a4f31a7929",
+      "28bb424e-7eb4-40d1-b765-bc1df5c01d6e"
+    ],
+    "server_dispatch_ms": 2356.969,
+    "server_parse_to_dispatch_ms": 0.184,
+    "server_receive_to_parse_ms": 0.291,
+    "server_total_to_handler_return_ms": 2357.564,
+    "server_trace_id": "805722d3-6459-4c3e-8172-dfd8cbde23a8",
+    "tool_name": "work_on_project"
+  },
+  "schema_version": 1,
+  "selection": {
+    "client_window_key": "6edef8158cab5dfb40b1e9b64fc2d5e1a1997ec79dfd51d7a58bbd20e3fb1fdb",
+    "exact_marker_trace_count": 1,
+    "exact_marker_trace_ids": [
+      "805722d3-6459-4c3e-8172-dfd8cbde23a8"
+    ],
+    "exact_markers": [
+      "PHASE16C_1d83b5c55ad147c68f63414e29d2139b"
+    ],
+    "expected_tool_name": "work_on_project",
+    "marker_argument_key": "instruction",
+    "window_trace_count": 1
+  },
+  "unattributed": {
+    "label": "prompt-to-helper remains host/relay/model-side unattributed when helper timing is present; never label this span as model reasoning time",
+    "prompt_to_helper_ingress_ms": 7970.231,
+    "prompt_to_server_received_ms": 7974.802
+  }
+}

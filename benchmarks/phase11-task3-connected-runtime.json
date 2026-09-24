@@ -1,0 +1,175 @@
+{
+  "adaptive_policy": {
+    "minimum_predicted_gain_pct": 15.0,
+    "overhead_model": "cold prior, then private per-Mac EWMA",
+    "parallel_overhead_base_ewma_ms": 12627,
+    "parallel_overhead_samples_after_run": 4
+  },
+  "benchmark": "phase11_task3_connected_runtime",
+  "date": "2026-09-21",
+  "eight_second_packages": {
+    "adaptive_parallel": {
+      "cleanup_total_ms": 5504,
+      "connector_wall_ms": 26130,
+      "decision": "package_parallel",
+      "estimated_parallel_gain_pct": 37.4,
+      "integration_cleanup_ms": 1803,
+      "measured_parallel_overhead_ms": 15356,
+      "package_cleanup_wall_ms": 3694,
+      "package_workspace_prepare_wall_ms": 6679,
+      "runtime_ms": 23953
+    },
+    "connector_wall_improvement_pct": 17.9,
+    "runtime_improvement_pct": 19.9,
+    "sequential": {
+      "connector_wall_ms": 31821,
+      "runtime_ms": 29914
+    }
+  },
+  "keychain_startup_fix": {
+    "current_keychain_reads_per_app_session_max": 1,
+    "diagnostics_reuses_cached_secret": true,
+    "note": "The first launch when migrating from old ad-hoc signing can still show one macOS Keychain authorization flow; subsequent same-identity builds should retain authorization. Documents access is a separate macOS Files & Folders/TCC permission because active projects live under ~/Documents.",
+    "previous_keychain_reads_per_app_session": 2,
+    "session_cache": true,
+    "signing": "Apple Development: jimmy.ccsung@icloud.com (DX5RSC7PAM)",
+    "team_identifier": "XY4Z6VAH37",
+    "first_stable_signed_launch_prompts_observed": 2,
+    "same_build_second_launch_zero_prompt_verification": "passed",
+    "startup_keychain_read_calls_before": 2,
+    "startup_keychain_read_calls_after": 1,
+    "stable_codesign": true,
+    "subsequent_keychain_prompts": 0,
+    "subsequent_documents_prompts": 0,
+    "stale_completed_task_progress_ui": "fixed_and_absent"
+  },
+  "lifecycle_optimization_effect": {
+    "cleanup_reduction_pct": 30.7,
+    "overhead_reduction_pct": 29.6,
+    "post_optimization_cleanup_ms": 5471,
+    "post_optimization_eight_second_overhead_ms": 15356,
+    "post_optimization_twelve_second_connector_wall_ms": 29744,
+    "post_optimization_twelve_second_parallel_runtime_ms": 27598,
+    "pre_optimization_cleanup_ms": 7890,
+    "pre_optimization_measured_parallel_overhead_ms": 21800,
+    "pre_optimization_twelve_second_connector_wall_ms": 34350,
+    "pre_optimization_twelve_second_parallel_runtime_ms": 30700,
+    "twelve_second_connector_wall_reduction_pct": 13.4,
+    "twelve_second_parallel_runtime_reduction_pct": 10.1
+  },
+  "transport": "ChatGPT -> Chadex connector -> execute_task -> Runner-managed worktrees",
+  "twelve_second_packages": {
+    "adaptive_parallel": {
+      "cleanup_total_ms": 5471,
+      "connector_wall_ms": 29744,
+      "cost_source": "measured_ewma",
+      "decision": "package_parallel",
+      "estimated_parallel_gain_pct": 34.7,
+      "integration_cleanup_ms": 1837,
+      "measured_parallel_overhead_ms": 15041,
+      "package_cleanup_wall_ms": 3628,
+      "package_workspace_prepare_wall_ms": 6560,
+      "runtime_ms": 27598
+    },
+    "connector_wall_improvement_pct": 34.9,
+    "runtime_improvement_pct": 36.6,
+    "sequential": {
+      "connector_wall_ms": 45691,
+      "runtime_ms": 43513
+    }
+  },
+  "repeat_after_keychain_signing_fix": {
+    "eight_second_packages": {
+      "sequential": {
+        "runtime_ms": 29914,
+        "connector_wall_ms": 31821
+      },
+      "adaptive_parallel": {
+        "runtime_ms": 24829,
+        "connector_wall_ms": 27366,
+        "package_workspace_prepare_wall_ms": 7106,
+        "package_cleanup_wall_ms": 3868,
+        "integration_cleanup_ms": 1972,
+        "cleanup_total_ms": 5844,
+        "measured_parallel_overhead_ms": 16273,
+        "decision": "package_parallel",
+        "estimated_parallel_gain_pct": 24.6,
+        "cost_source": "measured_ewma"
+      }
+    },
+    "twelve_second_packages": {
+      "sequential": {
+        "runtime_ms": 41578,
+        "connector_wall_ms": 44090
+      },
+      "adaptive_parallel": {
+        "runtime_ms": 28498,
+        "connector_wall_ms": 30313,
+        "package_workspace_prepare_wall_ms": 6570,
+        "package_cleanup_wall_ms": 4271,
+        "integration_cleanup_ms": 1908,
+        "cleanup_total_ms": 6184,
+        "measured_parallel_overhead_ms": 15930,
+        "decision": "package_parallel",
+        "estimated_parallel_gain_pct": 34.3,
+        "cost_source": "measured_ewma"
+      }
+    }
+  },
+  "aggregate_two_post_lifecycle_runs": {
+    "eight_second_packages": {
+      "sequential_runtime_median_ms": 29914.0,
+      "sequential_connector_median_ms": 31821.0,
+      "adaptive_runtime_median_ms": 24391.0,
+      "adaptive_connector_median_ms": 26748.0,
+      "parallel_overhead_median_ms": 15814.5,
+      "prepare_wall_median_ms": 6892.5,
+      "cleanup_total_median_ms": 5674.0,
+      "runtime_improvement_pct": 18.5,
+      "connector_improvement_pct": 15.9,
+      "overhead_reduction_vs_pre_lifecycle_pct": 27.5
+    },
+    "twelve_second_packages": {
+      "sequential_runtime_median_ms": 42545.5,
+      "sequential_connector_median_ms": 44890.5,
+      "adaptive_runtime_median_ms": 28048.0,
+      "adaptive_connector_median_ms": 30028.5,
+      "parallel_overhead_median_ms": 15485.5,
+      "prepare_wall_median_ms": 6565.0,
+      "cleanup_total_median_ms": 5827.5,
+      "runtime_improvement_pct": 34.1,
+      "connector_improvement_pct": 33.1,
+      "cleanup_reduction_vs_pre_lifecycle_pct": 26.1,
+      "runtime_reduction_vs_pre_lifecycle_parallel_pct": 8.6,
+      "connector_reduction_vs_pre_lifecycle_parallel_pct": 12.6
+    }
+  },
+  "startup_final_acceptance": {
+    "helper_start_ms_range": [
+      2.4,
+      4.6
+    ],
+    "credential_push_ms_range_after_migration": [
+      45.2,
+      56.2
+    ],
+    "project_activation_ms_range": [
+      38.0,
+      52.1
+    ],
+    "service_restore_ms_range": [
+      4056.3,
+      4281.3
+    ],
+    "bootstrap_total_ms_range": [
+      4150.7,
+      4394.0
+    ],
+    "user_visible_preparing_observed_seconds": "about 2",
+    "server_status_probe_ms_range": [
+      20.7,
+      61.6
+    ],
+    "conclusion": "remaining startup time is local runtime/server-runner readiness, not Keychain, stale recovery UI, or fixed status-probe delay"
+  }
+}

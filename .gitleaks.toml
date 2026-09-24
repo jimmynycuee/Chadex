@@ -1,0 +1,42 @@
+title = "Chadex public-release secret scan"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Client-window keys are SHA-256 correlation identifiers, not credentials"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = [
+  '''(?i)(?:chadex_|webcodex_)?client_window_key'''
+]
+
+[[allowlists]]
+description = "Synthetic sk- credential used only by the activity redaction regression"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "match"
+paths = ['''^rust-helper/src/chadex_core/activity\.rs$''']
+regexes = ['''key=sk-proj-testKey123''']
+
+[[allowlists]]
+description = "Synthetic bearer credential used by workflow-session redaction tests"
+targetRules = ["curl-auth-header"]
+condition = "AND"
+regexTarget = "match"
+paths = [
+  '''^runtime-engine/crates/chadex-runtime-workflow-session/src/session_store_tests\.rs$''',
+  '''^vendor/webcodex/crates/webcodex-workflow-session/src/session_store_tests\.rs$'''
+]
+regexes = ['''Authorization: Bearer wc_pat_never_store''']
+
+[[allowlists]]
+description = "Synthetic UI state keys in fixed upstream frontend tests"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "match"
+paths = [
+  '''^vendor/webcodex/frontend/test/runtime_window\.test\.mjs$''',
+  '''^vendor/webcodex/frontend/test/runtime_observability_workbench\.test\.mjs$'''
+]
+regexes = ['''(?:selectedKey|clickedKey|inspectedKey)''']

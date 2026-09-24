@@ -1,0 +1,48 @@
+{
+  "name": "@yyjeqhc/webcodex",
+  "version": "0.4.1",
+  "description": "Connect ChatGPT, Claude, and other AI agents to repositories and developer tools on your own machines.",
+  "keywords": [
+    "ai",
+    "agent",
+    "coding-agent",
+    "chatgpt",
+    "claude",
+    "mcp",
+    "developer-tools",
+    "self-hosted",
+    "code",
+    "automation"
+  ],
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "bin": {
+    "webcodex": "bin/webcodex.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js",
+    "test": "node test/self-test.js && node test/release-manifest-check-self-test.js && node --test test/download-cleanup.test.js",
+    "pack:release-dry-run": "npm pack --dry-run",
+    "prepack": "node test/release-manifest-check.js --quiet",
+    "prepublishOnly": "node test/release-manifest-check.js"
+  },
+  "files": [
+    "bin",
+    "install.js",
+    "manifest.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "url": "git+https://github.com/yyjeqhc/webcodex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yyjeqhc/webcodex/issues"
+  },
+  "homepage": "https://github.com/yyjeqhc/webcodex#readme"
+}

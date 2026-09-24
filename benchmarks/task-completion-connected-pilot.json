@@ -1,0 +1,346 @@
+{
+  "surface": "Codex connector tool-await; model and final ChatGPT answer excluded",
+  "valid_e2e": false,
+  "candidate_included": false,
+  "project": "agent:device-redacted:benchmark-chadex",
+  "runtime_build": "72e7fb0decd4 clean; candidate not connected",
+  "baseline": "49f793fd66b054a38923c3f6e3ccd9c1aca6579f",
+  "fixture_evaluation": "Each arm produced exact diff 69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63, passed 43 business checks, then was reset by guarded fixture script",
+  "order": [
+    "fused/direct",
+    "fused/direct",
+    "direct/fused",
+    "fused/direct",
+    "direct/fused"
+  ],
+  "rows": [
+    {
+      "pair": 1,
+      "direct": {
+        "samples": [
+          {
+            "name": "search_project_texts",
+            "ms": 1306
+          },
+          {
+            "name": "read_files",
+            "ms": 996
+          },
+          {
+            "name": "apply_text_edits",
+            "ms": 5004
+          },
+          {
+            "name": "run_process",
+            "ms": 7052
+          },
+          {
+            "name": "show_changes",
+            "ms": 1313
+          }
+        ],
+        "total_ms": 15671
+      },
+      "fused": {
+        "samples": [
+          {
+            "name": "search_project_texts",
+            "ms": 1389
+          },
+          {
+            "name": "read_files",
+            "ms": 1070
+          },
+          {
+            "name": "execute_task",
+            "ms": 19524
+          }
+        ],
+        "total_ms": 21983
+      },
+      "paired_saved_ms": -6312
+    },
+    {
+      "pair": 2,
+      "direct": {
+        "samples": [
+          {
+            "name": "search_project_texts",
+            "ms": 1182
+          },
+          {
+            "name": "read_files",
+            "ms": 1118
+          },
+          {
+            "name": "apply_text_edits",
+            "ms": 4790
+          },
+          {
+            "name": "run_process",
+            "ms": 5592
+          },
+          {
+            "name": "show_changes",
+            "ms": 1390
+          }
+        ],
+        "total_ms": 14072
+      },
+      "fused": {
+        "samples": [
+          {
+            "name": "search_project_texts",
+            "ms": 1119
+          },
+          {
+            "name": "read_files",
+            "ms": 813
+          },
+          {
+            "name": "execute_task",
+            "ms": 9624
+          }
+        ],
+        "total_ms": 11556
+      },
+      "paired_saved_ms": 2516
+    },
+    {
+      "pair": 3,
+      "direct": {
+        "samples": [
+          {
+            "name": "search_project_texts",
+            "ms": 1123
+          },
+          {
+            "name": "read_files",
+            "ms": 1097
+          },
+          {
+            "name": "apply_text_edits",
+            "ms": 8206
+          },
+          {
+            "name": "run_process",
+            "ms": 5419
+          },
+          {
+            "name": "show_changes",
+            "ms": 1356
+          }
+        ],
+        "total_ms": 17201,
+        "evaluation": {
+          "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+          "business_checks": 43,
+          "changed_files": [
+            "pricing/discount.py",
+            "tests/test_checkout.py"
+          ]
+        }
+      },
+      "fused": {
+        "samples": [
+          {
+            "name": "search_project_texts",
+            "ms": 1005
+          },
+          {
+            "name": "read_files",
+            "ms": 1014
+          },
+          {
+            "name": "execute_task",
+            "ms": 10477
+          }
+        ],
+        "total_ms": 12496,
+        "evaluation": {
+          "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+          "business_checks": 43,
+          "changed_files": [
+            "pricing/discount.py",
+            "tests/test_checkout.py"
+          ]
+        },
+        "task_duration_ms": 5183,
+        "workspace_timings": {
+          "snapshot_ms": 2483,
+          "worktree_creation_ms": 2356,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 286,
+          "integration_ms": 90,
+          "validation_ms": 69,
+          "apply_back_ms": 190,
+          "cleanup_ms": 2077
+        },
+        "workspace_state": "cleaned"
+      },
+      "paired_saved_ms": 4705
+    },
+    {
+      "pair": 4,
+      "direct": {
+        "samples": [
+          {
+            "name": "search_project_texts",
+            "ms": 1225
+          },
+          {
+            "name": "read_files",
+            "ms": 1067
+          },
+          {
+            "name": "apply_text_edits",
+            "ms": 5250
+          },
+          {
+            "name": "run_process",
+            "ms": 4200
+          },
+          {
+            "name": "show_changes",
+            "ms": 1301
+          }
+        ],
+        "total_ms": 13043,
+        "evaluation": {
+          "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+          "business_checks": 43,
+          "changed_files": [
+            "pricing/discount.py",
+            "tests/test_checkout.py"
+          ]
+        }
+      },
+      "fused": {
+        "samples": [
+          {
+            "name": "search_project_texts",
+            "ms": 1042
+          },
+          {
+            "name": "read_files",
+            "ms": 758
+          },
+          {
+            "name": "execute_task",
+            "ms": 10411
+          }
+        ],
+        "total_ms": 12211,
+        "evaluation": {
+          "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+          "business_checks": 43,
+          "changed_files": [
+            "pricing/discount.py",
+            "tests/test_checkout.py"
+          ]
+        },
+        "task_duration_ms": 5295,
+        "workspace_timings": {
+          "snapshot_ms": 2501,
+          "worktree_creation_ms": 2343,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 281,
+          "integration_ms": 109,
+          "validation_ms": 69,
+          "apply_back_ms": 186,
+          "cleanup_ms": 2159
+        },
+        "workspace_state": "cleaned"
+      },
+      "paired_saved_ms": 832
+    },
+    {
+      "pair": 5,
+      "direct": {
+        "samples": [
+          {
+            "name": "search_project_texts",
+            "ms": 1014
+          },
+          {
+            "name": "read_files",
+            "ms": 1066
+          },
+          {
+            "name": "apply_text_edits",
+            "ms": 7049
+          },
+          {
+            "name": "run_process",
+            "ms": 4967
+          },
+          {
+            "name": "show_changes",
+            "ms": 1364
+          }
+        ],
+        "total_ms": 15460,
+        "evaluation": {
+          "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+          "business_checks": 43,
+          "changed_files": [
+            "pricing/discount.py",
+            "tests/test_checkout.py"
+          ]
+        }
+      },
+      "fused": {
+        "samples": [
+          {
+            "name": "search_project_texts",
+            "ms": 1096
+          },
+          {
+            "name": "read_files",
+            "ms": 1050
+          },
+          {
+            "name": "execute_task",
+            "ms": 10431
+          }
+        ],
+        "total_ms": 12577,
+        "evaluation": {
+          "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+          "business_checks": 43,
+          "changed_files": [
+            "pricing/discount.py",
+            "tests/test_checkout.py"
+          ]
+        },
+        "task_duration_ms": 5154,
+        "workspace_timings": {
+          "snapshot_ms": 2441,
+          "worktree_creation_ms": 2322,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 299,
+          "integration_ms": 108,
+          "validation_ms": 69,
+          "apply_back_ms": 195,
+          "cleanup_ms": 2064
+        },
+        "workspace_state": "cleaned"
+      },
+      "paired_saved_ms": 2883
+    }
+  ],
+  "summary": {
+    "direct_median_ms": 15460,
+    "fused_median_ms": 12496,
+    "paired_saved_median_ms": 2516,
+    "paired_saved_samples_ms": [
+      -6312,
+      2516,
+      4705,
+      832,
+      2883
+    ],
+    "one_fused_regression": true,
+    "valid_e2e": false
+  }
+}

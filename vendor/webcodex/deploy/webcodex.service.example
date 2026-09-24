@@ -1,0 +1,49 @@
+# systemd unit for the WebCodex server.
+#
+# Copy to /etc/systemd/system/webcodex.service, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now webcodex
+#
+# The server is a zero-project-config relay: it does NOT read a projects.toml
+# for runtime project discovery. Projects are registered by agents as
+# agent:<client_id>:<project_id>. Do not restore PROJECTS_CONFIG as the runtime
+# project source.
+#
+# Keep the server bound to 127.0.0.1 behind a reverse proxy that terminates
+# TLS. WEBCODEX_TOKEN is the application-layer gate; TLS is the transport gate.
+
+[Unit]
+Description=WebCodex runtime server (zero-config relay)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=webcodex
+Group=webcodex
+
+# Runtime data lives here (SQLite DB and durable runtime state). Persistent.
+StateDirectory=webcodex
+WorkingDirectory=/opt/webcodex
+
+ExecStart=/opt/webcodex/webcodex-server
+
+# Load secrets + public URL from the env file (chmod 0600, owner root).
+# See webcodex.env.example for the full set.
+EnvironmentFile=/etc/webcodex/webcodex.env
+
+# Sensible defaults; override in the env file if needed.
+Environment=RUST_LOG=info
+
+Restart=always
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/webcodex
+
+[Install]
+WantedBy=multi-user.target

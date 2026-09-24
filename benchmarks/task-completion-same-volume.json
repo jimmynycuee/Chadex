@@ -1,0 +1,2242 @@
+{
+  "surface": "isolated local MCP; no tunnel, approval or model",
+  "baseline": "49f793fd66b054a38923c3f6e3ccd9c1aca6579f",
+  "binary_sha256": {
+    "reference": {
+      "Helpers/chadex-helper": "806748765b8e9fee16cd924d86e090c83e1d4025d104325cd41560ca3cb5b479",
+      "Resources/chadex-runtime/chadex-runtime-cli": "d913b48ad17e8cce064a02676a9272f4c33e05dd2fc8f5c08b23d20f2f44e56b",
+      "Resources/chadex-runtime/chadex-runtime-server": "14c016401395613b4a3cface8bf4c8bbe14cb3b818f3cc688852ea415d483154",
+      "Resources/chadex-runtime/chadex-runtime-runner": "df945eeea841a68068e773cb438c93d2f1ce74e3089ae5d763589fab313c2f2e"
+    },
+    "candidate": {
+      "Helpers/chadex-helper": "81b6e9802186e50650ba954575f68428ed9c7f423cde635f8b5a2a88cd17e5d0",
+      "Resources/chadex-runtime/chadex-runtime-cli": "2bdd511df67a43486a40f396f77e05620af64192242a7a1576de0646d6b5201a",
+      "Resources/chadex-runtime/chadex-runtime-server": "f98639dd3fd0bbd976b64def552e3b79d4971c25bb5965ecb69bf726a3f08924",
+      "Resources/chadex-runtime/chadex-runtime-runner": "03eaa81084cc36c0283920c97562b14034b0fd4e71f033d16feebcd1facd8f0d"
+    }
+  },
+  "one_warmup_per_variant": true,
+  "rows": [
+    {
+      "variant": "reference/direct",
+      "iteration": 0,
+      "warmup": true,
+      "workflow_ms": 273.86612499685725,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790137604385,
+          "request_id_hash": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+          "server_trace_id": null,
+          "headers_ms": 73.24662499740953,
+          "stream_ms": 0.015458004781976342,
+          "total_ms": 73.2620830021915
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 270,
+          "response_bytes": 2105,
+          "started_at_ms": 1790137604458,
+          "request_id_hash": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+          "server_trace_id": null,
+          "headers_ms": 1.8513749964768067,
+          "stream_ms": 0.007792004907969385,
+          "total_ms": 1.859167001384776
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1007,
+          "response_bytes": 1140,
+          "started_at_ms": 1790137604460,
+          "request_id_hash": "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+          "server_trace_id": null,
+          "headers_ms": 13.30404200416524,
+          "stream_ms": 0.006415997631847858,
+          "total_ms": 13.310458001797087
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 280,
+          "response_bytes": 796,
+          "started_at_ms": 1790137604473,
+          "request_id_hash": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+          "server_trace_id": null,
+          "headers_ms": 66.01408300048206,
+          "stream_ms": 0.01129199517890811,
+          "total_ms": 66.02537499566097
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 188,
+          "response_bytes": 1364,
+          "started_at_ms": 1790137604540,
+          "request_id_hash": "ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d",
+          "server_trace_id": null,
+          "headers_ms": 119.06108400580706,
+          "stream_ms": 0.01016599708236754,
+          "total_ms": 119.07125000288943
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6111
+    },
+    {
+      "variant": "reference/fused",
+      "iteration": 0,
+      "warmup": true,
+      "workflow_ms": 1114.040667001973,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 285,
+          "worktree_creation_ms": 195,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 342,
+          "integration_ms": 107,
+          "validation_ms": 61,
+          "apply_back_ms": 193,
+          "cleanup_ms": 128
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 342,
+            "validation_ms": 61,
+            "integration_ms": 107,
+            "apply_back_ms": 193,
+            "cleanup_ms": 128
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790137604805,
+          "request_id_hash": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+          "server_trace_id": null,
+          "headers_ms": 8.91362500260584,
+          "stream_ms": 0.01383299968438223,
+          "total_ms": 8.927458002290223
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 296,
+          "response_bytes": 2104,
+          "started_at_ms": 1790137604814,
+          "request_id_hash": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+          "server_trace_id": null,
+          "headers_ms": 1.4732499985257164,
+          "stream_ms": 0.006207999831531197,
+          "total_ms": 1.4794579983572476
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1654,
+          "response_bytes": 4099,
+          "started_at_ms": 1790137604816,
+          "request_id_hash": "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+          "server_trace_id": null,
+          "headers_ms": 1103.2957499992335,
+          "stream_ms": 0.01708300260361284,
+          "total_ms": 1103.3128330018371
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6909
+    },
+    {
+      "variant": "candidate/direct",
+      "iteration": 0,
+      "warmup": true,
+      "workflow_ms": 205.5259999979171,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790137606083,
+          "request_id_hash": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+          "server_trace_id": "9e21271d-6eb3-4f8f-9913-fea2984ea46e",
+          "headers_ms": 13.572999996540602,
+          "stream_ms": 0.010458999895490706,
+          "total_ms": 13.583458996436093
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 270,
+          "response_bytes": 2101,
+          "started_at_ms": 1790137606097,
+          "request_id_hash": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+          "server_trace_id": "f1067212-9eb2-4bc4-b939-1a50b4a77e72",
+          "headers_ms": 2.3162500001490116,
+          "stream_ms": 0.006124995707068592,
+          "total_ms": 2.32237499585608
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1003,
+          "response_bytes": 1140,
+          "started_at_ms": 1790137606099,
+          "request_id_hash": "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+          "server_trace_id": "0b21f82c-c1e2-4734-b3a2-ab5295bce8de",
+          "headers_ms": 16.62762499472592,
+          "stream_ms": 0.004792003892362118,
+          "total_ms": 16.632416998618282
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 280,
+          "response_bytes": 796,
+          "started_at_ms": 1790137606116,
+          "request_id_hash": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+          "server_trace_id": "f8f31845-653a-44a0-969c-198d8c9601b0",
+          "headers_ms": 58.309584004746284,
+          "stream_ms": 0.007499998901039362,
+          "total_ms": 58.317084003647324
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 188,
+          "response_bytes": 1364,
+          "started_at_ms": 1790137606175,
+          "request_id_hash": "ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d",
+          "server_trace_id": "c2e91ebf-8fe8-40ff-9ff9-0083d1ebecbb",
+          "headers_ms": 114.37787500472041,
+          "stream_ms": 0.013999997463542968,
+          "total_ms": 114.39187500218395
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6107
+    },
+    {
+      "variant": "candidate/fused",
+      "iteration": 0,
+      "warmup": true,
+      "workflow_ms": 1106.964832993981,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 82,
+          "worktree_creation_ms": 265,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 234,
+          "integration_ms": 106,
+          "validation_ms": 65,
+          "apply_back_ms": 179,
+          "cleanup_ms": 168
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 234,
+            "validation_ms": 65,
+            "integration_ms": 106,
+            "apply_back_ms": 179,
+            "cleanup_ms": 168
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790137606430,
+          "request_id_hash": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+          "server_trace_id": "e08af2ca-7ead-4f64-8076-e6ed1df2c31d",
+          "headers_ms": 10.385459005192388,
+          "stream_ms": 0.011249998351559043,
+          "total_ms": 10.396709003543947
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 296,
+          "response_bytes": 2104,
+          "started_at_ms": 1790137606441,
+          "request_id_hash": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+          "server_trace_id": "1ba6f420-a14e-45ad-89cf-6a6038a653cb",
+          "headers_ms": 2.891792006266769,
+          "stream_ms": 0.006082998879719526,
+          "total_ms": 2.8978750051464885
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1654,
+          "response_bytes": 4097,
+          "started_at_ms": 1790137606444,
+          "request_id_hash": "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+          "server_trace_id": "15582311-ed77-4b02-b3fe-f341003255c5",
+          "headers_ms": 1093.3866249979474,
+          "stream_ms": 0.01083400275092572,
+          "total_ms": 1093.3974590006983
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6907
+    },
+    {
+      "variant": "candidate/fused",
+      "iteration": 1,
+      "warmup": false,
+      "workflow_ms": 1019.268625001132,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 82,
+          "worktree_creation_ms": 274,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 213,
+          "integration_ms": 96,
+          "validation_ms": 67,
+          "apply_back_ms": 173,
+          "cleanup_ms": 105
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 213,
+            "validation_ms": 67,
+            "integration_ms": 96,
+            "apply_back_ms": 173,
+            "cleanup_ms": 105
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790137607696,
+          "request_id_hash": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+          "server_trace_id": "87c97509-f794-4559-9a94-4279d44cd88d",
+          "headers_ms": 8.939166000345722,
+          "stream_ms": 0.010584000847302377,
+          "total_ms": 8.949750001193024
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 296,
+          "response_bytes": 2104,
+          "started_at_ms": 1790137607705,
+          "request_id_hash": "ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d",
+          "server_trace_id": "4feec474-090a-4922-a09c-984bbb3f0929",
+          "headers_ms": 2.2767080008634366,
+          "stream_ms": 0.0075830030255019665,
+          "total_ms": 2.2842910038889386
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1654,
+          "response_bytes": 4094,
+          "started_at_ms": 1790137607708,
+          "request_id_hash": "e7f6c011776e8db7cd330b54174fd76f7d0216b612387a5ffcfb81e6f0919683",
+          "server_trace_id": "ccd33ea8-a226-42ec-905f-42c4572bff4b",
+          "headers_ms": 1007.7422079993994,
+          "stream_ms": 0.010832998668774962,
+          "total_ms": 1007.7530409980682
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6904
+    },
+    {
+      "variant": "candidate/direct",
+      "iteration": 1,
+      "warmup": false,
+      "workflow_ms": 199.23345800634706,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790137608872,
+          "request_id_hash": "e7f6c011776e8db7cd330b54174fd76f7d0216b612387a5ffcfb81e6f0919683",
+          "server_trace_id": "0df70240-f77e-4e18-a3cc-2acc5d70086f",
+          "headers_ms": 9.118750000197906,
+          "stream_ms": 0.01049999991664663,
+          "total_ms": 9.129250000114553
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 270,
+          "response_bytes": 2101,
+          "started_at_ms": 1790137608881,
+          "request_id_hash": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+          "server_trace_id": "9a75c056-7d66-4a9f-8d2f-0ad75162565c",
+          "headers_ms": 2.2522079962072894,
+          "stream_ms": 0.00608300615567714,
+          "total_ms": 2.2582910023629665
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1003,
+          "response_bytes": 1140,
+          "started_at_ms": 1790137608883,
+          "request_id_hash": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3",
+          "server_trace_id": "cbd9cc18-2f7c-4781-a4e1-59589a66750b",
+          "headers_ms": 15.362666003056802,
+          "stream_ms": 0.0041669991333037615,
+          "total_ms": 15.366833002190106
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 280,
+          "response_bytes": 796,
+          "started_at_ms": 1790137608899,
+          "request_id_hash": "19581e27de7ced00ff1ce50b2047e7a567c76b1cbaebabe5ef03f7c3017bb5b7",
+          "server_trace_id": "ae483f0a-18f8-4a3b-8872-afd77121b53b",
+          "headers_ms": 51.775209001789335,
+          "stream_ms": 0.00841599830891937,
+          "total_ms": 51.783625000098255
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790137608951,
+          "request_id_hash": "4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5",
+          "server_trace_id": "e00831d4-c370-487c-b094-4f69004d7e1a",
+          "headers_ms": 120.41325000609504,
+          "stream_ms": 0.009957999282050878,
+          "total_ms": 120.42320800537709
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6108
+    },
+    {
+      "variant": "reference/fused",
+      "iteration": 1,
+      "warmup": false,
+      "workflow_ms": 1128.5399999978836,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 452,
+          "worktree_creation_ms": 357,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 211,
+          "integration_ms": 95,
+          "validation_ms": 60,
+          "apply_back_ms": 180,
+          "cleanup_ms": 132
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 211,
+            "validation_ms": 60,
+            "integration_ms": 95,
+            "apply_back_ms": 180,
+            "cleanup_ms": 132
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790137609206,
+          "request_id_hash": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+          "server_trace_id": null,
+          "headers_ms": 10.105584005941637,
+          "stream_ms": 0.011540993000380695,
+          "total_ms": 10.117124998942018
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 296,
+          "response_bytes": 2104,
+          "started_at_ms": 1790137609216,
+          "request_id_hash": "ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d",
+          "server_trace_id": null,
+          "headers_ms": 3.185541005223058,
+          "stream_ms": 0.007499998901039362,
+          "total_ms": 3.1930410041240975
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1654,
+          "response_bytes": 4096,
+          "started_at_ms": 1790137609220,
+          "request_id_hash": "e7f6c011776e8db7cd330b54174fd76f7d0216b612387a5ffcfb81e6f0919683",
+          "server_trace_id": null,
+          "headers_ms": 1114.9030000015046,
+          "stream_ms": 0.012415999663062394,
+          "total_ms": 1114.9154160011676
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6906
+    },
+    {
+      "variant": "reference/direct",
+      "iteration": 1,
+      "warmup": false,
+      "workflow_ms": 184.7458749980433,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790137610484,
+          "request_id_hash": "e7f6c011776e8db7cd330b54174fd76f7d0216b612387a5ffcfb81e6f0919683",
+          "server_trace_id": null,
+          "headers_ms": 12.199165998026729,
+          "stream_ms": 0.011541997082531452,
+          "total_ms": 12.21070799510926
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 270,
+          "response_bytes": 2105,
+          "started_at_ms": 1790137610496,
+          "request_id_hash": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+          "server_trace_id": null,
+          "headers_ms": 1.958959001058247,
+          "stream_ms": 0.007624999852851033,
+          "total_ms": 1.966584000911098
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1007,
+          "response_bytes": 1140,
+          "started_at_ms": 1790137610499,
+          "request_id_hash": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3",
+          "server_trace_id": null,
+          "headers_ms": 10.12883399380371,
+          "stream_ms": 0.005583002348430455,
+          "total_ms": 10.13441699615214
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 280,
+          "response_bytes": 796,
+          "started_at_ms": 1790137610509,
+          "request_id_hash": "19581e27de7ced00ff1ce50b2047e7a567c76b1cbaebabe5ef03f7c3017bb5b7",
+          "server_trace_id": null,
+          "headers_ms": 51.375584000197705,
+          "stream_ms": 0.008249997335951775,
+          "total_ms": 51.38383399753366
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790137610560,
+          "request_id_hash": "4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5",
+          "server_trace_id": null,
+          "headers_ms": 108.75358399789548,
+          "stream_ms": 0.008875002095010132,
+          "total_ms": 108.76245899999049
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6112
+    },
+    {
+      "variant": "reference/direct",
+      "iteration": 2,
+      "warmup": false,
+      "workflow_ms": 189.0380830009235,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137610812,
+          "request_id_hash": "4fc82b26aecb47d2868c4efbe3581732a3e7cbcc6c2efb32062c08170a05eeb8",
+          "server_trace_id": null,
+          "headers_ms": 10.211749999143649,
+          "stream_ms": 0.01087499549612403,
+          "total_ms": 10.222624994639773
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2106,
+          "started_at_ms": 1790137610822,
+          "request_id_hash": "6b51d431df5d7f141cbececcf79edf3dd861c3b4069f0b11661a3eefacbba918",
+          "server_trace_id": null,
+          "headers_ms": 2.9680000006919727,
+          "stream_ms": 0.007208000170066953,
+          "total_ms": 2.9752080008620396
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790137610825,
+          "request_id_hash": "3fdba35f04dc8c462986c992bcf875546257113072a909c162f7e470e581e278",
+          "server_trace_id": null,
+          "headers_ms": 14.194000003044493,
+          "stream_ms": 0.006249996658880264,
+          "total_ms": 14.200249999703374
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790137610839,
+          "request_id_hash": "8527a891e224136950ff32ca212b45bc93f69fbb801c3b1ebedac52775f99e61",
+          "server_trace_id": null,
+          "headers_ms": 52.02470799849834,
+          "stream_ms": 0.00875000114319846,
+          "total_ms": 52.03345799964154
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790137610891,
+          "request_id_hash": "e629fa6598d732768f7c726b4b621285f9c3b85303900aa912017db7617d8bdb",
+          "server_trace_id": null,
+          "headers_ms": 109.30812500009779,
+          "stream_ms": 0.009582996426615864,
+          "total_ms": 109.3177079965244
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6116
+    },
+    {
+      "variant": "reference/fused",
+      "iteration": 2,
+      "warmup": false,
+      "workflow_ms": 1215.8275420006248,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 429,
+          "worktree_creation_ms": 336,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 213,
+          "integration_ms": 96,
+          "validation_ms": 61,
+          "apply_back_ms": 280,
+          "cleanup_ms": 135
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 213,
+            "validation_ms": 61,
+            "integration_ms": 96,
+            "apply_back_ms": 280,
+            "cleanup_ms": 135
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790137611139,
+          "request_id_hash": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+          "server_trace_id": null,
+          "headers_ms": 10.391417003120296,
+          "stream_ms": 0.010083000233862549,
+          "total_ms": 10.401500003354158
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 296,
+          "response_bytes": 2104,
+          "started_at_ms": 1790137611149,
+          "request_id_hash": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3",
+          "server_trace_id": null,
+          "headers_ms": 2.195790999394376,
+          "stream_ms": 0.00620899663772434,
+          "total_ms": 2.2019999960321
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1654,
+          "response_bytes": 4096,
+          "started_at_ms": 1790137611151,
+          "request_id_hash": "19581e27de7ced00ff1ce50b2047e7a567c76b1cbaebabe5ef03f7c3017bb5b7",
+          "server_trace_id": null,
+          "headers_ms": 1202.9380419990048,
+          "stream_ms": 0.012999997125007212,
+          "total_ms": 1202.9510419961298
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6906
+    },
+    {
+      "variant": "candidate/direct",
+      "iteration": 2,
+      "warmup": false,
+      "workflow_ms": 186.0484999997425,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137612541,
+          "request_id_hash": "4fc82b26aecb47d2868c4efbe3581732a3e7cbcc6c2efb32062c08170a05eeb8",
+          "server_trace_id": "cff11712-2878-49ce-ba6d-f7a4eafc14f3",
+          "headers_ms": 8.08079100534087,
+          "stream_ms": 0.01091699959943071,
+          "total_ms": 8.091708004940301
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2102,
+          "started_at_ms": 1790137612550,
+          "request_id_hash": "6b51d431df5d7f141cbececcf79edf3dd861c3b4069f0b11661a3eefacbba918",
+          "server_trace_id": "9585ccd6-1837-4e8c-881d-7994bafb4eda",
+          "headers_ms": 1.4574160013580695,
+          "stream_ms": 0.008208997314795852,
+          "total_ms": 1.4656249986728653
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1004,
+          "response_bytes": 1141,
+          "started_at_ms": 1790137612551,
+          "request_id_hash": "3fdba35f04dc8c462986c992bcf875546257113072a909c162f7e470e581e278",
+          "server_trace_id": "75dd22d7-b18c-4a18-9a88-389ef1d67d0d",
+          "headers_ms": 16.01712500269059,
+          "stream_ms": 0.007832997653167695,
+          "total_ms": 16.02495800034376
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790137612567,
+          "request_id_hash": "8527a891e224136950ff32ca212b45bc93f69fbb801c3b1ebedac52775f99e61",
+          "server_trace_id": "26732eb5-c169-44ac-8ec1-d26f1578422c",
+          "headers_ms": 51.758832996711135,
+          "stream_ms": 0.009707997378427535,
+          "total_ms": 51.76854099408956
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790137612619,
+          "request_id_hash": "e629fa6598d732768f7c726b4b621285f9c3b85303900aa912017db7617d8bdb",
+          "server_trace_id": "b6b13555-1dbb-4500-b0f0-bda82bf4b98c",
+          "headers_ms": 108.35316599695943,
+          "stream_ms": 0.010042000212706625,
+          "total_ms": 108.36320799717214
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6112
+    },
+    {
+      "variant": "candidate/fused",
+      "iteration": 2,
+      "warmup": false,
+      "workflow_ms": 992.0777500010445,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 82,
+          "worktree_creation_ms": 228,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 215,
+          "integration_ms": 100,
+          "validation_ms": 60,
+          "apply_back_ms": 198,
+          "cleanup_ms": 104
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 215,
+            "validation_ms": 60,
+            "integration_ms": 100,
+            "apply_back_ms": 198,
+            "cleanup_ms": 104
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 411,
+          "response_bytes": 706,
+          "started_at_ms": 1790137612878,
+          "request_id_hash": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+          "server_trace_id": "7acaf48e-5975-40ac-b05c-fecb019412f9",
+          "headers_ms": 8.222165997722186,
+          "stream_ms": 0.011625001206994057,
+          "total_ms": 8.23379099892918
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 296,
+          "response_bytes": 2104,
+          "started_at_ms": 1790137612886,
+          "request_id_hash": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3",
+          "server_trace_id": "cc5cbfcc-9eee-4a40-933c-215e12dad78e",
+          "headers_ms": 1.4074999999138527,
+          "stream_ms": 0.009750001481734216,
+          "total_ms": 1.4172500013955869
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1654,
+          "response_bytes": 4096,
+          "started_at_ms": 1790137612888,
+          "request_id_hash": "19581e27de7ced00ff1ce50b2047e7a567c76b1cbaebabe5ef03f7c3017bb5b7",
+          "server_trace_id": "eaba5cf9-71a0-4b4c-9d81-66b115d87940",
+          "headers_ms": 982.1267920051469,
+          "stream_ms": 0.012124997738283128,
+          "total_ms": 982.1389170028851
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6906
+    },
+    {
+      "variant": "candidate/fused",
+      "iteration": 3,
+      "warmup": false,
+      "workflow_ms": 997.2019580018241,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 88,
+          "worktree_creation_ms": 249,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 202,
+          "integration_ms": 99,
+          "validation_ms": 62,
+          "apply_back_ms": 185,
+          "cleanup_ms": 103
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 202,
+            "validation_ms": 62,
+            "integration_ms": 99,
+            "apply_back_ms": 185,
+            "cleanup_ms": 103
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137614023,
+          "request_id_hash": "4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5",
+          "server_trace_id": "ba1f0e31-9537-43ab-b6fd-a46d98388dd5",
+          "headers_ms": 10.1215830000001,
+          "stream_ms": 0.009083996701519936,
+          "total_ms": 10.13066699670162
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 297,
+          "response_bytes": 2105,
+          "started_at_ms": 1790137614033,
+          "request_id_hash": "4fc82b26aecb47d2868c4efbe3581732a3e7cbcc6c2efb32062c08170a05eeb8",
+          "server_trace_id": "ec453c9f-17c4-43eb-9f39-cc88fe69d8d7",
+          "headers_ms": 2.1792090046801604,
+          "stream_ms": 0.008332994184456766,
+          "total_ms": 2.187541998864617
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1655,
+          "response_bytes": 4095,
+          "started_at_ms": 1790137614035,
+          "request_id_hash": "6b51d431df5d7f141cbececcf79edf3dd861c3b4069f0b11661a3eefacbba918",
+          "server_trace_id": "5bb03551-395f-413d-9039-e09e16ce9851",
+          "headers_ms": 984.5647920010379,
+          "stream_ms": 0.011124997399747372,
+          "total_ms": 984.5759169984376
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6907
+    },
+    {
+      "variant": "candidate/direct",
+      "iteration": 3,
+      "warmup": false,
+      "workflow_ms": 177.19983300048625,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137615174,
+          "request_id_hash": "b17ef6d19c7a5b1ee83b907c595526dcb1eb06db8227d650d5dda0a9f4ce8cd9",
+          "server_trace_id": "6baab241-e124-424f-acc0-4d72053557c0",
+          "headers_ms": 8.842292001645546,
+          "stream_ms": 0.010957999620586634,
+          "total_ms": 8.853250001266133
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2102,
+          "started_at_ms": 1790137615183,
+          "request_id_hash": "4523540f1504cd17100c4835e85b7eefd49911580f8efff0599a8f283be6b9e3",
+          "server_trace_id": "9eeeb561-f143-4f71-aaed-238333bcf9ae",
+          "headers_ms": 2.1267920019454323,
+          "stream_ms": 0.005916997906751931,
+          "total_ms": 2.132708999852184
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1004,
+          "response_bytes": 1141,
+          "started_at_ms": 1790137615185,
+          "request_id_hash": "4ec9599fc203d176a301536c2e091a19bc852759b255bd6818810a42c5fed14a",
+          "server_trace_id": "9ed170e3-aa28-47ca-ab6f-376acb85c879",
+          "headers_ms": 13.64770900545409,
+          "stream_ms": 0.004749999789055437,
+          "total_ms": 13.652459005243145
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790137615199,
+          "request_id_hash": "9400f1b21cb527d7fa3d3eabba93557a18ebe7a2ca4e471cfe5e4c5b4ca7f767",
+          "server_trace_id": "9464ce4a-0f88-44b2-bd4b-8bf4f5b23ade",
+          "headers_ms": 45.41108400007943,
+          "stream_ms": 0.007833004929125309,
+          "total_ms": 45.41891700500855
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790137615245,
+          "request_id_hash": "f5ca38f748a1d6eaf726b8a42fb575c3c71f1864a8143301782de13da2d9202b",
+          "server_trace_id": "034f3f0a-64d9-419a-aa10-b6e9e733ae82",
+          "headers_ms": 106.87120900547598,
+          "stream_ms": 0.008540999260731041,
+          "total_ms": 106.8797500047367
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6112
+    },
+    {
+      "variant": "reference/fused",
+      "iteration": 3,
+      "warmup": false,
+      "workflow_ms": 1087.6306669961195,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 429,
+          "worktree_creation_ms": 340,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 203,
+          "integration_ms": 96,
+          "validation_ms": 61,
+          "apply_back_ms": 178,
+          "cleanup_ms": 120
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 203,
+            "validation_ms": 61,
+            "integration_ms": 96,
+            "apply_back_ms": 178,
+            "cleanup_ms": 120
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137615486,
+          "request_id_hash": "4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5",
+          "server_trace_id": null,
+          "headers_ms": 10.35879199480405,
+          "stream_ms": 0.011625001206994057,
+          "total_ms": 10.370416996011045
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 297,
+          "response_bytes": 2105,
+          "started_at_ms": 1790137615496,
+          "request_id_hash": "4fc82b26aecb47d2868c4efbe3581732a3e7cbcc6c2efb32062c08170a05eeb8",
+          "server_trace_id": null,
+          "headers_ms": 2.0657919958466664,
+          "stream_ms": 0.006833004590589553,
+          "total_ms": 2.072625000437256
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1655,
+          "response_bytes": 4097,
+          "started_at_ms": 1790137615498,
+          "request_id_hash": "6b51d431df5d7f141cbececcf79edf3dd861c3b4069f0b11661a3eefacbba918",
+          "server_trace_id": null,
+          "headers_ms": 1074.9045000047772,
+          "stream_ms": 0.011124997399747372,
+          "total_ms": 1074.915625002177
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6909
+    },
+    {
+      "variant": "reference/direct",
+      "iteration": 3,
+      "warmup": false,
+      "workflow_ms": 209.02445800311398,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137616717,
+          "request_id_hash": "b17ef6d19c7a5b1ee83b907c595526dcb1eb06db8227d650d5dda0a9f4ce8cd9",
+          "server_trace_id": null,
+          "headers_ms": 9.918790994561277,
+          "stream_ms": 0.011542004358489066,
+          "total_ms": 9.930332998919766
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2106,
+          "started_at_ms": 1790137616727,
+          "request_id_hash": "4523540f1504cd17100c4835e85b7eefd49911580f8efff0599a8f283be6b9e3",
+          "server_trace_id": null,
+          "headers_ms": 2.5467079976806417,
+          "stream_ms": 0.00687500141793862,
+          "total_ms": 2.5535829990985803
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790137616730,
+          "request_id_hash": "4ec9599fc203d176a301536c2e091a19bc852759b255bd6818810a42c5fed14a",
+          "server_trace_id": null,
+          "headers_ms": 13.090000000374857,
+          "stream_ms": 0.004208995960652828,
+          "total_ms": 13.09420899633551
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790137616743,
+          "request_id_hash": "9400f1b21cb527d7fa3d3eabba93557a18ebe7a2ca4e471cfe5e4c5b4ca7f767",
+          "server_trace_id": null,
+          "headers_ms": 51.90800000127638,
+          "stream_ms": 0.010041003406513482,
+          "total_ms": 51.91804100468289
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790137616795,
+          "request_id_hash": "f5ca38f748a1d6eaf726b8a42fb575c3c71f1864a8143301782de13da2d9202b",
+          "server_trace_id": null,
+          "headers_ms": 131.2288749977597,
+          "stream_ms": 0.009916999260894954,
+          "total_ms": 131.2387919970206
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6116
+    },
+    {
+      "variant": "reference/direct",
+      "iteration": 4,
+      "warmup": false,
+      "workflow_ms": 187.9670409980463,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137617066,
+          "request_id_hash": "6f4b6612125fb3a0daecd2799dfd6c9c299424fd920f9b308110a2c1fbd8f443",
+          "server_trace_id": null,
+          "headers_ms": 9.59504200000083,
+          "stream_ms": 0.010750001820269972,
+          "total_ms": 9.6057920018211
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2106,
+          "started_at_ms": 1790137617076,
+          "request_id_hash": "785f3ec7eb32f30b90cd0fcf3657d388b5ff4297f2f9716ff66e9b69c05ddd09",
+          "server_trace_id": null,
+          "headers_ms": 2.97191600111546,
+          "stream_ms": 0.006583999493159354,
+          "total_ms": 2.9785000006086193
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790137617079,
+          "request_id_hash": "535fa30d7e25dd8a49f1536779734ec8286108d115da5045d77f3b4185d8f790",
+          "server_trace_id": null,
+          "headers_ms": 14.163167004880961,
+          "stream_ms": 0.0049579975893720984,
+          "total_ms": 14.168125002470333
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790137617093,
+          "request_id_hash": "c2356069e9d1e79ca924378153cfbbfb4d4416b1f99d41a2940bfdb66c5319db",
+          "server_trace_id": null,
+          "headers_ms": 51.966249993711244,
+          "stream_ms": 0.012250005966052413,
+          "total_ms": 51.9784999996773
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790137617145,
+          "request_id_hash": "b7a56873cd771f2c446d369b649430b65a756ba278ff97ec81bb6f55b2e73569",
+          "server_trace_id": null,
+          "headers_ms": 108.94129200460156,
+          "stream_ms": 0.01029099803417921,
+          "total_ms": 108.95158300263574
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6116
+    },
+    {
+      "variant": "reference/fused",
+      "iteration": 4,
+      "warmup": false,
+      "workflow_ms": 1110.4390000036801,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 447,
+          "worktree_creation_ms": 351,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 203,
+          "integration_ms": 89,
+          "validation_ms": 60,
+          "apply_back_ms": 173,
+          "cleanup_ms": 132
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 203,
+            "validation_ms": 60,
+            "integration_ms": 89,
+            "apply_back_ms": 173,
+            "cleanup_ms": 132
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137617459,
+          "request_id_hash": "3fdba35f04dc8c462986c992bcf875546257113072a909c162f7e470e581e278",
+          "server_trace_id": null,
+          "headers_ms": 10.973958000249695,
+          "stream_ms": 0.014666999049950391,
+          "total_ms": 10.988624999299645
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 297,
+          "response_bytes": 2105,
+          "started_at_ms": 1790137617470,
+          "request_id_hash": "8527a891e224136950ff32ca212b45bc93f69fbb801c3b1ebedac52775f99e61",
+          "server_trace_id": null,
+          "headers_ms": 3.355707995069679,
+          "stream_ms": 0.012458003766369075,
+          "total_ms": 3.368165998836048
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1655,
+          "response_bytes": 4097,
+          "started_at_ms": 1790137617474,
+          "request_id_hash": "e629fa6598d732768f7c726b4b621285f9c3b85303900aa912017db7617d8bdb",
+          "server_trace_id": null,
+          "headers_ms": 1095.7494579997729,
+          "stream_ms": 0.014875004126224667,
+          "total_ms": 1095.764333003899
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6909
+    },
+    {
+      "variant": "candidate/direct",
+      "iteration": 4,
+      "warmup": false,
+      "workflow_ms": 193.268667004304,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137618714,
+          "request_id_hash": "6f4b6612125fb3a0daecd2799dfd6c9c299424fd920f9b308110a2c1fbd8f443",
+          "server_trace_id": "2ae29697-ceb8-4d2b-9292-89eb068a9d6c",
+          "headers_ms": 10.11254200420808,
+          "stream_ms": 0.010666997695807368,
+          "total_ms": 10.123209001903888
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2102,
+          "started_at_ms": 1790137618724,
+          "request_id_hash": "785f3ec7eb32f30b90cd0fcf3657d388b5ff4297f2f9716ff66e9b69c05ddd09",
+          "server_trace_id": "8a8dede4-b4a0-4fc2-bee2-89b48e701fa0",
+          "headers_ms": 2.6802499996847473,
+          "stream_ms": 0.007582995749544352,
+          "total_ms": 2.6878329954342917
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1004,
+          "response_bytes": 1141,
+          "started_at_ms": 1790137618727,
+          "request_id_hash": "535fa30d7e25dd8a49f1536779734ec8286108d115da5045d77f3b4185d8f790",
+          "server_trace_id": "562d09ce-7196-4d5d-8c21-7ab2e35de43e",
+          "headers_ms": 14.167667002766393,
+          "stream_ms": 0.0051249953685328364,
+          "total_ms": 14.172791998134926
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790137618741,
+          "request_id_hash": "c2356069e9d1e79ca924378153cfbbfb4d4416b1f99d41a2940bfdb66c5319db",
+          "server_trace_id": "0b02f9dc-423a-4deb-8536-ad958b12cfe6",
+          "headers_ms": 51.21891699673142,
+          "stream_ms": 0.008875002095010132,
+          "total_ms": 51.22779199882643
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790137618792,
+          "request_id_hash": "b7a56873cd771f2c446d369b649430b65a756ba278ff97ec81bb6f55b2e73569",
+          "server_trace_id": "e6e28193-c638-44cb-809b-f5b03e1d0ba3",
+          "headers_ms": 114.7537500000908,
+          "stream_ms": 0.009499999578110874,
+          "total_ms": 114.76324999966891
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6112
+    },
+    {
+      "variant": "candidate/fused",
+      "iteration": 4,
+      "warmup": false,
+      "workflow_ms": 973.1983330057119,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 88,
+          "worktree_creation_ms": 237,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 199,
+          "integration_ms": 94,
+          "validation_ms": 60,
+          "apply_back_ms": 180,
+          "cleanup_ms": 104
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 199,
+            "validation_ms": 60,
+            "integration_ms": 94,
+            "apply_back_ms": 180,
+            "cleanup_ms": 104
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137619052,
+          "request_id_hash": "3fdba35f04dc8c462986c992bcf875546257113072a909c162f7e470e581e278",
+          "server_trace_id": "b74e2bfb-cd1a-4867-9945-80fedfe06eb7",
+          "headers_ms": 11.634874994342681,
+          "stream_ms": 0.012875003449153155,
+          "total_ms": 11.647749997791834
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 297,
+          "response_bytes": 2105,
+          "started_at_ms": 1790137619063,
+          "request_id_hash": "8527a891e224136950ff32ca212b45bc93f69fbb801c3b1ebedac52775f99e61",
+          "server_trace_id": "5e9aa81a-f2e9-44f0-85d9-9cf965a06e7e",
+          "headers_ms": 2.3623339948244393,
+          "stream_ms": 0.0077500008046627045,
+          "total_ms": 2.370083995629102
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1655,
+          "response_bytes": 4095,
+          "started_at_ms": 1790137619066,
+          "request_id_hash": "e629fa6598d732768f7c726b4b621285f9c3b85303900aa912017db7617d8bdb",
+          "server_trace_id": "fcd54027-0381-4c88-af83-eb3d64eeb420",
+          "headers_ms": 958.8694580015726,
+          "stream_ms": 0.010584000847302377,
+          "total_ms": 958.8800420024199
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6907
+    },
+    {
+      "variant": "candidate/fused",
+      "iteration": 5,
+      "warmup": false,
+      "workflow_ms": 989.9912090040743,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 82,
+          "worktree_creation_ms": 254,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 204,
+          "integration_ms": 95,
+          "validation_ms": 60,
+          "apply_back_ms": 181,
+          "cleanup_ms": 108
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 204,
+            "validation_ms": 60,
+            "integration_ms": 95,
+            "apply_back_ms": 181,
+            "cleanup_ms": 108
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137620185,
+          "request_id_hash": "b17ef6d19c7a5b1ee83b907c595526dcb1eb06db8227d650d5dda0a9f4ce8cd9",
+          "server_trace_id": "f42098d0-5cde-4019-9cd4-a7657577e2e7",
+          "headers_ms": 10.21749999927124,
+          "stream_ms": 0.010374998964834958,
+          "total_ms": 10.227874998236075
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 297,
+          "response_bytes": 2105,
+          "started_at_ms": 1790137620195,
+          "request_id_hash": "4523540f1504cd17100c4835e85b7eefd49911580f8efff0599a8f283be6b9e3",
+          "server_trace_id": "23d6ce3e-7683-45e6-ab56-4eafec86e026",
+          "headers_ms": 2.601416999823414,
+          "stream_ms": 0.006791000487282872,
+          "total_ms": 2.6082080003106967
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1655,
+          "response_bytes": 4095,
+          "started_at_ms": 1790137620198,
+          "request_id_hash": "4ec9599fc203d176a301536c2e091a19bc852759b255bd6818810a42c5fed14a",
+          "server_trace_id": "55c68fdb-2594-4fa9-b8ce-726df98613e1",
+          "headers_ms": 976.8665419978788,
+          "stream_ms": 0.012625001545529813,
+          "total_ms": 976.8791669994243
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6907
+    },
+    {
+      "variant": "candidate/direct",
+      "iteration": 5,
+      "warmup": false,
+      "workflow_ms": 206.36433299659984,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137621335,
+          "request_id_hash": "5f9c4ab08cac7457e9111a30e4664920607ea2c115a1433d7be98e97e64244ca",
+          "server_trace_id": "9cd61169-1c11-4727-bb30-d62995c3b00d",
+          "headers_ms": 10.245709003356751,
+          "stream_ms": 0.012207994586788118,
+          "total_ms": 10.25791699794354
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2102,
+          "started_at_ms": 1790137621346,
+          "request_id_hash": "670671cd97404156226e507973f2ab8330d3022ca96e0c93bdbdb320c41adcaf",
+          "server_trace_id": "9e2d19a3-4c72-4ab2-9ed9-b2f6f7635f37",
+          "headers_ms": 2.799082998535596,
+          "stream_ms": 0.008458999218419194,
+          "total_ms": 2.807541997754015
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1004,
+          "response_bytes": 1141,
+          "started_at_ms": 1790137621348,
+          "request_id_hash": "59e19706d51d39f66711c2653cd7eb1291c94d9b55eb14bda74ce4dc636d015a",
+          "server_trace_id": "b41f29ab-f9ac-4e66-b250-f3631e6fa134",
+          "headers_ms": 13.368499996431638,
+          "stream_ms": 0.008125003660097718,
+          "total_ms": 13.376625000091735
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790137621362,
+          "request_id_hash": "35135aaa6cc23891b40cb3f378c53a17a1127210ce60e125ccf03efcfdaec458",
+          "server_trace_id": "dfd3724a-0192-42ec-ac9d-b06aff41b980",
+          "headers_ms": 52.107000003161374,
+          "stream_ms": 0.007791997632011771,
+          "total_ms": 52.114792000793386
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790137621414,
+          "request_id_hash": "624b60c58c9d8bfb6ff1886c2fd605d2adeb6ea4da576068201b6c6958ce93f4",
+          "server_trace_id": "74612a2c-815c-4ca4-8a6e-7bef2e4e4254",
+          "headers_ms": 127.47474999923725,
+          "stream_ms": 0.01208300091093406,
+          "total_ms": 127.48683300014818
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6112
+    },
+    {
+      "variant": "reference/fused",
+      "iteration": 5,
+      "warmup": false,
+      "workflow_ms": 1205.0511249981355,
+      "result": {
+        "success": true,
+        "task_status": "completed",
+        "execution_state": "succeeded",
+        "test_ok": true,
+        "completed_steps": 3,
+        "workspace_state": "cleaned",
+        "workspace_timings": {
+          "snapshot_ms": 484,
+          "worktree_creation_ms": 389,
+          "scheduler_wait_ms": 0,
+          "execution_ms": 226,
+          "integration_ms": 95,
+          "validation_ms": 73,
+          "apply_back_ms": 190,
+          "cleanup_ms": 141
+        },
+        "counters": {
+          "planned_mutations": 1,
+          "planned_changed_files": 2,
+          "completed_mutations": 1,
+          "retries": 0,
+          "result_bytes_before": 2247,
+          "result_bytes_after": 410,
+          "performance": {
+            "execution_ms": 226,
+            "validation_ms": 73,
+            "integration_ms": 95,
+            "apply_back_ms": 190,
+            "cleanup_ms": 141
+          }
+        },
+        "failure_kind": null,
+        "error_kind": null,
+        "reason_code": null
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137621691,
+          "request_id_hash": "b17ef6d19c7a5b1ee83b907c595526dcb1eb06db8227d650d5dda0a9f4ce8cd9",
+          "server_trace_id": null,
+          "headers_ms": 10.478791999048553,
+          "stream_ms": 0.01333300315309316,
+          "total_ms": 10.492125002201647
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 297,
+          "response_bytes": 2105,
+          "started_at_ms": 1790137621702,
+          "request_id_hash": "4523540f1504cd17100c4835e85b7eefd49911580f8efff0599a8f283be6b9e3",
+          "server_trace_id": null,
+          "headers_ms": 3.3632920021773316,
+          "stream_ms": 0.011374999303370714,
+          "total_ms": 3.3746670014807023
+        },
+        {
+          "tool": "call_runtime_tool",
+          "request_bytes": 1655,
+          "response_bytes": 4097,
+          "started_at_ms": 1790137621705,
+          "request_id_hash": "4ec9599fc203d176a301536c2e091a19bc852759b255bd6818810a42c5fed14a",
+          "server_trace_id": null,
+          "headers_ms": 1190.8677089959383,
+          "stream_ms": 0.012208001862745732,
+          "total_ms": 1190.879916997801
+        }
+      ],
+      "outer_calls": 3,
+      "response_bytes": 6909
+    },
+    {
+      "variant": "reference/direct",
+      "iteration": 5,
+      "warmup": false,
+      "workflow_ms": 194.89870800316567,
+      "result": {
+        "internal_steps": 5,
+        "retries": 0,
+        "test_ok": true,
+        "review_changed_files": 2,
+        "task_status": "completed"
+      },
+      "evaluator": {
+        "passed": true,
+        "business_rule": true,
+        "tests": true,
+        "tests_run": 4,
+        "git_diff_check": true,
+        "changed_files_exact": true,
+        "changed_files": [
+          "pricing/discount.py",
+          "tests/test_checkout.py"
+        ]
+      },
+      "diff_sha256": "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63",
+      "passed": true,
+      "samples": [
+        {
+          "tool": "search_project_texts",
+          "request_bytes": 412,
+          "response_bytes": 707,
+          "started_at_ms": 1790137623051,
+          "request_id_hash": "5f9c4ab08cac7457e9111a30e4664920607ea2c115a1433d7be98e97e64244ca",
+          "server_trace_id": null,
+          "headers_ms": 10.199625001405366,
+          "stream_ms": 0.013249999028630555,
+          "total_ms": 10.212875000433996
+        },
+        {
+          "tool": "read_files",
+          "request_bytes": 271,
+          "response_bytes": 2106,
+          "started_at_ms": 1790137623061,
+          "request_id_hash": "670671cd97404156226e507973f2ab8330d3022ca96e0c93bdbdb320c41adcaf",
+          "server_trace_id": null,
+          "headers_ms": 3.923708005459048,
+          "stream_ms": 0.008625000191386789,
+          "total_ms": 3.9323330056504346
+        },
+        {
+          "tool": "apply_text_edits",
+          "request_bytes": 1008,
+          "response_bytes": 1141,
+          "started_at_ms": 1790137623065,
+          "request_id_hash": "59e19706d51d39f66711c2653cd7eb1291c94d9b55eb14bda74ce4dc636d015a",
+          "server_trace_id": null,
+          "headers_ms": 13.672082997800317,
+          "stream_ms": 0.008625000191386789,
+          "total_ms": 13.680707997991703
+        },
+        {
+          "tool": "run_process",
+          "request_bytes": 281,
+          "response_bytes": 797,
+          "started_at_ms": 1790137623079,
+          "request_id_hash": "35135aaa6cc23891b40cb3f378c53a17a1127210ce60e125ccf03efcfdaec458",
+          "server_trace_id": null,
+          "headers_ms": 52.166540997859556,
+          "stream_ms": 0.008167000487446785,
+          "total_ms": 52.174707998347
+        },
+        {
+          "tool": "show_changes",
+          "request_bytes": 189,
+          "response_bytes": 1365,
+          "started_at_ms": 1790137623131,
+          "request_id_hash": "624b60c58c9d8bfb6ff1886c2fd605d2adeb6ea4da576068201b6c6958ce93f4",
+          "server_trace_id": null,
+          "headers_ms": 114.56475000159116,
+          "stream_ms": 0.00875000114319846,
+          "total_ms": 114.57350000273436
+        }
+      ],
+      "outer_calls": 5,
+      "response_bytes": 6116
+    }
+  ],
+  "iterations_per_arm": 5,
+  "concurrent_writers": false,
+  "guards": "direct uses source read_revision; fused guards its execution snapshot, not the prior source read",
+  "timing_note": "workspace validation_ms is a subset of execution_ms; do not sum all workspace fields",
+  "summary": {
+    "reference/direct": {
+      "workflow_ms": {
+        "median": 189.038,
+        "p95": 209.024,
+        "min": 184.746,
+        "max": 209.024
+      },
+      "outer_calls": [
+        5
+      ],
+      "response_bytes_median": 6116
+    },
+    "reference/fused": {
+      "workflow_ms": {
+        "median": 1128.54,
+        "p95": 1215.828,
+        "min": 1087.631,
+        "max": 1215.828
+      },
+      "outer_calls": [
+        3
+      ],
+      "response_bytes_median": 6909
+    },
+    "candidate/direct": {
+      "workflow_ms": {
+        "median": 193.269,
+        "p95": 206.364,
+        "min": 177.2,
+        "max": 206.364
+      },
+      "outer_calls": [
+        5
+      ],
+      "response_bytes_median": 6112
+    },
+    "candidate/fused": {
+      "workflow_ms": {
+        "median": 992.078,
+        "p95": 1019.269,
+        "min": 973.198,
+        "max": 1019.269
+      },
+      "outer_calls": [
+        3
+      ],
+      "response_bytes_median": 6907
+    }
+  },
+  "paired_break_even_external_ms_per_saved_call": {
+    "reference": 471.89706249992014,
+    "candidate": 403.014625000651
+  },
+  "paired_candidate_minus_reference_ms": {
+    "direct": {
+      "median": 5.302,
+      "p95": 14.488,
+      "min": -31.825,
+      "max": 14.488
+    },
+    "fused": {
+      "median": -137.241,
+      "p95": -90.429,
+      "min": -223.75,
+      "max": -90.429
+    }
+  },
+  "passed": true
+}
