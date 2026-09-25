@@ -338,6 +338,16 @@ fn file_apply_text_edits_replace_exact_writes_atomically() {
     assert_eq!(out["changed"], true);
     assert_eq!(out["would_change"], true);
     assert_eq!(out["changed_paths"][0], "target.txt");
+    assert_eq!(
+        out["files"][0]["diff_preview"]["format"],
+        "bounded_unified_excerpt_v1"
+    );
+    let preview_lines = out["files"][0]["diff_preview"]["lines"]
+        .as_array()
+        .unwrap();
+    assert!(preview_lines.iter().any(|line| line == "-old"));
+    assert!(preview_lines.iter().any(|line| line == "+new"));
+    assert_eq!(out["files"][0]["diff_preview"]["truncated"], false);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "new\n");
 }
 

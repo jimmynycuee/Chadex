@@ -3,7 +3,10 @@ use super::support::*;
 use crate::runner_http::ShellJobStartMetadata;
 use crate::runner_protocol::{RunnerCapabilities, RunnerJobUpdateRequest, ShellJobOpRequest};
 use crate::tool_runtime::startup_brief::{
-    startup_brief_size, validate_schema_instance_for_test, STANDARD_STARTUP_HARD_MAX_BYTES,
+    builtin_coding_workflow_projection, startup_brief_size, validate_schema_instance_for_test,
+    BUILTIN_CODING_WORKFLOW_SOFT_MAX_BYTES,
+    BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEM_CHARS,
+    BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEMS, STANDARD_STARTUP_HARD_MAX_BYTES,
 };
 use crate::tool_runtime::{
     registry, SessionMode, StartupDetail, ToolCall, ToolResult, ToolRuntime,
@@ -105,6 +108,44 @@ fn instruction_source<'a>(output: &'a Value, path: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("missing instruction source {path}: {output}"))
 }
 
+#[test]
+fn builtin_coding_workflow_keeps_budget_headroom() {
+    let workflow = builtin_coding_workflow_projection();
+    let guidance = workflow["guidance"]
+        .as_array()
+        .expect("built-in workflow guidance array");
+    let bytes = serde_json::to_vec(&workflow)
+        .expect("serialize built-in workflow")
+        .len();
+
+    assert!(
+        guidance.len() <= BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEMS,
+        "workflow guidance item budget exceeded: {} > {}; merge/compress existing guidance instead of appending",
+        guidance.len(),
+        BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEMS
+    );
+    assert!(
+        BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEMS
+            < crate::tool_runtime::startup_brief::BUILTIN_CODING_WORKFLOW_MAX_GUIDANCE_ITEMS,
+        "soft guidance budget must retain at least one hard-limit item of headroom"
+    );
+    for (index, item) in guidance.iter().enumerate() {
+        let chars = item
+            .as_str()
+            .expect("workflow guidance item string")
+            .chars()
+            .count();
+        assert!(
+            chars <= BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEM_CHARS,
+            "workflow guidance[{index}] char budget exceeded: {chars} > {BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEM_CHARS}; compress this item instead of raising the schema limit"
+        );
+    }
+    assert!(
+        bytes <= BUILTIN_CODING_WORKFLOW_SOFT_MAX_BYTES,
+        "workflow byte budget exceeded: {bytes} > {BUILTIN_CODING_WORKFLOW_SOFT_MAX_BYTES}; compress guidance before raising the budget"
+    );
+}
+
 fn assert_builtin_workflow(output: &Value) {
     let workflow = &output["workflow"];
     assert_eq!(workflow["contract"], "webcodex.coding_workflow");
@@ -189,6 +230,10 @@ fn assert_builtin_workflow(output: &Value) {
         "Validation failure is evidence, not queue cleanliness",
         "Reuse assertion_name",
         "outcome_unknown fails closed",
+        "bounded diff preview",
+        "before expensive validation",
+        "smallest decisive validation",
+        "Reuse still-fresh passing evidence",
         "exact continuation",
         "wait_secs=100,wake_on=terminal",
         "not for visibility",
@@ -220,6 +265,8 @@ fn assert_builtin_workflow(output: &Value) {
         .expect("normal closeout guidance");
     assert!(closeout_guidance.contains("Source/validation/open evidence"));
     assert!(closeout_guidance.contains("finish_coding_task(summary_only=true)"));
+    assert!(closeout_guidance.contains("workspace_hygiene_check"));
+    assert!(closeout_guidance.contains("only when detailed hygiene evidence is needed"));
     assert!(closeout_guidance.contains("Read/planning/artifact"));
     assert!(closeout_guidance.contains("finalize directly"));
     let roles = workflow["roles"]

@@ -676,6 +676,103 @@ async fn apply_text_edits_shorthand_unique_replace_uses_canonical_runner_payload
 }
 
 #[tokio::test]
+async fn apply_text_edits_coalesces_compatible_same_path_edit_changes() {
+    let client_id = "ate-coalesce-same-path";
+    let runtime = runtime_with_agent_project(client_id);
+    register_agent(
+        &runtime,
+        client_id,
+        None,
+        RunnerCapabilities {
+            file_write: true,
+            apply_text_edit_local_guard_without_sha: true,
+            ..Default::default()
+        },
+    )
+    .await;
+    let project = agent_test_project_id(client_id);
+    let changes = vec![
+        edit_change(
+            "src/lib.rs",
+            &"a".repeat(64),
+            vec![text_edit(
+                ApplyTextEditKind::ReplaceExact,
+                Some("alpha"),
+                Some("ALPHA"),
+                None,
+            )],
+        ),
+        edit_change(
+            "src/lib.rs",
+            &"a".repeat(64),
+            vec![text_edit(
+                ApplyTextEditKind::ReplaceExact,
+                Some("beta"),
+                Some("BETA"),
+                None,
+            )],
+        ),
+    ];
+    let task = tokio::spawn({
+        let runtime = runtime.clone();
+        let project = project.clone();
+        async move { runtime.apply_text_edits(project, changes, None).await }
+    });
+
+    let request = wait_for_patch_agent_request(&runtime, client_id).await;
+    let payload: Value = serde_json::from_str(request.content.as_deref().unwrap()).unwrap();
+    let wire_changes = payload["changes"].as_array().unwrap();
+    assert_eq!(wire_changes.len(), 1);
+    assert_eq!(wire_changes[0]["path"], "src/lib.rs");
+    let edits = wire_changes[0]["edits"].as_array().unwrap();
+    assert_eq!(edits.len(), 2);
+    assert_eq!(edits[0]["old_text"], "alpha");
+    assert_eq!(edits[1]["old_text"], "beta");
+
+    complete_apply_text_edits_success(&runtime, client_id, request.request_id, "src/lib.rs").await;
+    assert!(task.await.unwrap().success);
+}
+
+#[tokio::test]
+async fn apply_text_edits_same_path_different_guards_still_fail_closed() {
+    let runtime = test_runtime();
+    let mut first = edit_change(
+        "src/lib.rs",
+        &"a".repeat(64),
+        vec![text_edit(
+            ApplyTextEditKind::ReplaceExact,
+            Some("alpha"),
+            Some("ALPHA"),
+            None,
+        )],
+    );
+    first.expected_read_revision = Some(1);
+    let mut second = edit_change(
+        "src/lib.rs",
+        &"b".repeat(64),
+        vec![text_edit(
+            ApplyTextEditKind::ReplaceExact,
+            Some("beta"),
+            Some("BETA"),
+            None,
+        )],
+    );
+    second.expected_read_revision = Some(2);
+
+    let result = runtime
+        .apply_text_edits(
+            "agent:unused:unused".to_string(),
+            vec![first, second],
+            None,
+        )
+        .await;
+
+    assert!(!result.success);
+    assert_eq!(result.output["error_kind"], "path_overlap");
+    assert_eq!(result.output["state_changed"], false);
+}
+
+#[tokio::test]
 async fn apply_text_edits_shorthand_read_revision_uses_existing_wire_guard() {
     let client_id = "ate-shorthand-revision";
     let runtime = runtime_with_agent_project(client_id);

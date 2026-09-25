@@ -563,6 +563,41 @@ fn validate_apply_file_change(
     Ok(())
 }
 
+fn coalesce_compatible_same_path_edits(
+    changes: Vec<ApplyFileChangeInput>,
+) -> Vec<ApplyFileChangeInput> {
+    let mut coalesced: Vec<ApplyFileChangeInput> = Vec::with_capacity(changes.len());
+
+    for (change_index, change) in changes.iter().enumerate() {
+        let compatible_group = change.kind == ApplyFileChangeKind::Edit
+            && validate_apply_file_change(change_index, change).is_ok()
+            && changes
+                .iter()
+                .enumerate()
+                .filter(|(_, candidate)| candidate.path == change.path)
+                .all(|(candidate_index, candidate)| {
+                    candidate.kind == ApplyFileChangeKind::Edit
+                        && candidate.expected_read_revision == change.expected_read_revision
+                        && validate_apply_file_change(candidate_index, candidate).is_ok()
+                });
+
+        if compatible_group {
+            if let Some(existing) = coalesced.iter_mut().find(|existing| {
+                existing.kind == ApplyFileChangeKind::Edit
+                    && existing.path == change.path
+                    && existing.expected_read_revision == change.expected_read_revision
+            }) {
+                existing.edits.extend(change.edits.iter().cloned());
+                continue;
+            }
+        }
+
+        coalesced.push(change.clone());
+    }
+
+    coalesced
+}
+
 fn transactional_edit_agent_stdout_result(
     tool_name: &str,
     stdout: &str,
@@ -2874,6 +2909,12 @@ impl ToolRuntime {
                 None,
             );
         }
+        // Multiple model-generated edit entries for one exact path are one logical
+        // file mutation when they use the same guard. Coalesce them before path
+        // overlap validation so harmless batching shape does not cost a retry.
+        // Mixed kinds, guards, or malformed changes remain separate and fail
+        // through the existing fail-closed preflight.
+        let changes = coalesce_compatible_same_path_edits(changes);
         let mut touched_paths = HashSet::new();
         for (change_index, change) in changes.iter().enumerate() {
             if let Err(error) = validate_edit_file_path(&change.path) {
@@ -4224,6 +4265,50 @@ mod tests {
         assert!(!serde_json::to_string(&result.output)
             .unwrap()
             .contains("/private/secret.txt"));
+    }
+
+    #[test]
+    fn apply_text_edits_success_preserves_bounded_diff_preview_for_model() {
+        let payload = json!({
+            "dry_run": false,
+            "applied_count": 1,
+            "changed": true,
+            "would_change": true,
+            "files": [{
+                "index": 0,
+                "kind": "edit",
+                "path": "src/lib.rs",
+                "changed": true,
+                "would_change": true,
+                "diff_preview": {
+                    "format": "bounded_unified_excerpt_v1",
+                    "old_start_line": 10,
+                    "new_start_line": 10,
+                    "lines": [" old", "-old", "+new"],
+                    "truncated": false
+                }
+            }],
+            "changed_paths": ["src/lib.rs"]
+        });
+
+        let result = apply_text_edits_agent_stdout_result(
+            &payload.to_string(),
+            1,
+            false,
+            "agent:test:demo",
+            &[],
+        );
+
+        assert!(result.success, "{:?}", result.error);
+        assert_eq!(
+            result.output["files"][0]["diff_preview"]["format"],
+            "bounded_unified_excerpt_v1"
+        );
+        assert_eq!(
+            result.output["files"][0]["diff_preview"]["lines"][1],
+            "-old"
+        );
+        assert_eq!(result.output["execution_state"], "completed");
     }
 
     #[test]

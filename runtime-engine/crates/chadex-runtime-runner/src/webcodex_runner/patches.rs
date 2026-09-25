@@ -1127,6 +1127,115 @@ fn apply_change(plan: &PlannedFileChange) -> Result<Vec<PathBuf>, ApplyChangeFai
     }
 }
 
+const APPLY_TEXT_DIFF_PREVIEW_CONTEXT_LINES: usize = 2;
+const APPLY_TEXT_DIFF_PREVIEW_CHANGED_LINES: usize = 8;
+const APPLY_TEXT_DIFF_PREVIEW_LINE_CHARS: usize = 240;
+
+fn bounded_diff_preview_line(prefix: char, line: &str, truncated: &mut bool) -> String {
+    let char_count = line.chars().count();
+    let mut rendered = line
+        .chars()
+        .take(APPLY_TEXT_DIFF_PREVIEW_LINE_CHARS)
+        .collect::<String>();
+    if char_count > APPLY_TEXT_DIFF_PREVIEW_LINE_CHARS {
+        rendered.push_str("...");
+        *truncated = true;
+    }
+    format!("{prefix}{rendered}")
+}
+
+fn push_bounded_changed_lines(
+    output: &mut Vec<String>,
+    prefix: char,
+    lines: &[&str],
+    truncated: &mut bool,
+) {
+    if lines.len() <= APPLY_TEXT_DIFF_PREVIEW_CHANGED_LINES {
+        for line in lines {
+            output.push(bounded_diff_preview_line(prefix, line, truncated));
+        }
+        return;
+    }
+
+    let head = APPLY_TEXT_DIFF_PREVIEW_CHANGED_LINES / 2;
+    let tail = APPLY_TEXT_DIFF_PREVIEW_CHANGED_LINES - head;
+    for line in &lines[..head] {
+        output.push(bounded_diff_preview_line(prefix, line, truncated));
+    }
+    output.push(format!(
+        "{prefix}... {} changed lines elided ...",
+        lines.len().saturating_sub(head + tail)
+    ));
+    for line in &lines[lines.len() - tail..] {
+        output.push(bounded_diff_preview_line(prefix, line, truncated));
+    }
+    *truncated = true;
+}
+
+fn bounded_edit_diff_preview(plan: &PlannedFileChange) -> Option<serde_json::Value> {
+    if plan.kind != ApplyFileChangeKind::Edit || !plan.would_change {
+        return None;
+    }
+    let original = plan.original.as_deref()?;
+    let replacement = plan.replacement.as_deref()?;
+    if original == replacement {
+        return None;
+    }
+
+    let old_lines = original.lines().collect::<Vec<_>>();
+    let new_lines = replacement.lines().collect::<Vec<_>>();
+
+    let mut prefix = 0usize;
+    while prefix < old_lines.len()
+        && prefix < new_lines.len()
+        && old_lines[prefix] == new_lines[prefix]
+    {
+        prefix += 1;
+    }
+
+    let mut suffix = 0usize;
+    while suffix < old_lines.len().saturating_sub(prefix)
+        && suffix < new_lines.len().saturating_sub(prefix)
+        && old_lines[old_lines.len() - 1 - suffix] == new_lines[new_lines.len() - 1 - suffix]
+    {
+        suffix += 1;
+    }
+
+    let old_changed_end = old_lines.len().saturating_sub(suffix);
+    let new_changed_end = new_lines.len().saturating_sub(suffix);
+    let context_start = prefix.saturating_sub(APPLY_TEXT_DIFF_PREVIEW_CONTEXT_LINES);
+    let trailing_context = suffix.min(APPLY_TEXT_DIFF_PREVIEW_CONTEXT_LINES);
+
+    let mut truncated = false;
+    let mut lines = Vec::new();
+    for line in &old_lines[context_start..prefix] {
+        lines.push(bounded_diff_preview_line(' ', line, &mut truncated));
+    }
+    push_bounded_changed_lines(
+        &mut lines,
+        '-',
+        &old_lines[prefix..old_changed_end],
+        &mut truncated,
+    );
+    push_bounded_changed_lines(
+        &mut lines,
+        '+',
+        &new_lines[prefix..new_changed_end],
+        &mut truncated,
+    );
+    for line in &old_lines[old_changed_end..old_changed_end + trailing_context] {
+        lines.push(bounded_diff_preview_line(' ', line, &mut truncated));
+    }
+
+    Some(serde_json::json!({
+        "format": "bounded_unified_excerpt_v1",
+        "old_start_line": context_start + 1,
+        "new_start_line": context_start + 1,
+        "lines": lines,
+        "truncated": truncated,
+    }))
+}
+
 fn execute_planned_file_changes(
     plans: Vec<PlannedFileChange>,
     dry_run: bool,
@@ -1190,10 +1299,11 @@ fn execute_planned_file_changes(
         }
     }
 
+    let include_diff_preview = requested_matching_mode.is_none();
     let files = plans
         .iter()
         .map(|plan| {
-            serde_json::json!({
+            let mut file = serde_json::json!({
                 "index": plan.index,
                 "kind": plan.kind.as_str(),
                 "path": plan.path,
@@ -1203,7 +1313,13 @@ fn execute_planned_file_changes(
                 "changed": !dry_run && plan.would_change,
                 "would_change": plan.would_change,
                 "edits": plan.edit_summaries,
-            })
+            });
+            if include_diff_preview {
+                if let Some(preview) = bounded_edit_diff_preview(plan) {
+                    file["diff_preview"] = preview;
+                }
+            }
+            file
         })
         .collect::<Vec<_>>();
     let mut output = serde_json::json!({

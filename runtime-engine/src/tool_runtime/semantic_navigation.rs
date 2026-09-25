@@ -16,7 +16,12 @@ use serde::Serialize;
 use std::time::Duration;
 use tokio::time::Instant;
 
-pub(crate) const DEFAULT_SEMANTIC_NAVIGATION_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+// Startup discovery is advisory: a timeout only suppresses the startup
+// recommendation and never disables later explicit LSP tools. Keep this
+// deadline short so an unavailable/stalled status probe cannot dominate
+// work_on_project latency.
+pub(crate) const DEFAULT_SEMANTIC_NAVIGATION_PROBE_TIMEOUT: Duration =
+    Duration::from_millis(750);
 
 const RUST_LANGUAGE: &str = "rust";
 const RUST_ANALYZER_SERVER: &str = "rust-analyzer";
