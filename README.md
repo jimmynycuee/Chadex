@@ -1,5 +1,15 @@
 # Chadex
 
+**ChatGPT Web + your local repo. No copy-paste loop.**
+
+## ⬇️ Download Chadex for macOS
+
+### **[Download the latest macOS DMG →](https://github.com/jimmynycuee/Chadex/releases)**
+
+`macOS 14+` · `Apple Silicon` · `Free & Open Source`
+
+> On the Releases page, expand **Assets** and download the latest `Chadex-...-macos-arm64.dmg`.
+
 Chadex 是一個原生 macOS 工具，讓 ChatGPT 能安全地連接到你明確選定的本機專案，直接協助閱讀檔案、執行工具與完成開發工作。
 
 **核心流程：選擇專案 → 連接 ChatGPT → 在 ChatGPT 中開始工作。**
