@@ -352,6 +352,14 @@ private final class SidebarSplitViewAlignmentView: NSView {
         removeWindowObserver()
         guard let window else { return }
 
+        // NavigationSplitView already extends its sidebar/detail materials through
+        // the titlebar. Keeping AppKit's extra titlebar background opaque creates
+        // a second boundary at a different edge of the 4-pt vibrant divider
+        // (3 pt / 6 Retina pixels away from the body boundary). Let the shared
+        // split-view material draw through the titlebar so both regions use the
+        // exact same divider geometry.
+        window.titlebarAppearsTransparent = true
+
         windowUpdateObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didUpdateNotification,
             object: window,
