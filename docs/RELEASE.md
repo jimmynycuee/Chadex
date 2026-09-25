@@ -51,7 +51,7 @@ CHADEX_UPDATE_UI_REVIEW=1 swift test --filter VisualReviewTests
 `scripts/build_app.sh` accepts release metadata through environment variables:
 
 ```sh
-CHADEX_APP_VERSION=0.1.0 \
+CHADEX_APP_VERSION=0.1.1 \
 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_IDENTITY="Developer ID Application: ..." \
 ./scripts/build_app.sh

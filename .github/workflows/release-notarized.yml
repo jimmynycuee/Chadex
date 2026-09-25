@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag label, for example v0.1.0-rc.1"
+        description: "Release tag label, for example v0.1.1"
         required: true
         type: string
       app_version:
-        description: "CFBundleShortVersionString, for example 0.1.0"
+        description: "CFBundleShortVersionString, for example 0.1.1"
         required: true
         type: string
       build_number:
@@ -167,7 +167,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          args=(release create "$CHADEX_RELEASE_TAG" "$CHADEX_NOTARIZED_ZIP_OUTPUT" "$CHADEX_NOTARIZED_ZIP_OUTPUT.sha256" --title "Chadex $CHADEX_RELEASE_TAG" --notes-file docs/releases/0.1.0-rc.1.md)
+          notes_file="docs/releases/${CHADEX_RELEASE_TAG#v}.md"
+          test -f "$notes_file"
+          args=(release create "$CHADEX_RELEASE_TAG" "$CHADEX_NOTARIZED_ZIP_OUTPUT" "$CHADEX_NOTARIZED_ZIP_OUTPUT.sha256" --title "Chadex $CHADEX_RELEASE_TAG" --notes-file "$notes_file")
           if [[ "$CHADEX_RELEASE_TAG" == *-* ]]; then
             args+=(--prerelease)
           fi
