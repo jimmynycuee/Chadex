@@ -334,6 +334,7 @@
 "updates.error.codeSignature" = "The downloaded app failed macOS code-signature verification.";
 "updates.error.architecture" = "The downloaded app does not contain the required Apple Silicon executable.";
 "updates.error.installerLaunch" = "Chadex could not launch the external update installer.";
+"updates.error.terminationUnavailable" = "Chadex could not prepare a safe application shutdown for the update.";
 "updates.error.command" = "A required macOS update command failed (%@, status %d). %@";
 
 "menubar.open" = "Open Chadex";

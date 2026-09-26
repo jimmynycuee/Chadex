@@ -6,6 +6,11 @@ final class ChadexAppDelegate: NSObject, NSApplicationDelegate {
     var shutdownHandler: (() async -> Void)?
     var reopenHandler: (() -> Void)?
     private var terminationInProgress = false
+    private var shutdownCompletedForUpdate = false
+
+    func markShutdownCompletedForUpdate() {
+        shutdownCompletedForUpdate = true
+    }
 
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
@@ -19,6 +24,7 @@ final class ChadexAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if shutdownCompletedForUpdate { return .terminateNow }
         if terminationInProgress { return .terminateNow }
         guard let shutdownHandler else { return .terminateNow }
         terminationInProgress = true
@@ -161,6 +167,11 @@ private struct MainWindowContent: View {
                 }
                 appDelegate.shutdownHandler = { [model] in
                     await model.shutdown()
+                }
+                updateManager.configureUpdateTermination { [model, appDelegate] in
+                    await model.shutdown()
+                    appDelegate.markShutdownCompletedForUpdate()
+                    NSApplication.shared.terminate(nil)
                 }
                 model.start()
                 await updateManager.markCurrentLaunchHealthy()

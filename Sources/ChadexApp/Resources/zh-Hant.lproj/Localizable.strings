@@ -334,6 +334,7 @@
 "updates.error.codeSignature" = "下載的 App 未通過 macOS 程式碼簽章驗證。";
 "updates.error.architecture" = "下載的 App 不包含需要的 Apple Silicon 執行檔。";
 "updates.error.installerLaunch" = "Chadex 無法啟動外部更新安裝程序。";
+"updates.error.terminationUnavailable" = "Chadex 無法為更新程序準備安全的 App 關閉流程。";
 "updates.error.command" = "必要的 macOS 更新指令失敗（%@，狀態 %d）。%@";
 
 "menubar.open" = "開啟 Chadex";

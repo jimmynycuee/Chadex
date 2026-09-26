@@ -195,6 +195,7 @@ final class UpdateManager: ObservableObject {
     private let defaults: UserDefaults
     private let now: () -> Date
     private var scheduledAutomaticCheck = false
+    private var updateTerminationHandler: (@MainActor () async -> Void)?
 
     init(
         service: ChadexUpdateService = ChadexUpdateService(),
@@ -218,6 +219,10 @@ final class UpdateManager: ObservableObject {
 
     var isBusy: Bool {
         phase.isBusy
+    }
+
+    func configureUpdateTermination(_ handler: @escaping @MainActor () async -> Void) {
+        updateTerminationHandler = handler
     }
 
     func scheduleAutomaticCheckIfNeeded() {
@@ -302,12 +307,17 @@ final class UpdateManager: ObservableObject {
                 return
             }
 
+            guard let updateTerminationHandler else {
+                await service.discardPreparedUpdate(prepared)
+                throw ChadexUpdateError.terminationUnavailable
+            }
+
             phase = .installing(release.version)
             try await service.launchInstaller(
                 prepared,
                 currentPID: ProcessInfo.processInfo.processIdentifier
             )
-            NSApplication.shared.terminate(nil)
+            await updateTerminationHandler()
         } catch {
             let message = error.localizedDescription
             phase = .failed(message)
@@ -778,7 +788,7 @@ cleanup_prepared() {
 
 reopen_old() {
     if [ -d "$current" ]; then
-        /usr/bin/open -n "$current" >> "$log_file" 2>&1 || true
+        /usr/bin/open "$current" >> "$log_file" 2>&1 || true
     fi
 }
 
@@ -813,7 +823,7 @@ rollback() {
         if mv "$backup" "$current"; then
             log_line "Rollback restored the previous Chadex."
             rm -f "$pending" "$healthy"
-            /usr/bin/open -n "$current" >> "$log_file" 2>&1 || true
+            /usr/bin/open "$current" >> "$log_file" 2>&1 || true
         else
             log_line "ERROR: rollback could not restore $backup"
         fi
@@ -867,7 +877,7 @@ if ! mv "$candidate" "$current"; then
 fi
 
 log_line "Installed new Chadex bundle; launching for health verification."
-if ! /usr/bin/open -n "$current" >> "$log_file" 2>&1; then
+if ! /usr/bin/open "$current" >> "$log_file" 2>&1; then
     rollback
 fi
 
@@ -906,6 +916,7 @@ enum ChadexUpdateError: LocalizedError {
     case invalidCodeSignature
     case unsupportedArchitecture
     case installerLaunchFailed
+    case terminationUnavailable
     case commandFailed(String, Int32, String)
 
     var errorDescription: String? {
@@ -944,6 +955,8 @@ enum ChadexUpdateError: LocalizedError {
             return L10n.string("updates.error.architecture")
         case .installerLaunchFailed:
             return L10n.string("updates.error.installerLaunch")
+        case .terminationUnavailable:
+            return L10n.string("updates.error.terminationUnavailable")
         case .commandFailed(let command, let status, let output):
             let detail = output.trimmingCharacters(in: .whitespacesAndNewlines)
             return L10n.string("updates.error.command", command, status, detail)

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 @testable import ChadexApp
@@ -109,6 +110,22 @@ final class UpdateManagerTests: XCTestCase {
                 in: "not-a-digest  Chadex-v0.1.2-macos-arm64.dmg",
                 filename: "Chadex-v0.1.2-macos-arm64.dmg"
             )
+        )
+    }
+
+    func testInstallerScriptDoesNotForceDuplicateAppInstances() {
+        XCTAssertFalse(ChadexUpdateService.installerScript.contains("/usr/bin/open -n"))
+    }
+
+    @MainActor
+    func testPreparedUpdateTerminationBypassesDeferredShutdown() {
+        let delegate = ChadexAppDelegate()
+        delegate.shutdownHandler = {}
+        delegate.markShutdownCompletedForUpdate()
+
+        XCTAssertEqual(
+            delegate.applicationShouldTerminate(NSApplication.shared),
+            .terminateNow
         )
     }
 
