@@ -40,7 +40,7 @@ fn builtin_coding_workflow_defaults_are_required_and_bounded() {
 #[test]
 fn builtin_coding_workflow_defaults_cover_unnamed_tasks_without_granting_authority() {
     let workflow = builtin_coding_workflow_projection();
-    assert_eq!(workflow["version"], 13);
+    assert_eq!(workflow["version"], 14);
     assert_eq!(workflow["authority"], "model_guidance_only");
     let role_selection = workflow["role_selection"].as_str().unwrap();
     assert!(role_selection.contains("Ordinary implementation uses default guidance"));
@@ -68,26 +68,24 @@ fn builtin_coding_workflow_defaults_cover_unnamed_tasks_without_granting_authori
         "compiler/schema/exhaustiveness failures",
         "avoid speculative redesign",
         "simplest sufficient primitive",
-        "correctness/authority/evidence/durability/recovery/portability",
         "Native commands are first-class",
         "bounded deterministic Python/run_shell",
         "Batch predetermined observations",
         "adaptive follow-ups stay sequential",
         "bounded targeted reads",
         "files/count/small-context search",
-        "native rg is first-class",
         "Validation failure is evidence, not queue cleanliness",
         "Reuse assertion_name",
         "outcome_unknown fails closed",
-        "one execution/Job",
+        "one Job",
         "exact continuation",
-        "wait_secs=100,wake_on=terminal",
-        "not for visibility",
-        "sufficient fresh validation",
-        "Formatting is finalization",
-        "After Rust stabilizes, format once",
-        "before final diff/closeout",
-        "rerun only after later Rust edits",
+        "wait_secs=20,wake_on=terminal",
+        "cap 30s",
+        "Never sleep/shell-poll for visibility",
+        "native connector/status",
+        "final source needs fresh validation",
+        "Format once after Rust stabilizes",
+        "rerun invalidated validation",
     ] {
         assert!(defaults.contains(boundary), "missing guidance: {boundary}");
     }

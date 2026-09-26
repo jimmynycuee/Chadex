@@ -467,10 +467,18 @@ mod tests {
         let wait = observe_jobs.input_schema["properties"]["wait_secs"]["description"]
             .as_str()
             .expect("observe_jobs wait description");
-        assert!(wait.contains("one shared bounded wait"), "{wait}");
+        assert!(wait.contains("one shared bounded model-facing wait"), "{wait}");
         assert!(
             wait.contains(
-                &webcodex_core::runtime_contract::MAX_JOB_OBSERVATION_WAIT_SECS.to_string()
+                &webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS
+                    .to_string()
+            ),
+            "{wait}"
+        );
+        assert!(
+            wait.contains(
+                &webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS
+                    .to_string()
             ),
             "{wait}"
         );

@@ -1057,6 +1057,14 @@ fn observe_jobs_wake_policy_schema_is_closed_and_compatible() {
         100
     );
     assert_eq!(
+        webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS,
+        20
+    );
+    assert_eq!(
+        webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS,
+        30
+    );
+    assert_eq!(
         wake["enum"],
         serde_json::json!(["change", "terminal", "all_terminal"])
     );
@@ -1070,10 +1078,12 @@ fn observe_jobs_wake_policy_schema_is_closed_and_compatible() {
         "no wait_secs",
         "wake_on=change",
         "wake_on=terminal",
-        "wait_secs=100",
+        "20 seconds is canonical",
+        "values above 30 are clamped to 30",
         "useful progress is blocked on terminal outcome",
         "independent work remains",
-        "do not poll for visibility",
+        "never sleep or shell-poll for visibility",
+        "native connector/status",
         "changed=true",
     ] {
         assert!(spec.description.contains(phrase), "missing {phrase}");
@@ -1081,10 +1091,11 @@ fn observe_jobs_wake_policy_schema_is_closed_and_compatible() {
     let wait_description = spec.input_schema["properties"]["wait_secs"]["description"]
         .as_str()
         .unwrap();
-    assert!(wait_description.contains("above 100 seconds"));
-    assert!(wait_description.contains("clamped to 100"));
-    assert!(wait_description.contains("further useful progress depends on terminal outcome"));
-    assert!(wait_description.contains("independent work continues"));
+    assert!(wait_description.contains("above 30 seconds"));
+    assert!(wait_description.contains("clamped to the host-safe 30-second cap"));
+    assert!(wait_description.contains("recommend 20 seconds"));
+    assert!(wait_description.contains("Wait only when useful progress depends on Job state"));
+    assert!(wait_description.contains("continue independent work"));
     let wake_description = wake["description"].as_str().unwrap();
     assert!(wake_description.contains("any terminal result unblocks progress"));
     assert!(wake_description.contains("predetermined set"));

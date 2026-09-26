@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 use tokio::time::Instant;
 use webcodex_core::runtime_contract::{
-    MAX_JOB_OBSERVATION_WAIT_SECS, MODEL_INSPECTION_MAX_RESULT_BYTES,
+    MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS, MODEL_INSPECTION_MAX_RESULT_BYTES,
 };
 use webcodex_workspace::file_read_normalize::MODEL_RESULT_ENVELOPE_RESERVE_BYTES;
 
@@ -21,6 +21,9 @@ pub(crate) const MAX_OBSERVE_JOBS_TAIL_LINES: usize = 200;
 /// Job observations. This does not change any single Job stream/tail retention.
 const MAX_OBSERVE_JOBS_AGGREGATE_RESULT_BYTES: usize = MODEL_INSPECTION_MAX_RESULT_BYTES;
 const MAX_OBSERVE_JOBS_ERROR_CHARS: usize = 512;
+/// Reserve enough result budget for host-safe wait metadata that is attached
+/// after aggregate packing.
+const MAX_OBSERVE_JOBS_HOST_WAIT_METADATA_BYTES: usize = 256;
 
 #[derive(Debug)]
 struct ObservedJob {
@@ -267,12 +270,36 @@ fn add_actionable_batch_continuation(
     root.remove("next_index");
 }
 
+fn add_host_safe_wait_metadata(
+    output: &mut Value,
+    requested_wait_secs: Option<u64>,
+    effective_wait_secs: Option<u64>,
+) {
+    let (Some(requested), Some(effective)) = (requested_wait_secs, effective_wait_secs) else {
+        return;
+    };
+    let Some(wait) = output.get_mut("wait").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let clamped = requested > effective;
+    wait.insert("requested_wait_secs".to_string(), json!(requested));
+    wait.insert("effective_wait_secs".to_string(), json!(effective));
+    wait.insert("wait_clamped".to_string(), json!(clamped));
+    if clamped {
+        wait.insert(
+            "reason_code".to_string(),
+            json!("host_safe_wait_budget"),
+        );
+    }
+}
+
 fn serialized_batch_fits(output: &Value) -> bool {
     serialized_json_len(&ToolResult::ok(output.clone()))
         .map(|bytes| {
             bytes
                 <= MAX_OBSERVE_JOBS_AGGREGATE_RESULT_BYTES
                     .saturating_sub(MODEL_RESULT_ENVELOPE_RESERVE_BYTES)
+                    .saturating_sub(MAX_OBSERVE_JOBS_HOST_WAIT_METADATA_BYTES)
         })
         .unwrap_or(false)
 }
@@ -610,7 +637,9 @@ fn normalize_observe_jobs_preferences(
 ) -> (usize, Option<u64>) {
     (
         tail_lines.min(MAX_OBSERVE_JOBS_TAIL_LINES),
-        wait_secs.map(|wait_secs| wait_secs.min(MAX_JOB_OBSERVATION_WAIT_SECS)),
+        wait_secs.map(|wait_secs| {
+            wait_secs.min(MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS)
+        }),
     )
 }
 
@@ -770,6 +799,7 @@ impl ToolRuntime {
         wake_on: ObserveJobsWakeOn,
         auth: Option<&AuthContext>,
     ) -> ToolResult {
+        let requested_wait_secs = wait_secs;
         let (tail_lines, wait_secs) = normalize_observe_jobs_preferences(tail_lines, wait_secs);
         if let Err(error) = Self::validate_observe_jobs_input(&items, tail_lines, wait_secs) {
             return ToolResult::err(error);
@@ -831,6 +861,7 @@ impl ToolRuntime {
         let completed = observed.into_iter().map(batch_item).collect();
         match apply_output_budget(requested_count, completed, wake_reason, waited_ms) {
             Ok(mut output) => {
+                add_host_safe_wait_metadata(&mut output, requested_wait_secs, wait_secs);
                 add_actionable_batch_continuation(&mut output, &items, tail_lines);
                 ToolResult::ok(output)
             }
@@ -890,7 +921,7 @@ mod tests {
             normalize_observe_jobs_preferences(500, Some(120)),
             (
                 MAX_OBSERVE_JOBS_TAIL_LINES,
-                Some(MAX_JOB_OBSERVATION_WAIT_SECS)
+                Some(MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS)
             )
         );
         assert_eq!(
@@ -927,10 +958,13 @@ mod tests {
             }
             other => panic!("unexpected recovery call: {}", other.tool_name()),
         }
+        let recovery_tool = suggested["tool"].as_str().unwrap();
         assert!(
-            crate::tool_runtime::tool_definition::is_adaptive_runtime_direct_tool(
-                suggested["tool"].as_str().unwrap()
-            )
+            crate::tool_runtime::tool_definition::is_model_visible_tool_name(recovery_tool)
+        );
+        assert_eq!(
+            crate::model_surface::adaptive_runtime_tool_invocation_route(recovery_tool),
+            ("gateway", Some("call_runtime_tool"))
         );
 
         let invalid_token = batch_item(ObservedJob {

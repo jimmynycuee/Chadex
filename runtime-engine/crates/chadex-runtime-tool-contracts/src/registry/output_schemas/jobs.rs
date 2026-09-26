@@ -350,6 +350,13 @@ fn structured_continuation_properties() -> Vec<(&'static str, Value)> {
             ),
         ),
         ("continuation", observe_job_continuation_schema()),
+        (
+            "recommended_poll_after_secs",
+            schema_type(
+                "integer",
+                "Advisory minimum interval for visibility-only polling. If progress is blocked, use the parser-ready continuation instead of sleeping; external async services should use their native status connector when available.",
+            ),
+        ),
         ("activity", job_activity_schema()),
         (
             "effective_timeout_secs",
@@ -660,7 +667,11 @@ fn observe_jobs_output_schema() -> Value {
                         "type": "string",
                         "enum": ["immediate", "updated", "terminal", "item_error", "timeout"]
                     },
-                    "waited_ms": {"type": "integer", "minimum": 0}
+                    "waited_ms": {"type": "integer", "minimum": 0},
+                    "requested_wait_secs": {"type": "integer", "minimum": 1},
+                    "effective_wait_secs": {"type": "integer", "minimum": 1, "maximum": webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS},
+                    "wait_clamped": {"type": "boolean"},
+                    "reason_code": {"type": "string", "const": "host_safe_wait_budget"}
                 },
                 "required": ["outcome", "waited_ms"],
                 "description": "The single shared-wait fact for this batch. terminal policy never wakes updated: timeout means the deadline elapsed and may coexist with changed=true and cumulative log deltas. Item errors take precedence over terminal, then timeout. Final item outputs are snapshots and do not expose a second wait outcome."
@@ -714,7 +725,11 @@ fn observe_jobs_output_schema() -> Value {
                         "type": "integer",
                         "minimum": 1,
                         "description": "Non-zero shared wait duration; omitted when the canonical value is zero."
-                    }
+                    },
+                    "requested_wait_secs": {"type": "integer", "minimum": 1},
+                    "effective_wait_secs": {"type": "integer", "minimum": 1, "maximum": webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS},
+                    "wait_clamped": {"type": "boolean"},
+                    "reason_code": {"type": "string", "const": "host_safe_wait_budget"}
                 },
                 "required": ["outcome"],
                 "description": "The one shared-wait fact for an ordinary all-success, non-truncated compact batch. terminal policy never wakes updated; timeout may coexist with changed=true and cumulative deltas."
@@ -769,6 +784,10 @@ pub(super) fn output_schema_for_tool(name: &str) -> Option<Value> {
                 ("effective_timeout_secs", schema_type("integer", "Total detached process runtime budget in seconds.")),
                 ("created_at", schema_type("integer", "Durable Job creation timestamp.")),
                 ("continuation", observe_job_continuation_schema()),
+                (
+                    "recommended_poll_after_secs",
+                    schema_type("integer", "Advisory minimum interval for visibility-only polling; use the continuation directly when blocked."),
+                ),
                 ("last_update_seq", nullable_schema("integer", "Latest agent update sequence when available.")),
                 ("redispatched", schema_type("boolean", "False when bounded replay recovery returns an existing Job.")),
             ]);
@@ -1194,6 +1213,10 @@ pub(super) fn output_schema_for_tool(name: &str) -> Option<Value> {
                 schema_type("integer", "Job creation timestamp."),
             ),
             ("continuation", observe_job_continuation_schema()),
+            (
+                "recommended_poll_after_secs",
+                schema_type("integer", "Advisory minimum interval for visibility-only polling; use the continuation directly when blocked."),
+            ),
             (
                 "last_update_seq",
                 nullable_schema("integer", "Runner protocol diagnostic sequence; not a bounded-wait token."),

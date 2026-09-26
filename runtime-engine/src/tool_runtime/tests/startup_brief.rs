@@ -149,7 +149,7 @@ fn builtin_coding_workflow_keeps_budget_headroom() {
 fn assert_builtin_workflow(output: &Value) {
     let workflow = &output["workflow"];
     assert_eq!(workflow["contract"], "webcodex.coding_workflow");
-    assert_eq!(workflow["version"], 13);
+    assert_eq!(workflow["version"], 14);
     assert_eq!(workflow["authority"], "model_guidance_only");
     assert!(workflow["role_selection"]
         .as_str()
@@ -235,9 +235,11 @@ fn assert_builtin_workflow(output: &Value) {
         "smallest decisive validation",
         "Reuse still-fresh passing evidence",
         "exact continuation",
-        "wait_secs=100,wake_on=terminal",
-        "not for visibility",
-        "sufficient fresh validation",
+        "wait_secs=20,wake_on=terminal",
+        "cap 30s",
+        "Never sleep/shell-poll for visibility",
+        "native connector/status",
+        "final source needs fresh validation",
     ] {
         assert!(defaults.contains(phrase), "workflow guidance: {phrase}");
     }

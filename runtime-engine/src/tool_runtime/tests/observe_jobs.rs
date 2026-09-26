@@ -1303,10 +1303,20 @@ async fn observe_jobs_terminal_transition_wakes_shared_wait() {
 
     let result = tokio::time::timeout(Duration::from_secs(2), task)
         .await
-        .expect("terminal must wake well before the 100-second maximum")
+        .expect("terminal must wake well before the host-safe wait cap")
         .unwrap();
     assert!(result.success, "{:?}", result.error);
     assert_eq!(result.output["wait"]["outcome"], "terminal");
+    assert_eq!(result.output["wait"]["requested_wait_secs"], 100);
+    assert_eq!(
+        result.output["wait"]["effective_wait_secs"],
+        webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS
+    );
+    assert_eq!(result.output["wait"]["wait_clamped"], true);
+    assert_eq!(
+        result.output["wait"]["reason_code"],
+        "host_safe_wait_budget"
+    );
     assert_eq!(result.output["terminal_count"], 1);
     assert_eq!(result.output["items"][1]["output"]["terminal"], true);
     assert!(result.output["items"][1]["output"]["activity"].is_null());
@@ -1724,7 +1734,9 @@ fn observe_jobs_canonical_continuation_is_parser_ready_with_or_without_baseline(
         assert!(matches!(
             parsed,
             ToolCall::ObserveJobs {
-                wait_secs: Some(100),
+                wait_secs: Some(
+                    webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS
+                ),
                 wake_on: ObserveJobsWakeOn::Terminal,
                 ..
             }

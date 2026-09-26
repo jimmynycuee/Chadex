@@ -26,6 +26,13 @@ pub const DEFAULT_OBSERVE_JOBS_TAIL_LINES: usize = 40;
 /// This is intentionally separate from execution timeouts and initial
 /// synchronous handoff grace budgets.
 pub const MAX_JOB_OBSERVATION_WAIT_SECS: u64 = 100;
+/// Recommended bounded wait for one model-facing `observe_jobs` call. This is
+/// intentionally shorter than the low-level Job observation budget so a host
+/// turn is never asked to remain blocked for the lifetime of long work.
+pub const MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS: u64 = 20;
+/// Hard host-safety cap for one model-facing `observe_jobs` request. Runner Job
+/// lifetime and lower-level Job-log waits remain governed independently.
+pub const MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS: u64 = 30;
 pub const STRUCTURED_EXECUTION_SYNC_WAIT_MAX_SECS: u64 = 60;
 
 pub const MAX_SKILL_LIST_LIMIT: usize = 64;
@@ -131,7 +138,7 @@ impl ContinuationSemantics {
 }
 
 pub const BUILTIN_CODING_WORKFLOW_CONTRACT: &str = "webcodex.coding_workflow";
-pub const BUILTIN_CODING_WORKFLOW_VERSION: u64 = 13;
+pub const BUILTIN_CODING_WORKFLOW_VERSION: u64 = 14;
 pub const BUILTIN_CODING_WORKFLOW_MAX_GUIDANCE_ITEMS: usize = 8;
 
 /// Validate a Runner project path without applying host-local filesystem semantics.

@@ -101,7 +101,9 @@ pub(in crate::tool_runtime::tests) fn assert_observe_job_continuation(output: &V
     assert!(matches!(
         call,
         ToolCall::ObserveJobs {
-            wait_secs: Some(webcodex_core::runtime_contract::MAX_JOB_OBSERVATION_WAIT_SECS),
+            wait_secs: Some(
+                webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS
+            ),
             wake_on: ObserveJobsWakeOn::Terminal,
             ..
         }

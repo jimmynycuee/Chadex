@@ -8,7 +8,10 @@ use webcodex_core::runner_protocol::{
     SCRIPT_ARG_MAX_BYTES, SCRIPT_ARG_MAX_COUNT, SCRIPT_CWD_MAX_BYTES, SCRIPT_MAX_BYTES,
     SCRIPT_STDIN_MAX_BYTES,
 };
-use webcodex_core::runtime_contract::MAX_JOB_OBSERVATION_WAIT_SECS;
+use webcodex_core::runtime_contract::{
+    MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS,
+    MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS,
+};
 use webcodex_core::workflow_session_contract::{
     EXECUTION_PURPOSE_VALUES, MAX_MODEL_VALIDATION_ASSERTION_NAME_CHARS,
     TOOL_ACCEPTED_EXIT_CODES_FIELD, TOOL_ASSERTION_NAME_FIELD, TOOL_RESULT_EXPECTATION_FIELD,
@@ -462,7 +465,7 @@ pub fn observe_jobs_input_schema() -> Value {
             "wait_secs": {
                 "type": "integer",
                 "minimum": 1,
-                "description": format!("Optional one shared bounded wait (a maximum), never a minimum sleep or multiplied by item count. Omission or any item without a token returns an immediate observation/baseline. Values above {MAX_JOB_OBSERVATION_WAIT_SECS} seconds are clamped to {MAX_JOB_OBSERVATION_WAIT_SECS}. With tokens, wake_on selects early wake behavior; updates never extend the deadline. The canonical {MAX_JOB_OBSERVATION_WAIT_SECS}-second terminal wait is for when further useful progress depends on terminal outcome; otherwise defer observation while independent work continues.")
+                "description": format!("Optional one shared bounded model-facing wait (a maximum), never a minimum sleep or polling cadence. Omission or any item without a token returns an immediate observation/baseline. Values above {MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS} seconds are accepted but clamped to the host-safe {MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS}-second cap; canonical Job continuations recommend {MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS} seconds. With tokens, wake_on selects early wake behavior; updates never extend the deadline. Wait only when useful progress depends on Job state; otherwise retain the exact continuation and continue independent work.")
             },
             "wake_on": {
                 "type": "string",

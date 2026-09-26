@@ -45,7 +45,7 @@ fn structured_execution_output(
                     "job_id": job_id.expect("promoted Job id"),
                     "after_observation_token": "observation"
                 }],
-                "wait_secs": 100,
+                "wait_secs": webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS,
                 "wake_on": "terminal"
             }
         });
@@ -1320,11 +1320,11 @@ fn key_tool_output_schemas_include_expected_fields() {
         assert_eq!(continuation["properties"]["tool"]["const"], "observe_jobs");
         assert_eq!(
             continuation["properties"]["arguments"]["properties"]["wait_secs"]["maximum"],
-            webcodex_core::runtime_contract::MAX_JOB_OBSERVATION_WAIT_SECS
+            webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS
         );
         assert_eq!(
             continuation["properties"]["arguments"]["properties"]["wait_secs"]["const"],
-            webcodex_core::runtime_contract::MAX_JOB_OBSERVATION_WAIT_SECS
+            webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS
         );
         assert_eq!(
             continuation["properties"]["arguments"]["properties"]["wake_on"]["const"],

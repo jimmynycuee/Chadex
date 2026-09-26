@@ -2640,6 +2640,10 @@ fn job_handoff_model_projection_keeps_identity_and_exceptional_receipts() {
     }
     assert_eq!(model.output["terminal"], false);
     assert_eq!(model.output["job_status"], "running");
+    assert_eq!(
+        model.output["recommended_poll_after_secs"],
+        webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS
+    );
     assert_eq!(model.output["stdout_truncated"], true);
     assert_observe_job_continuation(&model.output);
     assert_eq!(

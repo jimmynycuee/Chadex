@@ -1,6 +1,8 @@
 use serde_json::{json, Value};
 use webcodex_core::runner_job_lifecycle::RunnerJobLifecycle;
-use webcodex_core::runtime_contract::MAX_JOB_OBSERVATION_WAIT_SECS;
+use webcodex_core::runtime_contract::{
+    MAX_JOB_OBSERVATION_WAIT_SECS, MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS,
+};
 use webcodex_core::workflow_session_contract::is_validation_like_execution_purpose;
 
 use super::helpers::{
@@ -758,7 +760,7 @@ pub(crate) fn observe_job_continuation(job_id: &str, observation_token: Option<&
         "observe_jobs",
         json!({
             "items": [item],
-            "wait_secs": MAX_JOB_OBSERVATION_WAIT_SECS,
+            "wait_secs": MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS,
             "wake_on": "terminal",
         }),
     )
@@ -795,6 +797,10 @@ pub(super) fn sparsify_job_handoff_model_result(result: &mut ToolResult) {
     if call["arguments"]["items"][0]["after_observation_token"].as_str() != token {
         return;
     }
+    output.insert(
+        "recommended_poll_after_secs".to_string(),
+        Value::from(MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS),
+    );
     output.remove("observation_token");
     output.remove("continuation_semantics");
     if output.get("promoted_to_job").and_then(Value::as_bool) == Some(true) {
