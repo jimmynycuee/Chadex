@@ -143,7 +143,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-helper"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "axum",
  "chadex-runtime-process",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64",
  "getrandom 0.3.4",
@@ -177,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-process"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
@@ -185,7 +185,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-runner-config"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "chadex-runtime-core",
  "serde",
