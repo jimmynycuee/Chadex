@@ -518,14 +518,18 @@ fn observe_jobs_compact_projection_single_running_unchanged_keeps_actionable_sta
         "job-unchanged",
         "running",
         "unchanged",
-        "",
-        "",
+        "old stdout that must not be resent\n",
+        "old stderr that must not be resent\n",
         false,
         false,
     );
     observation["activity"] = serde_json::to_value(process_activity()).unwrap();
     let token = observation["observation_token"].clone();
     let canonical = canonical_batch(vec![canonical_success_item(0, observation)], "immediate", 0);
+    assert_eq!(
+        canonical.output["items"][0]["output"]["stdout_tail"],
+        "old stdout that must not be resent\n"
+    );
     assert_eq!(
         super::super::tool_audit::session_log_result_for_tool("observe_jobs", &canonical.output),
         canonical.output,
@@ -663,13 +667,15 @@ async fn observe_jobs_kernel_model_surface_applies_compact_projection() {
 }
 
 #[test]
-fn observe_jobs_compact_projection_delta_keeps_bodies_and_token() {
+fn observe_jobs_compact_projection_delta_compacts_bodies_and_keeps_token() {
+    let stdout = "stdout-1\nstdout-2\nstdout-3\nstdout-4\nstdout-5\nstdout-6\n";
+    let stderr = "stderr-1\nstderr-2\nstderr-3\nstderr-4\nstderr-5\n";
     let observation = canonical_observation(
         "job-delta",
         "running",
         "delta",
-        "new stdout\n",
-        "new stderr\n",
+        stdout,
+        stderr,
         true,
         false,
     );
@@ -677,9 +683,15 @@ fn observe_jobs_compact_projection_delta_keeps_bodies_and_token() {
     let canonical = canonical_batch(vec![canonical_success_item(0, observation)], "updated", 84);
     let projected = compact_projection(&canonical);
     let item = &projected.output["items"][0];
+    assert_eq!(
+        canonical.output["items"][0]["output"]["stdout_tail"],
+        stdout,
+        "canonical evidence must remain complete"
+    );
     assert_eq!(item["log_delta_status"], "delta");
-    assert_eq!(item["stdout_tail"], "new stdout\n");
-    assert_eq!(item["stderr_tail"], "new stderr\n");
+    assert_eq!(item["stdout_tail"], "stdout-3\nstdout-4\nstdout-5\nstdout-6\n");
+    assert_eq!(item["stderr_tail"], "stderr-2\nstderr-3\nstderr-4\nstderr-5\n");
+    assert_eq!(item["log_projection"], "compact_excerpt");
     assert_eq!(item["observation_token"], token);
     assert_eq!(projected.output["wait"]["outcome"], "updated");
     assert_eq!(projected.output["wait"]["waited_ms"], 84);
@@ -723,6 +735,8 @@ fn observe_jobs_compact_projection_terminal_keeps_validation_evidence() {
     assert_eq!(item["command_execution_state"], "completed");
     assert_eq!(item["detected_summary"]["outcome"], "passed");
     assert_eq!(item["validation"]["passed"], true);
+    assert_eq!(item["stdout_tail"], "test result: ok\n");
+    assert!(item.get("log_projection").is_none());
     assert_eq!(item["observation_token"], token);
 }
 
@@ -758,6 +772,9 @@ fn observe_jobs_compact_projection_reset_keeps_recovery_and_loss_evidence() {
     assert_eq!(item["stdout_retained_from_line"], 41);
     assert_eq!(item["cursor"], json!({"stdout": 5, "stderr": 3}));
     assert_eq!(item["recovery_reason_code"], "server_epoch_changed");
+    assert_eq!(item["stdout_tail"], "bounded recovery stdout\n");
+    assert_eq!(item["stderr_tail"], "bounded recovery stderr\n");
+    assert!(item.get("log_projection").is_none());
     assert_eq!(item["observation_token"], token);
     assert_eq!(item["command_summary"], "cargo check -p webcodex --lib");
     assert_eq!(item["purpose"], "build");
@@ -1321,6 +1338,52 @@ async fn observe_jobs_terminal_transition_wakes_shared_wait() {
     assert_eq!(result.output["items"][1]["output"]["terminal"], true);
     assert!(result.output["items"][1]["output"]["activity"].is_null());
     assert_item_has_no_wait_metadata(&result.output["items"][1]);
+}
+
+#[tokio::test]
+async fn observe_jobs_failed_terminal_transition_wakes_shared_wait() {
+    let runtime = test_runtime();
+    let (job_id, request, auth) = register_and_start_agent_job(&runtime, "observe-failed").await;
+    let token = observation_token(&runtime, &job_id, &auth).await;
+    let waiting_runtime = runtime.clone();
+    let waiting_auth = auth.clone();
+    let waiting_job = job_id.clone();
+    let task = tokio::spawn(async move {
+        waiting_runtime
+            .dispatch_with_auth(
+                ToolCall::ObserveJobs {
+                    items: vec![item(&waiting_job, Some(token))],
+                    tail_lines: 40,
+                    wait_secs: Some(30),
+                    wake_on: ObserveJobsWakeOn::Terminal,
+                },
+                Some(&waiting_auth),
+            )
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(75)).await;
+    update_observed_job(
+        &runtime,
+        "observe-failed",
+        &request,
+        "failed",
+        Some("failure evidence\n"),
+        None,
+        true,
+    )
+    .await;
+    let result = tokio::time::timeout(Duration::from_secs(2), task)
+        .await
+        .expect("failed terminal transition must wake immediately")
+        .unwrap();
+    assert!(result.success, "{:?}", result.error);
+    assert_eq!(result.output["wait"]["outcome"], "terminal");
+    assert_eq!(result.output["items"][0]["output"]["status"], "failed");
+    assert_eq!(result.output["items"][0]["output"]["terminal"], true);
+    assert_eq!(
+        result.output["items"][0]["output"]["stdout_tail"],
+        "failure evidence\n"
+    );
 }
 
 #[test]

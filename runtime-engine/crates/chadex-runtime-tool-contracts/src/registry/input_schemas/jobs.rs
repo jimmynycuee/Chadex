@@ -460,7 +460,7 @@ pub fn observe_jobs_input_schema() -> Value {
                 "type": "integer",
                 "minimum": 1,
                 "default": 40,
-                "description": "Global per-stream bound. Values above 200 are accepted and clamped to 200. First observations return a current tail; cursor-aware follow-ups return at most this many new or reset-recovery lines."
+                "description": "Global canonical per-stream bound. Values above 200 are accepted and clamped to 200. Job storage and job_log retain this bounded evidence; ordinary non-terminal model-facing observations may present only a compact progress excerpt, while terminal/reset/recovery observations preserve the bounded diagnostic body."
             },
             "wait_secs": {
                 "type": "integer",

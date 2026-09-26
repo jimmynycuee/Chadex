@@ -559,8 +559,13 @@ fn observe_jobs_output_schema() -> Value {
             "exit_code": schema_type("integer", "Terminal process exit code when available and meaningful."),
             "command_execution_state": job_command_execution_state_schema(),
             "activity": job_activity_schema(),
-            "stdout_tail": schema_type("string", "Bounded stdout baseline/delta/reset body. Omitted only when no stdout body needs presenting."),
-            "stderr_tail": schema_type("string", "Bounded stderr baseline/delta/reset body. Omitted only when no stderr body needs presenting."),
+            "stdout_tail": schema_type("string", "Model-facing stdout body. Ordinary running baseline/delta observations may use a compact tail excerpt; terminal/reset/recovery observations preserve the canonical bounded diagnostic body."),
+            "stderr_tail": schema_type("string", "Model-facing stderr body. Ordinary running baseline/delta observations may use a compact tail excerpt; terminal/reset/recovery observations preserve the canonical bounded diagnostic body."),
+            "log_projection": {
+                "type": "string",
+                "enum": ["compact_excerpt"],
+                "description": "Present only when a non-terminal stdout/stderr body was shortened for the model. Full canonical bounded evidence remains retained by the Job-log surface."
+            },
             "stdout_lines": schema_type("integer", "Total observed stdout lines retained when exceptional reset/truncation diagnostics matter."),
             "stderr_lines": schema_type("integer", "Total observed stderr lines retained when exceptional reset/truncation diagnostics matter."),
             "stdout_returned_lines": schema_type("integer", "Returned stdout line count retained for exceptional reset/truncation diagnostics."),

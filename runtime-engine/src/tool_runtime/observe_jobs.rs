@@ -21,6 +21,11 @@ pub(crate) const MAX_OBSERVE_JOBS_TAIL_LINES: usize = 200;
 /// Job observations. This does not change any single Job stream/tail retention.
 const MAX_OBSERVE_JOBS_AGGREGATE_RESULT_BYTES: usize = MODEL_INSPECTION_MAX_RESULT_BYTES;
 const MAX_OBSERVE_JOBS_ERROR_CHARS: usize = 512;
+/// Ordinary running Job observations keep only a tiny model-facing progress
+/// excerpt. Canonical Job logs remain unchanged in the Job store and are still
+/// available through the dedicated Job-log surface.
+const MAX_RUNNING_MODEL_LOG_LINES: usize = 4;
+const MAX_RUNNING_MODEL_LOG_CHARS: usize = 1024;
 /// Reserve enough result budget for host-safe wait metadata that is attached
 /// after aggregate packing.
 const MAX_OBSERVE_JOBS_HOST_WAIT_METADATA_BYTES: usize = 256;
@@ -397,6 +402,32 @@ fn copy_present(
     }
 }
 
+fn compact_running_log_excerpt(body: &str) -> Option<(String, bool)> {
+    if body.is_empty() {
+        return None;
+    }
+    let mut lines = body
+        .lines()
+        .rev()
+        .take(MAX_RUNNING_MODEL_LOG_LINES)
+        .collect::<Vec<_>>();
+    lines.reverse();
+    let mut excerpt = lines.join("\n");
+    if body.ends_with('\n') {
+        excerpt.push('\n');
+    }
+    let mut compacted = excerpt != body;
+    let char_count = excerpt.chars().count();
+    if char_count > MAX_RUNNING_MODEL_LOG_CHARS {
+        let keep = MAX_RUNNING_MODEL_LOG_CHARS.saturating_sub(1);
+        let mut suffix = excerpt.chars().rev().take(keep).collect::<Vec<_>>();
+        suffix.reverse();
+        excerpt = format!("…{}", suffix.into_iter().collect::<String>());
+        compacted = true;
+    }
+    Some((excerpt, compacted))
+}
+
 fn sparse_success_item(item: &Value) -> Option<Value> {
     let item = item.as_object()?;
     if item.get("success").and_then(Value::as_bool) != Some(true)
@@ -460,15 +491,45 @@ fn sparse_success_item(item: &Value) -> Option<Value> {
         copy_non_null(observation, &mut sparse, key);
     }
 
-    if log_delta_status != "unchanged" {
-        copy_present(observation, &mut sparse, "stdout_tail");
-        copy_present(observation, &mut sparse, "stderr_tail");
-    } else {
-        if !stdout_tail.is_empty() {
+    let exceptional_log_evidence = log_delta_status == "reset"
+        || stdout_truncated
+        || stderr_truncated
+        || stdout_delta_reset
+        || stderr_delta_reset
+        || earlier_stdout_unavailable
+        || earlier_stderr_unavailable
+        || observation
+            .get("recovery_state")
+            .is_some_and(|value| !value.is_null())
+        || observation
+            .get("recovery_reason_code")
+            .is_some_and(|value| !value.is_null())
+        || observation
+            .get("recovery_reason")
+            .is_some_and(|value| !value.is_null());
+    let preserve_full_log_bodies = terminal || exceptional_log_evidence;
+    if preserve_full_log_bodies {
+        if log_delta_status != "unchanged" {
             copy_present(observation, &mut sparse, "stdout_tail");
-        }
-        if !stderr_tail.is_empty() {
             copy_present(observation, &mut sparse, "stderr_tail");
+        } else {
+            if !stdout_tail.is_empty() {
+                copy_present(observation, &mut sparse, "stdout_tail");
+            }
+            if !stderr_tail.is_empty() {
+                copy_present(observation, &mut sparse, "stderr_tail");
+            }
+        }
+    } else if log_delta_status != "unchanged" {
+        let mut compacted = false;
+        for (key, body) in [("stdout_tail", stdout_tail), ("stderr_tail", stderr_tail)] {
+            if let Some((excerpt, was_compacted)) = compact_running_log_excerpt(body) {
+                sparse.insert(key.to_string(), json!(excerpt));
+                compacted |= was_compacted;
+            }
+        }
+        if compacted {
+            sparse.insert("log_projection".to_string(), json!("compact_excerpt"));
         }
     }
 
@@ -488,22 +549,6 @@ fn sparse_success_item(item: &Value) -> Option<Value> {
         copy_non_null(observation, &mut sparse, key);
     }
 
-    let exceptional_log_evidence = log_delta_status == "reset"
-        || stdout_truncated
-        || stderr_truncated
-        || stdout_delta_reset
-        || stderr_delta_reset
-        || earlier_stdout_unavailable
-        || earlier_stderr_unavailable
-        || observation
-            .get("recovery_state")
-            .is_some_and(|value| !value.is_null())
-        || observation
-            .get("recovery_reason_code")
-            .is_some_and(|value| !value.is_null())
-        || observation
-            .get("recovery_reason")
-            .is_some_and(|value| !value.is_null());
     if exceptional_log_evidence {
         for key in [
             "stdout_lines",
