@@ -12,15 +12,16 @@ enum L10n {
     }
 
     static func resourceBundle(mainBundle: Bundle = .main) -> Bundle? {
-        var candidates: [URL] = []
-
 #if DEBUG
-        if let override = ProcessInfo.processInfo.environment["PACKAGE_RESOURCE_BUNDLE_PATH"]
-            ?? ProcessInfo.processInfo.environment["PACKAGE_RESOURCE_BUNDLE_URL"],
-           !override.isEmpty {
-            candidates.append(URL(fileURLWithPath: override, isDirectory: true))
-        }
-#endif
+        // SwiftPM owns the debug/test resource layout. Its generated accessor
+        // includes the concrete build-directory fallback that is valid while
+        // running `swift test` or `swift run`, including on GitHub Actions.
+        // Release builds intentionally do not use Bundle.module because that
+        // accessor can retain CI paths after the executable is packaged into
+        // Chadex.app.
+        return Bundle.module
+#else
+        var candidates: [URL] = []
 
         appendResourceCandidates(for: mainBundle, to: &candidates)
 
@@ -38,6 +39,7 @@ enum L10n {
             }
         }
         return nil
+#endif
     }
 
     private static var selectedLanguage: ChadexLanguage {

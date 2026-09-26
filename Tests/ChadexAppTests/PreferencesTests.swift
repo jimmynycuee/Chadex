@@ -120,7 +120,7 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(L10n.string("settings.general"), "一般")
     }
 
-    func testLocalizationResourcesResolveWithoutBundleModule() throws {
+    func testLocalizationResourcesResolveInSwiftPMTestRuntime() throws {
         let bundle = try XCTUnwrap(L10n.resourceBundle())
         let resourceURL = try XCTUnwrap(bundle.resourceURL)
 
