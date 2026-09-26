@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import SwiftUI
 
 @MainActor
@@ -36,6 +37,26 @@ final class ChadexAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+enum ChadexStartupPreflight {
+    static let resourceArgument = "--resource-preflight"
+
+    static func resourceExitStatus(arguments: [String] = CommandLine.arguments) -> Int32? {
+        guard arguments.contains(resourceArgument) else { return nil }
+        guard let bundle = L10n.resourceBundle(),
+              let resourceURL = bundle.resourceURL,
+              FileManager.default.fileExists(
+                atPath: resourceURL
+                    .appendingPathComponent("en.lproj", isDirectory: true)
+                    .appendingPathComponent("Localizable.strings")
+                    .path
+              )
+        else {
+            return 78
+        }
+        return 0
+    }
+}
+
 @main
 struct ChadexApp: App {
     @NSApplicationDelegateAdaptor(ChadexAppDelegate.self) private var appDelegate
@@ -46,6 +67,16 @@ struct ChadexApp: App {
     @AppStorage(ChadexPreferenceKey.language) private var languageRaw = ChadexLanguage.system.rawValue
     @AppStorage(ChadexPreferenceKey.interfaceSize) private var interfaceSizeRaw = ChadexInterfaceSize.comfortable.rawValue
     @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.system.rawValue
+
+    init() {
+        guard let status = ChadexStartupPreflight.resourceExitStatus() else { return }
+        if status == 0 {
+            FileHandle.standardOutput.write(Data("Chadex resource preflight OK\n".utf8))
+        } else {
+            FileHandle.standardError.write(Data("Chadex resource preflight failed\n".utf8))
+        }
+        Darwin.exit(status)
+    }
 
     var body: some Scene {
         WindowGroup(id: "main") {

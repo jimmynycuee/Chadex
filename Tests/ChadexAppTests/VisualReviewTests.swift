@@ -39,19 +39,34 @@ final class VisualReviewTests: XCTestCase {
         let updateManager = UpdateManager()
 
         try render(
-            presented(RootView().environmentObject(model), interfaceSize: .standard),
+            presented(
+                RootView()
+                    .environmentObject(model)
+                    .environmentObject(updateManager),
+                interfaceSize: .standard
+            ),
             size: CGSize(width: 1100, height: 720),
             scheme: .light,
             to: output.appendingPathComponent("main-wide-100-light.png")
         )
         try render(
-            presented(RootView().environmentObject(model), interfaceSize: .extraLarge),
+            presented(
+                RootView()
+                    .environmentObject(model)
+                    .environmentObject(updateManager),
+                interfaceSize: .extraLarge
+            ),
             size: CGSize(width: 1400, height: 900),
             scheme: .light,
             to: output.appendingPathComponent("main-wide-140-light.png")
         )
         try render(
-            presented(RootView().environmentObject(model), interfaceSize: .extraLarge),
+            presented(
+                RootView()
+                    .environmentObject(model)
+                    .environmentObject(updateManager),
+                interfaceSize: .extraLarge
+            ),
             size: CGSize(width: 940, height: 640),
             scheme: .dark,
             to: output.appendingPathComponent("main-narrow-140-dark.png")

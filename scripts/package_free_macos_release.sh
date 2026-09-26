@@ -20,6 +20,19 @@ done
 test -f "$APP/Contents/Resources/Chadex-LICENSE.txt"
 test -f "$APP/Contents/Resources/WebCodex-LICENSE.txt"
 test -f "$APP/Contents/Resources/UPSTREAM.md"
+RESOURCE_BUNDLE="$APP/Contents/Resources/Chadex_ChadexApp.bundle"
+test -d "$RESOURCE_BUNDLE"
+if [ -d "$RESOURCE_BUNDLE/Contents/Resources" ]; then
+  RESOURCE_PAYLOAD="$RESOURCE_BUNDLE/Contents/Resources"
+else
+  RESOURCE_PAYLOAD="$RESOURCE_BUNDLE"
+fi
+test -f "$RESOURCE_PAYLOAD/en.lproj/Localizable.strings"
+if [ ! -f "$RESOURCE_PAYLOAD/zh-Hant.lproj/Localizable.strings" ] && [ ! -f "$RESOURCE_PAYLOAD/zh-hant.lproj/Localizable.strings" ]; then
+  echo "error: packaged Traditional Chinese localization is missing" >&2
+  exit 1
+fi
+"$APP/Contents/MacOS/Chadex" --resource-preflight
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/chadex-free-release.XXXXXX")
 MOUNT=
 cleanup() { if [ -n "$MOUNT" ] && /sbin/mount | /usr/bin/grep -Fq " on $MOUNT "; then /usr/bin/hdiutil detach "$MOUNT" -quiet || true; fi; rm -rf "$TMP"; }
@@ -38,6 +51,7 @@ test -d "$MOUNT/Chadex.app"
 test -L "$MOUNT/Applications"
 /usr/bin/codesign --verify --deep --strict "$MOUNT/Chadex.app"
 test "$(/usr/bin/lipo -archs "$MOUNT/Chadex.app/Contents/MacOS/Chadex")" = "arm64"
+"$MOUNT/Chadex.app/Contents/MacOS/Chadex" --resource-preflight
 /usr/bin/hdiutil detach "$MOUNT" -quiet
 MOUNT=
 (cd "$(dirname "$OUTPUT")" && /usr/bin/shasum -a 256 "$(basename "$OUTPUT")" >"$(basename "$OUTPUT").sha256")

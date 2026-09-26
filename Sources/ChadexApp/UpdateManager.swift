@@ -704,6 +704,32 @@ actor ChadexUpdateService {
             throw ChadexUpdateError.versionMismatch(expected: expectedVersion, actual: versionString)
         }
 
+        let resourceBundleURL = appURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("Chadex_ChadexApp.bundle", isDirectory: true)
+        guard let resourceBundle = Bundle(url: resourceBundleURL),
+              let resourceRoot = resourceBundle.resourceURL
+        else {
+            throw ChadexUpdateError.invalidAppResources
+        }
+
+        let englishStrings = resourceRoot
+            .appendingPathComponent("en.lproj", isDirectory: true)
+            .appendingPathComponent("Localizable.strings")
+        let traditionalChineseStrings = ["zh-Hant", "zh-hant"].map { code in
+            resourceRoot
+                .appendingPathComponent("\(code).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+        }
+        guard FileManager.default.fileExists(atPath: englishStrings.path),
+              traditionalChineseStrings.contains(where: {
+                FileManager.default.fileExists(atPath: $0.path)
+              })
+        else {
+            throw ChadexUpdateError.invalidAppResources
+        }
+
         do {
             try runProcess(
                 executable: "/usr/bin/codesign",
@@ -913,6 +939,7 @@ enum ChadexUpdateError: LocalizedError {
     case invalidAppBundle
     case bundleIdentifierMismatch
     case versionMismatch(expected: String, actual: String)
+    case invalidAppResources
     case invalidCodeSignature
     case unsupportedArchitecture
     case installerLaunchFailed
@@ -949,6 +976,8 @@ enum ChadexUpdateError: LocalizedError {
             return L10n.string("updates.error.bundleIdentifier")
         case .versionMismatch(let expected, let actual):
             return L10n.string("updates.error.versionMismatch", expected, actual)
+        case .invalidAppResources:
+            return L10n.string("updates.error.resources")
         case .invalidCodeSignature:
             return L10n.string("updates.error.codeSignature")
         case .unsupportedArchitecture:

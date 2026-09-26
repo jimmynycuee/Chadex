@@ -107,13 +107,10 @@ echo "==> Building Chadex helper"
 "$CHADEX_CARGO" build --locked --release --manifest-path rust-helper/Cargo.toml
 
 echo "==> Building Chadex Swift app executable"
-# Use SwiftPM's default build system for packaged apps. Its generated
-# Bundle.module accessor resolves package resources from Bundle.main.resourceURL,
-# which maps to Contents/Resources inside a normal macOS .app bundle.
-#
-# Do not package an executable produced by `--build-system native` here: that
-# accessor may embed build-directory/root-bundle candidates that are not valid
-# after the executable is moved into dist/Chadex.app.
+# Package the SwiftPM resource bundle explicitly below. Runtime localization
+# intentionally resolves Contents/Resources itself rather than calling
+# Bundle.module because generated accessors can differ across build systems and
+# retain CI/build-directory search paths after the executable is packaged.
 swift build -c release -debug-info-format none
 SWIFT_BIN=$(swift build -c release -debug-info-format none --show-bin-path)
 SWIFT_APP="$SWIFT_BIN/Chadex"

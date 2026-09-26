@@ -299,6 +299,8 @@
 "updates.check" = "檢查更新…";
 "updates.checkMenu" = "檢查更新…";
 "updates.install" = "安裝 v%@";
+"updates.quickUpdate" = "更新";
+"updates.quickUpdateHint" = "將 Chadex 更新至 v%@";
 "updates.releaseNotes" = "版本說明";
 "updates.status.ready" = "可檢查是否有新的穩定版本。";
 "updates.status.checking" = "正在檢查 GitHub Releases…";
@@ -331,6 +333,7 @@
 "updates.error.invalidBundle" = "下載的版本不包含有效的 Chadex.app。";
 "updates.error.bundleIdentifier" = "下載的 App Bundle ID 不一致，因此不會安裝。";
 "updates.error.versionMismatch" = "下載的 App 版本與 Release 不一致（預期 %@，實際 %@）。";
+"updates.error.resources" = "下載的 App 缺少 Chadex 必要資源，因此不會安裝。";
 "updates.error.codeSignature" = "下載的 App 未通過 macOS 程式碼簽章驗證。";
 "updates.error.architecture" = "下載的 App 不包含需要的 Apple Silicon 執行檔。";
 "updates.error.installerLaunch" = "Chadex 無法啟動外部更新安裝程序。";

@@ -299,6 +299,8 @@
 "updates.check" = "Check for Updates…";
 "updates.checkMenu" = "Check for Updates…";
 "updates.install" = "Install v%@";
+"updates.quickUpdate" = "Update";
+"updates.quickUpdateHint" = "Update Chadex to v%@";
 "updates.releaseNotes" = "Release Notes";
 "updates.status.ready" = "Ready to check for a newer stable version.";
 "updates.status.checking" = "Checking GitHub Releases…";
@@ -331,6 +333,7 @@
 "updates.error.invalidBundle" = "The downloaded release does not contain a valid Chadex.app bundle.";
 "updates.error.bundleIdentifier" = "The downloaded app has a different bundle identifier and will not be installed.";
 "updates.error.versionMismatch" = "The downloaded app version does not match the release (expected %@, found %@).";
+"updates.error.resources" = "The downloaded app is missing required Chadex resources and will not be installed.";
 "updates.error.codeSignature" = "The downloaded app failed macOS code-signature verification.";
 "updates.error.architecture" = "The downloaded app does not contain the required Apple Silicon executable.";
 "updates.error.installerLaunch" = "Chadex could not launch the external update installer.";

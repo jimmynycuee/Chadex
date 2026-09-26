@@ -11,6 +11,7 @@ struct RootView: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.chadexLayout) private var layout
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var updateManager: UpdateManager
     @AppStorage("root.didRouteFirstLaunch") private var didRouteFirstLaunch = false
     @AppStorage("root.lastSidebarDestination") private var lastSidebarDestination = "project"
     @State private var selection: SidebarSelection?
@@ -96,25 +97,50 @@ struct RootView: View {
 
                 Divider()
 
-                Button {
-                    openSettings()
-                } label: {
-                    HStack(spacing: layout.spacing(8)) {
-                        Image(systemName: "gearshape")
-                            .frame(width: layout.control(16))
-                        Text(L10n.string("menubar.settings"))
-                            .chadexFont(.body)
-                        Spacer(minLength: 0)
+                HStack(spacing: layout.spacing(8)) {
+                    Button {
+                        openSettings()
+                    } label: {
+                        HStack(spacing: layout.spacing(8)) {
+                            Image(systemName: "gearshape")
+                                .frame(width: layout.control(16))
+                            Text(L10n.string("menubar.settings"))
+                                .chadexFont(.body)
+                            Spacer(minLength: 0)
+                        }
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, layout.spacing(6))
+                        .contentShape(Rectangle())
                     }
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, layout.spacing(12))
-                    .padding(.vertical, layout.spacing(8))
+                    .buttonStyle(.plain)
                     .contentShape(Rectangle())
+                    .accessibilityLabel(L10n.string("menubar.settings"))
+
+                    if let release = updateManager.availableRelease {
+                        Button {
+                            Task {
+                                await updateManager.installAvailableUpdate {
+                                    !model.hasUpdateBlockingWork
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                Text(L10n.string("updates.quickUpdate"))
+                                    .chadexFont(.callout, weight: .semibold)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        .controlSize(.small)
+                        .disabled(updateManager.isBusy)
+                        .help(L10n.string("updates.quickUpdateHint", release.version))
+                        .accessibilityLabel(L10n.string("updates.quickUpdateHint", release.version))
+                    }
                 }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .accessibilityLabel(L10n.string("menubar.settings"))
+                .padding(.horizontal, layout.spacing(12))
+                .padding(.vertical, layout.spacing(4))
             }
             // Keep the native collapsible sidebar, but give the split item no
             // horizontal resize range. This also keeps the titlebar tracking

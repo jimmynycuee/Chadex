@@ -119,5 +119,25 @@ final class PreferencesTests: XCTestCase {
         defaults.set(ChadexLanguage.traditionalChinese.rawValue, forKey: ChadexPreferenceKey.language)
         XCTAssertEqual(L10n.string("settings.general"), "一般")
     }
+
+    func testLocalizationResourcesResolveWithoutBundleModule() throws {
+        let bundle = try XCTUnwrap(L10n.resourceBundle())
+        let resourceURL = try XCTUnwrap(bundle.resourceURL)
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: resourceURL
+                    .appendingPathComponent("en.lproj", isDirectory: true)
+                    .appendingPathComponent("Localizable.strings")
+                    .path
+            )
+        )
+        XCTAssertEqual(
+            ChadexStartupPreflight.resourceExitStatus(
+                arguments: ["Chadex", ChadexStartupPreflight.resourceArgument]
+            ),
+            0
+        )
+    }
 }
 
