@@ -586,7 +586,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chadex-runtime-cli",
  "chadex-runtime-core",
@@ -597,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-admin"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "reqwest 0.12.28",
  "serde_json",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chadex-runtime-admin",
  "chadex-runtime-core",
@@ -630,7 +630,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-computer"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64",
  "block2",
@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64",
  "getrandom 0.3.4",
@@ -664,7 +664,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-engine"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-lsp"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chadex-runtime-core",
  "chadex-runtime-process",
@@ -721,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-persistent-shell"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64",
  "chadex-runtime-process",
@@ -732,7 +732,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-process"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
@@ -740,7 +740,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-runner"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "agent-client-protocol-schema",
  "base64",
@@ -778,7 +778,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-runner-config"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chadex-runtime-core",
  "serde",
@@ -787,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-runner-registry"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chadex-runtime-core",
  "chrono",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-store"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "chadex-runtime-core",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-tool-contracts"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chadex-runtime-core",
  "serde",
@@ -825,7 +825,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-tool-runtime-contracts"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chadex-runtime-core",
  "chadex-runtime-tool-contracts",
@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-validation"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chadex-runtime-core",
  "chadex-runtime-tool-contracts",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-workflow-session"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64",
  "chadex-runtime-core",
@@ -866,7 +866,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-workspace"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chadex-runtime-core",
  "serde",

@@ -823,7 +823,7 @@ async fn install_tunnel_client(
             .build()
             .map_err(|_| tunnel_runtime_error("Could not initialize the Tunnel client downloader"))?
             .get(url)
-            .header("User-Agent", "chadex/0.2.0")
+            .header("User-Agent", "chadex/0.2.1")
             .send()
             .await
             .map_err(|_| tunnel_runtime_error("Could not download OpenAI tunnel-client"))?;
