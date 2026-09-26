@@ -120,6 +120,14 @@ final class AppModel: ObservableObject {
         connectionAction != nil
     }
 
+    var hasUpdateBlockingWork: Bool {
+        isBootstrapping ||
+            isSwitchingProject ||
+            connectionActionInFlight ||
+            snapshot.currentOperation != nil ||
+            snapshot.taskProgress?.isActive == true
+    }
+
     var connectionActionStatusText: String? {
         switch connectionAction {
         case .connecting:

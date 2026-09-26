@@ -36,6 +36,7 @@ struct ChadexApp: App {
     @StateObject private var model = AppModel(
         autostart: ProcessInfo.processInfo.environment["CHADEX_AUTOSTART_MODEL"] == "1"
     )
+    @StateObject private var updateManager = UpdateManager()
     @AppStorage(ChadexPreferenceKey.language) private var languageRaw = ChadexLanguage.system.rawValue
     @AppStorage(ChadexPreferenceKey.interfaceSize) private var interfaceSizeRaw = ChadexInterfaceSize.comfortable.rawValue
     @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.system.rawValue
@@ -44,6 +45,7 @@ struct ChadexApp: App {
         WindowGroup(id: "main") {
             MainWindowContent(appDelegate: appDelegate)
                 .environmentObject(model)
+                .environmentObject(updateManager)
                 .chadexPresentation(
                     language: language,
                     interfaceSize: interfaceSize,
@@ -57,6 +59,13 @@ struct ChadexApp: App {
         }
         .defaultSize(width: 1000, height: 680)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button(L10n.string("updates.checkMenu")) {
+                    Task { await updateManager.checkForUpdates(userInitiated: true) }
+                }
+                .disabled(updateManager.isBusy)
+            }
+
             CommandGroup(after: .newItem) {
                 Button(L10n.string("project.add")) {
                     model.addProjectFromPanel()
@@ -95,6 +104,7 @@ struct ChadexApp: App {
         Settings {
             SettingsView()
                 .environmentObject(model)
+                .environmentObject(updateManager)
                 .chadexPresentation(
                     language: language,
                     interfaceSize: interfaceSize,
@@ -109,6 +119,7 @@ struct ChadexApp: App {
         MenuBarExtra {
             MenuBarContent()
                 .environmentObject(model)
+                .environmentObject(updateManager)
                 .chadexPresentation(
                     language: language,
                     interfaceSize: interfaceSize,
@@ -136,6 +147,7 @@ struct ChadexApp: App {
 private struct MainWindowContent: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var updateManager: UpdateManager
     let appDelegate: ChadexAppDelegate
 
     var body: some View {
@@ -151,6 +163,8 @@ private struct MainWindowContent: View {
                     await model.shutdown()
                 }
                 model.start()
+                await updateManager.markCurrentLaunchHealthy()
+                updateManager.scheduleAutomaticCheckIfNeeded()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 model.applicationBecameActive()
@@ -158,6 +172,52 @@ private struct MainWindowContent: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
                 model.applicationResignedActive()
             }
+            .alert(item: $updateManager.notice) { notice in
+                updateAlert(for: notice)
+            }
+    }
+
+    private func updateAlert(for notice: ChadexUpdateNotice) -> Alert {
+        switch notice.kind {
+        case .available(let version):
+            if model.hasUpdateBlockingWork {
+                return Alert(
+                    title: Text(L10n.string("updates.availableTitle", version)),
+                    message: Text(L10n.string("updates.availableBusyMessage")),
+                    dismissButton: .default(Text(L10n.string("updates.later")))
+                )
+            }
+            return Alert(
+                title: Text(L10n.string("updates.availableTitle", version)),
+                message: Text(L10n.string("updates.availableMessage")),
+                primaryButton: .default(Text(L10n.string("updates.installNow"))) {
+                    Task {
+                        await updateManager.installAvailableUpdate {
+                            !model.hasUpdateBlockingWork
+                        }
+                    }
+                },
+                secondaryButton: .cancel(Text(L10n.string("updates.later")))
+            )
+        case .blocked(let version):
+            return Alert(
+                title: Text(L10n.string("updates.blockedTitle")),
+                message: Text(L10n.string("updates.blockedMessage", version)),
+                dismissButton: .default(Text(L10n.string("common.ok")))
+            )
+        case .upToDate(let version):
+            return Alert(
+                title: Text(L10n.string("updates.upToDateTitle")),
+                message: Text(L10n.string("updates.upToDateMessage", version)),
+                dismissButton: .default(Text(L10n.string("common.ok")))
+            )
+        case .error(let message):
+            return Alert(
+                title: Text(L10n.string("updates.errorTitle")),
+                message: Text(message),
+                dismissButton: .default(Text(L10n.string("common.ok")))
+            )
+        }
     }
 }
 

@@ -184,9 +184,11 @@ private struct SettingsWindowTitleHider: NSViewRepresentable {
 
 private struct GeneralSettingsView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var updateManager: UpdateManager
     @AppStorage(ChadexPreferenceKey.language) private var languageRaw = ChadexLanguage.system.rawValue
     @AppStorage(ChadexPreferenceKey.interfaceSize) private var interfaceSizeRaw = ChadexInterfaceSize.comfortable.rawValue
     @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.system.rawValue
+    @AppStorage(ChadexPreferenceKey.autoCheckUpdates) private var autoCheckUpdates = true
     @State private var confirmingGuideReset = false
 
     var body: some View {
@@ -255,6 +257,58 @@ private struct GeneralSettingsView: View {
 
             Divider()
 
+            SettingsSection(L10n.string("updates.section")) {
+                VStack(alignment: .leading, spacing: ChadexMetrics.settingsRowSpacing) {
+                    SettingsFormRow(L10n.string("updates.currentVersion")) {
+                        Text("v\(updateManager.currentVersion) (\(updateManager.currentBuildNumber))")
+                            .chadexFont(.caption, design: .monospaced)
+                    }
+
+                    SettingsControlBlock {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle(L10n.string("updates.autoCheck"), isOn: $autoCheckUpdates)
+
+                            Text(L10n.string("updates.autoCheckNote"))
+                                .chadexFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            HStack(spacing: 8) {
+                                Button(L10n.string("updates.check")) {
+                                    Task { await updateManager.checkForUpdates(userInitiated: true) }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(updateManager.isBusy)
+
+                                if let release = updateManager.availableRelease {
+                                    Button(L10n.string("updates.install", release.version)) {
+                                        Task {
+                                            await updateManager.installAvailableUpdate {
+                                                !model.hasUpdateBlockingWork
+                                            }
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                    .disabled(updateManager.isBusy || model.hasUpdateBlockingWork)
+
+                                    Link(L10n.string("updates.releaseNotes"), destination: release.releasePageURL)
+                                        .chadexFont(.caption)
+                                }
+                            }
+
+                            Text(updateStatusText)
+                                .chadexFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
             SettingsSection(L10n.string("settings.guide")) {
                 SettingsControlBlock {
                     VStack(alignment: .leading, spacing: 8) {
@@ -280,6 +334,28 @@ private struct GeneralSettingsView: View {
             Button(L10n.string("common.cancel"), role: .cancel) {}
         } message: {
             Text(L10n.string("settings.resetGuideMessage"))
+        }
+    }
+
+    private var updateStatusText: String {
+        switch updateManager.phase {
+        case .idle:
+            return L10n.string("updates.status.ready")
+        case .checking:
+            return L10n.string("updates.status.checking")
+        case .upToDate:
+            return L10n.string("updates.status.upToDate")
+        case .available(let version):
+            if model.hasUpdateBlockingWork {
+                return L10n.string("updates.status.waitingForIdle", version)
+            }
+            return L10n.string("updates.status.available", version)
+        case .preparing(let version):
+            return L10n.string("updates.status.preparing", version)
+        case .installing(let version):
+            return L10n.string("updates.status.installing", version)
+        case .failed(let message):
+            return message
         }
     }
 
@@ -676,6 +752,7 @@ private struct AdvancedSettingsView: View {
 
 struct MenuBarContent: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var updateManager: UpdateManager
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -692,6 +769,11 @@ struct MenuBarContent: View {
             Button(menuActionTitle) { model.primaryAction() }
                 .disabled(model.selectedProject == nil || model.connectionActionInFlight)
         }
+        Button(L10n.string("updates.checkMenu")) {
+            openWindow(id: "main")
+            Task { await updateManager.checkForUpdates(userInitiated: true) }
+        }
+        .disabled(updateManager.isBusy)
         SettingsLink { Text(L10n.string("menubar.settings")) }
         Divider()
         Button(L10n.string("menubar.quit")) { NSApplication.shared.terminate(nil) }

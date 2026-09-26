@@ -36,6 +36,7 @@ final class VisualReviewTests: XCTestCase {
             account: "visual-review"
         )
         let model = AppModel(keychain: keychain, store: store)
+        let updateManager = UpdateManager()
 
         try render(
             presented(RootView().environmentObject(model), interfaceSize: .standard),
@@ -56,19 +57,34 @@ final class VisualReviewTests: XCTestCase {
             to: output.appendingPathComponent("main-narrow-140-dark.png")
         )
         try render(
-            presented(SettingsView(initialTab: .general).environmentObject(model), interfaceSize: .standard),
+            presented(
+                SettingsView(initialTab: .general)
+                    .environmentObject(model)
+                    .environmentObject(updateManager),
+                interfaceSize: .standard
+            ),
             size: CGSize(width: 660, height: 460),
             scheme: .light,
             to: output.appendingPathComponent("settings-general-100-light.png")
         )
         try render(
-            presented(SettingsView(initialTab: .connection).environmentObject(model), interfaceSize: .extraLarge),
+            presented(
+                SettingsView(initialTab: .connection)
+                    .environmentObject(model)
+                    .environmentObject(updateManager),
+                interfaceSize: .extraLarge
+            ),
             size: CGSize(width: 752, height: 524),
             scheme: .dark,
             to: output.appendingPathComponent("settings-connection-140-dark.png")
         )
         try render(
-            presented(SettingsView(initialTab: .advanced).environmentObject(model), interfaceSize: .extraLarge),
+            presented(
+                SettingsView(initialTab: .advanced)
+                    .environmentObject(model)
+                    .environmentObject(updateManager),
+                interfaceSize: .extraLarge
+            ),
             size: CGSize(width: 752, height: 524),
             scheme: .light,
             to: output.appendingPathComponent("settings-advanced-140-light.png")

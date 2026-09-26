@@ -114,6 +114,12 @@ The script submits a ZIP with `notarytool`, waits for acceptance, staples the ti
 
 These free macOS artifacts are intentionally **not notarized**. Users may need to open **System Settings → Privacy & Security → Open Anyway** on first launch. Do not instruct users to disable Gatekeeper globally.
 
+### In-app update contract
+
+Packaged Chadex builds can update themselves from the latest stable GitHub Release. The app queries the repository's latest-release API and only accepts the exact free-release asset pair `Chadex-vX.Y.Z-macos-arm64.dmg` plus `Chadex-vX.Y.Z-macos-arm64.dmg.sha256`. Before shutdown it verifies the checksum, bundle identifier, version, Apple Silicon architecture, and macOS code signature, then stages the candidate beside the currently running app so write-permission failures are caught before quitting.
+
+The final swap is performed by an external installer after Chadex has completed its normal helper/runtime shutdown. The previous app is kept as a temporary sibling backup until the new version launches and writes a version-bound health marker. If launch verification times out, the installer stops the candidate, restores the backup, and reopens the previous version. The updater never removes Gatekeeper quarantine or weakens the free release's existing ad-hoc-signing boundary.
+
 `.github/workflows/release-notarized.yml` preserves the optional Developer ID + notarization path for a future paid distribution upgrade. It is manual-only so a normal free release tag does not trigger a failing Apple-signing job.
 
 ## Public-history gate

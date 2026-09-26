@@ -6,6 +6,8 @@ enum ChadexPreferenceKey {
     static let appearance = "appearance.colorScheme"
     static let guideOpenAIProjectConfirmed = "guide.openAIProjectConfirmed"
     static let guideChatGPTPluginConfirmed = "guide.chatGPTPluginConfirmed"
+    static let autoCheckUpdates = "updates.autoCheck"
+    static let lastUpdateCheckAt = "updates.lastCheckAt"
 }
 
 enum ChadexLanguage: String, CaseIterable, Identifiable {
