@@ -9,12 +9,25 @@ final class AppLifecycleTests: XCTestCase {
         var reopenCount = 0
         delegate.reopenHandler = { reopenCount += 1 }
 
+        _ = delegate.applicationShouldHandleReopen(
+            NSApplication.shared,
+            hasVisibleWindows: false
+        )
+
+        XCTAssertEqual(reopenCount, 1)
+    }
+
+    func testDockReopenSuppressesDefaultAppKitReopenAfterOpeningMainWindow() {
+        let delegate = ChadexAppDelegate()
+        var reopenCount = 0
+        delegate.reopenHandler = { reopenCount += 1 }
+
         let handled = delegate.applicationShouldHandleReopen(
             NSApplication.shared,
             hasVisibleWindows: false
         )
 
-        XCTAssertTrue(handled)
+        XCTAssertFalse(handled)
         XCTAssertEqual(reopenCount, 1)
     }
 

@@ -20,6 +20,7 @@ final class ChadexAppDelegate: NSObject, NSApplicationDelegate {
         if !flag {
             reopenHandler?()
             sender.activate(ignoringOtherApps: true)
+            return false
         }
         return true
     }
