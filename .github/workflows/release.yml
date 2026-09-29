@@ -22,20 +22,22 @@ permissions:
   contents: write
 
 jobs:
-  adhoc-arm64:
-    name: Build free ARM64 DMG
-    runs-on: macos-15
-    timeout-minutes: 75
+  metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-24.04
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      app_version: ${{ steps.release.outputs.app_version }}
+      build_number: ${{ steps.release.outputs.build_number }}
+      dmg_name: ${{ steps.release.outputs.dmg_name }}
+      artifact_name: ${{ steps.release.outputs.artifact_name }}
     env:
       INPUT_TAG: ${{ inputs.tag }}
       INPUT_APP_VERSION: ${{ inputs.app_version }}
       INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
     steps:
-      - name: Checkout full history
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
       - name: Resolve release metadata
+        id: release
         shell: bash
         run: |
           set -euo pipefail
@@ -48,51 +50,125 @@ jobs:
           [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
           [[ "$version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]
           [[ "$build" =~ ^[0-9]+(\.[0-9]+)*$ ]]
-          echo "CHADEX_RELEASE_TAG=$tag" >> "$GITHUB_ENV"
-          echo "CHADEX_APP_VERSION=$version" >> "$GITHUB_ENV"
-          echo "CHADEX_APP_BUILD_NUMBER=$build" >> "$GITHUB_ENV"
-          echo "CHADEX_APP_OUTPUT=$RUNNER_TEMP/Chadex.app" >> "$GITHUB_ENV"
-          echo "CHADEX_DMG_OUTPUT=$RUNNER_TEMP/Chadex-${tag}-macos-arm64.dmg" >> "$GITHUB_ENV"
-      - name: Bootstrap pinned Rust
-        run: ./scripts/bootstrap_rust.sh
+          dmg_name="Chadex-${tag}-macos-arm64.dmg"
+          artifact_name="Chadex-${tag}-macos-arm64"
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "app_version=$version" >> "$GITHUB_OUTPUT"
+          echo "build_number=$build" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=$dmg_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+  public-history:
+    name: Public history / secret scan
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
       - name: Install pinned Gitleaks
         shell: bash
         run: |
           set -euo pipefail
-          version=8.29.1; archive="gitleaks_${version}_darwin_arm64.tar.gz"
-          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}" -o "$RUNNER_TEMP/$archive"
-          echo "69836c841d7e648fb30ff4846f8c3587855c5754ed02b8510caaf6008f65d177  $RUNNER_TEMP/$archive" | shasum -a 256 -c -
-          mkdir -p "$RUNNER_TEMP/gitleaks"; tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          version=8.29.1
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
+          curl -fsSL "$url" -o "$RUNNER_TEMP/$archive"
+          echo "e4eb209d04e20339d77122a3bdf9cd41351255cfb27ebcb75e85325e04f88924  $RUNNER_TEMP/$archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
           echo "GITLEAKS_BIN=$RUNNER_TEMP/gitleaks/gitleaks" >> "$GITHUB_ENV"
+
       - name: Public history gate
-        env: { CHADEX_REQUIRE_GITLEAKS: "1" }
+        env:
+          CHADEX_REQUIRE_GITLEAKS: "1"
         run: ./scripts/public_release_check.sh HEAD
+
+  source-gate:
+    name: Source release gate
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Bootstrap pinned Rust
+        run: ./scripts/bootstrap_rust.sh
+
       - name: Source release gate
-        env: { CHADEX_RELEASE_CHECK_BUILD_APP: "0" }
+        env:
+          CHADEX_RELEASE_CHECK_BUILD_APP: "0"
         run: ./scripts/release_check.sh
+
+  build-package:
+    name: Build free ARM64 DMG
+    needs: metadata
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      CHADEX_APP_VERSION: ${{ needs.metadata.outputs.app_version }}
+      CHADEX_APP_BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Bootstrap pinned Rust
+        run: ./scripts/bootstrap_rust.sh
+
       - name: Build ad-hoc signed app
         env:
+          CHADEX_APP_OUTPUT: ${{ runner.temp }}/Chadex.app
           CHADEX_CODESIGN_MODE: adhoc
           CHADEX_RUNTIME_PROFILE: release
         run: ./scripts/build_app.sh
+
       - name: Package and smoke-test DMG
+        env:
+          CHADEX_APP_OUTPUT: ${{ runner.temp }}/Chadex.app
+          CHADEX_DMG_OUTPUT: ${{ runner.temp }}/${{ needs.metadata.outputs.dmg_name }}
         run: ./scripts/package_free_macos_release.sh "$CHADEX_APP_OUTPUT" "$CHADEX_DMG_OUTPUT"
+
       - name: Upload free release artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Chadex-${{ env.CHADEX_RELEASE_TAG }}-macos-arm64
+          name: ${{ needs.metadata.outputs.artifact_name }}
           path: |
-            ${{ env.CHADEX_DMG_OUTPUT }}
-            ${{ env.CHADEX_DMG_OUTPUT }}.sha256
+            ${{ runner.temp }}/${{ needs.metadata.outputs.dmg_name }}
+            ${{ runner.temp }}/${{ needs.metadata.outputs.dmg_name }}.sha256
           if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    if: github.ref_type == 'tag'
+    needs:
+      - metadata
+      - public-history
+      - source-gate
+      - build-package
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download release artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.metadata.outputs.artifact_name }}
+          path: ${{ runner.temp }}/release
+
       - name: Publish GitHub prerelease/release
-        if: github.ref_type == 'tag'
-        env: { GH_TOKEN: "${{ github.token }}" }
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          CHADEX_RELEASE_TAG: ${{ needs.metadata.outputs.release_tag }}
+          CHADEX_DMG_OUTPUT: ${{ runner.temp }}/release/${{ needs.metadata.outputs.dmg_name }}
         shell: bash
         run: |
           set -euo pipefail
           notes_file="docs/releases/${CHADEX_RELEASE_TAG#v}.md"
           test -f "$notes_file"
+          test -f "$CHADEX_DMG_OUTPUT"
+          test -f "$CHADEX_DMG_OUTPUT.sha256"
           args=(release create "$CHADEX_RELEASE_TAG" "$CHADEX_DMG_OUTPUT" "$CHADEX_DMG_OUTPUT.sha256" --title "Chadex $CHADEX_RELEASE_TAG" --notes-file "$notes_file")
           [[ "$CHADEX_RELEASE_TAG" != *-* ]] || args+=(--prerelease)
           gh "${args[@]}"
