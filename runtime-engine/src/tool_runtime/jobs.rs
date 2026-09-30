@@ -797,12 +797,25 @@ pub(super) fn sparsify_job_handoff_model_result(result: &mut ToolResult) {
     if call["arguments"]["items"][0]["after_observation_token"].as_str() != token {
         return;
     }
-    output.insert(
-        "recommended_poll_after_secs".to_string(),
-        Value::from(MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS),
-    );
     output.remove("observation_token");
     output.remove("continuation_semantics");
+    output.remove("recommended_poll_after_secs");
+    for (key, removable) in [
+        ("command_ok", output.get("command_ok") == Some(&Value::Bool(false))),
+        ("exit_code", output.get("exit_code").is_some_and(Value::is_null)),
+        ("failure_kind", output.get("failure_kind").is_some_and(Value::is_null)),
+        ("tool_failure", output.get("tool_failure") == Some(&Value::Bool(false))),
+        ("stdout_tail", output.get("stdout_tail").and_then(Value::as_str) == Some("")),
+        ("stderr_tail", output.get("stderr_tail").and_then(Value::as_str) == Some("")),
+        ("stdout_lines", output.get("stdout_lines").and_then(Value::as_u64) == Some(0)),
+        ("stderr_lines", output.get("stderr_lines").and_then(Value::as_u64) == Some(0)),
+        ("stdout_truncated", output.get("stdout_truncated") == Some(&Value::Bool(false))),
+        ("stderr_truncated", output.get("stderr_truncated") == Some(&Value::Bool(false))),
+    ] {
+        if removable {
+            output.remove(key);
+        }
+    }
     if output.get("promoted_to_job").and_then(Value::as_bool) == Some(true) {
         output.remove("promoted_to_job");
     }

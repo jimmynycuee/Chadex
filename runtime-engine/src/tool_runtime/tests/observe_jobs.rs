@@ -453,6 +453,10 @@ fn observe_jobs_schema_catalog_permission_and_audit_are_public_and_token_safe() 
         sparse_output["properties"]["wait"]["required"],
         json!(["outcome"])
     );
+    assert_eq!(
+        sparse_output["properties"]["continuation"]["properties"]["tool"]["const"],
+        "observe_jobs"
+    );
 
     let definition = super::super::tool_definition::lookup_tool_definition("observe_jobs").unwrap();
     assert!(definition.visibility.is_model_visible());
@@ -559,6 +563,33 @@ fn observe_jobs_compact_projection_single_running_unchanged_keeps_actionable_sta
     assert_eq!(item["changed"], false);
     assert_eq!(item["log_delta_status"], "unchanged");
     assert_eq!(item["observation_token"], token);
+    let continuation = &projected.output["continuation"];
+    assert_eq!(continuation["tool"], "observe_jobs");
+    assert_eq!(continuation["arguments"]["items"][0]["job_id"], "job-unchanged");
+    assert_eq!(
+        continuation["arguments"]["items"][0]["after_observation_token"],
+        token
+    );
+    assert_eq!(
+        continuation["arguments"]["wait_secs"],
+        webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS
+    );
+    assert_eq!(continuation["arguments"]["wake_on"], "terminal");
+    let parsed = ToolCall::from_tool_name(
+        continuation["tool"].as_str().unwrap(),
+        continuation["arguments"].clone(),
+    )
+    .unwrap();
+    assert!(matches!(
+        parsed,
+        ToolCall::ObserveJobs {
+            wait_secs: Some(
+                webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS
+            ),
+            wake_on: ObserveJobsWakeOn::Terminal,
+            ..
+        }
+    ));
     assert!(item.get("continuation_semantics").is_none());
     assert!(projected.output.get("continuation_semantics").is_none());
     assert_eq!(
@@ -738,6 +769,7 @@ fn observe_jobs_compact_projection_terminal_keeps_validation_evidence() {
     assert_eq!(item["stdout_tail"], "test result: ok\n");
     assert!(item.get("log_projection").is_none());
     assert_eq!(item["observation_token"], token);
+    assert!(projected.output.get("continuation").is_none());
 }
 
 #[test]
@@ -812,6 +844,7 @@ fn observe_jobs_compact_projection_multi_success_preserves_order_and_one_wait() 
     assert_eq!(projected.output["wait"]["outcome"], "timeout");
     assert_eq!(projected.output["wait"]["waited_ms"], 1_002);
     assert!(projected.output.get("terminal_count").is_none());
+    assert!(projected.output.get("continuation").is_none());
 }
 
 #[test]

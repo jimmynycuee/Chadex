@@ -656,7 +656,28 @@ pub(crate) fn sparsify_observe_jobs_model_result(result: &mut ToolResult) {
         return;
     }
 
+    let continuation = if sparse_items.len() == 1 {
+        let item = &sparse_items[0];
+        match (
+            item.get("terminal").and_then(Value::as_bool),
+            item.get("job_id").and_then(Value::as_str),
+            item.get("observation_token").and_then(Value::as_str),
+        ) {
+            (Some(false), Some(job_id), Some(token)) if !token.is_empty() => {
+                Some(super::jobs::observe_job_continuation(job_id, Some(token)))
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+
     output.insert("items".to_string(), Value::Array(sparse_items));
+    if let Some(continuation) = continuation {
+        output.insert("continuation".to_string(), continuation);
+    } else {
+        output.remove("continuation");
+    }
     for key in [
         "requested_count",
         "returned_count",

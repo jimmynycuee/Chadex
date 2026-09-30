@@ -2640,12 +2640,12 @@ fn job_handoff_model_projection_keeps_identity_and_exceptional_receipts() {
     }
     assert_eq!(model.output["terminal"], false);
     assert_eq!(model.output["job_status"], "running");
-    assert_eq!(
-        model.output["recommended_poll_after_secs"],
-        webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS
-    );
+    assert!(model.output.get("recommended_poll_after_secs").is_none());
     assert_eq!(model.output["stdout_truncated"], true);
     assert_observe_job_continuation(&model.output);
+    for omitted in ["command_ok", "exit_code", "failure_kind", "tool_failure"] {
+        assert!(model.output.get(omitted).is_none(), "redundant {omitted} leaked");
+    }
     assert_eq!(
         serde_json::to_string(&model.output)
             .unwrap()
@@ -2653,6 +2653,34 @@ fn job_handoff_model_projection_keeps_identity_and_exceptional_receipts() {
             .count(),
         1
     );
+    let mut empty_receipt = receipt.clone();
+    empty_receipt["command_ok"] = json!(false);
+    empty_receipt["exit_code"] = serde_json::Value::Null;
+    empty_receipt["failure_kind"] = serde_json::Value::Null;
+    empty_receipt["tool_failure"] = json!(false);
+    empty_receipt["stdout_tail"] = json!("");
+    empty_receipt["stderr_tail"] = json!("");
+    empty_receipt["stdout_lines"] = json!(0);
+    empty_receipt["stderr_lines"] = json!(0);
+    empty_receipt["stdout_truncated"] = json!(false);
+    empty_receipt["stderr_truncated"] = json!(false);
+    let mut empty_model = ToolResult::ok(empty_receipt.clone());
+    super::super::jobs::sparsify_job_handoff_model_result(&mut empty_model);
+    for omitted in [
+        "command_ok", "exit_code", "failure_kind", "tool_failure",
+        "stdout_tail", "stderr_tail", "stdout_lines", "stderr_lines",
+        "stdout_truncated", "stderr_truncated", "recommended_poll_after_secs",
+    ] {
+        assert!(empty_model.output.get(omitted).is_none(), "redundant {omitted} leaked");
+    }
+    for preserved in [
+        "command_ok", "exit_code", "failure_kind", "tool_failure",
+        "stdout_tail", "stderr_tail", "stdout_lines", "stderr_lines",
+        "stdout_truncated", "stderr_truncated",
+    ] {
+        assert!(empty_receipt.get(preserved).is_some(), "canonical receipt must preserve {preserved}");
+    }
+
     for (field, value) in [
         ("execution_state", json!("outcome_unknown")),
         ("observation_token", json!("another-snapshot")),

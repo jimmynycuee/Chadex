@@ -292,6 +292,38 @@ def trace_breakdown(trace_root: Path, trace_id: str | None) -> dict[str, Any] | 
     }
 
 
+def initial_observe_arguments(
+    initial: dict[str, Any], job_id: str, remaining_secs: int
+) -> dict[str, Any]:
+    continuation = initial.get("continuation")
+    if isinstance(continuation, dict) and continuation.get("tool") == "observe_jobs":
+        arguments = continuation.get("arguments")
+        if isinstance(arguments, dict):
+            items = arguments.get("items")
+            if (
+                isinstance(items, list)
+                and len(items) == 1
+                and isinstance(items[0], dict)
+                and items[0].get("job_id") == job_id
+            ):
+                projected: dict[str, Any] = {"items": [dict(items[0])]}
+                wait_secs = arguments.get("wait_secs")
+                if isinstance(wait_secs, int) and wait_secs > 0:
+                    projected["wait_secs"] = min(wait_secs, remaining_secs)
+                else:
+                    projected["wait_secs"] = min(60, remaining_secs)
+                wake_on = arguments.get("wake_on")
+                if isinstance(wake_on, str) and wake_on:
+                    projected["wake_on"] = wake_on
+                return projected
+
+    item: dict[str, Any] = {"job_id": job_id}
+    token = initial.get("observation_token")
+    if isinstance(token, str) and token:
+        item["after_observation_token"] = token
+    return {"items": [item], "wait_secs": min(60, remaining_secs)}
+
+
 def wait_for_terminal(
     client: MeasuredClient,
     initial: dict[str, Any],
@@ -323,13 +355,17 @@ def wait_for_terminal(
     token = initial.get("observation_token")
     observe_calls = 0
     while time.monotonic() < deadline:
-        item: dict[str, Any] = {"job_id": job_id}
-        if isinstance(token, str) and token:
-            item["after_observation_token"] = token
         remaining = max(1, int(deadline - time.monotonic()))
+        if observe_calls == 0:
+            observe_arguments = initial_observe_arguments(initial, job_id, remaining)
+        else:
+            item: dict[str, Any] = {"job_id": job_id}
+            if isinstance(token, str) and token:
+                item["after_observation_token"] = token
+            observe_arguments = {"items": [item], "wait_secs": min(60, remaining)}
         output, _ = client.invoke(
             "observe_jobs",
-            {"items": [item], "wait_secs": min(60, remaining)},
+            observe_arguments,
             expect_success=False,
         )
         observe_calls += 1

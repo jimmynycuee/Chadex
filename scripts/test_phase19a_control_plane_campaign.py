@@ -72,6 +72,62 @@ class Phase19AControlPlaneCampaignTests(unittest.TestCase):
         self.assertEqual(terminal["exit_code"], 0)
         self.assertTrue(terminal["terminal"])
 
+    def test_handoff_reuses_exact_continuation_on_first_observe(self):
+        calls = []
+
+        class Client:
+            def invoke(self, tool, arguments, **_kwargs):
+                calls.append((tool, arguments))
+                return (
+                    {
+                        "items": [
+                            {
+                                "job_id": "job-1",
+                                "terminal": True,
+                                "exit_code": 0,
+                                "observation_token": "terminal-token",
+                            }
+                        ]
+                    },
+                    {},
+                )
+
+        initial = {
+            "job_id": "job-1",
+            "execution_state": "running",
+            "continuation": {
+                "tool": "observe_jobs",
+                "arguments": {
+                    "items": [
+                        {
+                            "job_id": "job-1",
+                            "after_observation_token": "handoff-token",
+                        }
+                    ],
+                    "wait_secs": 20,
+                    "wake_on": "terminal",
+                },
+            },
+        }
+        terminal, polls = c.wait_for_terminal(Client(), initial, 999999999.0, 0)
+        self.assertEqual(polls, 1)
+        self.assertEqual(terminal["exit_code"], 0)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], "observe_jobs")
+        self.assertEqual(
+            calls[0][1],
+            {
+                "items": [
+                    {
+                        "job_id": "job-1",
+                        "after_observation_token": "handoff-token",
+                    }
+                ],
+                "wait_secs": 20,
+                "wake_on": "terminal",
+            },
+        )
+
     def test_heartbeat_summary_counts_transitions(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "heartbeat.jsonl"

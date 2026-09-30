@@ -1274,6 +1274,73 @@ impl RunnerRegistry {
         Ok(job_view(job))
     }
 
+    /// Wait for a structured hidden job to become terminal, or until the
+    /// caller's bounded synchronous wait expires. This uses the same per-job
+    /// observation notification as public job_log waits, so silent long-running
+    /// commands do not require fixed-interval registry polling.
+    pub async fn wait_hidden_job_terminal_for_auth(
+        &self,
+        auth: Option<&crate::RunnerAccess>,
+        job_id: &str,
+        wait: std::time::Duration,
+    ) -> Result<ShellJobInfo, String> {
+        validate_id(job_id, "job_id")?;
+        let deadline = tokio::time::Instant::now() + wait;
+        let mut inner = self.inner.lock().await;
+        refresh_job_status_locked(&mut inner, job_id);
+        loop {
+            let job = inner
+                .jobs_by_id
+                .get(job_id)
+                .ok_or_else(|| format!("unknown shell job: {job_id}"))?;
+            if !shell_job_visible_to_auth(auth, &inner, job) {
+                return Err(format!("unknown shell job: {job_id}"));
+            }
+            if job.lifecycle.is_terminal() || tokio::time::Instant::now() >= deadline {
+                return Ok(job_view(job));
+            }
+
+            let revision = job.observation.revision.load(Ordering::Relaxed);
+            let update_notify = job.observation.notify.clone();
+            let notified = update_notify.notified();
+            drop(inner);
+
+            // Re-check under the lock before awaiting so an update racing the
+            // waiter setup cannot be lost. This mirrors job_log_for_auth.
+            inner = self.inner.lock().await;
+            refresh_job_status_locked(&mut inner, job_id);
+            let job = inner
+                .jobs_by_id
+                .get(job_id)
+                .ok_or_else(|| format!("unknown shell job: {job_id}"))?;
+            if !shell_job_visible_to_auth(auth, &inner, job) {
+                return Err(format!("unknown shell job: {job_id}"));
+            }
+            let current_revision = job.observation.revision.load(Ordering::Relaxed);
+            if job.lifecycle.is_terminal() {
+                return Ok(job_view(job));
+            }
+            if current_revision != revision {
+                continue;
+            }
+            drop(inner);
+
+            let wake = tokio::time::timeout_at(deadline, notified).await;
+            inner = self.inner.lock().await;
+            refresh_job_status_locked(&mut inner, job_id);
+            if wake.is_err() {
+                let job = inner
+                    .jobs_by_id
+                    .get(job_id)
+                    .ok_or_else(|| format!("unknown shell job: {job_id}"))?;
+                if !shell_job_visible_to_auth(auth, &inner, job) {
+                    return Err(format!("unknown shell job: {job_id}"));
+                }
+                return Ok(job_view(job));
+            }
+        }
+    }
+
     pub async fn hidden_job_log_for_auth(
         &self,
         auth: Option<&crate::RunnerAccess>,

@@ -288,6 +288,109 @@ fn update(
 }
 
 #[tokio::test]
+async fn hidden_terminal_wait_wakes_on_terminal_update() {
+    let registry = RunnerRegistry::default();
+    register(&registry, INSTANCE_A, empty_inventory()).await;
+    let job = registry
+        .start_job_with_metadata(
+            start_request("sleep 30"),
+            "tester".to_string(),
+            ShellJobStartMetadata {
+                project_id: Some(RUNTIME_PROJECT_ID.to_string()),
+                session_id: Some(SESSION_ID.to_string()),
+                project_cwd: Some("/srv/demo".to_string()),
+                purpose: Some("test".to_string()),
+                shell: Some("bash".to_string()),
+                visibility: ShellJobVisibility::HiddenUntilHandoff,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let request = registry
+        .poll(RunnerPollRequest {
+            client_id: CLIENT_ID.to_string(),
+            runner_instance_id: INSTANCE_A.to_string(),
+        })
+        .await
+        .unwrap()
+        .expect("hidden start request");
+    assert_eq!(request.job_id.as_deref(), Some(job.job_id.as_str()));
+    registry
+        .update_job(update(INSTANCE_A, &job.job_id, 1, "running", None, false))
+        .await
+        .unwrap();
+
+    let waiter_registry = registry.clone();
+    let waiter_job_id = job.job_id.clone();
+    let waiter = tokio::spawn(async move {
+        waiter_registry
+            .wait_hidden_job_terminal_for_auth(
+                None,
+                &waiter_job_id,
+                std::time::Duration::from_secs(2),
+            )
+            .await
+            .unwrap()
+    });
+    tokio::task::yield_now().await;
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    registry
+        .update_job(update(
+            INSTANCE_A,
+            &job.job_id,
+            2,
+            "completed",
+            Some("done\n"),
+            true,
+        ))
+        .await
+        .unwrap();
+
+    let observed = tokio::time::timeout(std::time::Duration::from_secs(1), waiter)
+        .await
+        .expect("hidden terminal waiter did not wake")
+        .unwrap();
+    assert_eq!(observed.status, "completed");
+    assert_eq!(observed.exit_code, Some(0));
+}
+
+#[tokio::test]
+async fn hidden_terminal_wait_returns_nonterminal_snapshot_at_deadline() {
+    let registry = RunnerRegistry::default();
+    register(&registry, INSTANCE_A, empty_inventory()).await;
+    let job = registry
+        .start_job_with_metadata(
+            start_request("sleep 30"),
+            "tester".to_string(),
+            ShellJobStartMetadata {
+                project_id: Some(RUNTIME_PROJECT_ID.to_string()),
+                session_id: Some(SESSION_ID.to_string()),
+                project_cwd: Some("/srv/demo".to_string()),
+                purpose: Some("test".to_string()),
+                shell: Some("bash".to_string()),
+                visibility: ShellJobVisibility::HiddenUntilHandoff,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    let started = tokio::time::Instant::now();
+    let observed = registry
+        .wait_hidden_job_terminal_for_auth(
+            None,
+            &job.job_id,
+            std::time::Duration::from_millis(40),
+        )
+        .await
+        .unwrap();
+    assert_eq!(observed.status, "queued");
+    assert!(started.elapsed() >= std::time::Duration::from_millis(30));
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+}
+
+#[tokio::test]
 async fn terminal_protocol_violation_during_recovery_keeps_execution_terminal_authoritative() {
     let registry = RunnerRegistry::default();
     register(&registry, INSTANCE_A, empty_inventory()).await;

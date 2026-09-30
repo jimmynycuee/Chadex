@@ -739,6 +739,7 @@ fn observe_jobs_output_schema() -> Value {
                 "required": ["outcome"],
                 "description": "The one shared-wait fact for an ordinary all-success, non-truncated compact batch. terminal policy never wakes updated; timeout may coexist with changed=true and cumulative deltas."
             },
+            "continuation": observe_job_continuation_schema(),
             "session_hint": session_hint_schema(),
             "permission": permission_decision_schema()
         },

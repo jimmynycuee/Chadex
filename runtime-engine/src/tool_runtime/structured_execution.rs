@@ -117,22 +117,13 @@ pub(crate) async fn await_hidden_structured_job(
 ) -> Result<HiddenStructuredJobWait, String> {
     let access = crate::runner_http::runner_access_from_auth(auth.as_ref());
     let mut guard = HiddenJobCleanupGuard::new(clients.clone(), job_id.clone(), access.clone());
-    let deadline = std::time::Instant::now() + sync_wait;
-    loop {
-        if let Ok(job) = clients
-            .get_hidden_job_for_auth(access.as_ref(), &job_id)
-            .await
-        {
-            if crate::tool_runtime::jobs::is_terminal_job_status(&job.status) {
-                let terminal = hidden_terminal_snapshot(&clients, access.as_ref(), &job_id).await?;
-                guard.disarm();
-                return Ok(terminal);
-            }
-        }
-        if std::time::Instant::now() >= deadline {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
+    let observed = clients
+        .wait_hidden_job_terminal_for_auth(access.as_ref(), &job_id, sync_wait)
+        .await?;
+    if crate::tool_runtime::jobs::is_terminal_job_status(&observed.status) {
+        let terminal = hidden_terminal_snapshot(&clients, access.as_ref(), &job_id).await?;
+        guard.disarm();
+        return Ok(terminal);
     }
 
     let promoted = clients.promote_hidden_job(&job_id).await?;
