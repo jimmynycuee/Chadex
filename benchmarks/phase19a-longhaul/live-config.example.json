@@ -1,0 +1,7 @@
+{
+  "project_path": "/absolute/path/to/Chadex",
+  "connector": "Chadex",
+  "client_id": "device-your-chadex-client-id",
+  "reasoning_effort": "high",
+  "trace_root": "/absolute/path/to/phase19/runtime-traces/chadex"
+}

@@ -11,10 +11,12 @@ const COMPOSER_SELECTOR = [
   '[data-testid="prompt-textarea"]',
   "#prompt-textarea",
   '[contenteditable="true"][data-lexical-editor="true"]',
+  '[contenteditable="true"][role="textbox"]',
 ].join(", ");
 const EFFORT_CONTROL_SELECTOR = [
   'button[aria-haspopup="menu"][data-tone="neutral"]',
   'button[data-testid="model-switcher-dropdown-button"][aria-haspopup="menu"]',
+  'button[aria-haspopup="menu"][aria-label*="ChatGPT"]',
 ].join(", ");
 const EFFORT_SLIDER_CONTAINER = "[data-model-reasoning-effort-slider]";
 const EFFORT_OPTION_SELECTOR = [
@@ -29,14 +31,27 @@ const ASSISTANT_TURN_SELECTOR = [
   '[data-testid^="conversation-turn-"][data-turn="assistant"]',
   '[data-testid^="conversation-turn-"][data-message-author-role="assistant"]',
   '[data-testid^="conversation-turn-"]:has([data-message-author-role="assistant"])',
+  '[data-chatgpt-search-unit-key$=":assistant"]',
+  '[data-content-search-unit-key$=":assistant"]',
+  'div.group.flex.min-w-0.flex-col:has(div[class*="MarkdownRoot-"]:not(.rich-text-user-turn))',
 ].join(", ");
 const USER_TURN_SELECTOR = [
   '[data-testid^="conversation-turn-"][data-turn="user"]',
   '[data-testid^="conversation-turn-"][data-message-author-role="user"]',
   '[data-testid^="conversation-turn-"]:has([data-message-author-role="user"])',
+  '[data-user-message-bubble="true"]',
+  '.rich-text-user-turn',
 ].join(", ");
-const STOP_BUTTON_SELECTOR = '[data-testid="stop-button"]';
-const COMPLETION_ACTION_SELECTOR = 'button[data-testid="copy-turn-action-button"]';
+const STOP_BUTTON_SELECTOR = [
+  '[data-testid="stop-button"]',
+  'button[aria-label="停止生成"]',
+  'button[aria-label="Stop generating"]',
+].join(", ");
+const COMPLETION_ACTION_SELECTOR = [
+  'button[data-testid="copy-turn-action-button"]',
+  'button[aria-label="複製"]',
+  'button[aria-label="Copy"]',
+].join(", ");
 const CONNECTOR_PICKER_CANDIDATE_SELECTOR = [
   '.popover [role="menuitem"]',
   '.popover [role="option"]',
@@ -46,6 +61,7 @@ const CONNECTOR_PICKER_CANDIDATE_SELECTOR = [
   '[role="dialog"] [tabindex="0"]',
   '[cmdk-item]',
   '[data-radix-collection-item]',
+  'button[data-list-navigation-item="true"]',
   'button[data-testid*="connector" i]',
   'button[data-testid*="plugin" i]',
   '[role="menuitem"][data-testid]',
@@ -61,6 +77,7 @@ const CONNECTOR_SEARCH_INPUT_SELECTOR = [
   '[role="dialog"] [contenteditable="true"]',
 ].join(", ");
 const SELECTED_CONNECTOR_STRONG_SELECTOR = [
+  'span[app-mention-name][contenteditable="false"]',
   '[data-id^="plugin:"][data-keyword]',
   '[data-keyword]',
   'button[data-testid*="connector" i]',
@@ -178,7 +195,7 @@ function isTemporaryChat(urlString) {
     const url = new URL(urlString);
     return (
       url.origin === "https://chatgpt.com" &&
-      url.pathname === "/" &&
+      !url.pathname.startsWith("/auth/") &&
       url.searchParams.get("temporary-chat") === "true"
     );
   } catch {
@@ -542,6 +559,40 @@ async function setExtraHigh(page) {
   };
 }
 
+async function verifyHigh(page) {
+  await dismissKnownBlockingModals(page);
+  const composer = await activeComposer(page);
+  const form = composer.locator("xpath=ancestor::form[1]");
+  const highLabel = /^(高|high)$/i;
+  const findControl = async (scope) => {
+    const controls = scope.locator(EFFORT_CONTROL_SELECTOR).filter({ visible: true });
+    const matches = [];
+    const count = await controls.count().catch(() => 0);
+    for (let index = 0; index < count; index += 1) {
+      const candidate = controls.nth(index);
+      const label = (await candidate.innerText().catch(() => "")).trim();
+      if (highLabel.test(label)) matches.push({ index, label });
+    }
+    if (matches.length === 1) {
+      return { control: controls.nth(matches[0].index), label: matches[0].label };
+    }
+    return null;
+  };
+  let match = await findControl(form);
+  const deadline = Date.now() + 10000;
+  while (!match && Date.now() < deadline) {
+    match = await findControl(page);
+    if (match) break;
+    await page.waitForTimeout(100);
+  }
+  if (!match) fail("ChatGPT High effort control is unavailable");
+  return {
+    requested: "high",
+    observed_label: match.label,
+    verified_by: "button_text",
+  };
+}
+
 async function clearComposerText(composer) {
   await composer.fill("");
   await composer.focus();
@@ -690,21 +741,24 @@ async function visibleConnectorPickerLabels(page) {
 }
 
 async function connectorPickerOpeners(page) {
+  const composer = await activeComposer(page);
+  const form = composer.locator("xpath=ancestor::form[1]");
+  const scope = (await form.count()) === 1 ? form : composer;
   return [
-    { strategy: "testid-exact", locator: page.getByTestId("composer-plus-btn") },
+    { strategy: "testid-exact", locator: scope.getByTestId("composer-plus-btn") },
     {
       strategy: "testid-fuzzy",
-      locator: page.locator('button[data-testid*="composer-plus" i]'),
+      locator: scope.locator('button[data-testid*="composer-plus" i]'),
     },
     {
       strategy: "semantic-role",
-      locator: page.getByRole("button", {
+      locator: scope.getByRole("button", {
         name: /add|attach|tools?|plugins?|connectors?|新增|加入|附件|附加|工具|外掛|連接器/i,
       }),
     },
     {
       strategy: "semantic-aria",
-      locator: page.locator(
+      locator: scope.locator(
         'button[aria-label*="add" i], button[aria-label*="attach" i], button[aria-label*="tool" i], button[aria-label*="plugin" i], button[aria-label*="connector" i], button[aria-label*="新增"], button[aria-label*="附件"], button[aria-label*="工具"], button[aria-label*="外掛"], button[aria-label*="連接器"]',
       ),
     },
@@ -849,7 +903,7 @@ async function attachPrompt(page, prompt) {
 async function sendPrompt(page, prompt) {
   const composer = await activeComposer(page);
   const form = composer.locator("xpath=ancestor::form[1]");
-  const send = form.getByTestId("send-button");
+  const send = form.locator('[data-testid="send-button"], button[aria-label="傳送"], button[aria-label="Send"]').last();
   await send.waitFor({ state: "visible", timeout: 10000 });
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
@@ -895,8 +949,17 @@ async function waitForCompletion(page, timeoutMs) {
       const last = assistants.nth(count - 1);
       const text = await last.innerText().catch(() => "");
       const running = (await countVisible(page.locator(STOP_BUTTON_SELECTOR))) > 0;
-      const completionAction =
+      let completionAction =
         (await countVisible(last.locator(COMPLETION_ACTION_SELECTOR))) > 0;
+      if (!completionAction) {
+        const completionAncestor = last.locator(
+          'xpath=ancestor::*[.//button[@data-testid="copy-turn-action-button" or @aria-label="複製" or @aria-label="Copy"]][1]',
+        );
+        if ((await completionAncestor.count()) > 0) {
+          completionAction =
+            (await countVisible(completionAncestor.locator(COMPLETION_ACTION_SELECTOR))) > 0;
+        }
+      }
       if (!running && completionAction && text.trim().length > 0) {
         if (visibleFinalAtMs === null) visibleFinalAtMs = Date.now();
         if (text === lastText) {
@@ -963,11 +1026,15 @@ async function main() {
   const returnAfterAccepted =
     process.env.BENCH_RETURN_AFTER_ACCEPTED === "1";
   const postAcceptLingerMs = Number(process.env.BENCH_POST_ACCEPT_LINGER_MS || "0");
+  const requestedEffort = (process.env.BENCH_REASONING_EFFORT || "extra-high").trim().toLowerCase();
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1000) {
     fail("BENCH_DRIVER_TIMEOUT_MS is invalid");
   }
   if (!Number.isFinite(postAcceptLingerMs) || postAcceptLingerMs < 0 || postAcceptLingerMs > 60000) {
     fail("BENCH_POST_ACCEPT_LINGER_MS is invalid");
+  }
+  if (!["high", "extra-high"].includes(requestedEffort)) {
+    fail("BENCH_REASONING_EFFORT must be high or extra-high");
   }
 
   const prompt = fs.readFileSync(promptFile, "utf8");
@@ -986,7 +1053,7 @@ async function main() {
       await page.setViewportSize({ width: 1120, height: 720 });
     }
     await page.bringToFront();
-    const effort = await setExtraHigh(page);
+    const effort = requestedEffort === "high" ? await verifyHigh(page) : await setExtraHigh(page);
     const connectorSelection = await selectConnector(page, connectorName);
     if (process.env.BENCH_PREFLIGHT_ONLY === "1") {
       await gotoTemporaryChat(page);
@@ -996,7 +1063,7 @@ async function main() {
         completed: false,
         temporary_chat: true,
         connector: connectorName,
-        effort: { requested: "extra-high", observed: effort },
+        effort: { requested: requestedEffort, observed: effort },
         connector_selection: connectorSelection,
         submission_count: 0,
       });
@@ -1017,7 +1084,7 @@ async function main() {
         accepted: true,
         connector: connectorName,
         temporary_chat: true,
-        effort: { requested: "extra-high", observed: effort },
+        effort: { requested: requestedEffort, observed: effort },
         connector_selection: connectorSelection,
         connector_before_submit: connectorBeforeSubmit,
         submitted_at_ms: submission.submittedAtMs,
@@ -1035,7 +1102,7 @@ async function main() {
         context_continuation_failure: false,
         temporary_chat: true,
         connector: connectorName,
-        effort: { requested: "extra-high", observed: effort },
+        effort: { requested: requestedEffort, observed: effort },
         connector_selected_at_completion: null,
         connector_selection: connectorSelection,
         connector_before_submit: connectorBeforeSubmit,
@@ -1070,7 +1137,7 @@ async function main() {
       context_continuation_failure: false,
       temporary_chat: true,
       connector: connectorName,
-      effort: { requested: "extra-high", observed: effort },
+      effort: { requested: requestedEffort, observed: effort },
       connector_selected_at_completion: connectorSelectedAtCompletion,
       connector_selection: connectorSelection,
       connector_before_submit: connectorBeforeSubmit,

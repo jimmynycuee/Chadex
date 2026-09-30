@@ -1,0 +1,13 @@
+{
+  "phase": "19A",
+  "suite": "long-haul-pilot",
+  "purpose": "Validate observability before Phase 19B optimization.",
+  "scenarios": [
+    {"id":"P1-silent-runner","class":"endurance","workload":"silent","duration_seconds":120,"measure":["false_timeout","job_continuity","terminal_delivery","inter_tool_gap"]},
+    {"id":"P2-bursty-500k","class":"payload","workload":"bursty","duration_seconds":60,"output_bytes":500000,"measure":["response_bytes","result_transport","observation_to_next_action"]},
+    {"id":"P3-log-avalanche-1m","class":"payload","workload":"large-log","output_bytes":1000000,"measure":["raw_evidence_bytes","model_facing_bytes","trace_payload_bytes"]},
+    {"id":"P4-late-failure","class":"recovery","workload":"late-failure","duration_seconds":180,"expected_exit_code":23,"measure":["failure_classification","recovery_calls","duplicate_execution"]},
+    {"id":"P5-multi-stage-late-fail","class":"endurance","workload":"multi-stage","duration_seconds":180,"fail_stage":"test","expected_exit_code":24,"measure":["stage_timing","late_failure_recovery","validation_rework"]},
+    {"id":"P6-repository-marathon","class":"engineering","workload":"real_repo_task","duration_seconds":900,"measure":["tool_calls","duplicate_reads","edit_attempts","validation_count","context_endurance"]}
+  ]
+}

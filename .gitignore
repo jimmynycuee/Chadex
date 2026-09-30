@@ -44,6 +44,7 @@ docs/performance/*.lock
 # Machine-local benchmark inputs / diagnostic profiles
 # Keep public summaries and canonical combined evidence under docs/performance tracked.
 docs/performance/phase16c-live-config.json
+benchmarks/phase19a-longhaul/live-config.json
 docs/performance/phase16a-chadex-valid1.json
 docs/performance/phase16a-connected-small-pair.json
 docs/performance/phase16a-first-tool-profile.json
