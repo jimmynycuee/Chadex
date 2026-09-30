@@ -6,7 +6,7 @@ Date: 2026-09-30
 
 Phase 19B is complete.
 
-Phase 19B optimizes the long-task control plane without weakening execution evidence, timeout semantics, validation rigor, durable execution identity, or terminal failure identity. All final A/B validation uses isolated runtime bundles; the installed `/Applications/Chadex.app` remains on its restored pre-Phase-19B runtime.
+Phase 19B optimizes the long-task control plane without weakening execution evidence, timeout semantics, validation rigor, durable execution identity, or terminal failure identity. Authoritative before/after A/B validation used isolated runtime bundles. After that validation passed, the identity-aligned CLI/Server/Runner dogfood bundle was deployed to `/Applications/Chadex.app` as a unit and verified live.
 
 Authoritative starting point:
 
@@ -154,7 +154,7 @@ This is a **benchmark correction**, not a Chadex runtime performance gain, and i
 
 ### Apples-to-apples calibrated control rerun
 
-To separate the benchmark-calibration effect from the runtime patch, the updated campaign was run against both the installed runtime and the Phase 19B candidate using the same P1/P2/P4/P5 scenario definitions at `scale=0.1`.
+To separate the benchmark-calibration effect from the runtime patch, the updated campaign was run against the restored pre-Phase-19B installed runtime and the isolated Phase 19B candidate using the same P1/P2/P4/P5 scenario definitions at `scale=0.1`.
 
 | Scenario | Installed calls | Candidate calls | Installed response bytes | Candidate response bytes | Delta | Exit preserved |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
@@ -176,7 +176,7 @@ Candidate artifact root:
 
 `~/Documents/ChatGPT/agent-harness-benchmark/phase19/phase19b-candidate-control-plane-1790758598`
 
-The installed-runtime control rerun had fully healthy live heartbeat samples: 0 sample errors, 0 disconnects, 0 reconnects, and final app/helper/runtime-server/runtime-runner/tunnel layers all ready or connected.
+The restored pre-Phase-19B installed-runtime control rerun had fully healthy live heartbeat samples: 0 sample errors, 0 disconnects, 0 reconnects, and final app/helper/runtime-server/runtime-runner/tunnel layers all ready or connected.
 
 The candidate rerun intentionally launched the helper/runtime in an isolated data directory and therefore had no tunnel-session health URL. Its heartbeat samples reported `no tunnel health-url found`; those samples are not used as candidate continuity evidence. Candidate correctness is established by the isolated workflow, forced-handoff, midflight-continuation and terminal-result tests instead. Wall-clock timing between the live installed run and isolated candidate run is not treated as a performance comparison.
 
@@ -217,11 +217,14 @@ Phase 19B then moved all candidate validation to isolated, identity-aligned runt
 
 Post-deployment live validation:
 
-- fresh heartbeat: 6/6 samples healthy;
+- runtime identity: `0.2.3 / 67356eedca69 / dirty=true` across CLI/Server/Runner;
+- B1 live probe returned the sparse Phase 19B handoff shape (redundant false/null/empty fields absent);
+- B3 live midflight probe returned an exact `observe_jobs` continuation with the latest token, `wait_secs=20`, and `wake_on=terminal`, then reached terminal exit 0;
+- final live P1 deterministic control: passed in 2 MCP calls, 2,465 response bytes, 12.232 s total, exit 0;
+- final live P1 heartbeat: 22/22 samples healthy, 0 sample errors, 0 disconnects, 0 reconnects;
 - app/helper/runtime-server/runtime-runner/tunnel layers: ready or connected;
-- live P1 deterministic MCP smoke: passed in 2 MCP calls, 2,461 response bytes, 1.468 s total;
 - rollback bundle: `../Chadex-backups/pre-phase19-20260930-1313/installed/phase19b-runtime-bundle/`;
-- final raw evidence: `~/Documents/ChatGPT/agent-harness-benchmark/phase19/phase19b-final/`.
+- final live P1 evidence: `~/Documents/ChatGPT/agent-harness-benchmark/phase19/phase19b-live-final-p1/`.
 
 ## Validation summary
 
