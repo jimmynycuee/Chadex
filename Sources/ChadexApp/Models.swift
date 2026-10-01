@@ -146,6 +146,7 @@ struct McpPerformanceTraceEntry: Codable, Identifiable, Equatable, Sendable {
     var serverTraceId: String?
     var methods: [String]
     var toolNames: [String]
+    var toolFailed: Bool? = nil
     var requestBytes: UInt64
     var responseBytes: UInt64
     var statusCode: UInt16?
@@ -238,7 +239,7 @@ struct TaskProgressSnapshot: Codable, Equatable, Sendable {
     var steps: [TaskProgressStep]
 
     var isActive: Bool {
-        status == "queued" || status == "running" || status == "cancelling"
+        ["queued", "preparing", "running", "integrating", "validating", "cancelling"].contains(status)
     }
 
     var canCancel: Bool {
@@ -259,6 +260,20 @@ struct GraphifyStatus: Codable, Equatable, Sendable {
     var source: String
 }
 
+/// Bounded local-runtime evidence; never includes command text or process output.
+struct FerretJobSnapshot: Codable, Equatable, Sendable {
+    var jobId: String
+    var status: String
+    var startedAtMs: UInt64?
+    var finishedAtMs: UInt64?
+    var exitCode: Int?
+
+    var isActive: Bool {
+        ["queued", "agent_queued", "started", "running", "recovering", "stop_requested"].contains(status)
+    }
+    var isWaiting: Bool { ["queued", "agent_queued", "recovering", "stop_requested"].contains(status) }
+}
+
 struct BackendSnapshot: Codable, Equatable, Sendable {
     var phase: ConnectionPhase
     var graphify: GraphifyStatus?
@@ -269,6 +284,7 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
     var lastVerifiedAtMs: UInt64?
     var currentOperation: OperationSnapshot?
     var taskProgress: TaskProgressSnapshot?
+    var mascotJobs: [FerretJobSnapshot]?
     var error: HelperErrorPayload?
     var activitySequence: UInt64
     var stateRevision: UInt64
@@ -283,6 +299,7 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
         case lastVerifiedAtMs
         case currentOperation
         case taskProgress
+        case mascotJobs
         case error
         case activitySequence
         case stateRevision
@@ -298,6 +315,7 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
         lastVerifiedAtMs: UInt64?,
         currentOperation: OperationSnapshot?,
         taskProgress: TaskProgressSnapshot? = nil,
+        mascotJobs: [FerretJobSnapshot]? = nil,
         error: HelperErrorPayload?,
         activitySequence: UInt64,
         stateRevision: UInt64 = 0
@@ -311,6 +329,7 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
         self.lastVerifiedAtMs = lastVerifiedAtMs
         self.currentOperation = currentOperation
         self.taskProgress = taskProgress
+        self.mascotJobs = mascotJobs
         self.error = error
         self.activitySequence = activitySequence
         self.stateRevision = stateRevision
@@ -327,6 +346,7 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
         lastVerifiedAtMs = try container.decodeIfPresent(UInt64.self, forKey: .lastVerifiedAtMs)
         currentOperation = try container.decodeIfPresent(OperationSnapshot.self, forKey: .currentOperation)
         taskProgress = try container.decodeIfPresent(TaskProgressSnapshot.self, forKey: .taskProgress)
+        mascotJobs = try container.decodeIfPresent([FerretJobSnapshot].self, forKey: .mascotJobs)
         error = try container.decodeIfPresent(HelperErrorPayload.self, forKey: .error)
         activitySequence = try container.decode(UInt64.self, forKey: .activitySequence)
         stateRevision = try container.decodeIfPresent(UInt64.self, forKey: .stateRevision) ?? 0
@@ -343,6 +363,7 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
         try container.encodeIfPresent(lastVerifiedAtMs, forKey: .lastVerifiedAtMs)
         try container.encodeIfPresent(currentOperation, forKey: .currentOperation)
         try container.encodeIfPresent(taskProgress, forKey: .taskProgress)
+        try container.encodeIfPresent(mascotJobs, forKey: .mascotJobs)
         try container.encodeIfPresent(error, forKey: .error)
         try container.encode(activitySequence, forKey: .activitySequence)
         try container.encode(stateRevision, forKey: .stateRevision)

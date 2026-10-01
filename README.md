@@ -44,6 +44,7 @@ Intel / Universal build 目前尚未完成 release-level 驗證，因此暫不�
 - 長時間命令以 durable job 持續執行；觀察 timeout 或輸出截斷不會自動重新啟動同一份工作，terminal/failure 仍可提早喚醒後續流程。
 - 以 macOS Keychain 保存敏感憑證，並由本機 runtime 管理連線與執行狀態。
 - 在 App 中顯示實際連線、活動與任務狀態，不以按鈕操作結果假設連線成功。
+- 新增 Code Ferret 吉祥物，依已觀測到的工具與任務狀態顯示動畫；可關閉顯示或動態效果，並支援 macOS「減少動態效果」。
 
 Chadex **不是另一個聊天介面或模型 API client**；工作指令仍然在 ChatGPT 中下達。
 
@@ -111,6 +112,7 @@ Release profile、簽署、DMG、GitHub Actions 與 distribution boundary 的完
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime、project isolation、execution lifecycle 與安全邊界
 - [`docs/BRIDGE_PROTOCOL.md`](docs/BRIDGE_PROTOCOL.md) — Swift ↔ Rust bridge protocol
 - [`docs/RELEASE.md`](docs/RELEASE.md) — release gate、簽署、DMG 與 GitHub 發佈流程
+- [`docs/releases/0.3.1.md`](docs/releases/0.3.1.md) — Code Ferret release candidate 與待完成驗證
 - [`docs/SECURITY_AND_PERFORMANCE_REVIEW.md`](docs/SECURITY_AND_PERFORMANCE_REVIEW.md) — security / performance 驗證與 benchmark
 - [`UPSTREAM.md`](UPSTREAM.md) — upstream provenance、修改歷史與 attribution
 

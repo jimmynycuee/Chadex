@@ -10,6 +10,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var preferences: ChadexPreferences
     @Published private(set) var snapshot: BackendSnapshot = .initial
     @Published private(set) var activities: [ActivityEntry] = []
+    @Published private(set) var mascotTraces: [McpPerformanceTraceEntry] = []
     @Published private(set) var performanceTraces: [McpPerformanceTraceEntry] = []
     @Published private(set) var lifecyclePerformanceTraces: [LifecyclePerformanceTraceEntry] = []
     @Published var activitySearch = ""
@@ -61,7 +62,9 @@ final class AppModel: ObservableObject {
 
     init(
         helper: HelperClient = HelperClient(),
-        keychain: KeychainStore = KeychainStore(),
+        // The explicit motion-review launch uses an isolated credential scope.
+        keychain: KeychainStore = KeychainStore(service: FerretReviewMode.enabled
+            ? "app.chadex.ferret-review.credentials" : "app.chadex.credentials"),
         store: ProjectStore = ProjectStore(),
         autostart: Bool = false
     ) {
@@ -330,8 +333,11 @@ final class AppModel: ObservableObject {
         refreshInFlight = true
         defer { refreshInFlight = false }
         do {
-            _ = try await requestSnapshot(method: "getStatus", params: EmptyParams())
+            _ = try await requestSnapshot(method: "getStatus", params: MascotStatusParams(
+                includeMascotJobs: UserDefaults.standard.object(forKey: "ferret.visible") as? Bool != false
+            ))
             await refreshActivities()
+            await refreshMascotTraces()
         } catch {
             // Polling is background work. While the user is entering tunnel
             // credentials, surfacing this as a modal alert would interrupt the
@@ -339,6 +345,21 @@ final class AppModel: ObservableObject {
             if !showingConnectionSettings {
                 present(error, quietlyIfAlreadyShown: true)
             }
+        }
+    }
+
+    private func refreshMascotTraces() async {
+        guard snapshot.tunnelReady, UserDefaults.standard.object(forKey: "ferret.visible") as? Bool != false else {
+            mascotTraces = []
+            return
+        }
+        do {
+            mascotTraces = try await helper.request(
+                method: "queryPerformanceTraces", params: PerformanceTraceQueryParams(limit: 100)
+            )
+        } catch {
+            // Never leave stale requests animating as live work after a failed observation.
+            mascotTraces = []
         }
     }
 
@@ -792,6 +813,9 @@ final class AppModel: ObservableObject {
     }
 
     private var pollInterval: TimeInterval {
+        if snapshot.tunnelReady && UserDefaults.standard.object(forKey: "ferret.visible") as? Bool != false {
+            return isAppActive ? 1 : 5
+        }
         if snapshot.taskProgress?.isActive == true { return 1 }
         if snapshot.currentOperation != nil { return 1 }
         if snapshot.tunnelReady && !snapshot.chatGPTConnected { return isAppActive ? 2 : 10 }
@@ -1049,7 +1073,9 @@ final class AppModel: ObservableObject {
         defer { connectionCheckInFlight = false }
 
         do {
-            _ = try await requestSnapshot(method: "getStatus", params: EmptyParams())
+            _ = try await requestSnapshot(method: "getStatus", params: MascotStatusParams(
+                includeMascotJobs: UserDefaults.standard.object(forKey: "ferret.visible") as? Bool != false
+            ))
             await refreshActivities()
 
             if snapshot.chatGPTVerifiedForSelectedProject {
@@ -1176,4 +1202,8 @@ final class AppModel: ObservableObject {
             details: nil
         )
     }
+}
+
+private struct MascotStatusParams: Encodable {
+    let includeMascotJobs: Bool
 }

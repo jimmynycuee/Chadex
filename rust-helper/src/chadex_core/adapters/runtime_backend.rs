@@ -1,7 +1,7 @@
 use super::runtime_translation::{map_compat_activity, map_compat_error, present_readiness};
 use crate::chadex_core::activity::RuntimeActivityEntry;
 use crate::chadex_core::runtime::{
-    RuntimeOperation, RuntimeOperationPhase, RuntimeProject, RuntimeProxyMode, RuntimeReadiness,
+    RuntimeMascotJob, RuntimeOperation, RuntimeOperationPhase, RuntimeProject, RuntimeProxyMode, RuntimeReadiness,
     RuntimeSnapshot,
 };
 use crate::chadex_core::tunnel::RuntimeTunnelTarget;
@@ -34,6 +34,7 @@ const RUNTIME_PROBE_MAX_RESPONSE_BYTES: usize = 128 * 1024;
 const RUNTIME_ACTIVATION_CONFIG_MAX_BYTES: u64 = 256 * 1024;
 const FRESH_RUNTIME_READY_WINDOW: Duration = Duration::from_millis(150);
 const FRESH_RUNTIME_READY_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const MASCOT_JOBS_MAX: usize = 100;
 
 #[derive(Debug, Default, Deserialize)]
 struct FastActivationPolicy {
@@ -153,6 +154,23 @@ impl RuntimeBackendAdapter {
             .await
             .map(map_snapshot)
             .map_err(map_desktop_error)
+    }
+
+    pub(crate) async fn observe_mascot_jobs(&self, project_path: &str) -> Option<Vec<RuntimeMascotJob>> {
+        // Saved activation identity is authority; never reconstruct a project id
+        // from a display name or fall back to an unscoped fleet query.
+        let snapshot = self.snapshot();
+        if !snapshot.readiness.runtime_ready || snapshot.current_operation.is_some() {
+            return None;
+        }
+        let target = self.app.chadex_runtime_probe_target().await.ok()??;
+        if !mascot_jobs_target_matches(&target, project_path) {
+            return None;
+        }
+        let jobs = observe_local_mascot_jobs(&self.probe_client, &target).await?;
+        // A selection/configuration change during the observation invalidates it.
+        let current = self.app.chadex_runtime_probe_target().await.ok()??;
+        (current == target).then_some(jobs)
     }
 
     pub(crate) async fn stop_local_runtime(&self) -> ChadexResult<RuntimeSnapshot> {
@@ -280,6 +298,79 @@ impl RuntimeBackendAdapter {
 enum ActiveActivationAuthority {
     Registered(ChadexProjectActivationObservation),
     ExactRoot,
+}
+
+async fn observe_local_mascot_jobs(
+    client: &Client,
+    target: &ChadexRuntimeProbeTarget,
+) -> Option<Vec<RuntimeMascotJob>> {
+    if !mascot_jobs_target_matches(target, &target.project_path) { return None; }
+    let token = read_probe_token(&target.user_token_file).await?;
+    let cancellation = CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
+    // Operator REST, not MCP: this must not create a model/host continuity event
+    // or pass through the tunnel's ingress observation.
+    let value = post_local_operator_json(
+        client, &target.server_url, "/api/tools/call", token.as_str(),
+        json!({"tool": "list_jobs", "params": {"project": target.runtime_project_id, "limit": MASCOT_JOBS_MAX}}),
+        &cancellation,
+    ).await.ok()??;
+    project_mascot_jobs(&value, &target.runtime_project_id)
+}
+
+fn mascot_jobs_target_matches(target: &ChadexRuntimeProbeTarget, project_path: &str) -> bool {
+    !project_path.is_empty() && target.project_path == project_path
+        && !target.runner_client_id.is_empty() && target.runtime_project_id.len() <= 512
+        && target.runtime_project_id.strip_prefix(&format!("agent:{}:", target.runner_client_id))
+            .is_some_and(|id| !id.is_empty())
+}
+
+fn project_mascot_jobs(value: &Value, project: &str) -> Option<Vec<RuntimeMascotJob>> {
+    if project.is_empty() || value.get("success").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    let output = value.get("output")?;
+    let jobs = output.get("jobs")?.as_array()?;
+    // A partial inventory cannot prove that no scoped work remains.
+    if jobs.len() > MASCOT_JOBS_MAX
+        || output.get("count").and_then(Value::as_u64) != Some(jobs.len() as u64)
+        || output.get("matched_count").and_then(Value::as_u64) != Some(jobs.len() as u64)
+        || output.get("truncated").and_then(Value::as_bool) != Some(false)
+    {
+        return None;
+    }
+    let mut projected = Vec::with_capacity(jobs.len());
+    let mut seen = std::collections::HashSet::new();
+    for job in jobs {
+        if job.get("project")?.as_str()? != project {
+            continue;
+        }
+        let job_id = job.get("job_id")?.as_str()?;
+        let status = job.get("status")?.as_str()?;
+        if job_id.is_empty() || job_id.len() > 128
+            || !job_id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            || !seen.insert(job_id)
+            || !matches!(status, "queued" | "agent_queued" | "started" | "running" | "recovering" | "stop_requested"
+                | "completed" | "failed" | "stopped" | "lost" | "timeout" | "timed_out" | "cancelled")
+        {
+            return None;
+        }
+        let seconds_to_ms = |key: &str| -> Option<Option<u64>> {
+            match job.get(key) {
+                None | Some(Value::Null) => Some(None),
+                Some(value) => Some(Some(value.as_u64()?.checked_mul(1000)?)),
+            }
+        };
+        let exit_code = match job.get("exit_code") {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(i32::try_from(value.as_i64()?).ok()?),
+        };
+        projected.push(RuntimeMascotJob {
+            job_id: job_id.to_string(), status: status.to_string(),
+            started_at_ms: seconds_to_ms("started_at")?,
+            finished_at_ms: seconds_to_ms("ended_at")?, exit_code,
+        });
+    }
+    Some(projected)
 }
 
 async fn wait_for_fresh_runtime_project(
@@ -976,6 +1067,145 @@ mod tests {
         aggregate_readiness, ExposureReadiness, ProjectReadiness, RunnerReadiness, ServerReadiness,
     };
     use std::path::PathBuf;
+
+    fn mascot_jobs_response(jobs: Vec<Value>) -> Value {
+        json!({"success": true, "output": {
+            "count": jobs.len(), "matched_count": jobs.len(), "truncated": false, "jobs": jobs
+        }})
+    }
+
+    #[test]
+    fn mascot_jobs_target_requires_exact_saved_activation_identity() {
+        let mut target = probe_target();
+        assert!(mascot_jobs_target_matches(&target, "/tmp/repo"));
+        assert!(!mascot_jobs_target_matches(&target, "/tmp/other"));
+        assert!(!mascot_jobs_target_matches(&target, ""));
+        target.runtime_project_id = "agent:other:repo".into();
+        assert!(!mascot_jobs_target_matches(&target, "/tmp/repo"));
+        target.runtime_project_id = "agent:runner-a:".into();
+        assert!(!mascot_jobs_target_matches(&target, "/tmp/repo"));
+    }
+
+    #[test]
+    fn mascot_jobs_filters_exact_project_and_projects_only_lifecycle_facts() {
+        let value = mascot_jobs_response(vec![
+            json!({"job_id": "job_foreign", "project": "agent:runner-a:other", "status": "running"}),
+            json!({"job_id": "job_active", "project": "agent:runner-a:repo", "status": "recovering",
+                "started_at": 123, "ended_at": null, "exit_code": null, "command_preview": "private-command"}),
+            json!({"job_id": "job_terminal", "project": "agent:runner-a:repo", "status": "completed",
+                "started_at": 124, "ended_at": 130, "exit_code": 0, "stdout_tail": "private-output"}),
+        ]);
+        let jobs = project_mascot_jobs(&value, "agent:runner-a:repo").unwrap();
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(jobs[0].status, "recovering");
+        assert_eq!(jobs[0].started_at_ms, Some(123_000));
+        assert_eq!(jobs[0].finished_at_ms, None);
+        assert_eq!(jobs[1].finished_at_ms, Some(130_000));
+        assert_eq!(jobs[1].exit_code, Some(0));
+        let wire = serde_json::to_value(&jobs).unwrap();
+        for item in wire.as_array().unwrap() {
+            assert_eq!(item.as_object().unwrap().len(), 5);
+            assert!(item.get("command_preview").is_none());
+            assert!(item.get("stdout_tail").is_none());
+        }
+    }
+
+    #[test]
+    fn mascot_jobs_preserves_raw_status_and_missing_times_without_inference() {
+        for status in ["queued", "agent_queued", "started", "running", "stop_requested", "recovering",
+            "completed", "failed", "stopped", "lost", "timeout", "timed_out", "cancelled"] {
+            let value = mascot_jobs_response(vec![json!({
+                "job_id": "job_raw", "project": "project", "status": status, "created_at": 100
+            })]);
+            let job = project_mascot_jobs(&value, "project").unwrap().remove(0);
+            assert_eq!(job.status, status);
+            assert_eq!(job.started_at_ms, None);
+            assert_eq!(job.finished_at_ms, None);
+            assert_eq!(job.exit_code, None);
+        }
+    }
+
+    #[test]
+    fn mascot_jobs_unavailable_and_partial_inventory_are_not_authoritative_empty() {
+        assert_eq!(project_mascot_jobs(&mascot_jobs_response(vec![]), "project"), Some(vec![]));
+        for value in [json!({"success": false}), json!({"success": true, "output": {}}),
+            json!({"success": true, "output": {"jobs": [], "count": 0, "matched_count": 1, "truncated": true}})] {
+            assert_eq!(project_mascot_jobs(&value, "project"), None);
+        }
+        let value = mascot_jobs_response((0..101).map(|i| json!({
+            "job_id": format!("job_{i}"), "project": "project", "status": "running"
+        })).collect());
+        assert_eq!(project_mascot_jobs(&value, "project"), None);
+    }
+
+    #[test]
+    fn mascot_jobs_malformed_scoped_data_fails_closed() {
+        let valid = json!({"job_id": "job_valid", "project": "project", "status": "running"});
+        for (field, invalid) in [
+            ("job_id", json!("")), ("job_id", json!("invalid job")), ("job_id", json!("x".repeat(129))),
+            ("project", Value::Null), ("status", json!("unrecognized")),
+            ("started_at", json!(-1)), ("started_at", json!(u64::MAX)),
+            ("ended_at", json!("130")), ("exit_code", json!(i64::MAX)),
+        ] {
+            let mut job = valid.clone();
+            job[field] = invalid;
+            assert_eq!(project_mascot_jobs(&mascot_jobs_response(vec![job]), "project"), None, "{field}");
+        }
+        assert_eq!(project_mascot_jobs(&mascot_jobs_response(vec![valid.clone(), valid]), "project"), None);
+    }
+
+    #[tokio::test]
+    async fn mascot_jobs_operator_call_is_exact_bounded_and_failures_are_unknown() {
+        use axum::{extract::Json, http::HeaderMap, routing::post, Router};
+        let temp = tempfile::tempdir().unwrap();
+        let token_path = temp.path().join("token");
+        tokio::fs::write(&token_path, "private-test-token").await.unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let router = Router::new().route("/api/tools/call", post(|headers: HeaderMap, Json(body): Json<Value>| async move {
+            assert!(headers.get("authorization").is_some());
+            assert_eq!(body, json!({"tool": "list_jobs", "params": {"project": "agent:runner-a:repo", "limit": 100}}));
+            Json(mascot_jobs_response(vec![json!({"job_id": "job_running", "project": "agent:runner-a:repo", "status": "running"})]))
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap(); });
+        let client = Client::builder().no_proxy().timeout(Duration::from_millis(100)).build().unwrap();
+        let mut target = probe_target();
+        target.server_url = format!("http://{addr}");
+        target.user_token_file = token_path;
+        assert_eq!(observe_local_mascot_jobs(&client, &target).await.unwrap()[0].job_id, "job_running");
+        // Missing authority and nonlocal endpoints never emit a request.
+        target.runtime_project_id = String::new();
+        assert!(observe_local_mascot_jobs(&client, &target).await.is_none());
+        target.runtime_project_id = "agent:runner-a:repo".into();
+        assert!(project_mascot_jobs(&mascot_jobs_response(vec![]), "").is_none());
+        target.server_url = "https://example.test".to_string();
+        assert!(observe_local_mascot_jobs(&client, &target).await.is_none());
+        server.abort();
+        let _ = server.await;
+        target.server_url = format!("http://{addr}");
+        assert!(observe_local_mascot_jobs(&client, &target).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn mascot_jobs_slow_response_returns_unknown_with_bounded_timeout() {
+        use axum::{routing::post, Router};
+        let temp = tempfile::tempdir().unwrap();
+        let token_path = temp.path().join("token");
+        tokio::fs::write(&token_path, "private-test-token").await.unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let router = Router::new().route("/api/tools/call", post(|| async {
+            std::future::pending::<()>().await;
+            ""
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap(); });
+        let client = Client::builder().no_proxy().timeout(Duration::from_millis(20)).build().unwrap();
+        let mut target = probe_target();
+        target.server_url = format!("http://{addr}");
+        target.user_token_file = token_path;
+        assert!(tokio::time::timeout(Duration::from_secs(1), observe_local_mascot_jobs(&client, &target)).await.unwrap().is_none());
+        server.abort();
+    }
 
     fn probe_target() -> ChadexRuntimeProbeTarget {
         ChadexRuntimeProbeTarget {

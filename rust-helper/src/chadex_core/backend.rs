@@ -1,6 +1,6 @@
 use super::activity::RuntimeActivityEntry;
 use super::adapters::runtime_backend::RuntimeBackendAdapter;
-use super::runtime::{RuntimeProject, RuntimeProxyMode, RuntimeSnapshot};
+use super::runtime::{RuntimeMascotJob, RuntimeProject, RuntimeProxyMode, RuntimeSnapshot};
 use super::tunnel::RuntimeTunnelTarget;
 use super::ChadexResult;
 use serde_json::Value;
@@ -46,6 +46,10 @@ impl RuntimeBackendApi {
 
     pub(crate) async fn refresh_runtime_status(&self) -> ChadexResult<RuntimeSnapshot> {
         self.adapter.refresh_runtime_status().await
+    }
+
+    pub(crate) async fn observe_mascot_jobs(&self, project_path: &str) -> Option<Vec<RuntimeMascotJob>> {
+        self.adapter.observe_mascot_jobs(project_path).await
     }
 
     pub(crate) async fn stop_local_runtime(&self) -> ChadexResult<RuntimeSnapshot> {

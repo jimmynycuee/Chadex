@@ -1,4 +1,5 @@
 use super::*;
+use std::time::Duration;
 
 fn state(backend_url: String) -> IngressState {
     let tracker = Arc::new(VerificationTracker::default());
@@ -32,6 +33,67 @@ async fn backend(app: Router) -> (String, JoinHandle<()>) {
         axum::serve(listener, app).await.unwrap();
     });
     (url, task)
+}
+
+#[tokio::test]
+async fn live_trace_is_visible_before_headers_and_completes_in_place() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let backend_entered = Arc::clone(&entered);
+    let backend_release = Arc::clone(&release);
+    let (url, server) = backend(Router::new().route("/mcp", any(move || {
+        let entered = Arc::clone(&backend_entered);
+        let release = Arc::clone(&backend_release);
+        async move {
+            entered.notify_one();
+            release.notified().await;
+            r#"{"jsonrpc":"2.0","id":1,"result":{}}"#
+        }
+    }))).await;
+    let state = state(url);
+    let request_state = state.clone();
+    let inflight = tokio::spawn(async move { proxy_inner(request_state, request()).await.unwrap() });
+    tokio::time::timeout(Duration::from_secs(2), entered.notified()).await.unwrap();
+    let live = state.performance.snapshot(10);
+    assert_eq!(live.len(), 1);
+    assert_eq!(live[0].tool_names, vec!["read_files"]);
+    assert_eq!(live[0].completion, "running");
+    assert!(live[0].finished_at_ms.is_none());
+    assert!(!state.tracker.snapshot().verified);
+    release.notify_one();
+    let response = inflight.await.unwrap();
+    to_bytes(response.into_body(), MAX_REQUEST_BYTES).await.unwrap();
+    let completed = state.performance.snapshot(10);
+    assert_eq!(completed.len(), 1);
+    assert_eq!(completed[0].sequence, live[0].sequence);
+    assert_eq!(completed[0].completion, "completed");
+    assert!(completed[0].finished_at_ms.is_some());
+    server.abort();
+}
+
+#[tokio::test]
+async fn cancellation_before_headers_does_not_leave_a_live_trace() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let backend_entered = Arc::clone(&entered);
+    let (url, server) = backend(Router::new().route("/mcp", any(move || {
+        let entered = Arc::clone(&backend_entered);
+        async move {
+            entered.notify_one();
+            std::future::pending::<StatusCode>().await
+        }
+    }))).await;
+    let state = state(url);
+    let request_state = state.clone();
+    let inflight = tokio::spawn(async move { proxy_inner(request_state, request()).await.unwrap() });
+    tokio::time::timeout(Duration::from_secs(2), entered.notified()).await.unwrap();
+    inflight.abort();
+    let _ = inflight.await;
+    let traces = state.performance.snapshot(10);
+    assert_eq!(traces.len(), 1);
+    assert_eq!(traces[0].completion, "client_dropped");
+    assert!(traces[0].finished_at_ms.is_some());
+    assert_eq!(state.admission.available_permits(), MAX_IN_FLIGHT);
+    server.abort();
 }
 
 #[test]
@@ -73,6 +135,24 @@ async fn response_trace_correlates_without_changing_body_or_verification() {
     let mut headers = HeaderMap::new();
     headers.insert("x-chadex-trace-id", "sensitive-invalid-header".parse().unwrap());
     assert!(server_trace_id(&headers).is_none());
+}
+
+#[tokio::test]
+async fn http_ok_tool_failure_is_observed_without_changing_response() {
+    const BODY: &str = r#"{"jsonrpc":"2.0","id":1,"result":{"content":[],"isError":true}}"#;
+    let (url, server) = backend(Router::new().route("/mcp", any(|| async {
+        ([("content-type", "application/json")], BODY)
+    }))).await;
+    let state = state(url);
+    let response = proxy_inner(state.clone(), request()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), MAX_REQUEST_BYTES).await.unwrap();
+    assert_eq!(&bytes[..], BODY.as_bytes());
+    let traces = state.performance.snapshot(1);
+    assert_eq!(traces[0].tool_failed, Some(true));
+    assert_eq!(traces[0].completion, "completed");
+    assert!(!state.tracker.snapshot().verified);
+    server.abort();
 }
 
 #[tokio::test]

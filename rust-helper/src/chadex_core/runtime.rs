@@ -3,6 +3,7 @@ use super::backend::RuntimeBackendApi;
 use super::tunnel::RuntimeTunnelTarget;
 use super::ChadexResult;
 use serde_json::Value;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,6 +11,16 @@ pub struct RuntimeProject {
     pub path: String,
     pub allowed_root: String,
     pub is_git_repository: bool,
+}
+
+/// Bounded lifecycle facts only; no command, output, or inferred execution purpose.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeMascotJob {
+    pub job_id: String,
+    pub status: String,
+    pub started_at_ms: Option<u64>,
+    pub finished_at_ms: Option<u64>,
+    pub exit_code: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,6 +117,10 @@ impl ChadexRuntimeCore {
 
     pub async fn refresh_runtime_status(&self) -> ChadexResult<RuntimeSnapshot> {
         self.backend.refresh_runtime_status().await
+    }
+
+    pub async fn observe_mascot_jobs(&self, project_path: &str) -> Option<Vec<RuntimeMascotJob>> {
+        self.backend.observe_mascot_jobs(project_path).await
     }
 
     pub async fn stop_local_runtime(&self) -> ChadexResult<RuntimeSnapshot> {

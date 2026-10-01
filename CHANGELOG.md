@@ -2,6 +2,13 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.3.1 (Unreleased)
+
+- Added the animated Code Ferret mascot, driven by observed tool activity, task progress, and completion/failure evidence.
+- Added mascot visibility and motion controls, macOS Reduce Motion support, and English / Traditional Chinese labels.
+- Kept unknown progress indeterminate and reset mascot reactions when switching projects.
+- Release validation is pending; see `docs/releases/0.3.1.md` for the planned checks.
+
 ## 0.3.0
 
 - Increased the model-facing long-job observation window from the previous short slicing behavior to a 60-second bounded wait while preserving event-driven terminal/failure wakeups.

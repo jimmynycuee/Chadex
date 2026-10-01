@@ -346,3 +346,23 @@
 
 "background.title" = "Chadex keeps running in the background";
 "background.message" = "Closing the window does not stop Chadex-managed services. Use Quit Chadex to end the app and its managed processes.";
+
+// Code Ferret companion
+"ferret.state.idle" = "Ready when you are";
+"ferret.state.listening" = "Receiving work";
+"ferret.state.thinking" = "Working through it";
+"ferret.state.searching" = "Exploring the repo";
+"ferret.state.coding" = "Making changes";
+"ferret.state.testing" = "Running checks";
+"ferret.state.waiting" = "Waiting";
+"ferret.state.longTask" = "Still working";
+"ferret.state.success" = "Task complete";
+"ferret.state.error" = "Needs attention";
+"ferret.state.sleep" = "Resting";
+"ferret.details" = "Code Ferret status and preferences";
+"ferret.explanation" = "Follows observed Chadex tasks and MCP tools. Remote model thinking is not directly visible.";
+"ferret.visible" = "Show companion";
+"ferret.motion" = "Animate companion";
+"ferret.preview" = "Motion preview";
+"ferret.live" = "Live runtime";
+"ferret.previewHint" = "Preview only. Runtime activity is unchanged.";

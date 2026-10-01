@@ -104,3 +104,9 @@ trace 只保留最近 100 筆，記錄 MCP method、`tools/call` 的 tool name�
 MCP POST handler 自行產生 `x-chadex-trace-id` response header，不採信 caller 傳入的同名 header。它沿用既有 Server→Runner trace identity；ingress 僅保留 UUID 格式的值，舊 backend 沒有 header 時為 null。這不開啟 full payload tracing，也不改變 JSON-RPC body、streaming、admission 或 verification。Swift diagnostics 匯出毫秒時間與這些欄位；舊 helper 回覆仍可解碼。
 
 這些欄位能關聯可取得的 client／ingress／Server→Runner 紀錄，但不會憑空提供 relay、宿主 dispatch 或 approval timestamps。`response_stream_us` 完成也不代表遠端宿主已收到結果；外部未觀測區間仍須標示為未定位等待。
+
+## Optional mascot observation (v0.3.1)
+
+`getStatus` accepts `params.include_mascot_jobs` (default `false`). When requested, the helper may add `mascot_jobs`, a bounded current-project array containing only Job ID, status, optional millisecond timestamps, and optional exit code. Missing/null means observation unavailable; an empty array means the bounded scoped query observed no Jobs. The projection does not expose command text, stdout, stderr, or credentials and does not change Job execution or retry policy.
+
+MCP performance records may also include optional `tool_failed`. A live request and its completed response retain the same sequence. Older snapshots/records remain decodable.

@@ -19,6 +19,7 @@ pub(super) struct ResponseEvidence {
     buffer: Vec<u8>,
     event: Vec<u8>,
     disabled: bool,
+    tool_failed: Option<bool>,
 }
 
 impl ResponseEvidence {
@@ -81,8 +82,11 @@ impl ResponseEvidence {
             buffer: Vec::new(),
             event: Vec::new(),
             disabled: false,
+            tool_failed: None,
         })
     }
+
+    pub(super) fn tool_failed(&self) -> Option<bool> { self.tool_failed }
 
     fn disable(&mut self) {
         self.disabled = true;
@@ -148,9 +152,13 @@ impl ResponseEvidence {
             _ => std::slice::from_ref(&response),
         };
         for item in items {
-            if item.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
-                || item.get("error").is_some()
-            {
+            if item.get("jsonrpc").and_then(Value::as_str) != Some("2.0") { continue; }
+            // Only retain a boolean outcome for a matching request. Never retain
+            // response bodies, prompts, command output or unmatched notifications.
+            let matching_tool = self.requests.iter().any(|request|
+                request.method == "tools/call" && item.get("id") == Some(&request.id));
+            if item.get("error").is_some() {
+                if matching_tool { self.tool_failed = Some(true); }
                 continue;
             }
             let Some(result) = item.get("result").filter(|v| v.is_object()) else {
@@ -166,6 +174,12 @@ impl ResponseEvidence {
             if request.method == "tools/call" && !result.get("content").is_some_and(Value::is_array)
             {
                 continue;
+            }
+            if matching_tool && (result.get("isError") == Some(&Value::Bool(true))
+                || result.pointer("/structuredContent/success") == Some(&Value::Bool(false))) {
+                self.tool_failed = Some(true);
+            } else if matching_tool && self.tool_failed != Some(true) {
+                self.tool_failed = Some(false);
             }
             // A valid RPC error/tool error cannot verify the selected project.
             if result
@@ -234,6 +248,25 @@ mod tests {
             tracker,
         )
     }
+    #[test]
+    fn matching_tool_outcomes_do_not_change_verification_rules() {
+        for result in [
+            r#"{"jsonrpc":"2.0","id":7,"result":{"content":[],"isError":true}}"#,
+            r#"{"jsonrpc":"2.0","id":7,"result":{"content":[],"structuredContent":{"success":false}}}"#,
+            r#"{"jsonrpc":"2.0","id":7,"error":{"code":-32603}}"#,
+        ] {
+            let (mut evidence, tracker) = observer(false);
+            evidence.push(result.as_bytes());
+            evidence.finish();
+            assert_eq!(evidence.tool_failed(), Some(true));
+            assert!(!tracker.snapshot().verified);
+        }
+        let (mut evidence, _) = observer(false);
+        evidence.push(br#"{"jsonrpc":"2.0","id":999,"result":{"content":[],"isError":true}}"#);
+        evidence.finish();
+        assert_eq!(evidence.tool_failed(), None);
+    }
+
     #[test]
     fn only_matching_successful_project_read_verifies() {
         for body in [

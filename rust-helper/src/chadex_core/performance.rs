@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const PERFORMANCE_TRACE_LIMIT: usize = 100;
@@ -18,6 +18,8 @@ pub struct McpPerformanceTrace {
     pub server_trace_id: Option<String>,
     pub methods: Vec<String>,
     pub tool_names: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_failed: Option<bool>,
     pub request_bytes: u64,
     pub response_bytes: u64,
     pub status_code: Option<u16>,
@@ -52,17 +54,31 @@ struct PerformanceTraceState {
 }
 
 impl PerformanceTraceStore {
-    pub fn push(&self, mut trace: McpPerformanceTrace) {
+    pub fn push(&self, mut trace: McpPerformanceTrace) -> u64 {
         let mut inner = self
             .inner
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if trace.sequence != 0 {
+            if let Some(entry) = inner.entries.iter_mut().find(|entry| entry.sequence == trace.sequence) {
+                let sequence = trace.sequence;
+                *entry = trace;
+                return sequence;
+            }
+        }
         inner.next_sequence = inner.next_sequence.saturating_add(1);
         trace.sequence = inner.next_sequence;
+        let sequence = trace.sequence;
         inner.entries.push_back(trace);
         while inner.entries.len() > PERFORMANCE_TRACE_LIMIT {
             inner.entries.pop_front();
         }
+        sequence
+    }
+
+    pub fn begin_request(self: &Arc<Self>, trace: McpPerformanceTrace) -> PendingMcpTrace {
+        let sequence = self.push(trace);
+        PendingMcpTrace { store: Arc::clone(self), sequence: Some(sequence) }
     }
 
     pub fn snapshot(&self, limit: usize) -> Vec<McpPerformanceTrace> {
@@ -101,6 +117,33 @@ impl PerformanceTraceStore {
             .skip(start)
             .cloned()
             .collect()
+    }
+}
+
+/// Covers cancellation while awaiting upstream headers. Once a response stream
+/// takes over, its existing Drop handler owns completion of the same record.
+pub struct PendingMcpTrace {
+    store: Arc<PerformanceTraceStore>,
+    sequence: Option<u64>,
+}
+
+impl PendingMcpTrace {
+    pub fn sequence(&self) -> u64 { self.sequence.unwrap_or(0) }
+    pub fn hand_off(&mut self) { self.sequence = None; }
+}
+
+impl Drop for PendingMcpTrace {
+    fn drop(&mut self) {
+        let Some(sequence) = self.sequence.take() else { return; };
+        let mut inner = self.store.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(entry) = inner.entries.iter_mut().find(|entry| entry.sequence == sequence) {
+            if entry.finished_at_ms.is_none() {
+                let finished = now_ms();
+                entry.finished_at_ms = Some(finished);
+                entry.total_us = finished.saturating_sub(entry.started_at_ms).saturating_mul(1000);
+                entry.completion = "client_dropped".to_string();
+            }
+        }
     }
 }
 
@@ -152,6 +195,7 @@ mod tests {
                 request_id_hashes: Vec::new(),
                 server_trace_id: None,
                 tool_names: vec!["read_files".to_string()],
+                tool_failed: None,
                 request_bytes: 1,
                 response_bytes: 2,
                 status_code: Some(200),

@@ -95,6 +95,8 @@ struct RootView: View {
                 .listStyle(.sidebar)
                 .scrollContentBackground(.hidden)
 
+                CodeFerretCompanion()
+
                 Divider()
 
                 HStack(spacing: layout.spacing(8)) {

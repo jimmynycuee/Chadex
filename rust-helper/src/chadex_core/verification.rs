@@ -294,6 +294,7 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
                     server_trace_id: None,
                     methods: Vec::new(),
                     tool_names: Vec::new(),
+                    tool_failed: None,
                     request_bytes: 0,
                     response_bytes: 0,
                     status_code: None,
@@ -324,18 +325,38 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
         helper_ingress_started_unix_ns,
         ingress_pre_backend_us,
     );
+    let mut pending = state.performance.begin_request(McpPerformanceTrace {
+        sequence: 0,
+        started_at_ms,
+        finished_at_ms: None,
+        request_id_hashes: metadata.request_id_hashes.clone(),
+        server_trace_id: None,
+        methods: metadata.methods.clone(),
+        tool_names: metadata.tool_names.clone(),
+        tool_failed: None,
+        request_bytes: body.len().try_into().unwrap_or(u64::MAX),
+        response_bytes: 0,
+        status_code: None,
+        ingress_pre_backend_us,
+        backend_headers_us: 0,
+        response_stream_us: 0,
+        total_us: 0,
+        completion: "running".to_string(),
+    });
+    let trace_sequence = pending.sequence();
     let backend_started = Instant::now();
     let upstream = match builder.send().await {
         Ok(upstream) => upstream,
         Err(_) => {
             state.performance.push(McpPerformanceTrace {
-                sequence: 0,
+                sequence: trace_sequence,
                 started_at_ms,
                 finished_at_ms: Some(now_ms()),
                 request_id_hashes: metadata.request_id_hashes,
                 server_trace_id: None,
                 methods: metadata.methods,
                 tool_names: metadata.tool_names,
+                tool_failed: None,
                 request_bytes: body.len().try_into().unwrap_or(u64::MAX),
                 response_bytes: 0,
                 status_code: None,
@@ -361,17 +382,19 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
     } else {
         None
     };
+    pending.hand_off();
     let stream = TracedResponseStream::new(
         upstream.bytes_stream(),
         Arc::clone(&state.performance),
         McpPerformanceTrace {
-            sequence: 0,
+            sequence: trace_sequence,
             started_at_ms,
             finished_at_ms: None,
             request_id_hashes: metadata.request_id_hashes,
             server_trace_id: server_trace_id(&headers),
             methods: metadata.methods,
             tool_names: metadata.tool_names,
+            tool_failed: None,
             request_bytes: body.len().try_into().unwrap_or(u64::MAX),
             response_bytes: 0,
             status_code: Some(status.as_u16()),
@@ -448,6 +471,7 @@ impl<S> TracedResponseStream<S> {
         let Some(mut trace) = self.trace.take() else {
             return;
         };
+        trace.tool_failed = self.evidence.as_ref().and_then(ResponseEvidence::tool_failed);
         trace.response_stream_us = duration_us(self.headers_at.elapsed());
         trace.total_us = duration_us(self.started.elapsed());
         trace.finished_at_ms = Some(now_ms());

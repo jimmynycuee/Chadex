@@ -346,3 +346,23 @@
 
 "background.title" = "Chadex 會在背景繼續運作";
 "background.message" = "關閉視窗不會停止 Chadex 管理的服務；若要結束 App 與其管理的程序，請使用「結束 Chadex」。";
+
+// Code Ferret companion
+"ferret.state.idle" = "隨時待命";
+"ferret.state.listening" = "收到任務";
+"ferret.state.thinking" = "正在處理";
+"ferret.state.searching" = "探索程式庫";
+"ferret.state.coding" = "正在寫碼";
+"ferret.state.testing" = "執行測試與檢查";
+"ferret.state.waiting" = "等待中";
+"ferret.state.longTask" = "持續工作中";
+"ferret.state.success" = "任務完成";
+"ferret.state.error" = "需要注意";
+"ferret.state.sleep" = "休息中";
+"ferret.details" = "Code Ferret 狀態與偏好";
+"ferret.explanation" = "跟隨 Chadex 任務與 MCP 工具的實際活動；無法直接觀測遠端模型思考。";
+"ferret.visible" = "顯示吉祥物";
+"ferret.motion" = "啟用動畫";
+"ferret.preview" = "動作預覽";
+"ferret.live" = "實際執行狀態";
+"ferret.previewHint" = "僅預覽動作，不影響實際執行狀態。";

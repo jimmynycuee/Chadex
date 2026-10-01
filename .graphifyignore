@@ -10,6 +10,8 @@ graphify-out/
 dist/
 dist-test/
 rust-helper/target/
+runtime-engine/target/
+chadex-runtime/target/
 vendor/webcodex/target/
 vendor/webcodex/frontend/dist/
 vendor/webcodex/node_modules/

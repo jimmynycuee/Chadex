@@ -54,6 +54,17 @@ enum ChadexStartupPreflight {
         else {
             return 78
         }
+        // A relocated release must resolve the complete mascot from its own bundle.
+        guard let manifestURL = bundle.url(forResource: "ferret-motion-poses", withExtension: "json"),
+              let data = try? Data(contentsOf: manifestURL),
+              let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]],
+              Set(manifest.keys) == Set(FerretState.allCases.map(\.rawValue) + ["tail", "tail-left"])
+        else { return 78 }
+        for (name, pose) in manifest {
+            let assets = [name] + ((pose["eyes"] as? [[String: Any]]) ?? []).compactMap { $0["name"] as? String }
+            guard assets.allSatisfy({ bundle.url(forResource: "ferret-motion-\($0)", withExtension: "png") != nil })
+            else { return 78 }
+        }
         return 0
     }
 }

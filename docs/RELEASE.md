@@ -51,13 +51,30 @@ CHADEX_UPDATE_UI_REVIEW=1 swift test --filter VisualReviewTests
 `scripts/build_app.sh` accepts release metadata through environment variables:
 
 ```sh
-CHADEX_APP_VERSION=0.3.0 \
+CHADEX_APP_VERSION=0.3.1 \
 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_IDENTITY="Developer ID Application: ..." \
 ./scripts/build_app.sh
 ```
 
 `CHADEX_APP_VERSION` and `CHADEX_APP_BUILD_NUMBER` must use decimal dot-separated values. Runtime packaging defaults to Cargo `release`; `CHADEX_RUNTIME_PROFILE=dogfood` is an explicit development-only override.
+
+For a version bump, update the default in `scripts/build_app.sh`, the own-package versions in `chadex-runtime/Cargo.toml`, `runtime-engine/Cargo.toml` (`workspace.package.version`), and `rust-helper/Cargo.toml`, and their three lockfiles. Runtime workspace members inherit the workspace version; third-party dependency versions must remain unchanged. Add `docs/releases/X.Y.Z.md` for the exact release tag and update `CHANGELOG.md` and the README release-note link. The generated app `Info.plist` takes its version from the build environment; it is not a source file to edit.
+
+### v0.3.1 candidate validation
+
+The Code Ferret candidate is not yet validated for publication. Track pending checks in `docs/releases/0.3.1.md`; record results only after executing them against the candidate. Run the source gate from a clean release checkout. A dirty-tree run with `CHADEX_RELEASE_ALLOW_DIRTY=1` is development evidence only.
+
+For the free artifact path, explicitly select ad-hoc signing, then package the resulting bundle:
+
+```sh
+CHADEX_APP_VERSION=0.3.1 CHADEX_APP_BUILD_NUMBER=1 \
+CHADEX_CODESIGN_MODE=adhoc CHADEX_RUNTIME_PROFILE=release \
+./scripts/build_app.sh
+./scripts/package_free_macos_release.sh dist/Chadex.app
+```
+
+The expected artifacts are `dist/Chadex-v0.3.1-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
 
 ## Public Git history strategy
 
@@ -74,7 +91,7 @@ Before the first public push, verify the public candidate branch independently: 
 - `auto` (default): use an Apple Development identity when available, otherwise hardened-runtime ad-hoc signing;
 - `development`: require Apple Development signing;
 - `distribution`: require **Developer ID Application**, Hardened Runtime, and a secure timestamp;
-- `adhoc`: hardened-runtime ad-hoc signing for CI package-shape validation only.
+- `adhoc`: hardened-runtime ad-hoc signing for the free public release path and CI package-shape validation.
 
 Nested helper/runtime executables are signed explicitly before the app bundle. `--deep` is used only for final verification, not as a signing shortcut.
 

@@ -4,7 +4,7 @@ use crate::chadex_core::performance::{
     duration_us, now_ms, LifecyclePerformanceTrace, McpPerformanceTrace, PerformanceTraceStore,
 };
 use crate::chadex_core::runtime::{
-    ChadexRuntimeCore, RuntimeProject, RuntimeProxyMode, RuntimeSnapshot,
+    ChadexRuntimeCore, RuntimeMascotJob, RuntimeProject, RuntimeProxyMode, RuntimeSnapshot,
 };
 use crate::chadex_core::tunnel::{RuntimeTunnelTarget, TunnelManager, TunnelState};
 use crate::chadex_core::verification::VerificationTracker;
@@ -24,6 +24,7 @@ const PROTOCOL_VERSION: u32 = 1;
 const ACTIVITY_QUERY_MAX: usize = 200;
 const PERFORMANCE_QUERY_MAX: usize = 100;
 const TASK_PROGRESS_MAX_BYTES: u64 = 64 * 1024;
+const MASCOT_JOBS_OBSERVATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 const MAX_IN_FLIGHT_REQUESTS: usize = 64;
 const SHUTDOWN_REQUEST_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 const MAX_REQUEST_FRAME_BYTES: usize = 256 * 1024;
@@ -192,6 +193,8 @@ struct BackendSnapshot {
     last_verified_at_ms: Option<u64>,
     current_operation: Option<OperationSnapshot>,
     task_progress: Option<TaskProgressSnapshot>,
+    #[serde(default)]
+    mascot_jobs: Option<Vec<RuntimeMascotJob>>,
     error: Option<ErrorPayload>,
     activity_sequence: u64,
     state_revision: u64,
@@ -209,6 +212,7 @@ impl BackendSnapshot {
             && self.last_verified_at_ms == other.last_verified_at_ms
             && self.current_operation == other.current_operation
             && self.task_progress == other.task_progress
+            && self.mascot_jobs == other.mascot_jobs
             && self.error == other.error
             && self.activity_sequence == other.activity_sequence
     }
@@ -236,6 +240,18 @@ impl SnapshotRevisionState {
     }
 }
 
+struct ScopedMascotJobs {
+    project_path: String,
+    epoch: u64,
+    jobs: Vec<RuntimeMascotJob>,
+}
+
+impl ScopedMascotJobs {
+    fn for_target(self, path: Option<&str>, epoch: u64) -> Option<Vec<RuntimeMascotJob>> {
+        (path == Some(self.project_path.as_str()) && epoch == self.epoch).then_some(self.jobs)
+    }
+}
+
 struct Bridge {
     runtime: ChadexRuntimeCore,
     graphify: GraphifyStatus,
@@ -246,6 +262,7 @@ struct Bridge {
     task_state_dir: PathBuf,
     snapshot_state: StdMutex<SnapshotRevisionState>,
     project_switch_lifecycle: Mutex<()>,
+    mascot_jobs_refresh: Mutex<()>,
 }
 
 impl Bridge {
@@ -281,6 +298,7 @@ impl Bridge {
             task_state_dir,
             snapshot_state: StdMutex::new(SnapshotRevisionState::default()),
             project_switch_lifecycle: Mutex::new(()),
+            mascot_jobs_refresh: Mutex::new(()),
         })
     }
 
@@ -362,7 +380,11 @@ impl Bridge {
         );
         let recoverable =
             recovery_available && (status == "interrupted" || workspace_state == "preserved");
-        active || recoverable
+        let recent_terminal = matches!(status, "completed" | "failed" | "failed_validation" | "cancelled")
+            && value.get("finished_at_ms").and_then(Value::as_u64)
+                .map(|finished| finished <= now_ms() && now_ms().saturating_sub(finished) < 8_000)
+                .unwrap_or(false);
+        active || recoverable || recent_terminal
     }
 
     fn task_progress_matches_path(value: &Value, selected_path: &str) -> bool {
@@ -625,9 +647,31 @@ impl Bridge {
         Ok(self.snapshot_from(current))
     }
 
-    async fn refreshed_snapshot(&self) -> BackendSnapshot {
+    async fn refreshed_snapshot(&self, include_mascot_jobs: bool) -> BackendSnapshot {
         self.tunnel.refresh().await;
-        self.snapshot()
+        let jobs = if include_mascot_jobs { self.observe_mascot_jobs().await } else { None };
+        self.snapshot_from_with_mascot_jobs(self.runtime.snapshot(), jobs)
+    }
+
+    // Only getStatus calls this observer. It neither changes readiness nor
+    // publishes errors/activities, and concurrent polls do not queue more work.
+    async fn observe_mascot_jobs(&self) -> Option<ScopedMascotJobs> {
+        let Ok(_guard) = self.mascot_jobs_refresh.try_lock() else { return None; };
+        let desktop = self.runtime.snapshot();
+        if !desktop.readiness.runtime_ready || desktop.current_operation.is_some() { return None; }
+        let target = self.target_project()?;
+        let epoch = self.verification.snapshot().epoch;
+        let jobs = tokio::time::timeout(
+            MASCOT_JOBS_OBSERVATION_TIMEOUT, self.runtime.observe_mascot_jobs(&target.path),
+        ).await.ok().flatten();
+        if self.target_project().as_ref().map(|p| &p.path) != Some(&target.path)
+            || self.verification.snapshot().epoch != epoch
+        {
+            return None;
+        }
+        let current = self.runtime.snapshot();
+        if !current.readiness.runtime_ready || current.current_operation.is_some() { return None; }
+        Some(ScopedMascotJobs { project_path: target.path, epoch, jobs: jobs? })
     }
 
     async fn refresh_runtime(&self) -> Result<BackendSnapshot, ErrorPayload> {
@@ -780,6 +824,10 @@ impl Bridge {
     }
 
     fn snapshot_from(&self, desktop: RuntimeSnapshot) -> BackendSnapshot {
+        self.snapshot_from_with_mascot_jobs(desktop, None)
+    }
+
+    fn snapshot_from_with_mascot_jobs(&self, desktop: RuntimeSnapshot, mascot_jobs: Option<ScopedMascotJobs>) -> BackendSnapshot {
         let tunnel = self.tunnel.snapshot();
         let verification = self.verification.snapshot();
         let target = self
@@ -789,6 +837,9 @@ impl Bridge {
             (Some(target), Some(runtime)) => target.path == runtime.path,
             _ => false,
         };
+        let mascot_jobs = mascot_jobs
+            .filter(|_| target_matches_runtime && desktop.readiness.runtime_ready && desktop.current_operation.is_none())
+            .and_then(|jobs| jobs.for_target(target.as_ref().map(|p| p.path.as_str()), verification.epoch));
         let tunnel_ready = tunnel.state == TunnelState::Ready;
         let verification_matches_target = match (&target, &verification.project_path) {
             (Some(target), Some(verified_path)) => target.path == *verified_path,
@@ -878,6 +929,7 @@ impl Bridge {
             last_verified_at_ms,
             current_operation,
             task_progress: self.task_progress(),
+            mascot_jobs,
             error,
             activity_sequence: desktop.activity_sequence,
             state_revision: 0,
@@ -1093,7 +1145,9 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
 
     let request_id = request.request_id.clone();
     let result: Result<ResponseResult, ErrorPayload> = match request.method.as_str() {
-        "getStatus" => Ok(ResponseResult::Snapshot(bridge.refreshed_snapshot().await)),
+        "getStatus" => Ok(ResponseResult::Snapshot(bridge.refreshed_snapshot(
+            requested_mascot_jobs(&request.params),
+        ).await)),
         "refreshRuntime" => bridge.refresh_runtime().await.map(ResponseResult::Snapshot),
         "observeChatGPTActivity" => bridge
             .observe_chatgpt_activity()
@@ -1262,6 +1316,10 @@ fn project_inspection(project: RuntimeProject) -> ProjectInspection {
     }
 }
 
+fn requested_mascot_jobs(params: &Value) -> bool {
+    params.get("include_mascot_jobs").and_then(Value::as_bool).unwrap_or(false)
+}
+
 fn param_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, ErrorPayload> {
     params.get(key).and_then(Value::as_str).ok_or_else(|| {
         ErrorPayload::new(
@@ -1405,6 +1463,7 @@ mod tests {
             last_verified_at_ms: None,
             current_operation: None,
             task_progress: None,
+            mascot_jobs: None,
             error: None,
             activity_sequence: 0,
             state_revision: 42,
@@ -1414,6 +1473,25 @@ mod tests {
         assert_eq!(value["chat_gpt_connected"], true);
         assert_eq!(value["chat_gpt_verified_for_selected_project"], false);
         assert_eq!(value["state_revision"], 42);
+        assert!(value["mascot_jobs"].is_null());
+    }
+
+    #[test]
+    fn get_status_mascot_jobs_requires_boolean_opt_in() {
+        for params in [Value::Null, json!({}), json!({"include_mascot_jobs": false}),
+            json!({"include_mascot_jobs": "true"})] {
+            assert!(!requested_mascot_jobs(&params));
+        }
+        assert!(requested_mascot_jobs(&json!({"include_mascot_jobs": true})));
+    }
+
+    #[test]
+    fn mascot_jobs_switching_project_or_epoch_discards_observed_result() {
+        let observed = || ScopedMascotJobs { project_path: "/project-a".into(), epoch: 7, jobs: vec![] };
+        assert_eq!(observed().for_target(Some("/project-a"), 7), Some(vec![]));
+        assert_eq!(observed().for_target(Some("/project-b"), 7), None);
+        assert_eq!(observed().for_target(Some("/project-a"), 8), None);
+        assert_eq!(observed().for_target(None, 7), None);
     }
 
     #[test]
@@ -1424,6 +1502,21 @@ mod tests {
             "recovery": { "available": true }
         });
         assert!(!Bridge::task_progress_is_presentable(&value));
+    }
+
+    #[test]
+    fn task_progress_presents_only_fresh_terminal_results() {
+        for status in ["completed", "failed", "failed_validation", "cancelled"] {
+            assert!(Bridge::task_progress_is_presentable(&json!({
+                "status": status, "finished_at_ms": now_ms()
+            })));
+            assert!(!Bridge::task_progress_is_presentable(&json!({
+                "status": status, "finished_at_ms": now_ms().saturating_sub(9_000)
+            })));
+            assert!(!Bridge::task_progress_is_presentable(&json!({
+                "status": status, "finished_at_ms": now_ms() + 10_000
+            })));
+        }
     }
 
     #[test]
@@ -1517,6 +1610,7 @@ mod tests {
             last_verified_at_ms: None,
             current_operation: None,
             task_progress: None,
+            mascot_jobs: None,
             error: None,
             activity_sequence: 3,
             state_revision: 7,
@@ -1547,6 +1641,7 @@ mod tests {
             last_verified_at_ms: None,
             current_operation: None,
             task_progress: None,
+            mascot_jobs: None,
             error: None,
             activity_sequence: 0,
             state_revision: 0,
@@ -1561,5 +1656,20 @@ mod tests {
         assert_eq!(first.state_revision, 1);
         assert_eq!(repeated.state_revision, 1);
         assert_eq!(changed.state_revision, 2);
+        let mut jobs_changed = changed.clone();
+        jobs_changed.mascot_jobs = Some(vec![]);
+        let empty = state.assign_revision(jobs_changed.clone());
+        assert_eq!(empty.state_revision, 3);
+        assert_eq!(serde_json::to_value(&empty).unwrap()["mascot_jobs"], json!([]));
+        jobs_changed.mascot_jobs = Some(vec![RuntimeMascotJob {
+            job_id: "job_active".into(), status: "running".into(),
+            started_at_ms: Some(1000), finished_at_ms: None, exit_code: None,
+        }]);
+        let active = state.assign_revision(jobs_changed.clone());
+        assert_eq!(active.state_revision, 4);
+        jobs_changed.mascot_jobs = None;
+        let unknown = state.assign_revision(jobs_changed);
+        assert_eq!(unknown.state_revision, 5);
+        assert!(serde_json::to_value(unknown).unwrap()["mascot_jobs"].is_null());
     }
 }
