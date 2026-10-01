@@ -1925,6 +1925,51 @@ impl ToolRequestLifecycle {
         enqueue_metadata_event(&self.trace_id, name, event);
     }
 
+    /// Record that a terminal tool result was handed to the HTTP framework and
+    /// is now waiting for a later meaningful host request. This is delivery
+    /// observability only: it does not claim the remote host received the body.
+    pub(crate) fn terminal_handoff_pending(&self, response_handed_at_ms: i64) {
+        if !self.enabled() {
+            return;
+        }
+        let name = "mcp_terminal_handoff_pending";
+        let mut event = base_event(&self.trace_id, name);
+        merge_event_fields(
+            &mut event,
+            json!({
+                "request_elapsed_ns": u64::try_from(self.started.elapsed().as_nanos()).ok(),
+                "response_handed_at_ms": response_handed_at_ms,
+            }),
+        );
+        enqueue_metadata_event(&self.trace_id, name, event);
+    }
+
+    /// Correlate the first later meaningful request with a terminal predecessor.
+    /// Both trace ids are Server-generated opaque diagnostics; no request body,
+    /// output, credential, or raw host window identifier is recorded.
+    pub(crate) fn terminal_followup_observed(
+        &self,
+        predecessor_server_trace_id: &str,
+        predecessor_response_handed_at_ms: i64,
+        gap_ms: u64,
+    ) {
+        if !self.enabled() {
+            return;
+        }
+        let name = "mcp_terminal_followup_observed";
+        let mut event = base_event(&self.trace_id, name);
+        merge_event_fields(
+            &mut event,
+            json!({
+                "request_elapsed_ns": u64::try_from(self.started.elapsed().as_nanos()).ok(),
+                "predecessor_server_trace_id": predecessor_server_trace_id,
+                "predecessor_response_handed_at_ms": predecessor_response_handed_at_ms,
+                "followup_gap_ms": gap_ms,
+            }),
+        );
+        enqueue_metadata_event(&self.trace_id, name, event);
+    }
+
     /// Join separate tool requests in one authorized Workflow Session without
     /// writing the session identifier or any session contents to the trace.
     pub(crate) fn link_workflow_session(&self, session_id: &str) {
@@ -2248,7 +2293,13 @@ mod tests {
         guard.dispatch_started();
         guard.dispatch_finished(true, Some(true), "success");
         guard.response_serialized(200, Some(123), Some(true), Some(true), "ok");
-        guard.handler_returned(200, Some(123), Some(true), Some(true), "ok");
+        let timing = guard.handler_returned(200, Some(123), Some(true), Some(true), "ok");
+        guard.terminal_handoff_pending(timing.response_handed_at_ms);
+        guard.terminal_followup_observed(
+            "00000000-0000-4000-8000-000000000001",
+            timing.response_handed_at_ms,
+            4_321,
+        );
         flush_full_trace_writer();
         let raw = fs::read_to_string(temp.path().join(trace_id).join("events.jsonl")).unwrap();
         assert!(raw.contains("mcp_tool_request_received"));
@@ -2258,6 +2309,10 @@ mod tests {
         assert!(raw.contains("process_elapsed_ns"));
         assert!(raw.contains("\"helper_ingress_started_unix_ns\":1790000000000000000"));
         assert!(raw.contains("\"helper_ingress_pre_backend_us\":2500"));
+        assert!(raw.contains("mcp_terminal_handoff_pending"));
+        assert!(raw.contains("mcp_terminal_followup_observed"));
+        assert!(raw.contains("\"predecessor_server_trace_id\":\"00000000-0000-4000-8000-000000000001\""));
+        assert!(raw.contains("\"followup_gap_ms\":4321"));
         assert!(!raw.contains("private-source-sentinel"));
         assert!(!temp
             .path()

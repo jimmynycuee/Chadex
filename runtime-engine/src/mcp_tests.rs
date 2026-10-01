@@ -7,6 +7,60 @@ use base64::engine::general_purpose;
 use sha2::{Digest, Sha256};
 
 #[test]
+fn terminal_result_detector_covers_direct_and_observed_job_shapes_without_false_positives() {
+    let direct = json!({
+        "result": {"structuredContent": {"success": true, "output": {"terminal": true}}}
+    });
+    assert!(mcp_tool_result_reports_terminal(&direct));
+
+    let observed = json!({
+        "result": {"structuredContent": {"success": true, "output": {
+            "items": [
+                {"job_id": "running", "terminal": false},
+                {"job_id": "done", "terminal": true}
+            ]
+        }}}
+    });
+    assert!(mcp_tool_result_reports_terminal(&observed));
+    assert_eq!(
+        mcp_terminal_job_evidence(&observed),
+        vec![crate::tool_runtime::window_activity::TerminalJobEvidence {
+            job_id: "done".to_string(),
+            exit_code: None,
+        }]
+    );
+
+    let canonical_mixed_batch = json!({
+        "result": {"structuredContent": {"success": true, "output": {
+            "items": [
+                {"job_id": "done", "success": true, "output": {
+                    "job_id": "done", "terminal": true, "exit_code": 17
+                }},
+                {"job_id": "missing", "success": false, "output": null,
+                 "error_kind": "unknown_job", "error": "missing"}
+            ]
+        }}}
+    });
+    assert!(mcp_tool_result_reports_terminal(&canonical_mixed_batch));
+    assert_eq!(
+        mcp_terminal_job_evidence(&canonical_mixed_batch),
+        vec![crate::tool_runtime::window_activity::TerminalJobEvidence {
+            job_id: "done".to_string(),
+            exit_code: Some(17),
+        }]
+    );
+
+    for nonterminal in [
+        json!({"result": {"structuredContent": {"success": true, "output": {"terminal": false}}}}),
+        json!({"result": {"structuredContent": {"success": true, "output": {"items": [{"terminal": false}]}}}}),
+        json!({"result": {"structuredContent": {"success": true, "output": {}}}}),
+        json!({"error": {"code": -32603}}),
+    ] {
+        assert!(!mcp_tool_result_reports_terminal(&nonterminal));
+    }
+}
+
+#[test]
 fn mcp_gateway_tool_call_params_do_not_retain_outer_meta() {
     for meta in [
         json!({"progressToken": "legacy-progress", "custom": {"private": true}}),

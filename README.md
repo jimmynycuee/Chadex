@@ -8,6 +8,8 @@
 
 `macOS 14+` · `Apple Silicon` · `Free & Open Source`
 
+**Latest stable release: v0.3.0** — long-running local jobs now use a longer model-facing observation window while preserving event-driven terminal/failure wakeups, with additional terminal handoff observability for diagnosing stalled host progress.
+
 > On the Releases page, expand **Assets** and download the latest `Chadex-...-macos-arm64.dmg`.
 
 Chadex 是一個原生 macOS 工具，讓 ChatGPT 能安全地連接到你明確選定的本機專案，直接協助閱讀檔案、執行工具與完成開發工作。
@@ -39,6 +41,7 @@ Intel / Universal build 目前尚未完成 release-level 驗證，因此暫不�
 - 將 ChatGPT 連接到指定專案，而不是暴露整台電腦的任意路徑。
 - 提供檔案操作、shell、Git、長時間任務與本機開發工具的執行能力。
 - 支援專案切換、工作階段、隔離式 worktree 與長時間 execution lifecycle。
+- 長時間命令以 durable job 持續執行；觀察 timeout 或輸出截斷不會自動重新啟動同一份工作，terminal/failure 仍可提早喚醒後續流程。
 - 以 macOS Keychain 保存敏感憑證，並由本機 runtime 管理連線與執行狀態。
 - 在 App 中顯示實際連線、活動與任務狀態，不以按鈕操作結果假設連線成功。
 

@@ -371,21 +371,38 @@ fn observed_failure_presentation(item: &Value) -> Option<Value> {
     for key in ["error_kind", "recovery_kind"] {
         copy_bounded_text(item, &mut output, key);
     }
-    if item
-        .get("suggested_call")
-        .and_then(Value::as_object)
-        .is_some_and(|call| {
-            call.get("tool").and_then(Value::as_str) == Some("list_jobs")
-                && call
-                    .get("arguments")
-                    .and_then(Value::as_object)
-                    .is_some_and(|arguments| arguments.is_empty())
-        })
-    {
-        output.insert(
-            "suggested_call".to_string(),
-            json!({"tool": "list_jobs", "arguments": {}}),
-        );
+    if let Some(call) = item.get("suggested_call").and_then(Value::as_object) {
+        let direct_list_jobs = call.get("tool").and_then(Value::as_str) == Some("list_jobs")
+            && call
+                .get("arguments")
+                .and_then(Value::as_object)
+                .is_some_and(|arguments| arguments.is_empty());
+        let adaptive_list_jobs = call.get("tool").and_then(Value::as_str)
+            == Some(super::tools::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME)
+            && call
+                .get("arguments")
+                .and_then(Value::as_object)
+                .is_some_and(|arguments| {
+                    arguments.get("tool").and_then(Value::as_str) == Some("list_jobs")
+                        && arguments
+                            .get("arguments")
+                            .and_then(Value::as_object)
+                            .is_some_and(|nested| nested.is_empty())
+                });
+        if direct_list_jobs {
+            output.insert(
+                "suggested_call".to_string(),
+                json!({"tool": "list_jobs", "arguments": {}}),
+            );
+        } else if adaptive_list_jobs {
+            output.insert(
+                "suggested_call".to_string(),
+                json!({
+                    "tool": super::tools::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME,
+                    "arguments": {"tool": "list_jobs", "arguments": {}}
+                }),
+            );
+        }
     }
     if item.get("error_kind").and_then(Value::as_str) == Some("unknown_job") {
         output.insert(

@@ -26,13 +26,14 @@ pub const DEFAULT_OBSERVE_JOBS_TAIL_LINES: usize = 40;
 /// This is intentionally separate from execution timeouts and initial
 /// synchronous handoff grace budgets.
 pub const MAX_JOB_OBSERVATION_WAIT_SECS: u64 = 100;
-/// Recommended bounded wait for one model-facing `observe_jobs` call. This is
-/// intentionally shorter than the low-level Job observation budget so a host
-/// turn is never asked to remain blocked for the lifetime of long work.
-pub const MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS: u64 = 20;
+/// Recommended bounded wait for one model-facing `observe_jobs` call. Keep the
+/// wait long enough to cover common 45-75 second jobs after the initial sync
+/// grace without repeatedly returning nonterminal state to the model. Terminal
+/// updates still wake the event-driven observation immediately.
+pub const MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS: u64 = 60;
 /// Hard host-safety cap for one model-facing `observe_jobs` request. Runner Job
 /// lifetime and lower-level Job-log waits remain governed independently.
-pub const MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS: u64 = 30;
+pub const MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS: u64 = 60;
 pub const STRUCTURED_EXECUTION_SYNC_WAIT_MAX_SECS: u64 = 60;
 
 pub const MAX_SKILL_LIST_LIMIT: usize = 64;

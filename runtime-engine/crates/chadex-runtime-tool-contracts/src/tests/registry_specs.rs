@@ -1058,11 +1058,11 @@ fn observe_jobs_wake_policy_schema_is_closed_and_compatible() {
     );
     assert_eq!(
         webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_SOFT_SECS,
-        20
+        60
     );
     assert_eq!(
         webcodex_core::runtime_contract::MODEL_FACING_JOB_OBSERVATION_WAIT_MAX_SECS,
-        30
+        60
     );
     assert_eq!(
         wake["enum"],
@@ -1078,8 +1078,8 @@ fn observe_jobs_wake_policy_schema_is_closed_and_compatible() {
         "no wait_secs",
         "wake_on=change",
         "wake_on=terminal",
-        "20 seconds is canonical",
-        "values above 30 are clamped to 30",
+        "60 seconds is canonical",
+        "values above 60 are clamped to 60",
         "useful progress is blocked on terminal outcome",
         "independent work remains",
         "never sleep or shell-poll for visibility",
@@ -1091,9 +1091,9 @@ fn observe_jobs_wake_policy_schema_is_closed_and_compatible() {
     let wait_description = spec.input_schema["properties"]["wait_secs"]["description"]
         .as_str()
         .unwrap();
-    assert!(wait_description.contains("above 30 seconds"));
-    assert!(wait_description.contains("clamped to the host-safe 30-second cap"));
-    assert!(wait_description.contains("recommend 20 seconds"));
+    assert!(wait_description.contains("above 60 seconds"));
+    assert!(wait_description.contains("clamped to the host-safe 60-second cap"));
+    assert!(wait_description.contains("recommend 60 seconds"));
     assert!(wait_description.contains("Wait only when useful progress depends on Job state"));
     assert!(wait_description.contains("continue independent work"));
     let wake_description = wake["description"].as_str().unwrap();

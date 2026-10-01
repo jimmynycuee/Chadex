@@ -479,10 +479,10 @@ async fn server_mcp_apps_setting_disables_only_app_presentation() {
         rpc(
             "tools/call",
             Some(json!(3215)),
-            mcp_2026_ui_params(json!({
-                "name": "list_jobs",
-                "arguments": {"limit": 1}
-            })),
+            mcp_2026_ui_params(adaptive_runtime_gateway_params(
+                "list_jobs",
+                json!({"limit": 1}),
+            )),
         ),
         None,
         false,
@@ -2055,10 +2055,10 @@ async fn mcp_job_presentation_tracks_real_running_to_terminal_transition() {
         rpc(
             "tools/call",
             Some(json!(32101)),
-            mcp_2026_ui_params(json!({
-                "name": "list_jobs",
-                "arguments": {"project": "agent:result-app-runner:demo", "limit": 10}
-            })),
+            mcp_2026_ui_params(adaptive_runtime_gateway_params(
+                "list_jobs",
+                json!({"project": "agent:result-app-runner:demo", "limit": 10}),
+            )),
         ),
         Some(&auth),
     )
@@ -2078,10 +2078,10 @@ async fn mcp_job_presentation_tracks_real_running_to_terminal_transition() {
         rpc(
             "tools/call",
             Some(json!(32102)),
-            mcp_2026_params(json!({
-                "name": "list_jobs",
-                "arguments": {"project": "agent:result-app-runner:demo", "limit": 10}
-            })),
+            mcp_2026_params(adaptive_runtime_gateway_params(
+                "list_jobs",
+                json!({"project": "agent:result-app-runner:demo", "limit": 10}),
+            )),
         ),
         Some(&auth),
     )
@@ -2118,7 +2118,10 @@ async fn mcp_job_presentation_tracks_real_running_to_terminal_transition() {
     );
     assert_eq!(
         presentation(&unknown)["items"][0]["suggested_call"],
-        json!({"tool": "list_jobs", "arguments": {}})
+        json!({
+            "tool": super::super::tools::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME,
+            "arguments": {"tool": "list_jobs", "arguments": {}}
+        })
     );
 
     assert!(runtime.runner_registry.remove_job_record(&job_id).await);

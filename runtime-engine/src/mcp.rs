@@ -97,6 +97,75 @@ fn runtime(depot: &Depot) -> Option<Arc<ToolRuntime>> {
     depot.obtain::<Arc<ToolRuntime>>().ok().cloned()
 }
 
+fn mcp_tool_result_reports_terminal(body: &Value) -> bool {
+    let Some(output) = body
+        .get("result")
+        .and_then(|result| result.get("structuredContent"))
+        .and_then(|structured| structured.get("output"))
+    else {
+        return false;
+    };
+    if output.get("terminal").and_then(Value::as_bool) == Some(true) {
+        return true;
+    }
+    output
+        .get("items")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items.iter().any(|item| {
+                item.get("terminal").and_then(Value::as_bool) == Some(true)
+                    || item
+                        .get("output")
+                        .and_then(|output| output.get("terminal"))
+                        .and_then(Value::as_bool)
+                        == Some(true)
+            })
+        })
+}
+
+fn mcp_terminal_job_evidence(
+    body: &Value,
+) -> Vec<crate::tool_runtime::window_activity::TerminalJobEvidence> {
+    let Some(output) = body
+        .get("result")
+        .and_then(|result| result.get("structuredContent"))
+        .and_then(|structured| structured.get("output"))
+    else {
+        return Vec::new();
+    };
+    let mut jobs = Vec::new();
+    let mut push_job = |value: &Value| {
+        if value.get("terminal").and_then(Value::as_bool) != Some(true) {
+            return;
+        }
+        let Some(job_id) = value.get("job_id").and_then(Value::as_str) else {
+            return;
+        };
+        if jobs
+            .iter()
+            .any(|job: &crate::tool_runtime::window_activity::TerminalJobEvidence| {
+                job.job_id == job_id
+            })
+        {
+            return;
+        }
+        jobs.push(crate::tool_runtime::window_activity::TerminalJobEvidence {
+            job_id: job_id.to_string(),
+            exit_code: value.get("exit_code").and_then(Value::as_i64),
+        });
+    };
+    push_job(output);
+    if let Some(items) = output.get("items").and_then(Value::as_array) {
+        for item in items.iter().take(8) {
+            push_job(item);
+            if let Some(observation) = item.get("output") {
+                push_job(observation);
+            }
+        }
+    }
+    jobs
+}
+
 fn finalize_mcp_tool_observability(
     runtime: &ToolRuntime,
     audit: Option<&ActionAudit>,
@@ -504,6 +573,25 @@ pub async fn mcp_post(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         } else {
             None
         };
+    if let Some(resolved) = live_window_request
+        .as_ref()
+        .and_then(crate::tool_runtime::WindowActivityGuard::resolved_terminal_followup)
+    {
+        tracing::info!(
+            target: "webcodex::mcp",
+            event = "mcp_terminal_followup_observed",
+            server_trace_id = %server_trace_id,
+            predecessor_server_trace_id = %resolved.predecessor_server_trace_id,
+            predecessor_response_handed_at_ms = resolved.response_handed_at_ms,
+            followup_gap_ms = resolved.gap_ms,
+            "mcp_terminal_followup_observed"
+        );
+        guard.terminal_followup_observed(
+            &resolved.predecessor_server_trace_id,
+            resolved.response_handed_at_ms,
+            resolved.gap_ms,
+        );
+    }
 
     // Chat-window MCP tool calls must land in the action audit exactly like
     // the REST surface (they were previously invisible there). Summary-level
@@ -791,9 +879,28 @@ pub async fn mcp_post(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             );
             guard.capture_payload("final_response", &body);
             let estimated = estimate_json_bytes(&body);
+            let terminal_handoff = mcp_tool_result_reports_terminal(&body);
+            let terminal_jobs = if terminal_handoff {
+                mcp_terminal_job_evidence(&body)
+            } else {
+                Vec::new()
+            };
             guard.response_serialized(200, estimated, Some(true), tool_success, "ok");
             res.render(Json(body));
             let timing = guard.handler_returned(200, estimated, Some(true), tool_success, "ok");
+            if terminal_handoff {
+                if let Some(active) = live_window_request.as_mut() {
+                    active.mark_terminal_handoff(terminal_jobs);
+                }
+                tracing::info!(
+                    target: "webcodex::mcp",
+                    event = "mcp_terminal_handoff_pending",
+                    server_trace_id = %server_trace_id,
+                    response_handed_at_ms = timing.response_handed_at_ms,
+                    "mcp_terminal_handoff_pending"
+                );
+                guard.terminal_handoff_pending(timing.response_handed_at_ms);
+            }
             finalize_mcp_tool_observability(
                 &runtime,
                 audit.as_ref().map(|(audit, _, _)| audit),

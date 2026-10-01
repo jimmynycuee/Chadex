@@ -165,10 +165,43 @@ struct WindowContinuityKey {
     principal_id: String,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct CompletedMeaningfulCall {
     request_observed_at_ms: i64,
     response_handed_at_ms: i64,
+    server_trace_id: String,
+    client_window_source: String,
+    tool_name: Option<String>,
+    project: Option<String>,
+    terminal_handoff: bool,
+    terminal_jobs: Vec<TerminalJobEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct TerminalJobEvidence {
+    pub(crate) job_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) exit_code: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct PendingTerminalFollowup {
+    pub(crate) client_window_key: String,
+    pub(crate) client_window_source: String,
+    pub(crate) server_trace_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tool_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) project: Option<String>,
+    pub(crate) response_handed_at_ms: i64,
+    pub(crate) terminal_jobs: Vec<TerminalJobEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResolvedTerminalFollowup {
+    pub(crate) predecessor_server_trace_id: String,
+    pub(crate) response_handed_at_ms: i64,
+    pub(crate) gap_ms: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -214,6 +247,17 @@ impl WindowActivityRegistry {
             principal_kind: kind.to_string(),
             principal_id: id.to_string(),
         });
+        let terminal_predecessor = if meaningful {
+            continuity_key.as_ref().and_then(|key| {
+                inner
+                    .previous_meaningful
+                    .get(key)
+                    .filter(|previous| previous.terminal_handoff)
+                    .cloned()
+            })
+        } else {
+            None
+        };
         let (transition, overlapped) = if meaningful {
             continuity_key
                 .as_ref()
@@ -223,6 +267,16 @@ impl WindowActivityRegistry {
                 .unwrap_or((WindowLoopTransition::Unavailable, false))
         } else {
             (WindowLoopTransition::Unavailable, false)
+        };
+        let resolved_terminal_followup = match (transition, terminal_predecessor) {
+            (WindowLoopTransition::Serial { gap_ms }, Some(previous)) => {
+                Some(ResolvedTerminalFollowup {
+                    predecessor_server_trace_id: previous.server_trace_id,
+                    response_handed_at_ms: previous.response_handed_at_ms,
+                    gap_ms,
+                })
+            }
+            _ => None,
         };
         let record = ActiveWindowRequest {
             client_window_key: window.key().to_string(),
@@ -272,6 +326,9 @@ impl WindowActivityRegistry {
             meaningful,
             request_observed_at_ms,
             transition,
+            resolved_terminal_followup,
+            terminal_handoff: false,
+            terminal_jobs: Vec::new(),
             active: true,
         }
     }
@@ -368,6 +425,49 @@ impl WindowActivityRegistry {
         values
     }
 
+    pub(crate) fn pending_terminal_followups(
+        &self,
+        principal: Option<(&str, &str)>,
+    ) -> Vec<PendingTerminalFollowup> {
+        let inner = self.inner.lock().expect("Window activity mutex poisoned");
+        let mut pending = inner
+            .previous_meaningful
+            .iter()
+            .filter(|(key, previous)| {
+                previous.terminal_handoff
+                    && principal.is_none_or(|principal| {
+                        key.principal_kind == principal.0 && key.principal_id == principal.1
+                    })
+            })
+            .map(|(key, previous)| PendingTerminalFollowup {
+                client_window_key: key.client_window_key.clone(),
+                client_window_source: previous.client_window_source.clone(),
+                server_trace_id: previous.server_trace_id.clone(),
+                tool_name: previous.tool_name.clone(),
+                project: previous.project.clone(),
+                response_handed_at_ms: previous.response_handed_at_ms,
+                terminal_jobs: previous.terminal_jobs.clone(),
+            })
+            .collect::<Vec<_>>();
+        pending.sort_by(|a, b| {
+            b.response_handed_at_ms
+                .cmp(&a.response_handed_at_ms)
+                .then_with(|| a.server_trace_id.cmp(&b.server_trace_id))
+        });
+        pending
+    }
+
+    pub(crate) fn pending_terminal_followups_for_window(
+        &self,
+        window_key: &str,
+        principal: Option<(&str, &str)>,
+    ) -> Vec<PendingTerminalFollowup> {
+        self.pending_terminal_followups(principal)
+            .into_iter()
+            .filter(|pending| pending.client_window_key == window_key)
+            .collect()
+    }
+
     #[cfg(test)]
     pub(crate) fn counts_by_window(
         &self,
@@ -393,6 +493,8 @@ impl WindowActivityRegistry {
         request_observed_at_ms: i64,
         completion: Option<RequestCompletionTiming>,
         continuity_eligible: bool,
+        terminal_handoff: bool,
+        terminal_jobs: &[TerminalJobEvidence],
     ) {
         let Ok(mut inner) = self.inner.lock() else {
             tracing::warn!(
@@ -427,11 +529,20 @@ impl WindowActivityRegistry {
                     request_observed_at_ms >= previous.request_observed_at_ms
                 });
                 if should_replace {
+                    let request = finished_request
+                        .as_ref()
+                        .expect("finished request checked above");
                     inner.previous_meaningful.insert(
                         key.clone(),
                         CompletedMeaningfulCall {
                             request_observed_at_ms,
                             response_handed_at_ms: completion.response_handed_at_ms,
+                            server_trace_id: request.server_trace_id.clone(),
+                            client_window_source: request.client_window_source.clone(),
+                            tool_name: request.tool_name.clone(),
+                            project: request.project.clone(),
+                            terminal_handoff,
+                            terminal_jobs: terminal_jobs.to_vec(),
                         },
                     );
                 }
@@ -578,6 +689,9 @@ pub(crate) struct WindowActivityGuard {
     meaningful: bool,
     request_observed_at_ms: i64,
     transition: WindowLoopTransition,
+    resolved_terminal_followup: Option<ResolvedTerminalFollowup>,
+    terminal_handoff: bool,
+    terminal_jobs: Vec<TerminalJobEvidence>,
     active: bool,
 }
 
@@ -591,6 +705,15 @@ impl WindowActivityGuard {
         self.transition
     }
 
+    pub(crate) fn resolved_terminal_followup(&self) -> Option<&ResolvedTerminalFollowup> {
+        self.resolved_terminal_followup.as_ref()
+    }
+
+    pub(crate) fn mark_terminal_handoff(&mut self, terminal_jobs: Vec<TerminalJobEvidence>) {
+        self.terminal_handoff = true;
+        self.terminal_jobs = terminal_jobs;
+    }
+
     pub(crate) fn complete(mut self, timing: RequestCompletionTiming, continuity_eligible: bool) {
         if self.active {
             self.registry.finish(
@@ -600,6 +723,8 @@ impl WindowActivityGuard {
                 self.request_observed_at_ms,
                 Some(timing),
                 continuity_eligible,
+                self.terminal_handoff,
+                &self.terminal_jobs,
             );
             self.active = false;
         }
@@ -616,6 +741,8 @@ impl Drop for WindowActivityGuard {
                 self.request_observed_at_ms,
                 None,
                 false,
+                false,
+                &[],
             );
             self.active = false;
         }
@@ -919,6 +1046,102 @@ mod tests {
             1_500,
         );
         assert_eq!(followup.transition().gap_ms(), Some(275));
+    }
+
+    #[test]
+    fn terminal_handoff_stays_pending_through_status_and_resolves_on_next_meaningful_call() {
+        let registry = WindowActivityRegistry::default();
+        let window = window("terminal-followup");
+        let principal = ("username", "alice");
+        let mut terminal = meaningful_start(&registry, &window, "trace-terminal", principal, 1_000);
+        terminal.update(Some("observe_jobs"), Some("agent:r:p"));
+        terminal.mark_terminal_handoff(vec![TerminalJobEvidence {
+            job_id: "job-terminal".to_string(),
+            exit_code: Some(0),
+        }]);
+        terminal.complete(completion(1_000, 1_100), true);
+
+        let pending = registry.pending_terminal_followups_for_window(
+            &window_key("terminal-followup"),
+            Some(principal),
+        );
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].server_trace_id, "trace-terminal");
+        assert_eq!(pending[0].tool_name.as_deref(), Some("observe_jobs"));
+        assert_eq!(pending[0].project.as_deref(), Some("agent:r:p"));
+        assert_eq!(pending[0].response_handed_at_ms, 1_100);
+        assert_eq!(
+            pending[0].terminal_jobs,
+            vec![TerminalJobEvidence {
+                job_id: "job-terminal".to_string(),
+                exit_code: Some(0),
+            }]
+        );
+
+        let status = registry.start_observed(
+            &window,
+            "trace-status",
+            "tools/call",
+            Some("runtime_status"),
+            Some(principal),
+            1_250,
+        );
+        assert_eq!(status.transition(), WindowLoopTransition::Unavailable);
+        status.complete(completion(1_250, 1_275), true);
+        assert_eq!(registry.pending_terminal_followups(Some(principal)).len(), 1);
+
+        let followup = meaningful_start(
+            &registry,
+            &window,
+            "trace-followup",
+            principal,
+            1_500,
+        );
+        assert_eq!(followup.transition().gap_ms(), Some(400));
+        let resolved = followup
+            .resolved_terminal_followup()
+            .expect("terminal predecessor should correlate to first meaningful follow-up");
+        assert_eq!(resolved.predecessor_server_trace_id, "trace-terminal");
+        assert_eq!(resolved.response_handed_at_ms, 1_100);
+        assert_eq!(resolved.gap_ms, 400);
+        assert!(registry.pending_terminal_followups(Some(principal)).is_empty());
+    }
+
+    #[test]
+    fn terminal_handoff_is_principal_scoped_and_overlap_never_claims_serial_followup() {
+        let registry = WindowActivityRegistry::default();
+        let window = window("terminal-overlap");
+        let alice = ("username", "alice");
+        let mut terminal = meaningful_start(&registry, &window, "trace-terminal", alice, 1_000);
+        terminal.mark_terminal_handoff(Vec::new());
+        terminal.complete(completion(1_000, 1_100), true);
+
+        assert_eq!(registry.pending_terminal_followups(Some(alice)).len(), 1);
+        assert!(registry
+            .pending_terminal_followups(Some(("username", "bob")))
+            .is_empty());
+
+        let overlap = meaningful_start(&registry, &window, "trace-overlap", alice, 1_050);
+        assert_eq!(overlap.transition(), WindowLoopTransition::Overlap);
+        assert!(overlap.resolved_terminal_followup().is_none());
+        assert!(registry.pending_terminal_followups(Some(alice)).is_empty());
+    }
+
+    #[test]
+    fn ordinary_nonterminal_completion_does_not_create_pending_terminal_followup() {
+        let registry = WindowActivityRegistry::default();
+        let window = window("ordinary-followup");
+        meaningful_start(
+            &registry,
+            &window,
+            "trace-ordinary",
+            ("username", "alice"),
+            1_000,
+        )
+        .complete(completion(1_000, 1_100), true);
+        assert!(registry
+            .pending_terminal_followups(Some(("username", "alice")))
+            .is_empty());
     }
 
     #[test]

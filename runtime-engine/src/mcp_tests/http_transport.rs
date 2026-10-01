@@ -117,6 +117,277 @@ async fn stateless_2026_tool_call(
     .await
 }
 
+async fn stateless_2026_tool_call_in_window(
+    service: &Service,
+    token: &str,
+    id: i64,
+    name: &str,
+    arguments: Value,
+    raw_window: &str,
+) -> (StatusCode, String, Value) {
+    let (call_name, call_params) = if matches!(
+        crate::model_surface::adaptive_runtime_gateway_target_route(name),
+        crate::model_surface::AdaptiveRuntimeGatewayTargetRoute::Gateway
+    ) {
+        (
+            crate::mcp::tools::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME,
+            adaptive_runtime_gateway_params(name, arguments),
+        )
+    } else {
+        (name, json!({"name": name, "arguments": arguments}))
+    };
+    let mut params = mcp_2026_params(call_params);
+    params["_meta"]["openai/session"] = json!(raw_window);
+    let mut response = TestClient::post("http://localhost/mcp")
+        .bearer_auth(token)
+        .add_header(
+            MCP_PROTOCOL_VERSION_HEADER,
+            MCP_STATELESS_PROTOCOL_VERSION,
+            true,
+        )
+        .add_header(MCP_METHOD_HEADER, "tools/call", true)
+        .add_header(MCP_NAME_HEADER, call_name, true)
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": params,
+        }))
+        .send(service)
+        .await;
+    let trace_id = response
+        .headers()
+        .get("x-chadex-trace-id")
+        .expect("server trace header")
+        .to_str()
+        .unwrap()
+        .to_string();
+    let status = effective_status(&response);
+    let body = response.take_json::<Value>().await.unwrap();
+    (status, trace_id, body)
+}
+
+#[test]
+fn terminal_response_handoff_correlates_to_next_meaningful_http_request() {
+    std::thread::Builder::new()
+        .name("mcp-terminal-followup-correlation".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("build terminal-followup runtime")
+                .block_on(async {
+                    let trace_root = tempfile::tempdir().unwrap();
+                    let mut env = crate::test_support::TestEnvGuard::new();
+                    env.set("WEBCODEX_TOOL_REQUEST_TRACE", "metadata");
+                    env.set(
+                        "WEBCODEX_TOOL_REQUEST_TRACE_DIR",
+                        trace_root.path().to_string_lossy().as_ref(),
+                    );
+                    env.set("WEBCODEX_TOOL_REQUEST_TRACE_MAX_TOTAL_BYTES", "8388608");
+
+                    let runner_registry = Arc::new(crate::runner_http::RunnerRegistry::default());
+                    let capabilities = RunnerCapabilities {
+                        shell: true,
+                        git: true,
+                        internal_posix_script: true,
+                        async_jobs: true,
+                        async_shell_jobs: true,
+                        structured_validation_argv: true,
+                        ..Default::default()
+                    };
+                    runner_registry
+                        .register(crate::test_support::current_runner_registration(
+                            RunnerRegisterRequest {
+                                process_started_at: None,
+                                build: None,
+                                job_concurrency_limit: None,
+                                job_inventory: None,
+                                coding_agent_providers: None,
+                                coding_agent_inventory: None,
+                                client_id: "phase20b-terminal-runner".to_string(),
+                                runner_instance_id: "inst-phase20b-terminal".to_string(),
+                                display_name: None,
+                                owner: None,
+                                hostname: None,
+                                host_context: None,
+                                capabilities: crate::test_support::current_runner_capabilities(
+                                    capabilities,
+                                ),
+                                policy: None,
+                                runner_protocol_generation:
+                                    crate::runner_protocol::RUNNER_PROTOCOL_GENERATION_V2,
+                            },
+                        ))
+                        .await
+                        .unwrap();
+                    crate::test_support::apply_project_inventory_snapshot(
+                        &runner_registry,
+                        "phase20b-terminal-runner",
+                        "inst-phase20b-terminal",
+                        vec![RunnerProjectSummary {
+                            id: "demo".to_string(),
+                            name: Some("Phase 20B terminal correlation".to_string()),
+                            path: "/tmp/phase20b-terminal-correlation".to_string(),
+                            allow_patch: true,
+                            kind: Some("repo".to_string()),
+                            registration_source: None,
+                            description: None,
+                            hooks: Vec::new(),
+                            disabled: false,
+                            revision: None,
+                            root_fingerprint: None,
+                            lineage: None,
+                            git_branch: None,
+                            git_head: None,
+                            git_dirty: None,
+                            updated_at: 1,
+                            shell_profile: None,
+                        }],
+                    )
+                    .await;
+                    let project = crate::tool_runtime::runner_project_runtime_id(
+                        "phase20b-terminal-runner",
+                        "demo",
+                    );
+                    let runtime = Arc::new(ToolRuntime::new_for_tests_with_runner_registry(
+                        runner_registry.clone(),
+                    ));
+                    let config = test_config(Some("secret"));
+                    let (_tmp, db) = test_db();
+                    let service = Service::new(build_test_router(config, db, runtime));
+                    let raw_window = "phase20b-terminal-followup-window";
+
+                    let (status, _, started) = stateless_2026_tool_call_in_window(
+                        &service,
+                        "secret",
+                        2001,
+                        "run_job",
+                        json!({
+                            "project": project,
+                            "command": "printf phase20b-terminal",
+                            "timeout_secs": 60
+                        }),
+                        raw_window,
+                    )
+                    .await;
+                    assert_eq!(status, StatusCode::OK, "{started}");
+                    assert_eq!(started["result"]["isError"], false, "{started}");
+                    let job_id = started["result"]["structuredContent"]["output"]["job_id"]
+                        .as_str()
+                        .expect("run_job job_id")
+                        .to_string();
+                    let request = runner_registry
+                        .poll(RunnerPollRequest {
+                            client_id: "phase20b-terminal-runner".to_string(),
+                            runner_instance_id: "inst-phase20b-terminal".to_string(),
+                        })
+                        .await
+                        .unwrap()
+                        .expect("queued terminal job");
+                    assert_eq!(request.job_id.as_deref(), Some(job_id.as_str()));
+                    runner_registry
+                        .complete(RunnerResultRequest {
+                            client_id: "phase20b-terminal-runner".to_string(),
+                            runner_instance_id: "inst-phase20b-terminal".to_string(),
+                            request_id: request.request_id,
+                            exit_code: Some(0),
+                            stdout: Some("phase20b-terminal".to_string()),
+                            stderr: Some(String::new()),
+                            stdout_truncated: false,
+                            stderr_truncated: false,
+                            duration_ms: Some(1),
+                            error: None,
+                        })
+                        .await
+                        .unwrap();
+
+                    let (status, terminal_trace, terminal) = stateless_2026_tool_call_in_window(
+                        &service,
+                        "secret",
+                        2002,
+                        "observe_jobs",
+                        json!({"items": [{"job_id": job_id}]}),
+                        raw_window,
+                    )
+                    .await;
+                    assert_eq!(status, StatusCode::OK, "{terminal}");
+                    assert_eq!(
+                        terminal["result"]["structuredContent"]["output"]["items"][0]
+                            ["terminal"],
+                        true,
+                        "{terminal}"
+                    );
+
+                    let (status, followup_trace, followup) =
+                        stateless_2026_tool_call_in_window(
+                            &service,
+                            "secret",
+                            2003,
+                            "run_job",
+                            json!({
+                                "project": project,
+                                "command": "printf phase20b-followup",
+                                "timeout_secs": 60
+                            }),
+                            raw_window,
+                        )
+                        .await;
+                    assert_eq!(status, StatusCode::OK, "{followup}");
+                    assert_ne!(followup_trace, terminal_trace);
+
+                    // Finish the follow-up Job so the fixture leaves no active work.
+                    if let Some(request) = runner_registry
+                        .poll(RunnerPollRequest {
+                            client_id: "phase20b-terminal-runner".to_string(),
+                            runner_instance_id: "inst-phase20b-terminal".to_string(),
+                        })
+                        .await
+                        .unwrap()
+                    {
+                        runner_registry
+                            .complete(RunnerResultRequest {
+                                client_id: "phase20b-terminal-runner".to_string(),
+                                runner_instance_id: "inst-phase20b-terminal".to_string(),
+                                request_id: request.request_id,
+                                exit_code: Some(0),
+                                stdout: Some("phase20b-followup".to_string()),
+                                stderr: Some(String::new()),
+                                stdout_truncated: false,
+                                stderr_truncated: false,
+                                duration_ms: Some(1),
+                                error: None,
+                            })
+                            .await
+                            .unwrap();
+                    }
+
+                    crate::tool_request_trace::flush_full_trace_writer();
+                    let terminal_events = std::fs::read_to_string(
+                        trace_root.path().join(&terminal_trace).join("events.jsonl"),
+                    )
+                    .unwrap();
+                    assert!(terminal_events.contains("mcp_terminal_handoff_pending"));
+                    assert!(!terminal_events.contains(raw_window));
+
+                    let followup_events = std::fs::read_to_string(
+                        trace_root.path().join(&followup_trace).join("events.jsonl"),
+                    )
+                    .unwrap();
+                    assert!(followup_events.contains("mcp_terminal_followup_observed"));
+                    assert!(followup_events.contains(&format!(
+                        "\"predecessor_server_trace_id\":\"{terminal_trace}\""
+                    )));
+                    assert!(followup_events.contains("\"followup_gap_ms\":"));
+                    assert!(!followup_events.contains(raw_window));
+                });
+        })
+        .expect("spawn terminal-followup test thread")
+        .join()
+        .expect("terminal-followup test thread panicked");
+}
+
 async fn stateless_observation_runner_registry() -> Arc<crate::runner_http::RunnerRegistry> {
     let runner_registry = Arc::new(crate::runner_http::RunnerRegistry::default());
     runner_registry
