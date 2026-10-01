@@ -61,9 +61,9 @@ CHADEX_CODESIGN_IDENTITY="Developer ID Application: ..." \
 
 For a version bump, update the default in `scripts/build_app.sh`, the own-package versions in `chadex-runtime/Cargo.toml`, `runtime-engine/Cargo.toml` (`workspace.package.version`), and `rust-helper/Cargo.toml`, and their three lockfiles. Runtime workspace members inherit the workspace version; third-party dependency versions must remain unchanged. Add `docs/releases/X.Y.Z.md` for the exact release tag and update `CHANGELOG.md` and the README release-note link. The generated app `Info.plist` takes its version from the build environment; it is not a source file to edit.
 
-### v0.3.1 candidate validation
+### v0.3.1 validation
 
-The Code Ferret candidate is not yet validated for publication. Track pending checks in `docs/releases/0.3.1.md`; record results only after executing them against the candidate. Run the source gate from a clean release checkout. A dirty-tree run with `CHADEX_RELEASE_ALLOW_DIRTY=1` is development evidence only.
+See `docs/releases/0.3.1.md` for executed Code Ferret validation and its boundaries. Run the source gate from a clean release checkout. A dirty-tree run with `CHADEX_RELEASE_ALLOW_DIRTY=1` is development evidence only.
 
 For the free artifact path, explicitly select ad-hoc signing, then package the resulting bundle:
 

@@ -8,7 +8,7 @@
 
 `macOS 14+` · `Apple Silicon` · `Free & Open Source`
 
-**Latest stable release: v0.3.0** — long-running local jobs now use a longer model-facing observation window while preserving event-driven terminal/failure wakeups, with additional terminal handoff observability for diagnosing stalled host progress.
+**Latest stable release: v0.3.1** — Code Ferret brings an animated companion to Chadex, reflecting observed tools, tasks, and durable Jobs while retaining v0.3.0 long-task reliability.
 
 > On the Releases page, expand **Assets** and download the latest `Chadex-...-macos-arm64.dmg`.
 
@@ -112,7 +112,7 @@ Release profile、簽署、DMG、GitHub Actions 與 distribution boundary 的完
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime、project isolation、execution lifecycle 與安全邊界
 - [`docs/BRIDGE_PROTOCOL.md`](docs/BRIDGE_PROTOCOL.md) — Swift ↔ Rust bridge protocol
 - [`docs/RELEASE.md`](docs/RELEASE.md) — release gate、簽署、DMG 與 GitHub 發佈流程
-- [`docs/releases/0.3.1.md`](docs/releases/0.3.1.md) — Code Ferret release candidate 與待完成驗證
+- [`docs/releases/0.3.1.md`](docs/releases/0.3.1.md) — Code Ferret 與實際驗證
 - [`docs/SECURITY_AND_PERFORMANCE_REVIEW.md`](docs/SECURITY_AND_PERFORMANCE_REVIEW.md) — security / performance 驗證與 benchmark
 - [`UPSTREAM.md`](UPSTREAM.md) — upstream provenance、修改歷史與 attribution
 

@@ -2,12 +2,13 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
-## 0.3.1 (Unreleased)
+## 0.3.1
 
 - Added the animated Code Ferret mascot, driven by observed tool activity, task progress, and completion/failure evidence.
 - Added mascot visibility and motion controls, macOS Reduce Motion support, and English / Traditional Chinese labels.
 - Kept unknown progress indeterminate and reset mascot reactions when switching projects.
-- Release validation is pending; see `docs/releases/0.3.1.md` for the planned checks.
+- Added optional, bounded current-project durable Job observation so completed HTTP responses do not make active work appear idle. Diagnostics do not wake the mascot.
+- Validated the native UI, source gate, packaged long-job success/failure, DMG resources and signatures; see `docs/releases/0.3.1.md`.
 
 ## 0.3.0
 

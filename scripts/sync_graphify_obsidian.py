@@ -48,6 +48,11 @@ class ComponentSpec:
 
 COMPONENTS: tuple[ComponentSpec, ...] = (
     ComponentSpec(
+        "Code Ferret Companion",
+        "Runtime-driven SwiftUI mascot, scoped durable Job evidence, bounded reactions, and layered native motion.",
+        exact_files=("Sources/ChadexApp/CodeFerretState.swift", "Sources/ChadexApp/CodeFerretView.swift", "Sources/ChadexApp/RootView.swift", "rust-helper/src/chadex_core/performance.rs"),
+    ),
+    ComponentSpec(
         "Desktop App State",
         "SwiftUI/AppModel state projection and native helper coordination.",
         exact_files=("Sources/ChadexApp/AppModel.swift", "Sources/ChadexApp/HelperClient.swift"),
