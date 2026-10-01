@@ -25,7 +25,7 @@ struct CodeFerretCompanion: View {
                 HStack(spacing: 6) {
                     Image(systemName: displayed.state.symbol)
                         .foregroundStyle(displayed.state == .error ? Color.orange : .secondary)
-                    Text(visible ? displayed.state.title : "Code Ferret")
+                    Text(visible ? displayed.title : "Code Ferret")
                         .lineLimit(1)
                     if preview != nil { Image(systemName: "play.rectangle").foregroundStyle(.secondary) }
                     Spacer(minLength: 0)
@@ -38,11 +38,11 @@ struct CodeFerretCompanion: View {
             }
             .buttonStyle(.plain)
             .help(L10n.string("ferret.details"))
-            .accessibilityLabel("Code Ferret, \(displayed.state.title)")
+            .accessibilityLabel("Code Ferret, \(displayed.title)")
             .popover(isPresented: $showingDetails, arrowEdge: .trailing) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Code Ferret").font(.headline)
-                    Label(controller.presentation.state.title, systemImage: controller.presentation.state.symbol)
+                    Label(controller.presentation.title, systemImage: controller.presentation.state.symbol)
                     Text(L10n.string("ferret.explanation"))
                         .font(.callout).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

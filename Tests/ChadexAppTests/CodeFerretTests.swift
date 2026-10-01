@@ -18,7 +18,7 @@ final class CodeFerretTests: XCTestCase {
             review: TaskReviewSummary(status: "pending"), steps: [])
     }
 
-    func testLiveRequestReceivesThenSearchesAndWaitsWithoutClaimingTaskSuccess() {
+    func testLiveRequestReceivesThenRetainsSearchWithoutClaimingTaskSuccess() {
         var c = FerretController()
         c.update(snapshot: .initial, traces: [], activities: [], now: now)
         c.update(snapshot: .initial, traces: [trace()], activities: [], now: now)
@@ -26,8 +26,132 @@ final class CodeFerretTests: XCTestCase {
         c.update(snapshot: .initial, traces: [trace()], activities: [], now: now.addingTimeInterval(1))
         XCTAssertEqual(c.presentation.state, .searching)
         c.update(snapshot: .initial, traces: [trace(finished: 2_000_001_000, completion: "completed")], activities: [], now: now.addingTimeInterval(1))
-        XCTAssertEqual(c.presentation.state, .waiting)
+        XCTAssertEqual(c.presentation.state, .searching)
+        XCTAssertTrue(c.presentation.isRecentActivity)
+        XCTAssertEqual(c.presentation.title, L10n.string("ferret.recent.searching"))
         c.update(snapshot: .initial, traces: [trace(finished: 2_000_001_000, completion: "completed")], activities: [], now: now.addingTimeInterval(5))
+        XCTAssertEqual(c.presentation.state, .idle)
+        XCTAssertFalse(c.presentation.isRecentActivity)
+    }
+
+    func testFastToolsBetweenPollsShowRecentActivityWithBoundedExpiry() {
+        for (tool, state) in [("read_file", FerretState.searching), ("apply_patch", .coding),
+                              ("run_validation", .testing), ("run_shell", .thinking)] {
+            var c = FerretController()
+            c.update(snapshot: .initial, traces: [], activities: [], now: now)
+            let result = trace(tool: tool, finished: 2_000_000_100, completion: "completed")
+            c.update(snapshot: .initial, traces: [result], activities: [], now: now.addingTimeInterval(1))
+            XCTAssertEqual(c.presentation.state, state)
+            XCTAssertTrue(c.presentation.isRecentActivity)
+            XCTAssertNil(c.presentation.progress)
+            c.update(snapshot: .initial, traces: [result], activities: [], now: now.addingTimeInterval(2.9))
+            XCTAssertEqual(c.presentation.state, state)
+            c.update(snapshot: .initial, traces: [result], activities: [], now: now.addingTimeInterval(3))
+            XCTAssertEqual(c.presentation.state, .idle, "Repeated polls must not extend the hold")
+            XCTAssertFalse(c.presentation.isRecentActivity)
+        }
+    }
+
+    func testConnectionVerificationAloneAllowsIdleAndSleep() {
+        var c = FerretController()
+        var snapshot = BackendSnapshot.initial
+        snapshot.phase = .waitingForChatGPTVerification
+        snapshot.tunnelReady = true
+        snapshot.chatGPTConnected = true
+        c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+        XCTAssertEqual(c.presentation.state, .idle)
+        c.update(snapshot: snapshot, traces: [], activities: [], now: now.addingTimeInterval(181))
+        XCTAssertEqual(c.presentation.state, .sleep)
+        XCTAssertEqual(snapshot.phase, .waitingForChatGPTVerification)
+    }
+
+    func testStatusPollsNeitherWakeNorConsumeRecentActivityOrSuccess() {
+        let tools = ["task_status", "job_status", "poll_job", "observe_jobs"]
+        var c = FerretController()
+        var snapshot = BackendSnapshot.initial
+        c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+        let polls = tools.enumerated().map { trace(UInt64($0.offset + 1), tool: $0.element) }
+        c.update(snapshot: snapshot, traces: polls, activities: [], now: now.addingTimeInterval(181))
+        XCTAssertEqual(c.presentation.state, .sleep)
+        let finishedPolls = tools.enumerated().map {
+            trace(UInt64($0.offset + 1), tool: $0.element, finished: 2_000_181_000, completion: "completed")
+        }
+        let edit = trace(5, tool: "apply_patch", finished: 2_000_182_000, completion: "completed")
+        c.update(snapshot: snapshot, traces: finishedPolls + [edit], activities: [], now: now.addingTimeInterval(182))
+        XCTAssertEqual(c.presentation.state, .coding)
+        XCTAssertTrue(c.presentation.isRecentActivity)
+        c.update(snapshot: snapshot, traces: polls + [edit], activities: [], now: now.addingTimeInterval(183))
+        XCTAssertEqual(c.presentation.state, .coding)
+        snapshot.taskProgress = task("completed", validation: "passed")
+        c.update(snapshot: snapshot, traces: polls + [edit], activities: [], now: now.addingTimeInterval(184))
+        XCTAssertEqual(c.presentation.state, .success)
+        XCTAssertFalse(c.presentation.isRecentActivity)
+    }
+
+    func testNewLiveWorkImmediatelySupersedesRecentActivity() {
+        var c = FerretController()
+        c.update(snapshot: .initial, traces: [], activities: [], now: now)
+        let search = trace(finished: 2_000_000_100, completion: "completed")
+        c.update(snapshot: .initial, traces: [search], activities: [], now: now.addingTimeInterval(1))
+        let edit = trace(2, tool: "apply_patch", start: 2_000_001_000)
+        c.update(snapshot: .initial, traces: [search, edit], activities: [], now: now.addingTimeInterval(1.1))
+        XCTAssertEqual(c.presentation.state, .listening)
+        XCTAssertFalse(c.presentation.isRecentActivity)
+        c.update(snapshot: .initial, traces: [search, edit], activities: [], now: now.addingTimeInterval(2))
+        XCTAssertEqual(c.presentation.state, .coding)
+        XCTAssertFalse(c.presentation.isRecentActivity)
+    }
+
+    func testRecentActivityDoesNotCoverActualTaskWaits() {
+        for status in ["blocked", "interrupted", "ready_to_apply", "unknown", "queued", "cancelling"] {
+            var c = FerretController()
+            var snapshot = BackendSnapshot.initial
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+            snapshot.taskProgress = task(status)
+            let result = trace(finished: 2_000_001_000, completion: "completed")
+            c.update(snapshot: snapshot, traces: [result], activities: [], now: now.addingTimeInterval(1))
+            c.update(snapshot: snapshot, traces: [result], activities: [], now: now.addingTimeInterval(2))
+            XCTAssertEqual(c.presentation.state, .waiting, status)
+            XCTAssertFalse(c.presentation.isRecentActivity)
+        }
+    }
+
+    func testCompletedActivityCoalescesByCompletionTimeAndPreservesFailures() {
+        var c = FerretController()
+        c.update(snapshot: .initial, traces: [], activities: [], now: now)
+        let edit = trace(1, tool: "apply_patch", finished: 2_000_001_000, completion: "completed")
+        let search = trace(2, finished: 2_000_000_100, completion: "completed")
+        c.update(snapshot: .initial, traces: [edit, search], activities: [], now: now.addingTimeInterval(1))
+        XCTAssertEqual(c.presentation.state, .coding, "Highest sequence need not finish last")
+        let failure = trace(3, finished: 2_000_001_500, completion: "backend_error")
+        let success = trace(4, finished: 2_000_001_900, completion: "completed")
+        c.update(snapshot: .initial, traces: [edit, search, failure, success], activities: [], now: now.addingTimeInterval(2))
+        XCTAssertEqual(c.presentation.state, .error, "A batch success must not erase an observed failure")
+        XCTAssertFalse(c.presentation.isRecentActivity)
+    }
+
+    func testCompletedWaitDoesNotHideFastWorkInTheSamePoll() {
+        var c = FerretController()
+        c.update(snapshot: .initial, traces: [], activities: [], now: now)
+        let search = trace(1, finished: 2_000_000_100, completion: "completed")
+        let wait = trace(2, tool: "await_job", finished: 2_000_000_200, completion: "completed")
+        c.update(snapshot: .initial, traces: [search, wait], activities: [], now: now.addingTimeInterval(1))
+        XCTAssertEqual(c.presentation.state, .searching)
+        XCTAssertTrue(c.presentation.isRecentActivity)
+    }
+
+    func testRecentActivityDoesNotReplayAcrossProjectsOrFromStaleHistory() {
+        var c = FerretController()
+        c.update(snapshot: .initial, traces: [], activities: [], now: now)
+        let result = trace(finished: 2_000_000_100, completion: "completed")
+        c.update(snapshot: .initial, traces: [result], activities: [], now: now.addingTimeInterval(1))
+        var snapshot = BackendSnapshot.initial
+        snapshot.selectedProject = ProjectInspection(path: "/other", allowedRoot: "/other", isGitRepository: true, readable: true, writable: true)
+        c.update(snapshot: snapshot, traces: [result], activities: [], now: now.addingTimeInterval(1.5))
+        XCTAssertEqual(c.presentation.state, .idle)
+        XCTAssertFalse(c.presentation.isRecentActivity)
+        let stale = trace(2, finished: 2_000_000_200, completion: "completed")
+        c.update(snapshot: snapshot, traces: [result, stale], activities: [], now: now.addingTimeInterval(10))
         XCTAssertEqual(c.presentation.state, .idle)
     }
 

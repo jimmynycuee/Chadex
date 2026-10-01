@@ -359,6 +359,10 @@
 "ferret.state.success" = "Task complete";
 "ferret.state.error" = "Needs attention";
 "ferret.state.sleep" = "Resting";
+"ferret.recent.searching" = "Recently explored the repo";
+"ferret.recent.coding" = "Recently made changes";
+"ferret.recent.testing" = "Recently ran checks";
+"ferret.recent.thinking" = "Recently handled a tool";
 "ferret.details" = "Code Ferret status and preferences";
 "ferret.explanation" = "Follows observed Chadex tasks and MCP tools. Remote model thinking is not directly visible.";
 "ferret.visible" = "Show companion";

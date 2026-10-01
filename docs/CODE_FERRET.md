@@ -23,10 +23,14 @@ Code Ferret lives in the native SwiftUI sidebar. It observes Chadex's selected p
 | Active work older than 60 seconds | Long Task, retaining its activity and known task-step progress |
 | Fresh completed task or successful terminal Job | Brief Success reaction |
 | Explicit task/validation/tool failure or failed/lost/timed-out Job | Brief Error reaction |
-| Ordinary successful tool response | Brief Waiting, not whole-task success |
+| Ordinary successful work-tool response | Its actual activity for two seconds, labelled as recent activity, not whole-task success |
+| Status-only polling (`task_status`, `job_status`, `poll_job`, `observe_jobs`) | Diagnostic evidence; does not wake the companion or consume reactions |
+| Connection ready but awaiting selected-project verification, without observed work | Idle, then Sleep; verification remains visible in the connection UI |
 | Idle for three minutes, or inactive app with no observed work | Sleep |
 
 Non-meaningful diagnostics, including `runtime_status`, do not wake the mascot or consume reactions. Terminal host handoff remains diagnostic evidence: lack of a follow-up request never becomes an invented host failure.
+
+Fast completed work is observed even when its entire request fits between polls. Only the most recent completion is retained; there is no replay queue. The two-second hold expires without being extended by repeated snapshots, and live work, real waiting conditions, and terminal reactions take precedence. Concurrent finishes are ordered by completion time; an explicit failure is not erased by another successful finish in the same snapshot. Foreground/background polling intervals and the animation clock are unchanged.
 
 ## Appearance and motion
 

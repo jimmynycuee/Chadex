@@ -359,6 +359,10 @@
 "ferret.state.success" = "任務完成";
 "ferret.state.error" = "需要注意";
 "ferret.state.sleep" = "休息中";
+"ferret.recent.searching" = "剛才探索程式庫";
+"ferret.recent.coding" = "剛才完成編輯";
+"ferret.recent.testing" = "剛才執行檢查";
+"ferret.recent.thinking" = "剛才處理工具請求";
 "ferret.details" = "Code Ferret 狀態與偏好";
 "ferret.explanation" = "跟隨 Chadex 任務與 MCP 工具的實際活動；無法直接觀測遠端模型思考。";
 "ferret.visible" = "顯示吉祥物";
