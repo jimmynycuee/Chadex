@@ -21,11 +21,13 @@ impl GraphifyStatus {
         }
 
         if let Some(path) = env::var_os("PATH") {
+            let executable = graphify_executable_name();
             candidates.extend(
-                env::split_paths(&path).map(|directory| (directory.join("graphify"), "PATH")),
+                env::split_paths(&path).map(|directory| (directory.join(executable), "PATH")),
             );
         }
 
+        #[cfg(not(windows))]
         if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
             candidates.push((
                 home.join(".local").join("bin").join("graphify"),
@@ -50,6 +52,7 @@ impl GraphifyStatus {
             );
         }
 
+        #[cfg(not(windows))]
         candidates.extend([
             (PathBuf::from("/opt/homebrew/bin/graphify"), "homebrew"),
             (PathBuf::from("/usr/local/bin/graphify"), "usr_local"),
@@ -79,6 +82,14 @@ impl GraphifyStatus {
     }
 }
 
+fn graphify_executable_name() -> &'static str {
+    if cfg!(windows) {
+        "graphify.exe"
+    } else {
+        "graphify"
+    }
+}
+
 fn is_executable(path: &Path) -> bool {
     let Ok(metadata) = fs::metadata(path) else {
         return false;
@@ -102,7 +113,16 @@ fn is_executable(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn executable_name_matches_the_host_platform() {
+        assert_eq!(
+            graphify_executable_name(),
+            if cfg!(windows) { "graphify.exe" } else { "graphify" }
+        );
+    }
 
     #[test]
     fn unavailable_status_is_explicit() {
@@ -115,11 +135,14 @@ mod tests {
     #[test]
     fn detects_an_executable_override() {
         let directory = tempfile::tempdir().unwrap();
-        let executable = directory.path().join("graphify");
-        fs::write(&executable, "#!/bin/sh\nprintf graphify\n").unwrap();
-        let mut permissions = fs::metadata(&executable).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&executable, permissions).unwrap();
+        let executable = directory.path().join(graphify_executable_name());
+        fs::write(&executable, b"graphify-test-fixture").unwrap();
+        #[cfg(unix)]
+        {
+            let mut permissions = fs::metadata(&executable).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&executable, permissions).unwrap();
+        }
 
         let previous = env::var_os("CHADEX_GRAPHIFY_BIN");
         env::set_var("CHADEX_GRAPHIFY_BIN", &executable);

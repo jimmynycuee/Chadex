@@ -1488,9 +1488,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn runtime_probe_token_reader_rejects_symlinks() {
-        use std::os::unix::fs::symlink;
-
+    async fn runtime_probe_token_reader_reads_regular_file() {
         let temp = tempfile::tempdir().unwrap();
         let token_path = temp.path().join("user-token");
         tokio::fs::write(&token_path, "secret-token\n")
@@ -1501,7 +1499,15 @@ mod tests {
             token.as_ref().map(|value| value.as_str()),
             Some("secret-token")
         );
+    }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn runtime_probe_token_reader_rejects_symlinks() {
+        use std::os::unix::fs::symlink;
+        let temp = tempfile::tempdir().unwrap();
+        let token_path = temp.path().join("user-token");
+        tokio::fs::write(&token_path, "secret-token\n").await.unwrap();
         let symlink_path = temp.path().join("user-token-link");
         symlink(&token_path, &symlink_path).unwrap();
         assert!(read_probe_token(&symlink_path).await.is_none());

@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -17,6 +18,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use zeroize::Zeroizing;
+
+#[cfg(windows)]
+mod windows_support;
 
 const TUNNEL_CLIENT_VERSION: &str = "0.0.12";
 const RELEASE_BASE: &str = "https://github.com/openai/tunnel-client/releases/download/v0.0.12";
@@ -143,14 +147,19 @@ impl TunnelClientResolutionContext {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct TunnelClientFileIdentity {
-    device: u64,
-    inode: u64,
-    length: u64,
-    modified_seconds: i64,
-    modified_nanoseconds: i64,
-    changed_seconds: i64,
-    changed_nanoseconds: i64,
+enum TunnelClientFileIdentity {
+    #[cfg(unix)]
+    Unix {
+        device: u64,
+        inode: u64,
+        length: u64,
+        modified_seconds: i64,
+        modified_nanoseconds: i64,
+        changed_seconds: i64,
+        changed_nanoseconds: i64,
+    },
+    #[cfg(windows)]
+    Windows(windows_support::WindowsFileIdentity),
 }
 
 #[derive(Debug, Clone)]
@@ -745,30 +754,27 @@ fn read_health_url(path: &Path) -> ChadexResult<String> {
 struct TunnelClientAsset {
     target: &'static str,
     file_name: &'static str,
+    binary_name: &'static str,
     archive_sha256: &'static str,
     binary_sha256: &'static str,
 }
 
 fn tunnel_client_asset() -> ChadexResult<TunnelClientAsset> {
-    match std::env::consts::ARCH {
-        "aarch64" => Ok(TunnelClientAsset {
-            target: "darwin-arm64",
-            file_name: "tunnel-client-v0.0.12-darwin-arm64.zip",
-            archive_sha256: "42fb3138dc9c081d5777cb7e8bd1e041cc48b67c4978dbab3c5167ca1aabca02",
-            binary_sha256: "b1757220cf4722cec9085ee4a908cf0ee4c1a499a33bd99979b9a9c7669e29b1",
-        }),
-        "x86_64" => Ok(TunnelClientAsset {
-            target: "darwin-amd64",
-            file_name: "tunnel-client-v0.0.12-darwin-amd64.zip",
-            archive_sha256: "33de53aec680faafedc795f8f8268d6861577bddb871cb2d49529c91f88c2009",
-            binary_sha256: "4133dab2575223252732a998210c34b7ed96a51765cf5ea835a8e24cf2be1272",
-        }),
-        other => Err(ChadexError::new(
-            "tunnel_unavailable",
-            format!("Chadex does not support OpenAI tunnel-client on macOS/{other}"),
-            "Use an Apple Silicon or Intel Mac supported by Chadex.",
-        )),
+    tunnel_client_asset_for(std::env::consts::OS, std::env::consts::ARCH)
+}
+
+fn tunnel_client_asset_for(os: &str, arch: &str) -> ChadexResult<TunnelClientAsset> {
+    match (os, arch) {
+        ("macos", "aarch64") => Ok(TunnelClientAsset { target: "darwin-arm64", file_name: "tunnel-client-v0.0.12-darwin-arm64.zip", binary_name: "tunnel-client", archive_sha256: "42fb3138dc9c081d5777cb7e8bd1e041cc48b67c4978dbab3c5167ca1aabca02", binary_sha256: "b1757220cf4722cec9085ee4a908cf0ee4c1a499a33bd99979b9a9c7669e29b1" }),
+        ("macos", "x86_64") => Ok(TunnelClientAsset { target: "darwin-amd64", file_name: "tunnel-client-v0.0.12-darwin-amd64.zip", binary_name: "tunnel-client", archive_sha256: "33de53aec680faafedc795f8f8268d6861577bddb871cb2d49529c91f88c2009", binary_sha256: "4133dab2575223252732a998210c34b7ed96a51765cf5ea835a8e24cf2be1272" }),
+        ("windows", "x86_64") => Ok(TunnelClientAsset { target: "windows-amd64", file_name: "tunnel-client-v0.0.12-windows-amd64.zip", binary_name: "tunnel-client.exe", archive_sha256: "2a2804933924e38a502d62b61f0266cb80d56d65744f4c29876b2bf9c1544356", binary_sha256: "6649169733686805ca16cccd91774594d0c017fd729c37ad4ce1cd18323d9ae8" }),
+        ("windows", "aarch64") => Ok(TunnelClientAsset { target: "windows-arm64", file_name: "tunnel-client-v0.0.12-windows-arm64.zip", binary_name: "tunnel-client.exe", archive_sha256: "65ab54221554481bb1c23b6015b99abe0b7f79b08593f4fb17a9e2e25532281d", binary_sha256: "480684ec1031fc2985c7e87f9d669e7dfda4012a8ecdab21eabe1b5deafdd656" }),
+        (os, arch) => Err(ChadexError::new("tunnel_unavailable", format!("Chadex does not support OpenAI tunnel-client on {os}/{arch}"), "Use a supported macOS or Windows architecture, or provide CHADEX_TUNNEL_CLIENT_BIN.")),
     }
+}
+
+fn tunnel_client_binary_name() -> &'static str {
+    if cfg!(windows) { "tunnel-client.exe" } else { "tunnel-client" }
 }
 
 async fn resolve_tunnel_client(root: &Path) -> ChadexResult<PathBuf> {
@@ -778,7 +784,7 @@ async fn resolve_tunnel_client(root: &Path) -> ChadexResult<PathBuf> {
     }
     if let Some(path) = std::env::var_os("PATH") {
         for directory in std::env::split_paths(&path) {
-            let candidate = directory.join("tunnel-client");
+            let candidate = directory.join(tunnel_client_binary_name());
             if candidate.is_file() && verify_tunnel_client(&candidate).await.is_ok() {
                 return Ok(candidate);
             }
@@ -790,7 +796,7 @@ async fn resolve_tunnel_client(root: &Path) -> ChadexResult<PathBuf> {
         .join("tunnel-client")
         .join(TUNNEL_CLIENT_VERSION)
         .join(asset.target)
-        .join("tunnel-client");
+        .join(asset.binary_name);
     if destination.is_file()
         && sha256_file(&destination).ok().as_deref() == Some(asset.binary_sha256)
         && verify_tunnel_client(&destination).await.is_ok()
@@ -823,7 +829,7 @@ async fn install_tunnel_client(
             .build()
             .map_err(|_| tunnel_runtime_error("Could not initialize the Tunnel client downloader"))?
             .get(url)
-            .header("User-Agent", "chadex/0.3.0")
+            .header("User-Agent", concat!("chadex/", env!("CARGO_PKG_VERSION")))
             .send()
             .await
             .map_err(|_| tunnel_runtime_error("Could not download OpenAI tunnel-client"))?;
@@ -833,18 +839,29 @@ async fn install_tunnel_client(
         let bytes = bounded_download(response, MAX_DOWNLOAD_BYTES).await?;
         write_private_file(&archive, &bytes)?;
         verify_sha256(&archive, asset.archive_sha256)?;
-        let candidate = temporary.join("tunnel-client");
-        extract_tunnel_client(&archive, &candidate)?;
+        let candidate = temporary.join(asset.binary_name);
+        extract_tunnel_client(&archive, &candidate, asset.binary_name)?;
         verify_sha256(&candidate, asset.binary_sha256)?;
         make_private_executable(&candidate)?;
         verify_tunnel_client(&candidate).await?;
-        fs::rename(&candidate, destination)
-            .map_err(|_| tunnel_runtime_error("Could not install OpenAI tunnel-client"))?;
+        install_verified_tunnel_client(&candidate, destination)?;
         Ok(())
     }
     .await;
     let _ = fs::remove_dir_all(&temporary);
     result
+}
+
+#[cfg(windows)]
+fn install_verified_tunnel_client(candidate: &Path, destination: &Path) -> ChadexResult<()> {
+    windows_support::replace_file(candidate, destination)
+        .map_err(|_| tunnel_runtime_error("Could not install OpenAI tunnel-client"))
+}
+
+#[cfg(not(windows))]
+fn install_verified_tunnel_client(candidate: &Path, destination: &Path) -> ChadexResult<()> {
+    fs::rename(candidate, destination)
+        .map_err(|_| tunnel_runtime_error("Could not install OpenAI tunnel-client"))
 }
 
 async fn bounded_download(mut response: reqwest::Response, limit: usize) -> ChadexResult<Vec<u8>> {
@@ -872,13 +889,13 @@ async fn bounded_download(mut response: reqwest::Response, limit: usize) -> Chad
     Ok(bytes)
 }
 
-fn extract_tunnel_client(archive_path: &Path, destination: &Path) -> ChadexResult<()> {
+fn extract_tunnel_client(archive_path: &Path, destination: &Path, binary_name: &str) -> ChadexResult<()> {
     let file = File::open(archive_path)
         .map_err(|_| tunnel_runtime_error("Could not open Tunnel client archive"))?;
     let mut archive = zip::ZipArchive::new(file)
         .map_err(|_| tunnel_runtime_error("Tunnel client archive is invalid"))?;
     let entry = archive
-        .by_name("tunnel-client")
+        .by_name(binary_name)
         .map_err(|_| tunnel_runtime_error("Tunnel client archive is missing its executable"))?;
     if !entry.is_file() || entry.size() > MAX_BINARY_BYTES {
         return Err(tunnel_runtime_error(
@@ -898,21 +915,30 @@ fn extract_tunnel_client(archive_path: &Path, destination: &Path) -> ChadexResul
     write_private_file(destination, &bytes)
 }
 
+#[cfg(unix)]
 fn tunnel_client_file_identity(path: &Path) -> ChadexResult<TunnelClientFileIdentity> {
     let metadata = fs::symlink_metadata(path)
         .map_err(|_| tunnel_runtime_error("Tunnel client is unavailable"))?;
     if !metadata.file_type().is_file() || metadata.len() > MAX_BINARY_BYTES {
         return Err(tunnel_runtime_error("Tunnel client is invalid"));
     }
-    Ok(TunnelClientFileIdentity {
-        device: metadata.dev(),
-        inode: metadata.ino(),
-        length: metadata.len(),
-        modified_seconds: metadata.mtime(),
-        modified_nanoseconds: metadata.mtime_nsec(),
-        changed_seconds: metadata.ctime(),
-        changed_nanoseconds: metadata.ctime_nsec(),
+    Ok(TunnelClientFileIdentity::Unix {
+        device: metadata.dev(), inode: metadata.ino(), length: metadata.len(),
+        modified_seconds: metadata.mtime(), modified_nanoseconds: metadata.mtime_nsec(),
+        changed_seconds: metadata.ctime(), changed_nanoseconds: metadata.ctime_nsec(),
     })
+}
+
+#[cfg(windows)]
+fn tunnel_client_file_identity(path: &Path) -> ChadexResult<TunnelClientFileIdentity> {
+    windows_support::file_identity(path, MAX_BINARY_BYTES)
+        .map(TunnelClientFileIdentity::Windows)
+        .map_err(|_| tunnel_runtime_error("Tunnel client is invalid"))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn tunnel_client_file_identity(_path: &Path) -> ChadexResult<TunnelClientFileIdentity> {
+    Err(tunnel_runtime_error("Unsupported platform"))
 }
 
 async fn verify_tunnel_client(path: &Path) -> ChadexResult<()> {
@@ -974,6 +1000,9 @@ fn create_private_dir(path: &Path) -> ChadexResult<()> {
         fs::set_permissions(path, fs::Permissions::from_mode(0o700))
             .map_err(|_| tunnel_runtime_error("Could not protect Chadex private Tunnel state"))?;
     }
+    #[cfg(windows)]
+    windows_support::protect_private_directory(path)
+        .map_err(|_| tunnel_runtime_error("Could not protect Chadex private Tunnel state"))?;
     Ok(())
 }
 
@@ -988,6 +1017,12 @@ fn write_private_file(path: &Path, bytes: &[u8]) -> ChadexResult<()> {
             .open(path)
             .map_err(|_| tunnel_runtime_error("Could not write Chadex private Tunnel state"))?;
         file.write_all(bytes)
+            .map_err(|_| tunnel_runtime_error("Could not write Chadex private Tunnel state"))?;
+        return Ok(());
+    }
+    #[cfg(windows)]
+    {
+        windows_support::write_new_private_file(path, bytes)
             .map_err(|_| tunnel_runtime_error("Could not write Chadex private Tunnel state"))?;
         return Ok(());
     }
@@ -1027,6 +1062,22 @@ mod download_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_tunnel_client_assets_are_pinned() {
+        let amd64 = tunnel_client_asset_for("windows", "x86_64").unwrap();
+        assert_eq!(amd64.target, "windows-amd64");
+        assert_eq!(amd64.file_name, "tunnel-client-v0.0.12-windows-amd64.zip");
+        assert_eq!(amd64.binary_name, "tunnel-client.exe");
+        assert_eq!(amd64.archive_sha256, "2a2804933924e38a502d62b61f0266cb80d56d65744f4c29876b2bf9c1544356");
+        assert_eq!(amd64.binary_sha256, "6649169733686805ca16cccd91774594d0c017fd729c37ad4ce1cd18323d9ae8");
+        let arm64 = tunnel_client_asset_for("windows", "aarch64").unwrap();
+        assert_eq!(arm64.target, "windows-arm64");
+        assert_eq!(arm64.file_name, "tunnel-client-v0.0.12-windows-arm64.zip");
+        assert_eq!(arm64.binary_name, "tunnel-client.exe");
+        assert_eq!(arm64.archive_sha256, "65ab54221554481bb1c23b6015b99abe0b7f79b08593f4fb17a9e2e25532281d");
+        assert_eq!(arm64.binary_sha256, "480684ec1031fc2985c7e87f9d669e7dfda4012a8ecdab21eabe1b5deafdd656");
+    }
 
     #[test]
     fn bootstrap_token_parser_never_needs_to_persist_the_secret() {
