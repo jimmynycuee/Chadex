@@ -60,3 +60,12 @@ docs/performance/phase16b-connected-small-r3-profile.json
 .vscode/
 xcuserdata/
 *.xcuserstate
+
+# Windows desktop local dependency/build outputs (canonical assets stay in Sources).
+/apps/windows/node_modules/
+/apps/windows/dist/
+/apps/windows/public/ferret/
+/apps/windows/src-tauri/target/
+/apps/windows/src-tauri/resources/
+/apps/windows/src-tauri/gen/
+/apps/windows/bridge/target/
