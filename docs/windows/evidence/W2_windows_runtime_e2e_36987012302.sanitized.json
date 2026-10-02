@@ -1,0 +1,805 @@
+{
+  "binaries": {
+    "chadex-helper.exe": {
+      "bytes": 12305408,
+      "sha256": "e5e522e5e9aec2b43291d2baf213bc80cb98d82427c5eeb9f5a4afce75b24c84"
+    },
+    "chadex-runtime-cli.exe": {
+      "bytes": 19300352,
+      "sha256": "ddf8e448aae2471267bdef4ff69efbc2750a8b2244d8c9b44af7eba945f501aa"
+    },
+    "chadex-runtime-runner.exe": {
+      "bytes": 34173952,
+      "sha256": "e738ce970bc404bcbd8ef1f13d355866a2c0f654d59e6c564028d82fe72bcf38"
+    },
+    "chadex-runtime-server.exe": {
+      "bytes": 67531776,
+      "sha256": "2ecce1728da7ca3a22bc018faf959adb13dccf1ad30f5433fd3b0b8a83bcfe43"
+    }
+  },
+  "default_data_path_verified": false,
+  "default_resource_path_verified": false,
+  "elapsed_ms": 70984,
+  "helper_stderr_bytes": 0,
+  "isolation_overrides": [
+    "CHADEX_DATA_DIR",
+    "CHADEX_RESOURCE_DIR",
+    "CHADEX_RUNTIME_BIN_DIR",
+    "PYTHONDONTWRITEBYTECODE"
+  ],
+  "observations": [
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "immediate",
+      "waited_ms": 0
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2013
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2003
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2001
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2003
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2011
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2001
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2001
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2013
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2005
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2002
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2005
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2013
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2013
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2005
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2007
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2006
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2011
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2004
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2010
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2002
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2001
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2002
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2001
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2003
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2014
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "running",
+      "terminal": false,
+      "wait_outcome": "timeout",
+      "waited_ms": 2002
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "completed",
+      "terminal": true,
+      "wait_outcome": "terminal",
+      "waited_ms": 1459
+    },
+    {
+      "job_id_sha256": "337138c5ebde4c1dd2227a2cd17686617ffa3a9323eac100313d72414d050969",
+      "status": "completed",
+      "terminal": true,
+      "wait_outcome": "immediate",
+      "waited_ms": 0
+    },
+    {
+      "job_id_sha256": "b30c03468b47596b11881148e89f6a5862509e76ce471511f319868b4bb7a0db",
+      "status": "stop_requested",
+      "terminal": false,
+      "wait_outcome": "immediate",
+      "waited_ms": 0
+    },
+    {
+      "job_id_sha256": "b30c03468b47596b11881148e89f6a5862509e76ce471511f319868b4bb7a0db",
+      "status": "stopped",
+      "terminal": true,
+      "wait_outcome": "terminal",
+      "waited_ms": 0
+    }
+  ],
+  "passed": true,
+  "platform": "windows",
+  "project_id_sha256": "9540249cb2d4f9f9f384ae2373bf753dde1d280ac9aed1dde1dd340a2b66170b",
+  "schema": 1,
+  "scope": "isolated real helper/server/runner local MCP; no tunnel or model",
+  "stages": [
+    {
+      "cargo_target_dir_configured": true,
+      "elapsed_ms": 187,
+      "fixture_has_spaces_and_unicode": true,
+      "name": "preflight",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 7891,
+      "name": "helper_runtime_startup",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 1218,
+      "name": "registration_readiness",
+      "online_runners": 1,
+      "registered_project": true,
+      "runner_count": 1,
+      "server_count": 1,
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 47,
+      "name": "file_roundtrip",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 1078,
+      "name": "powershell",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 110,
+      "name": "native_exe",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 187,
+      "name": "cmd_bat",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 1282,
+      "name": "persistent_shell",
+      "status": "passed"
+    },
+    {
+      "duration_ms": 55093,
+      "elapsed_ms": 55546,
+      "job_count": 1,
+      "launch_count": 1,
+      "name": "durable_job",
+      "observation_timeout_exercised": true,
+      "runtime_identity_preserved": true,
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 594,
+      "name": "terminal_edit_validation",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 1875,
+      "name": "cancellation_child_cleanup",
+      "observed_payload_processes": 2,
+      "remaining_count": 0,
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 969,
+      "forced_cleanup_count": 0,
+      "name": "helper_shutdown",
+      "owned_process_count": 7,
+      "remaining_count": 0,
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "fixture_cleanup",
+      "status": "passed"
+    }
+  ],
+  "status": "passed",
+  "tool_calls": [
+    {
+      "elapsed_ms": 93,
+      "http_status": 200,
+      "request_bytes": 126,
+      "response_bytes": 3435,
+      "success": true,
+      "tool": "runtime_status"
+    },
+    {
+      "elapsed_ms": 16,
+      "http_status": 200,
+      "request_bytes": 149,
+      "response_bytes": 1082,
+      "success": true,
+      "tool": "call_runtime_tool"
+    },
+    {
+      "elapsed_ms": 719,
+      "http_status": 200,
+      "request_bytes": 326,
+      "response_bytes": 730,
+      "success": true,
+      "tool": "work_on_project"
+    },
+    {
+      "elapsed_ms": 16,
+      "http_status": 200,
+      "request_bytes": 274,
+      "response_bytes": 408,
+      "success": true,
+      "tool": "call_runtime_tool"
+    },
+    {
+      "elapsed_ms": 31,
+      "http_status": 200,
+      "request_bytes": 260,
+      "response_bytes": 463,
+      "success": true,
+      "tool": "read_files"
+    },
+    {
+      "elapsed_ms": 547,
+      "http_status": 200,
+      "request_bytes": 487,
+      "response_bytes": 1039,
+      "success": true,
+      "tool": "run_shell"
+    },
+    {
+      "elapsed_ms": 531,
+      "http_status": 200,
+      "request_bytes": 316,
+      "response_bytes": 1403,
+      "success": false,
+      "tool": "run_shell"
+    },
+    {
+      "elapsed_ms": 63,
+      "http_status": 200,
+      "request_bytes": 436,
+      "response_bytes": 310,
+      "success": true,
+      "tool": "run_process"
+    },
+    {
+      "elapsed_ms": 47,
+      "http_status": 200,
+      "request_bytes": 362,
+      "response_bytes": 1181,
+      "success": false,
+      "tool": "run_process"
+    },
+    {
+      "elapsed_ms": 47,
+      "http_status": 200,
+      "request_bytes": 431,
+      "response_bytes": 314,
+      "success": true,
+      "tool": "run_process"
+    },
+    {
+      "elapsed_ms": 47,
+      "http_status": 200,
+      "request_bytes": 432,
+      "response_bytes": 1320,
+      "success": false,
+      "tool": "run_process"
+    },
+    {
+      "elapsed_ms": 62,
+      "http_status": 200,
+      "request_bytes": 431,
+      "response_bytes": 314,
+      "success": true,
+      "tool": "run_process"
+    },
+    {
+      "elapsed_ms": 31,
+      "http_status": 200,
+      "request_bytes": 432,
+      "response_bytes": 1320,
+      "success": false,
+      "tool": "run_process"
+    },
+    {
+      "elapsed_ms": 1141,
+      "http_status": 200,
+      "request_bytes": 258,
+      "response_bytes": 818,
+      "success": true,
+      "tool": "call_runtime_tool"
+    },
+    {
+      "elapsed_ms": 31,
+      "http_status": 200,
+      "request_bytes": 558,
+      "response_bytes": 826,
+      "success": true,
+      "tool": "call_runtime_tool"
+    },
+    {
+      "elapsed_ms": 47,
+      "http_status": 200,
+      "request_bytes": 423,
+      "response_bytes": 956,
+      "success": true,
+      "tool": "call_runtime_tool"
+    },
+    {
+      "elapsed_ms": 31,
+      "http_status": 200,
+      "request_bytes": 301,
+      "response_bytes": 830,
+      "success": true,
+      "tool": "call_runtime_tool"
+    },
+    {
+      "elapsed_ms": 32,
+      "http_status": 200,
+      "request_bytes": 300,
+      "response_bytes": 843,
+      "success": true,
+      "tool": "call_runtime_tool"
+    },
+    {
+      "elapsed_ms": 1015,
+      "http_status": 200,
+      "request_bytes": 324,
+      "response_bytes": 1058,
+      "success": true,
+      "tool": "run_process"
+    },
+    {
+      "elapsed_ms": 16,
+      "http_status": 200,
+      "request_bytes": 171,
+      "response_bytes": 1006,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2031,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2016,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2015,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2032,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2015,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2031,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2032,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2047,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2015,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2016,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2031,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2016,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2031,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2016,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2031,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2015,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2032,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2015,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2031,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2016,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2000,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2015,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2000,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2016,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2015,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 2016,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 955,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 1469,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 659,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 0,
+      "http_status": 200,
+      "request_bytes": 171,
+      "response_bytes": 714,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 15,
+      "http_status": 200,
+      "request_bytes": 221,
+      "response_bytes": 944,
+      "success": true,
+      "tool": "call_runtime_tool"
+    },
+    {
+      "elapsed_ms": 15,
+      "http_status": 200,
+      "request_bytes": 262,
+      "response_bytes": 462,
+      "success": true,
+      "tool": "read_files"
+    },
+    {
+      "elapsed_ms": 32,
+      "http_status": 200,
+      "request_bytes": 254,
+      "response_bytes": 477,
+      "success": true,
+      "tool": "read_files"
+    },
+    {
+      "elapsed_ms": 15,
+      "http_status": 200,
+      "request_bytes": 313,
+      "response_bytes": 914,
+      "success": true,
+      "tool": "apply_text_edits"
+    },
+    {
+      "elapsed_ms": 16,
+      "http_status": 200,
+      "request_bytes": 254,
+      "response_bytes": 485,
+      "success": true,
+      "tool": "read_files"
+    },
+    {
+      "elapsed_ms": 531,
+      "http_status": 200,
+      "request_bytes": 365,
+      "response_bytes": 395,
+      "success": true,
+      "tool": "run_process"
+    },
+    {
+      "elapsed_ms": 1016,
+      "http_status": 200,
+      "request_bytes": 541,
+      "response_bytes": 1112,
+      "success": true,
+      "tool": "run_process"
+    },
+    {
+      "elapsed_ms": 0,
+      "http_status": 200,
+      "request_bytes": 260,
+      "response_bytes": 826,
+      "success": true,
+      "tool": "call_runtime_tool"
+    },
+    {
+      "elapsed_ms": 0,
+      "http_status": 200,
+      "request_bytes": 171,
+      "response_bytes": 1066,
+      "success": true,
+      "tool": "observe_jobs"
+    },
+    {
+      "elapsed_ms": 31,
+      "http_status": 200,
+      "request_bytes": 244,
+      "response_bytes": 654,
+      "success": true,
+      "tool": "observe_jobs"
+    }
+  ],
+  "track": "W2"
+}

@@ -1,13 +1,15 @@
 # W2 進度與交接
 
-狀態：**驗收中**。依使用者指示，W2 完成後暫停；不得自動開始 W3。
+狀態：**W2 已完成並通過 native Windows core + runtime E2E 驗收**。
+
+W2 完成後依使用者要求停止；不得自動開始 W3。
 
 ## 分支與驗證對象
 
 - 開發分支：`windows/w2-runtime-e2e`。
 - 基底：W1 `0e1b3172a08b81cc7b2b3deb7ffc25f47862db01`，包含 macOS `v0.3.2` ancestry。
-- 最近完成的 native checkpoint：`28529a540ec21ab42dd4927afda2babcf75925e6`（official asset version 檢查失敗）。
-- [Windows native 與 macOS CI](https://github.com/jimmynycuee/Chadex/actions/runs/36966169327)。
+- Runtime 實際驗證 source：`cbe258cefedaa952cb720bf2594c8b5e8ec6e2d4`。
+- 最終驗收：[GitHub Actions run 36987012302](https://github.com/jimmynycuee/Chadex/actions/runs/36987012302)，Windows job `110774230581`。
 - 未 merge `main`，未建立 W3 分支，未發布 Windows Desktop 或 stable release。
 
 ## 已完成的修正
@@ -22,7 +24,11 @@
 
 ## 驗證結果
 
-Windows 第二輪 native：runner 784 passed、helper 150 passed、supervisor 3 passed、額外 cleanup 2 passed；official asset version 檢查失敗，runtime E2E 未執行。已依 pinned 官方 source 修復合法 `+GitSHA` metadata 的辨識，保留 pinned base version 與非法 metadata 拒絕檢查；durable-job fixture 同時明確寫入 UTF-8 bytes，避免 Windows 自動換行轉換。修後 native 結果：**pending**，不得視為 W2 完成。
+最終 Windows 驗收已全綠：Source release、ARM64 package、public-history / secret scan、Windows core 與 Windows runtime E2E 全部通過。Windows core 的 runner library 為 784 passed / 0 failed / 2 ignored；helper 為 150 passed / 0 failed / 6 ignored；Windows tunnel supervisor 為 3 passed / 0 failed；官方 pinned Windows tunnel asset 的 download/hash/install/reuse/replacement/version 測試亦通過。
+
+最終 Windows host 為 Microsoft Windows Server 2025 Datacenter `10.0.26100`，GitHub runner `2.337.0`，image `windows-2025-vs2026` version `20260925.250.1`。
+
+Runtime E2E 共 13 stages 全 passed：55.093 秒 durable job 僅啟動一次且只有一個 Job，確實經歷 observation timeout，runtime identity 未變；cancellation 觀察到 2 個 payload processes 且最後 0 殘留；helper shutdown 觀察 7 個 owned processes、`forced_cleanup_count=0`、最後 0 殘留。GitHub run `36987012302` 保留 canonical raw artifact；repo 內保存 `docs/windows/evidence/W2_windows_runtime_e2e_36987012302.sanitized.json` 與同目錄摘要，僅移除 31 個會觸發 Gitleaks 的 `token_sha256` digest 欄位。
 
 本機 macOS 已執行：
 
@@ -33,7 +39,7 @@ Windows 第二輪 native：runner 784 passed、helper 150 passed、supervisor 3 
 | Runner library | 863 passed / 0 failed / 5 原有 opt-in，`--test-threads=4` |
 | Process lifecycle opt-in | 15 passed，含 20 次 stress cycles |
 | Runner config | 24 passed |
-| Harness deterministic tests | 12 passed；不是 native E2E |
+| Harness deterministic tests | 16 passed；不是 native E2E |
 | Persistent-shell defaults | 7 passed / 4 failed / 6 原有 opt-in；與 W1 相同的 `/tmp`、`/var` canonical-path 比對限制 |
 
 Runner 初次全併行回歸為 862 passed / 1 CPU-progress timing failure；同一測試在 narrow filter 與完整四執行緒回歸通過。未刪除、跳過或弱化有效測試。Persistent-shell 另以 `TMPDIR=/private/tmp` 重跑為 8 passed / 3 failed，三項明寫 `/tmp` 的 assertion 仍失敗；詳見 [W2 驗證紀錄](W2_RUNTIME_E2E.md)。
@@ -69,14 +75,19 @@ scripts/windows_runtime_e2e.py
 | CI / Nash `01a0fac3-44e8-7973-ab0f-62f8898ac7c5` | `gpt-6-luna / max` | 未確認 | 部分 patch 交接後關閉；主代理完成整合與驗證 |
 | Timeout / James `01a0fae4-f229-7760-a9b6-0b1af85742c9` | `gpt-6.1-sol / high` | 未確認 | 重現根因、完成 production 修正；原測試 1 passed、adaptive filter 5 passed |
 
-## 停止點與後續限制
+## W2 cleanup 與停止點
 
-W2 exit criteria 尚待 Windows native 結果。以下項目 **not validated**，留到使用者明確恢復後的適當階段：
+- 已保存 final Windows JSON 與摘要到 `docs/windows/evidence/`。
+- W2 自建且未追蹤的 root `.build`、`runtime-engine/target`、`rust-helper/target` 已刪除。
+- `scripts/__pycache__` 僅刪除 W2 的 `test_windows_runtime_e2e...pyc`；其他 cache 保留。
+- 保留既有 `.toolchain`、`dist`、local backups、其他 worktrees 與使用者資料；沒有執行 `git clean`。
 
-- Windows 11 實機、Windows ARM64。
+以下項目仍然 **不屬於 W2 驗證範圍**：
+
+- Windows 11 實機與 Windows ARM64 實機。
 - Windows Desktop UI、installer、簽章、更新流程與標準使用者完整 smoke。
 - Credentialed OpenAI relay / ChatGPT workflow；官方 tunnel binary 安裝與 `--version` 不等同連外流程。
-- E2E harness 使用隔離 data/bin overrides；不證明未封裝桌面版本的預設 resource discovery。
+- E2E harness 使用隔離 data/resource/bin overrides，因此不證明未封裝桌面版本的預設 resource discovery。
 - Graphify 與 Obsidian 的 W4 source-converged 同步。
 
-目前 **不得進 W3**。完成 native 驗收與本輪 artifact cleanup 後更新此檔；之後需使用者恢復指示，再從最終 W2 commit 啟動 W3。保留 W1 / macOS baseline 的 ancestry 與既有使用者資料。
+W2 到此結束。之後若使用者明確要求 W3，從 `windows/w2-runtime-e2e` 的 final W2 closeout commit 繼續；不要重做 W1/W2。**目前不得自動進 W3、不 merge main、不發布 release。**

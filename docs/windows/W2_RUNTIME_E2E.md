@@ -50,7 +50,7 @@ data fails closed instead of falling back to the current project directory.
 
 ## Validation record
 
-Status: **in progress; W2 exit criteria are not yet certified**.
+Status: **complete for W2; native Windows core and runtime E2E exit criteria passed**.
 
 - Baseline native CI: [run 36962494433](https://github.com/jimmynycuee/Chadex/actions/runs/36962494433)
   at W1 `0e1b317`, dispatched from the W2 development branch. All four job
@@ -96,7 +96,14 @@ Status: **in progress; W2 exit criteria are not yet certified**.
   LF hash identical on Windows, where Python text writes otherwise use CRLF.
 - Local macOS helper regression after integration: 159 unit and 3 integration
   tests passed, 0 failed; 3 pre-existing opt-in unit tests remain unchanged.
-- Harness unit tests: 12 passed, 0 failed. The actual runtime harness rejects
+- The complete local helper suite also passed after the metadata-parser repair.
+  The pinned official `darwin-arm64` archive and binary hashes were checked,
+  then the executable's actual `--version` exited 0 with
+  `0.0.12+881c9a8fed7cccbe6607cd419863bbca506b8215 (git sha: 881c9a8fed7cccbe6607cd419863bbca506b8215)`.
+  This was an official binary/version smoke, not a credentialed tunnel. Its
+  temporary archive and executable were removed automatically. Initial Python
+  HTTPS hit a missing local CA; system curl retained TLS verification and completed.
+- Harness deterministic tests: 16 passed, 0 failed. The actual runtime harness rejects
   non-Windows hosts; unit tests do not certify Windows execution.
 - Local macOS process default tests: 3 passed, 15 existing opt-in tests.
 - Local macOS process lifecycle opt-in tests: 15 passed, 0 failed, including
@@ -112,7 +119,34 @@ Status: **in progress; W2 exit criteria are not yet certified**.
   `/private/tmp`/`/private/var` paths. With `TMPDIR=/private/tmp`, 8 pass and the
   three explicit `/tmp` assertions still fail. This crate is unchanged from
   W1; the handoff records the same pre-existing canonical-path limitation.
-- Windows runtime/long-job/PowerShell/tunnel results: **not validated yet**.
+- Final runtime-validated checkpoint:
+  `cbe258cefedaa952cb720bf2594c8b5e8ec6e2d4`,
+  [run 36987012302](https://github.com/jimmynycuee/Chadex/actions/runs/36987012302),
+  Windows job `110774230581`. Source release, ARM64 package, public-history /
+  secret scan, Windows core and Windows runtime E2E all passed.
+- The final Windows host was Microsoft Windows Server 2025 Datacenter
+  `10.0.26100`, GitHub runner `2.337.0`, image
+  `windows-2025-vs2026` version `20260925.250.1`.
+- Final Windows core results include runner library 784 passed / 0 failed /
+  2 ignored, helper 150 passed / 0 failed / 6 ignored, Windows tunnel
+  supervisor 3 passed / 0 failed, and the selected official pinned Windows
+  tunnel asset install/reuse/replacement/version test passed.
+- Runtime E2E repository evidence:
+  [evidence/W2_windows_runtime_e2e_36987012302.sanitized.json](evidence/W2_windows_runtime_e2e_36987012302.sanitized.json).
+  The canonical raw JSON remains the GitHub Actions artifact for run
+  `36987012302`; the repository projection omits only the 31
+  `token_sha256` observation digests so the public-history secret scan remains
+  fail-closed without allowlisting secret-like token fields.
+  All 13 stages passed. The durable job ran 55.093 seconds with one launch and
+  one Job, exercised observation timeout, and preserved runtime identity.
+  Cancellation observed a two-process payload tree and left zero remaining
+  processes. Helper shutdown observed seven owned processes, required no forced
+  cleanup, and left zero remaining processes.
 
-Do not advance to W3 until the checked native gate and real runtime scenarios
-have passed, with the final source commit and actual runner environment recorded.
+W2 is complete. This is not Windows Desktop certification: physical Windows 11
+and Windows ARM64 hardware, Desktop UI, installer/signing/updater, credentialed
+OpenAI relay / ChatGPT workflow, and unbundled default resource discovery remain
+outside W2. The E2E harness uses isolated data/resource/bin overrides. Graphify
+and Obsidian source-converged synchronization remains deferred to W4.
+
+Do not automatically advance to W3; start W3 only after an explicit user request.
