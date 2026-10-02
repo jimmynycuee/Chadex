@@ -2,6 +2,16 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.3.2
+
+- Distinguished idle connection verification from actual queued, blocked, recovering, or cancellation waits.
+- Retained fast completed tool activity for two seconds with an explicit recent-activity label; new work supersedes older terminal reactions.
+- Made fresh listening visible for one second and prevented restored work or long waits from replaying that reaction.
+- Added actual runtime symbol-navigation, file-edit, and Go-test mappings. Scoped live tools take precedence over generic process Job activity without inheriting unrelated wait duration.
+- Preserved failures when tasks and Jobs finish together; kept diagnostic polling from waking the companion.
+- Organized local fixtures/worktrees and refreshed Graphify/Obsidian knowledge. Runtime polling, animation rate, character assets, and durable-job execution contracts are unchanged.
+- See `docs/releases/0.3.2.md` for validation and distribution boundaries.
+
 ## 0.3.1
 
 - Added the animated Code Ferret mascot, driven by observed tool activity, task progress, and completion/failure evidence.

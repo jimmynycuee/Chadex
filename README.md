@@ -8,7 +8,7 @@
 
 `macOS 14+` · `Apple Silicon` · `Free & Open Source`
 
-**Latest stable release: v0.3.1** — Code Ferret brings an animated companion to Chadex, reflecting observed tools, tasks, and durable Jobs while retaining v0.3.0 long-task reliability.
+**Latest stable release: v0.3.2** — Code Ferret now distinguishes real waits from idle connection verification and retains fast search, edit, and validation activity without changing runtime polling.
 
 > On the Releases page, expand **Assets** and download the latest `Chadex-...-macos-arm64.dmg`.
 
@@ -112,7 +112,8 @@ Release profile、簽署、DMG、GitHub Actions 與 distribution boundary 的完
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime、project isolation、execution lifecycle 與安全邊界
 - [`docs/BRIDGE_PROTOCOL.md`](docs/BRIDGE_PROTOCOL.md) — Swift ↔ Rust bridge protocol
 - [`docs/RELEASE.md`](docs/RELEASE.md) — release gate、簽署、DMG 與 GitHub 發佈流程
-- [`docs/releases/0.3.1.md`](docs/releases/0.3.1.md) — Code Ferret 與實際驗證
+- [`docs/releases/0.3.2.md`](docs/releases/0.3.2.md) — 寵物狀態判斷、活動停留與實際驗證
+- [`docs/releases/0.3.1.md`](docs/releases/0.3.1.md) — Code Ferret 初次實裝
 - [`docs/SECURITY_AND_PERFORMANCE_REVIEW.md`](docs/SECURITY_AND_PERFORMANCE_REVIEW.md) — security / performance 驗證與 benchmark
 - [`UPSTREAM.md`](UPSTREAM.md) — upstream provenance、修改歷史與 attribution
 
