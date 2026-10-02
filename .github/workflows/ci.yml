@@ -60,7 +60,7 @@ jobs:
   windows-core:
     name: Windows core gate
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
@@ -136,6 +136,117 @@ jobs:
         with:
           name: windows-runtime-e2e-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/windows-runtime-e2e.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Install pinned Node.js for Windows desktop
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.12.0
+
+      - name: Run Windows desktop W3 gates
+        shell: pwsh
+        env:
+          CARGO_INCREMENTAL: "0"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          function Invoke-NativeChecked {
+            param([string]$FilePath, [string[]]$Arguments)
+            $null = Get-Command -Name $FilePath -CommandType Application -ErrorAction Stop
+            $previousErrorActionPreference = $ErrorActionPreference
+            try {
+              $ErrorActionPreference = "Continue"
+              & $FilePath @Arguments
+              $nativeExitCode = $LASTEXITCODE
+            } finally {
+              $ErrorActionPreference = $previousErrorActionPreference
+            }
+            if ($null -eq $nativeExitCode) {
+              throw "Native command '$FilePath' did not return an exit code."
+            }
+            if ($nativeExitCode -ne 0) {
+              throw "Native command '$FilePath' exited with code $nativeExitCode."
+            }
+          }
+
+          Push-Location (Join-Path $env:GITHUB_WORKSPACE "apps/windows")
+          try {
+            Invoke-NativeChecked -FilePath "npm.cmd" -Arguments @("ci")
+            Invoke-NativeChecked -FilePath "npm.cmd" -Arguments @("run", "typecheck")
+            Invoke-NativeChecked -FilePath "npm.cmd" -Arguments @("test")
+            Invoke-NativeChecked -FilePath "npm.cmd" -Arguments @("run", "build")
+          } finally {
+            Pop-Location
+          }
+
+          Invoke-NativeChecked -FilePath "python" -Arguments @("scripts/test_windows_desktop_smoke.py")
+          Invoke-NativeChecked -FilePath "cargo" -Arguments @(
+            "test", "--locked", "--manifest-path", "apps/windows/bridge/Cargo.toml",
+            "--features", "test-helper"
+          )
+
+          $targetDir = $env:CARGO_TARGET_DIR
+          if ([string]::IsNullOrWhiteSpace($targetDir)) {
+            throw "CARGO_TARGET_DIR was not set by the Windows core gate."
+          }
+          Invoke-NativeChecked -FilePath "python" -Arguments @(
+            "scripts/prepare_windows_desktop.py", "--target-dir", $targetDir,
+            "--desktop-output", (Join-Path $targetDir "debug")
+          )
+
+          $tauriManifest = "apps/windows/src-tauri/Cargo.toml"
+          Invoke-NativeChecked -FilePath "cargo" -Arguments @(
+            "build", "--locked", "--manifest-path", $tauriManifest,
+            "--features", "custom-protocol"
+          )
+          # Preserve the application without fixture IPC before the smoke build.
+          $productionDir = Join-Path $env:RUNNER_TEMP "windows-desktop-production"
+          New-Item -ItemType Directory -Path $productionDir -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $targetDir "debug/chadex-windows.exe") -Destination $productionDir
+          Copy-Item -LiteralPath (Join-Path $targetDir "debug/helper") -Destination $productionDir -Recurse
+          Copy-Item -LiteralPath (Join-Path $targetDir "debug/chadex-runtime") -Destination $productionDir -Recurse
+          Invoke-NativeChecked -FilePath "cargo" -Arguments @(
+            "test", "--locked", "--manifest-path", $tauriManifest,
+            "--features", "custom-protocol,desktop-smoke"
+          )
+          Invoke-NativeChecked -FilePath "cargo" -Arguments @(
+            "build", "--locked", "--manifest-path", $tauriManifest,
+            "--features", "custom-protocol,desktop-smoke"
+          )
+
+          $appPath = Join-Path $targetDir "debug/chadex-windows.exe"
+          $reportPath = Join-Path $env:RUNNER_TEMP "windows-desktop-smoke.json"
+          Invoke-NativeChecked -FilePath "python" -Arguments @(
+            "scripts/windows_desktop_smoke.py", "--app", $appPath, "--output", $reportPath
+          )
+
+      - name: Upload Windows desktop W3 report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-desktop-w3-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/windows-desktop-smoke.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload Windows desktop smoke-feature debug build and resources
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-desktop-w3-smoke-debug-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            runtime-engine/target/debug/chadex-windows.exe
+            runtime-engine/target/debug/helper/
+            runtime-engine/target/debug/chadex-runtime/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload Windows desktop without smoke IPC
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-desktop-w3-production-debug-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/windows-desktop-production/
           if-no-files-found: warn
           retention-days: 7
 
