@@ -2,7 +2,7 @@
 
 W2 starts at W1 commit `0e1b3172a08b81cc7b2b3deb7ffc25f47862db01`,
 which descends from macOS `v0.3.2` (`7eb430d`). The development branch is
-`windows/w2-runtime-e2e`. W3 desktop, W4 distribution and W5 stable release
+`windows/w2-runtime-e2e`. W3 desktop, W4 source-converged knowledge synchronization and W5 release/distribution
 remain separate milestones; W2 does not certify a Windows desktop application.
 
 ## Native gate

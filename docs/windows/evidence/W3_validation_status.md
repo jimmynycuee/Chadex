@@ -11,6 +11,8 @@ The automated implementation is verified. **Full W3 product acceptance remains p
 - Windows job: `110901233862`. Public-history/Gitleaks, source release, ARM64 package and Windows core/W2/W3 gates all passed.
 - This evidence commit changes documentation/projections only. Its own final HEAD must receive another full successful CI run; the handoff records that final SHA/run separately. An earlier implementation result is not substituted for final-HEAD CI.
 
+W4 baseline recheck (2026-10-03, Asia/Taipei): final W3 evidence commit `dd7d5ebbc4bf06c91ebe3a86a8e52c2d38fc52c3` passed [CI 37029362354](https://github.com/jimmynycuee/Chadex/actions/runs/37029362354), attempt 2. Public-history/secret scan, source release, ARM64 package and Windows core/W2/W3 gates all concluded success. This closes the final-HEAD CI requirement above; it does not close the manual/private acceptance items below.
+
 ## Environment and versions
 
 Windows Server 2025 Datacenter `10.0.26100`; GitHub runner `2.337.0`; image `windows-2025-vs2026`, version `20260925.250.1`. WebView2 launch was exercised; its installed version was not separately recorded. Physical Windows 11/ARM64 hardware is not validated.

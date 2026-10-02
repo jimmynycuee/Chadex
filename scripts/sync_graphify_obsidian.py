@@ -22,7 +22,7 @@ import subprocess
 import sys
 from typing import Iterable
 
-SYNC_VERSION = 1
+SYNC_VERSION = 2
 GENERATED_BY = "chadex-graphify-obsidian-sync"
 GENERATED_ROOT = Path("Architecture/Generated/Graphify")
 CANVAS_PATH = Path("Architecture/Graphify Architecture.canvas")
@@ -32,6 +32,9 @@ PRODUCTION_PREFIXES = (
     "rust-helper/src/",
     "runtime-engine/src/",
     "runtime-engine/crates/",
+    "apps/windows/src/",
+    "apps/windows/src-tauri/src/",
+    "apps/windows/bridge/src/",
 )
 EXCLUDED_PARTS = ("/tests/", "/test/", "vendor/", "benchmarks/", "graphify-out/")
 
@@ -51,6 +54,24 @@ COMPONENTS: tuple[ComponentSpec, ...] = (
         "Code Ferret Companion",
         "Runtime-driven SwiftUI mascot, scoped durable Job evidence, bounded reactions, and layered native motion.",
         exact_files=("Sources/ChadexApp/CodeFerretState.swift", "Sources/ChadexApp/CodeFerretView.swift", "Sources/ChadexApp/RootView.swift", "rust-helper/src/chadex_core/performance.rs"),
+    ),
+    ComponentSpec(
+        "Windows Desktop UI",
+        "React state projection, activity display and Code Ferret observation; helper snapshots retain runtime authority.",
+        exact_files=("apps/windows/src/App.tsx", "apps/windows/src/state.ts", "apps/windows/src/api.ts", "apps/windows/src/contracts.ts", "apps/windows/src/FerretCompanion.tsx", "apps/windows/src/ferret.ts"),
+        phases=("W3 Desktop Product",),
+    ),
+    ComponentSpec(
+        "Windows Native Bridge",
+        "Whitelisted Tauri IPC and JSONL helper transport with bounded deadlines, shutdown and process-tree ownership.",
+        exact_files=("apps/windows/src-tauri/src/main.rs", "apps/windows/bridge/src/lib.rs", "apps/windows/bridge/src/transport.rs", "apps/windows/bridge/src/error.rs", "apps/windows/src-tauri/src/paths.rs"),
+        phases=("W3 Desktop Product",),
+    ),
+    ComponentSpec(
+        "Windows Credentials and Preferences",
+        "Windows Credential Manager boundary and recoverable preferences; restored selection never implies a verified connection.",
+        exact_files=("apps/windows/src-tauri/src/credentials.rs", "apps/windows/src-tauri/src/preferences.rs"),
+        phases=("W3 Desktop Product",),
     ),
     ComponentSpec(
         "Desktop App State",
@@ -150,11 +171,15 @@ def is_production_file(path: str) -> bool:
     name = Path(path).name.lower()
     if any(part in lowered for part in EXCLUDED_PARTS):
         return False
-    if Path(path).suffix.lower() not in {".rs", ".swift"}:
+    if Path(path).suffix.lower() not in {".rs", ".swift", ".ts", ".tsx"}:
         return False
     if name.startswith("fake_") or name.startswith("test_"):
         return False
     if "_test." in name or "_tests." in name or name in {"test_support.rs", "validation_tree_helper.rs"}:
+        return False
+    if name.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", ".d.ts")):
+        return False
+    if path in {"apps/windows/src-tauri/src/smoke.rs", "apps/windows/bridge/src/bin/smoke.rs"}:
         return False
     return True
 
@@ -224,7 +249,14 @@ def load_graph(path: Path) -> dict:
     return data
 
 
-def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple[dict[Path, str], dict]:
+def vault_project_prefix(obsidian_root: Path) -> Path:
+    for parent in obsidian_root.parents:
+        if (parent / ".obsidian").is_dir():
+            return obsidian_root.relative_to(parent)
+    return Path()
+
+
+def build_outputs(graph: dict, source_head: str | None, max_files: int, vault_prefix: Path = Path()) -> tuple[dict[Path, str], dict]:
     nodes = graph["nodes"]
     links = graph["links"]
     graph_commit = graph.get("built_at_commit")
@@ -232,6 +264,10 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
     by_id = {str(node.get("id")): node for node in nodes if node.get("id") is not None}
     node_degree: Counter[str] = Counter()
     file_degree: Counter[str] = Counter()
+    for node in nodes:
+        source_file = str(node.get("source_file") or "")
+        if is_production_file(source_file):
+            file_degree.setdefault(source_file, 0)
 
     for link in links:
         source_id = str(link.get("source") or "")
@@ -251,7 +287,9 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         matched = {
             str(node["id"])
             for node in nodes
-            if node.get("id") is not None and node_matches_component(node, spec)
+            if node.get("id") is not None
+            and is_production_file(str(node.get("source_file") or ""))
+            and node_matches_component(node, spec)
         }
         component_nodes[spec.title] = matched
         for node_id in matched:
@@ -280,7 +318,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         )
     else:
         ranked_files = [
-            path for path, _ in file_degree.most_common()
+            path for path in sorted(file_degree, key=lambda path: (-file_degree[path], path))
             if path not in selected_files and is_production_file(path)
         ]
         selected_files.update(ranked_files[: max_files - len(selected_files)])
@@ -311,13 +349,22 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         if source_file in selected_files and target_file in selected_files and source_file != target_file:
             file_neighbors[source_file][target_file] += 1
             file_neighbors[target_file][source_file] += 1
-        for left in node_components.get(source_id, ()):
-            for right in node_components.get(target_id, ()):
+        for left in sorted(node_components.get(source_id, ())):
+            for right in sorted(node_components.get(target_id, ())):
                 if left != right:
                     component_relations[(left, right)] += 1
 
     file_note_by_path = {path: file_note_name(path) for path in sorted(selected_files)}
     outputs: dict[Path, str] = {}
+
+    def generated_link(relative: Path, label: str) -> str:
+        return markdown_link((vault_prefix / relative).with_suffix("").as_posix(), label)
+
+    def component_link(title: str) -> str:
+        return generated_link(GENERATED_ROOT / "Components" / f"{safe_note_stem(title)}.md", title)
+
+    def file_link(source: str) -> str:
+        return generated_link(GENERATED_ROOT / "Files" / f"{file_note_by_path[source]}.md", source)
 
     for spec in COMPONENTS:
         matched_ids = component_nodes[spec.title]
@@ -328,7 +375,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         })
         symbols = sorted(
             matched_ids,
-            key=lambda node_id: (-node_degree[node_id], str(by_id[node_id].get("label") or "")),
+            key=lambda node_id: (-node_degree[node_id], str(by_id[node_id].get("label") or ""), node_id),
         )[:18]
         related_components = Counter()
         for (left, right), count in component_relations.items():
@@ -343,7 +390,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         body += [f"- {markdown_link(phase)}" for phase in spec.phases] or ["- none"]
         body += ["", "## Source files", ""]
         body += [
-            f"- {markdown_link(file_note_by_path[path], path)}"
+            f"- {file_link(path)}"
             for path in matched_files
         ] or ["- No production source file matched the current Graphify graph."]
         body += ["", "## High-degree symbols", ""]
@@ -357,8 +404,8 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         if not symbols:
             body.append("- none")
         body += ["", "## Graph neighbors", ""]
-        for other, count in related_components.most_common(10):
-            body.append(f"- {markdown_link(other)} — {count} observed Graphify relations")
+        for other, count in sorted(related_components.items(), key=lambda item: (-item[1], item[0]))[:10]:
+            body.append(f"- {component_link(other)} — {count} observed Graphify relations")
         if not related_components:
             body.append("- none")
         body += ["", "> Generated from Graphify. Edit the Phase/Decision notes, not this file; reruns replace this generated note.", ""]
@@ -367,7 +414,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
     for source_file in sorted(selected_files):
         ids = sorted(
             file_nodes[source_file],
-            key=lambda node_id: (-node_degree[node_id], str(by_id[node_id].get("label") or "")),
+            key=lambda node_id: (-node_degree[node_id], str(by_id[node_id].get("label") or ""), node_id),
         )
         related_components = sorted({
             component
@@ -377,7 +424,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         body = [yaml_header("graphify_file", graph_commit, source_head, (("source_file", source_file),))]
         body += [f"# {source_file}", "", "Graphify-selected production source file.", ""]
         body += ["## Components", ""]
-        body += [f"- {markdown_link(component)}" for component in related_components] or ["- none"]
+        body += [f"- {component_link(component)}" for component in related_components] or ["- none"]
         body += ["", "## Important symbols", ""]
         for node_id in ids[:16]:
             node = by_id[node_id]
@@ -388,8 +435,8 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         if not ids:
             body.append("- none")
         body += ["", "## Connected generated files", ""]
-        for neighbor, count in file_neighbors[source_file].most_common(8):
-            body.append(f"- {markdown_link(file_note_by_path[neighbor], neighbor)} — {count} relations")
+        for neighbor, count in sorted(file_neighbors[source_file].items(), key=lambda item: (-item[1], item[0]))[:8]:
+            body.append(f"- {file_link(neighbor)} — {count} relations")
         if not file_neighbors[source_file]:
             body.append("- none")
         body += ["", "> Generated from Graphify; reruns replace this file.", ""]
@@ -418,7 +465,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         "",
         "## Architecture components",
         "",
-        *[f"- {markdown_link(spec.title)}" for spec in COMPONENTS],
+        *[f"- {component_link(spec.title)}" for spec in COMPONENTS],
         "",
         "## Development history",
         "",
@@ -444,12 +491,12 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         "",
         "## Components",
         "",
-        *[f"- {markdown_link(spec.title)}" for spec in COMPONENTS],
+        *[f"- {component_link(spec.title)}" for spec in COMPONENTS],
         "",
         "## Files",
         "",
         *[
-            f"- {markdown_link(file_note_by_path[path], path)}"
+            f"- {file_link(path)}"
             for path in sorted(selected_files)
         ],
         "",
@@ -470,7 +517,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
     canvas_nodes.append({
         "id": central_id,
         "type": "file",
-        "file": str(GENERATED_ROOT / "Graphify Snapshot.md"),
+        "file": (vault_prefix / GENERATED_ROOT / "Graphify Snapshot.md").as_posix(),
         "x": -220,
         "y": -160,
         "width": 440,
@@ -485,7 +532,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
         canvas_nodes.append({
             "id": node_id,
             "type": "file",
-            "file": str(GENERATED_ROOT / "Components" / f"{safe_note_stem(spec.title)}.md"),
+            "file": (vault_prefix / GENERATED_ROOT / "Components" / f"{safe_note_stem(spec.title)}.md").as_posix(),
             "x": int(math.cos(angle) * ring_radius) - 210,
             "y": int(math.sin(angle) * ring_radius) - 130,
             "width": 420,
@@ -497,7 +544,8 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int) -> tuple
             "toNode": node_id,
         })
 
-    for edge_index, ((left, right), count) in enumerate(component_relations.most_common(24)):
+    relations = sorted(component_relations.items(), key=lambda item: (-item[1], item[0]))[:24]
+    for edge_index, ((left, right), count) in enumerate(relations):
         if left not in component_ids or right not in component_ids:
             continue
         canvas_edges.append({
@@ -601,7 +649,7 @@ def main() -> int:
         return 2
 
     graph = load_graph(graph_path)
-    outputs, stats = build_outputs(graph, git_head(source_root), args.max_files)
+    outputs, stats = build_outputs(graph, git_head(source_root), args.max_files, vault_project_prefix(obsidian_root))
     changed, stale = sync_outputs(obsidian_root, outputs, check=args.check, dry_run=args.dry_run)
 
     print(json.dumps({

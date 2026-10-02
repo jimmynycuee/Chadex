@@ -37,6 +37,21 @@ chadex-helper
 
 ## 隔離
 
+### Windows desktop（W3 開發分支）
+
+Windows 沿用同一個 helper 與 `runtime-engine/`，不建立另一套執行核心：
+
+```text
+React / TypeScript (apps/windows/src)
+  → whitelisted Tauri IPC (apps/windows/src-tauri)
+  → bounded JSONL bridge (apps/windows/bridge)
+  → existing chadex-helper → existing runtime / tunnel
+```
+
+Tauri 保管 Windows Credential Manager 的 API key；前端不能讀取 key 或直接呼叫 `provideCredential`。一般偏好與最後專案由 app-local data 保存；重啟僅恢復選取，不恢復舊 connected／verified 狀態。bridge transport、runtime ready、tunnel ready、目前專案 ChatGPT verification 是不同事實，觀察失敗會撤銷前端可用狀態。Windows Job Object 管理 owned process tree，正常退出要求 graceful shutdown 與零殘留。
+
+W3 最終 source `dd7d5ebbc4bf06c91ebe3a86a8e52c2d38fc52c3` 已通過 [CI 37029362354, attempt 2](https://github.com/jimmynycuee/Chadex/actions/runs/37029362354)。完整產品驗收仍 pending；native picker、Explorer、tray、登入啟動、通知與 credentialed tunnel 工作流程皆保留 `not validated`。目前 artifact 為未簽章 debug build，installer／updater／release 尚未驗證。詳見 [W3](windows/W3-desktop-product.md) 與 [W4 知識同步](windows/W4-source-converged.md)。
+
 Chadex 不讀寫既有 WebCodex Desktop 的設定或憑證。預設 runtime 資料位於：
 
 `~/Library/Application Support/Chadex/runtime`

@@ -32,6 +32,8 @@ graphify-out/.graphify_*
 graphify-out/*/graph.json
 graphify-out/*/.graphify_*
 graphify-out/*/manifest.json
+# Preserve Graphify safety snapshots locally without publishing generated copies.
+graphify-out/20??-??-??/
 
 # Ephemeral local runtime diagnostics
 runtime-engine/data/tool-request-traces/
