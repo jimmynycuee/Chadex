@@ -426,7 +426,7 @@ def write_fixture(project: Path) -> None:
         "    log.write(json.dumps({'pid': os.getpid(), 'start_ns': time.time_ns()}) + '\\n')\n"
         "    log.flush()\nprint('DURABLE_STARTED', flush=True)\n"
         f"time.sleep({DURABLE_SECONDS})\n"
-        "Path('durable_done.txt').write_text('完成 UTF-8\\n', encoding='utf-8')\n"
+        "Path('durable_done.txt').write_bytes('完成 UTF-8\\n'.encode('utf-8'))\n"
         "print('DURABLE_FINISHED', flush=True)\n", encoding="utf-8")
     (project / "cancel_tree.py").write_text(
         "import json, os, subprocess, sys, time\nfrom pathlib import Path\n"

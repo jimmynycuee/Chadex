@@ -79,10 +79,28 @@ fn verified_candidate_replaces_corrupt_cache_and_missing_candidate_preserves_it(
 
 #[test]
 fn version_must_match_the_pinned_token_exactly() {
-    for version in ["0.0.12\n", "0.0.12 (commit abc)\r\n"] {
+    for version in [
+        "0.0.12\n",
+        "0.0.12 (commit abc)\r\n",
+        "0.0.12+ab12cd (git sha: ab12cd)\r\n",
+        "0.0.12+build.001-x\n",
+    ] {
         assert!(pinned_tunnel_version(version), "{version:?}");
     }
-    for version in ["", "0.0.120", "0.0.12-evil", "0.0.13", "error: 0.0.12"] {
+    for version in [
+        "",
+        "0.0.120",
+        "0.0.120+ab12cd",
+        "0.0.12-evil",
+        "0.0.12-rc.1+ab12cd",
+        "0.0.13",
+        "error: 0.0.12",
+        "0.0.12+",
+        "0.0.12+.ab12cd",
+        "0.0.12+ab12cd..build",
+        "0.0.12+ab12cd+extra",
+        "0.0.12+ab12cd/evil",
+    ] {
         assert!(!pinned_tunnel_version(version), "{version:?}");
     }
 }

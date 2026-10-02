@@ -988,7 +988,24 @@ async fn verify_tunnel_client(path: &Path) -> ChadexResult<()> {
 }
 
 fn pinned_tunnel_version(version: &str) -> bool {
-    version.split_whitespace().next() == Some(TUNNEL_CLIENT_VERSION)
+    let Some(token) = version.split_whitespace().next() else {
+        return false;
+    };
+    let (base, metadata) = match token.split_once('+') {
+        Some((base, metadata)) => (base, Some(metadata)),
+        None => (token, None),
+    };
+    // Official artifacts append +GitSHA before the optional git description.
+    // Compare the release exactly and accept only valid SemVer build metadata.
+    base == TUNNEL_CLIENT_VERSION
+        && metadata.is_none_or(|metadata| {
+            metadata.split('.').all(|identifier| {
+                !identifier.is_empty()
+                    && identifier
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            })
+        })
 }
 
 fn sha256_file(path: &Path) -> ChadexResult<String> {

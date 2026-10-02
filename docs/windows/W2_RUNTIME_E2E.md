@@ -78,6 +78,22 @@ Status: **in progress; W2 exit criteria are not yet certified**.
   prefix. Repair preserves that prefix and retains the adaptive metadata; it
   does not change timeout budgets or execution behavior.
 - Local macOS Swift regression: 70 passed, 0 failed.
+- Second checked checkpoint: `28529a5`,
+  [run 36966169327](https://github.com/jimmynycuee/Chadex/actions/runs/36966169327).
+  Windows runner library: 784 passed / 0 failed / 2 existing opt-in;
+  helper: 150 passed / 0 failed / 6 existing opt-in; tunnel supervisor:
+  3 passed. The two extra helper EOF/blocked-stdin cleanup tests passed.
+  LF and CRLF managed-worktree preservation tests both passed on Windows.
+  DACL, reparse, file-identity and compiled-PE cache tests passed. The official
+  asset installer then failed its version check, so runtime E2E did not run.
+  The pinned upstream [formatter](https://github.com/openai/tunnel-client/blob/v0.0.12/pkg/version/version.go)
+  and [CLI](https://github.com/openai/tunnel-client/blob/v0.0.12/cmd/client/root_command.go)
+  append `+GitSHA` to the base version; the strict parser incorrectly rejected
+  valid build metadata. The repair keeps an exact pinned base version and validates
+  SemVer metadata identifiers, continuing to reject prereleases and prefix collisions.
+  macOS source/package and secret-scan gates passed.
+  The durable-job fixture now writes explicit UTF-8 bytes to keep its expected
+  LF hash identical on Windows, where Python text writes otherwise use CRLF.
 - Local macOS helper regression after integration: 159 unit and 3 integration
   tests passed, 0 failed; 3 pre-existing opt-in unit tests remain unchanged.
 - Harness unit tests: 12 passed, 0 failed. The actual runtime harness rejects
