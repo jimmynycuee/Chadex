@@ -6,7 +6,7 @@ use crate::chadex_core::performance::{
 use crate::chadex_core::runtime::{
     ChadexRuntimeCore, RuntimeMascotJob, RuntimeProject, RuntimeProxyMode, RuntimeSnapshot,
 };
-use crate::chadex_core::tunnel::{RuntimeTunnelTarget, TunnelManager, TunnelState};
+use crate::chadex_core::tunnel::{RuntimeTunnelTarget, TunnelManager, TunnelSnapshot, TunnelState};
 use crate::chadex_core::verification::VerificationTracker;
 use crate::chadex_core::ChadexError;
 use serde::{Deserialize, Serialize};
@@ -195,9 +195,59 @@ struct BackendSnapshot {
     task_progress: Option<TaskProgressSnapshot>,
     #[serde(default)]
     mascot_jobs: Option<Vec<RuntimeMascotJob>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_status: Option<RuntimeStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tunnel_status: Option<TunnelStatus>,
     error: Option<ErrorPayload>,
     activity_sequence: u64,
     state_revision: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct RuntimeStatus {
+    runtime_configured: bool,
+    runtime_ready: bool,
+    needs_attention: bool,
+    summary: String,
+    next_action: Option<String>,
+    summary_kind: String,
+    server: String,
+    runner: String,
+    exposure: String,
+    project: String,
+}
+
+impl RuntimeStatus {
+    fn from_snapshot(snapshot: &RuntimeSnapshot) -> Self {
+        Self {
+            runtime_configured: snapshot.runtime_configured,
+            runtime_ready: snapshot.readiness.runtime_ready,
+            needs_attention: snapshot.readiness.needs_attention,
+            summary: snapshot.readiness.summary.clone(),
+            next_action: snapshot.readiness.next_action.clone(),
+            summary_kind: snapshot.readiness.summary_kind.to_string(),
+            server: snapshot.readiness.server.to_string(),
+            runner: snapshot.readiness.runner.to_string(),
+            exposure: snapshot.readiness.exposure.to_string(),
+            project: snapshot.readiness.project.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TunnelStatus {
+    configured: bool,
+    state: TunnelState,
+}
+
+impl TunnelStatus {
+    fn from_snapshot(snapshot: &TunnelSnapshot) -> Self {
+        Self {
+            configured: snapshot.configured,
+            state: snapshot.state,
+        }
+    }
 }
 
 impl BackendSnapshot {
@@ -213,6 +263,8 @@ impl BackendSnapshot {
             && self.current_operation == other.current_operation
             && self.task_progress == other.task_progress
             && self.mascot_jobs == other.mascot_jobs
+            && self.runtime_status == other.runtime_status
+            && self.tunnel_status == other.tunnel_status
             && self.error == other.error
             && self.activity_sequence == other.activity_sequence
     }
@@ -930,6 +982,8 @@ impl Bridge {
             current_operation,
             task_progress: self.task_progress(),
             mascot_jobs,
+            runtime_status: Some(RuntimeStatus::from_snapshot(&desktop)),
+            tunnel_status: Some(TunnelStatus::from_snapshot(&tunnel)),
             error,
             activity_sequence: desktop.activity_sequence,
             state_revision: 0,
@@ -1518,6 +1572,31 @@ mod tests {
 
     #[test]
     fn backend_snapshot_serializes_connection_separately_from_project_verification() {
+        let desktop = RuntimeSnapshot {
+            runtime_configured: true,
+            readiness: crate::chadex_core::runtime::RuntimeReadiness {
+                runtime_ready: true,
+                needs_attention: false,
+                summary: "Runtime ready".to_string(),
+                next_action: None,
+                summary_kind: "runtime_ready",
+                server: "ready",
+                runner: "ready",
+                exposure: "local_ready",
+                project: "ready",
+            },
+            project: None,
+            current_operation: None,
+            activity_sequence: 0,
+            tunnel_proxy_effective_url: Some("https://private.example/token-sentinel".to_string()),
+        };
+        let tunnel = TunnelSnapshot {
+            state: TunnelState::Ready,
+            configured: true,
+            tunnel_id: Some("tunnel-id-sentinel".to_string()),
+            epoch: 8,
+            last_error: Some("credential-sentinel".to_string()),
+        };
         let snapshot = BackendSnapshot {
             phase: ConnectionPhase::WaitingForChatGptVerification,
             graphify: GraphifyStatus::unavailable(),
@@ -1529,6 +1608,8 @@ mod tests {
             current_operation: None,
             task_progress: None,
             mascot_jobs: None,
+            runtime_status: Some(RuntimeStatus::from_snapshot(&desktop)),
+            tunnel_status: Some(TunnelStatus::from_snapshot(&tunnel)),
             error: None,
             activity_sequence: 0,
             state_revision: 42,
@@ -1539,6 +1620,38 @@ mod tests {
         assert_eq!(value["chat_gpt_verified_for_selected_project"], false);
         assert_eq!(value["state_revision"], 42);
         assert!(value["mascot_jobs"].is_null());
+        assert_eq!(
+            value["runtime_status"],
+            json!({
+                "runtime_configured": true,
+                "runtime_ready": true,
+                "needs_attention": false,
+                "summary": "Runtime ready",
+                "next_action": null,
+                "summary_kind": "runtime_ready",
+                "server": "ready",
+                "runner": "ready",
+                "exposure": "local_ready",
+                "project": "ready"
+            })
+        );
+        assert_eq!(
+            value["tunnel_status"],
+            json!({ "configured": true, "state": "ready" })
+        );
+        let additions = json!({
+            "runtime_status": value["runtime_status"],
+            "tunnel_status": value["tunnel_status"]
+        })
+        .to_string();
+        for sensitive_value in [
+            "https://private.example",
+            "token-sentinel",
+            "tunnel-id-sentinel",
+            "credential-sentinel",
+        ] {
+            assert!(!additions.contains(sensitive_value));
+        }
     }
 
     #[test]
@@ -1676,6 +1789,8 @@ mod tests {
             current_operation: None,
             task_progress: None,
             mascot_jobs: None,
+            runtime_status: None,
+            tunnel_status: None,
             error: None,
             activity_sequence: 3,
             state_revision: 7,
@@ -1691,6 +1806,9 @@ mod tests {
         assert_eq!(value["result"]["activity_sequence"], 3);
         assert_eq!(value["result"]["state_revision"], 7);
         assert!(value["result"].get("Snapshot").is_none());
+        let legacy: BackendSnapshot = serde_json::from_value(value["result"].clone()).unwrap();
+        assert_eq!(legacy.runtime_status, None);
+        assert_eq!(legacy.tunnel_status, None);
     }
 
     #[test]
@@ -1707,6 +1825,19 @@ mod tests {
             current_operation: None,
             task_progress: None,
             mascot_jobs: None,
+            runtime_status: Some(RuntimeStatus {
+                runtime_configured: true,
+                runtime_ready: false,
+                needs_attention: true,
+                summary: "Runtime needs attention".to_string(),
+                next_action: Some("Start the Server".to_string()),
+                summary_kind: "runtime_needs_attention".to_string(),
+                server: "stopped".to_string(),
+                runner: "stopped".to_string(),
+                exposure: "local_ready".to_string(),
+                project: "ready".to_string(),
+            }),
+            tunnel_status: None,
             error: None,
             activity_sequence: 0,
             state_revision: 0,
@@ -1714,8 +1845,14 @@ mod tests {
         let first = state.assign_revision(base.clone());
         let repeated = state.assign_revision(base.clone());
         let mut changed = base;
-        changed.tunnel_ready = true;
-        changed.phase = ConnectionPhase::WaitingForChatGptVerification;
+        let readiness = changed.runtime_status.as_mut().unwrap();
+        readiness.runtime_ready = true;
+        readiness.needs_attention = false;
+        readiness.summary = "Runtime ready".to_string();
+        readiness.next_action = None;
+        readiness.summary_kind = "runtime_ready".to_string();
+        readiness.server = "ready".to_string();
+        readiness.runner = "ready".to_string();
         let changed = state.assign_revision(changed);
 
         assert_eq!(first.state_revision, 1);
