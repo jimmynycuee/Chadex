@@ -21,7 +21,7 @@ from benchmark_turn_economy import MeasuredClient
 from benchmark_phase9_e2e import baseline_workflow, prepare_checkout, hidden_evaluator, diff_sha256, run
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_BENCHMARK = REPO_ROOT.parent / "Benchmark-Chadex"
+DEFAULT_BENCHMARK = REPO_ROOT / "benchmarks" / "local-fixtures" / "Benchmark-Chadex"
 
 
 def main():

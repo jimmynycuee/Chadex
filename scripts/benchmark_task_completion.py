@@ -31,7 +31,7 @@ from benchmark_workflow import parse_env_file, runtime_identity
 BASELINE = "49f793fd66b054a38923c3f6e3ccd9c1aca6579f"
 FILES = ["pricing/discount.py", "tests/test_checkout.py"]
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_BENCHMARK = REPO_ROOT.parent / "Benchmark-Chadex"
+DEFAULT_BENCHMARK = REPO_ROOT / "benchmarks" / "local-fixtures" / "Benchmark-Chadex"
 
 
 def fused_workflow(client, project):

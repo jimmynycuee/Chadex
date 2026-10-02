@@ -16,7 +16,7 @@ BASE = '49f793fd66b054a38923c3f6e3ccd9c1aca6579f'
 EXPECTED_DIFF = '69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63'
 PATHS = ['pricing/discount.py', 'tests/test_checkout.py']
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_BENCHMARK_PARENT = REPO_ROOT.parent
+DEFAULT_BENCHMARK_PARENT = REPO_ROOT / "benchmarks" / "local-fixtures"
 
 
 def main():

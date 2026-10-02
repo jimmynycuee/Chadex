@@ -53,7 +53,7 @@ CGW_DIAGNOSTICS = Path.home() / ".codex-chatgpt-web" / "diagnostics" / "browser-
 
 SHORT_SOURCE = Path(
     os.environ.get("CHADEX_BENCHMARK_SOURCE")
-    or (REPO_ROOT.parent / "Benchmark-Chadex")
+    or (REPO_ROOT / "benchmarks" / "local-fixtures" / "Benchmark-Chadex")
 )
 SHORT_BASELINE = "49f793fd66b054a38923c3f6e3ccd9c1aca6579f"
 SHORT_EXPECTED_DIFF = "69d104a260d4803da81676ce24ac8067533e622ab71625131b49c8d86682fe63"

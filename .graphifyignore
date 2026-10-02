@@ -19,3 +19,7 @@ vendor/webcodex/node_modules/
 # Repository metadata and local OS noise
 .git/
 .DS_Store
+
+# Local fixtures and preserved worktrees are not canonical project source
+benchmarks/local-fixtures/
+local-backups/

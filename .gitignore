@@ -13,6 +13,8 @@ graphify-out/manifest*
 .DS_Store
 
 # Local benchmark/runtime artifacts
+/benchmarks/local-fixtures/
+/local-backups/
 .phase9-candidate/
 dist-test/
 __pycache__/

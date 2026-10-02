@@ -33,7 +33,7 @@ os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_BENCHMARK = REPO_ROOT.parent / "Benchmark-Chadex"
+DEFAULT_BENCHMARK = REPO_ROOT / "benchmarks" / "local-fixtures" / "Benchmark-Chadex"
 EXPECTED_CHANGED_FILES = ["pricing/discount.py", "tests/test_checkout.py"]
 TEST_ARGS = ["-m", "unittest", "discover", "-s", "tests", "-v"]
 GOAL = (
