@@ -1376,24 +1376,46 @@ async fn write_response(
 }
 
 fn chadex_data_dir() -> Result<PathBuf, ErrorPayload> {
-    if let Some(path) = std::env::var_os("CHADEX_DATA_DIR") {
+    chadex_data_dir_from_env(|name| std::env::var_os(name))
+}
+
+fn chadex_data_dir_from_env(
+    var_os: impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> Result<PathBuf, ErrorPayload> {
+    if let Some(path) = var_os("CHADEX_DATA_DIR") {
         let path = PathBuf::from(path);
         if !path.as_os_str().is_empty() {
             return Ok(path);
         }
     }
-    let home = std::env::var_os("HOME").ok_or_else(|| {
-        ErrorPayload::new(
-            "home_directory_unavailable",
-            "Chadex could not determine the user home directory",
-            "Launch Chadex from a normal macOS user session and retry.",
-        )
-    })?;
-    Ok(PathBuf::from(home)
-        .join("Library")
-        .join("Application Support")
-        .join("Chadex")
-        .join("runtime"))
+    #[cfg(windows)]
+    {
+        let local_app_data = var_os("LOCALAPPDATA")
+            .filter(|path| !path.is_empty())
+            .ok_or_else(|| {
+                ErrorPayload::new(
+                    "home_directory_unavailable",
+                    "Chadex could not determine the local application data directory",
+                    "Launch Chadex from a normal Windows user session and retry.",
+                )
+            })?;
+        return Ok(PathBuf::from(local_app_data).join("Chadex").join("runtime"));
+    }
+    #[cfg(not(windows))]
+    {
+        let home = var_os("HOME").ok_or_else(|| {
+            ErrorPayload::new(
+                "home_directory_unavailable",
+                "Chadex could not determine the user home directory",
+                "Launch Chadex from a normal macOS user session and retry.",
+            )
+        })?;
+        Ok(PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("Chadex")
+            .join("runtime"))
+    }
 }
 
 fn chadex_resource_dir() -> Result<PathBuf, ErrorPayload> {
@@ -1421,6 +1443,49 @@ fn chadex_resource_dir() -> Result<PathBuf, ErrorPayload> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_data_directory_takes_precedence() {
+        let directory = PathBuf::from("fixture data 中文");
+        let actual = chadex_data_dir_from_env(|name| {
+            (name == "CHADEX_DATA_DIR").then(|| directory.clone().into_os_string())
+        })
+        .unwrap();
+        assert_eq!(actual, directory);
+    }
+
+    #[test]
+    fn missing_default_data_directory_fails_closed() {
+        assert!(chadex_data_dir_from_env(|_| None).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_data_directory_uses_local_app_data_without_home() {
+        let directory = PathBuf::from(r"C:\Users\使用者 Name\AppData\Local");
+        let actual = chadex_data_dir_from_env(|name| match name {
+            "LOCALAPPDATA" => Some(directory.clone().into_os_string()),
+            "CHADEX_DATA_DIR" => Some(std::ffi::OsString::new()),
+            _ => None,
+        })
+        .unwrap();
+        assert_eq!(actual, directory.join("Chadex").join("runtime"));
+        assert!(chadex_data_dir_from_env(|_| Some(std::ffi::OsString::new())).is_err());
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn macos_data_directory_preserves_existing_location() {
+        let directory = PathBuf::from("/Users/fixture");
+        let actual = chadex_data_dir_from_env(|name| {
+            (name == "HOME").then(|| directory.clone().into_os_string())
+        })
+        .unwrap();
+        assert_eq!(
+            actual,
+            directory.join("Library/Application Support/Chadex/runtime")
+        );
+    }
 
     #[test]
     fn secret_parameter_is_removed_from_request_object() {

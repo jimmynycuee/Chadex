@@ -790,20 +790,35 @@ async fn resolve_tunnel_client(root: &Path) -> ChadexResult<PathBuf> {
             }
         }
     }
-    let asset = tunnel_client_asset()?;
+    resolve_managed_tunnel_client(root, &tunnel_client_asset()?).await
+}
+
+// Keep managed-cache resolution separate from PATH/override discovery so native
+// integration tests exercise the installer without mutating process-wide env.
+async fn resolve_managed_tunnel_client(
+    root: &Path,
+    asset: &TunnelClientAsset,
+) -> ChadexResult<PathBuf> {
     let destination = root
         .join("tools")
         .join("tunnel-client")
         .join(TUNNEL_CLIENT_VERSION)
         .join(asset.target)
         .join(asset.binary_name);
+    create_private_dir(destination.parent().expect("managed client has a parent"))?;
+    #[cfg(windows)]
+    windows_support::reject_reparse_path(&destination)
+        .map_err(|_| tunnel_runtime_error("Tunnel client is invalid"))?;
     if destination.is_file()
         && sha256_file(&destination).ok().as_deref() == Some(asset.binary_sha256)
         && verify_tunnel_client(&destination).await.is_ok()
     {
+        #[cfg(windows)]
+        windows_support::protect_private_file(&destination)
+            .map_err(|_| tunnel_runtime_error("Could not protect cached Tunnel client"))?;
         return Ok(destination);
     }
-    install_tunnel_client(root, &asset, &destination).await?;
+    install_tunnel_client(root, asset, &destination).await?;
     Ok(destination)
 }
 
@@ -816,10 +831,18 @@ async fn install_tunnel_client(
         .parent()
         .ok_or_else(|| tunnel_runtime_error("Invalid managed Tunnel client path"))?;
     create_private_dir(install_dir)?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    static NEXT_INSTALL: AtomicU64 = AtomicU64::new(0);
     let temporary = root
         .join("tools")
-        .join(format!(".tunnel-install-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&temporary);
+        .join(format!(
+            ".tunnel-install-{}-{nonce}-{}",
+            std::process::id(),
+            NEXT_INSTALL.fetch_add(1, Ordering::Relaxed)
+        ));
     create_private_dir(&temporary)?;
     let archive = temporary.join(asset.file_name);
     let result = async {
@@ -945,7 +968,7 @@ async fn verify_tunnel_client(path: &Path) -> ChadexResult<()> {
     let _ = tunnel_client_file_identity(path)?;
     let output = tokio::time::timeout(
         Duration::from_secs(10),
-        Command::new(path).arg("--version").output(),
+        Command::new(path).arg("--version").kill_on_drop(true).output(),
     )
     .await
     .map_err(|_| tunnel_runtime_error("Tunnel client version check timed out"))?
@@ -955,13 +978,17 @@ async fn verify_tunnel_client(path: &Path) -> ChadexResult<()> {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    if output.status.success() && version.starts_with(TUNNEL_CLIENT_VERSION) {
+    if output.status.success() && pinned_tunnel_version(&version) {
         Ok(())
     } else {
         Err(tunnel_runtime_error(
             "Tunnel client version does not match Chadex's pinned version",
         ))
     }
+}
+
+fn pinned_tunnel_version(version: &str) -> bool {
+    version.split_whitespace().next() == Some(TUNNEL_CLIENT_VERSION)
 }
 
 fn sha256_file(path: &Path) -> ChadexResult<String> {
@@ -992,6 +1019,9 @@ fn verify_sha256(path: &Path, expected: &str) -> ChadexResult<()> {
 }
 
 fn create_private_dir(path: &Path) -> ChadexResult<()> {
+    #[cfg(windows)]
+    windows_support::reject_reparse_path(path)
+        .map_err(|_| tunnel_runtime_error("Could not protect Chadex private Tunnel state"))?;
     fs::create_dir_all(path)
         .map_err(|_| tunnel_runtime_error("Could not create Chadex private Tunnel state"))?;
     #[cfg(unix)]
@@ -1060,6 +1090,12 @@ fn cancelled_error() -> ChadexError {
 mod download_tests;
 
 #[cfg(test)]
+mod install_tests;
+
+#[cfg(all(test, windows))]
+mod windows_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1101,7 +1137,7 @@ mod tests {
 
     #[test]
     fn managed_asset_is_pinned_for_supported_mac_architecture() {
-        let asset = tunnel_client_asset().unwrap();
+        let asset = tunnel_client_asset_for("macos", std::env::consts::ARCH).unwrap();
         assert!(asset.target.starts_with("darwin-"));
         assert_eq!(asset.binary_sha256.len(), 64);
         assert_eq!(asset.archive_sha256.len(), 64);

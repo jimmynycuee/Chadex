@@ -34,6 +34,7 @@ pub(super) struct WindowsFileIdentity {
 }
 
 pub(super) fn protect_private_directory(path: &Path) -> Result<(), String> {
+    reject_reparse_path(path)?;
     let directory = OpenOptions::new()
         .access_mode(READ_CONTROL | WRITE_DAC)
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
@@ -47,6 +48,7 @@ pub(super) fn protect_private_directory(path: &Path) -> Result<(), String> {
 }
 
 pub(super) fn write_new_private_file(path: &Path, content: &[u8]) -> Result<(), String> {
+    reject_reparse_path(path)?;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -72,7 +74,30 @@ pub(super) fn write_new_private_file(path: &Path, content: &[u8]) -> Result<(), 
     result
 }
 
+pub(super) fn protect_private_file(path: &Path) -> Result<(), String> {
+    reject_reparse_path(path)?;
+    let file = OpenOptions::new()
+        .access_mode(READ_CONTROL | WRITE_DAC)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+        .map_err(|error| format!("could not open private Windows file: {error}"))?;
+    let info = file_information(&file, "private Windows file")?;
+    if info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
+        return Err("private Windows state path is not a regular file".to_string());
+    }
+    protect_handle(file.as_raw_handle() as _, false)
+}
+
 pub(super) fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
+    file_identity(source, super::MAX_BINARY_BYTES)?;
+    reject_reparse_path(destination)?;
+    if destination
+        .try_exists()
+        .map_err(|error| error.to_string())?
+    {
+        // A corrupt cache may exceed the download limit; still allow recovery.
+        file_identity(destination, u64::MAX)?;
+    }
     let source: Vec<u16> = source
         .as_os_str()
         .encode_wide()
@@ -100,6 +125,7 @@ pub(super) fn replace_file(source: &Path, destination: &Path) -> Result<(), Stri
 }
 
 pub(super) fn file_identity(path: &Path, max_bytes: u64) -> Result<WindowsFileIdentity, String> {
+    reject_reparse_path(path)?;
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
@@ -128,6 +154,28 @@ pub(super) fn file_identity(path: &Path, max_bytes: u64) -> Result<WindowsFileId
     })
 }
 
+// OPEN_REPARSE_POINT only protects the final component of an open. Inspect
+// existing ancestors as well, including junctions (which need no symlink privilege).
+// Missing components are allowed for create_new/create_dir_all callers.
+pub(super) fn reject_reparse_path(path: &Path) -> Result<(), String> {
+    let absolute = std::path::absolute(path)
+        .map_err(|error| format!("could not resolve Windows private path: {error}"))?;
+    for component in absolute.ancestors() {
+        match OpenOptions::new()
+            .access_mode(READ_CONTROL)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(component)
+        {
+            Ok(file) => {
+                file_information(&file, "Windows private path")?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("could not inspect Windows private path: {error}")),
+        }
+    }
+    Ok(())
+}
+
 fn file_information(file: &File, label: &str) -> Result<BY_HANDLE_FILE_INFORMATION, String> {
     let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
     if unsafe { GetFileInformationByHandle(file.as_raw_handle() as _, &mut info) } == 0 {
@@ -146,7 +194,7 @@ fn file_time(high: u32, low: u32) -> u64 {
     ((high as u64) << 32) | low as u64
 }
 
-fn current_user_sid() -> Result<String, String> {
+pub(super) fn current_user_sid() -> Result<String, String> {
     let mut token = std::ptr::null_mut();
     if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
         return Err("could not inspect the current Windows user identity".to_string());
