@@ -1872,6 +1872,16 @@ mod tests {
         jobs_changed.mascot_jobs = None;
         let unknown = state.assign_revision(jobs_changed);
         assert_eq!(unknown.state_revision, 5);
-        assert!(serde_json::to_value(unknown).unwrap()["mascot_jobs"].is_null());
+        assert!(serde_json::to_value(&unknown).unwrap()["mascot_jobs"].is_null());
+        // Keep the pre-W3 tunnel/phase revision coverage as well as the new
+        // readiness projection. Additive fields cannot replace existing gates.
+        let mut tunnel_changed = unknown;
+        tunnel_changed.tunnel_ready = true;
+        tunnel_changed.phase = ConnectionPhase::WaitingForChatGptVerification;
+        let connected = state.assign_revision(tunnel_changed.clone());
+        assert_eq!(connected.state_revision, 6);
+        assert_eq!(state.assign_revision(tunnel_changed.clone()).state_revision, 6);
+        tunnel_changed.tunnel_status = Some(TunnelStatus { configured: true, state: TunnelState::Ready });
+        assert_eq!(state.assign_revision(tunnel_changed).state_revision, 7);
     }
 }

@@ -1,0 +1,35 @@
+[package]
+name = "chadex-desktop-bridge"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+# Deliberately independent of the runtime workspace and Tauri/UI.
+[workspace]
+
+[dependencies]
+chadex-runtime-process = { path = "../../../runtime-engine/crates/chadex-runtime-process" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+zeroize = "1"
+tempfile = "3"
+
+[features]
+test-helper = []
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+libc = "0.2"
+
+[[bin]]
+name = "chadex-bridge-smoke"
+path = "src/bin/smoke.rs"
+
+[[bin]]
+name = "chadex-bridge-fake-helper"
+path = "tests/fixtures/fake_helper.rs"
+required-features = ["test-helper"]
