@@ -79,12 +79,10 @@ def ps_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def cancellation_job_command(project: Path) -> tuple[str, Path]:
+def cancellation_process_spec(project: Path) -> tuple[str, list[str], Path]:
     marker = project / "cancel_pids.json"
     script = project / "cancel_tree.py"
-    command = (f"& {ps_quote(sys.executable)} -X utf8 {ps_quote(str(script))} "
-               f"{ps_quote(str(marker))}; exit $LASTEXITCODE")
-    return command, marker
+    return sys.executable, ["-X", "utf8", str(script), str(marker)], marker
 
 
 def decode_object(raw: bytes, code: str) -> dict[str, Any]:
@@ -692,11 +690,14 @@ def execute(repo: Path, report: Report) -> None:
             check_terminal(output, success, stderr="OK")
 
         with report.stage("cancellation_child_cleanup") as evidence:
-            command, cancel_marker = cancellation_job_command(project)
-            admitted = call("run_job", project=project_id, command=command, cwd=".", timeout_secs=120)
+            executable, args, cancel_marker = cancellation_process_spec(project)
+            admitted = call("run_process", project=project_id, executable=executable, args=args,
+                            cwd=".", timeout_secs=120, sync_wait_secs=1)
             cancel_id = admitted.get("job_id")
-            require(isinstance(cancel_id, str) and bool(cancel_id), "cancel_job_missing")
-            require(admitted.get("cwd") == ".", "cancel_job_cwd_mismatch")
+            require(admitted.get("promoted_to_job") is True and isinstance(cancel_id, str) and bool(cancel_id),
+                    "cancel_job_missing")
+            require(admitted.get("cwd") == "." and admitted.get("command_started") is True,
+                    "cancel_job_cwd_mismatch")
             deadline = time.monotonic() + 20
             while not cancel_marker.exists() and time.monotonic() < deadline:
                 observe(cancel_id)
