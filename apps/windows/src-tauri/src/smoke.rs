@@ -95,9 +95,15 @@ pub async fn smoke_checkpoint(
         serde_json::to_vec(&safe).map_err(|_| "smoke_encode_failed")?,
     )
     .map_err(|_| "smoke_write_failed")?;
+    if stage == "failed" {
+        return Ok(());
+    }
     let acknowledgement = smoke.directory.join(format!("{stage}.continue"));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
     while !acknowledgement.exists() {
+        if smoke.directory.join("abort").exists() {
+            return Err("smoke_aborted".into());
+        }
         if std::time::Instant::now() >= deadline {
             return Err("smoke_ack_timeout".into());
         }
@@ -141,6 +147,10 @@ const SCRIPT: &str = r#"
       await invoke('quit_app'); return;
     }
     let state = await until(s => s.helper.state === 'running' && s.runtime);
+    // TEMP may use an 8.3 path; compare the helper's canonical display paths.
+    config.a = (await action('inspectProject', {path:config.a})).path;
+    config.b = (await action('inspectProject', {path:config.b})).path;
+    if (typeof config.a !== 'string' || typeof config.b !== 'string') throw new Error('smoke_project_inspection_failed');
     if (config.scenario === 'restore_only') {
       state = await until(s => s.helper.state === 'running' && s.runtime?.selected_project?.path === config.b);
       await checkpoint('app_restored', state, {

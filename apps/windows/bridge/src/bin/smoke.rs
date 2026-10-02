@@ -37,14 +37,16 @@ fn safe_result(stage: &str, result: &Value, project: &Path) -> Option<Value> {
     match stage {
         "inspect" => (result["readable"] == true
             && result["writable"] == true
-            && result["path"]
-                .as_str()
-                .is_some_and(|path| Path::new(path) == project))
+            && result["path"].as_str().is_some_and(|path| {
+                Path::new(path).canonicalize().ok().as_deref() == Some(project)
+            }))
         .then(|| json!({"readable": true, "writable": true})),
         "activate" | "getStatus" | "disconnect" => {
             let same_project = result["selected_project"]["path"]
                 .as_str()
-                .is_some_and(|path| Path::new(path) == project);
+                .is_some_and(|path| {
+                    Path::new(path).canonicalize().ok().as_deref() == Some(project)
+                });
             (same_project && result["tunnel_ready"] == false && result["chat_gpt_connected"] == false)
                 .then(|| json!({"selected_project_matches": true, "tunnel_ready": false, "chat_gpt_connected": false}))
         }

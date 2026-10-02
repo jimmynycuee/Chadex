@@ -103,6 +103,19 @@ def sanitize_report(report: w2.Report) -> dict[str, Any]:
         error = item.get("error_code")
         if isinstance(error, str):
             stage["error_code"] = error if error in SAFE_ERROR_CODES else "unclassified"
+        evidence = item.get("evidence")
+        if item.get("error_code") == "checkpoint_expectation_failed" and isinstance(evidence, dict):
+            field = evidence.get("field")
+            expected = evidence.get("expected")
+            actual = evidence.get("actual")
+            if (isinstance(field, str) and field in CHECKPOINT_FIELDS
+                    and field != "helper_pid" and type(expected) is bool
+                    and type(actual) is bool):
+                stage["assertion"] = {
+                    "field": field,
+                    "expected": expected,
+                    "actual": actual,
+                }
         stages.append(stage)
 
     successful_names = sorted({
@@ -151,8 +164,10 @@ def validate_checkpoint(payload: dict[str, Any], expected: dict[str, bool], *,
         else:
             require(type(value) is bool, "checkpoint_value_invalid")
     for name, value in expected.items():
-        require(type(payload.get(name)) is bool and payload[name] is value,
-                "checkpoint_expectation_failed", field=name)
+        actual = payload.get(name)
+        require(type(actual) is bool and actual is value,
+                "checkpoint_expectation_failed", field=name,
+                expected=value, actual=actual)
     helper_pid = payload.get("helper_pid")
     if require_helper_pid:
         require(type(helper_pid) is int and helper_pid > 0, "helper_identity_missing")
@@ -203,6 +218,10 @@ def clean_control(control: Path) -> None:
     if shutdown.exists():
         require(shutdown.is_file() and not shutdown.is_symlink(), "fixture_cleanup_failed")
         shutdown.unlink()
+    abort = control / "abort"
+    if abort.exists():
+        require(abort.is_file() and not abort.is_symlink(), "fixture_cleanup_failed")
+        abort.unlink()
 
 
 def make_fixture(root: Path) -> dict[str, Path]:
@@ -504,7 +523,8 @@ def run_workflow(app: Path, paths: dict[str, Path], powershell: str,
         failure = error
         raise
     finally:
-        cleanup_owned(report, "workflow.cleanup", powershell, owned, process, failure)
+        cleanup_owned(report, "workflow.cleanup", powershell, paths["control"],
+                      owned, process, failure)
 
 
 def run_restore_only(app: Path, paths: dict[str, Path], powershell: str,
@@ -529,7 +549,8 @@ def run_restore_only(app: Path, paths: dict[str, Path], powershell: str,
         failure = error
         raise
     finally:
-        cleanup_owned(report, "restore_only.cleanup", powershell, owned, process, failure)
+        cleanup_owned(report, "restore_only.cleanup", powershell, paths["control"],
+                      owned, process, failure)
 
 
 def run_startup_failure(app: Path, paths: dict[str, Path], powershell: str,
@@ -550,7 +571,8 @@ def run_startup_failure(app: Path, paths: dict[str, Path], powershell: str,
         failure = error
         raise
     finally:
-        cleanup_owned(report, "startup_failure.cleanup", powershell, owned, process, failure)
+        cleanup_owned(report, "startup_failure.cleanup", powershell, paths["control"],
+                      owned, process, failure)
 
 
 def run_force_exit(app: Path, paths: dict[str, Path], powershell: str,
@@ -594,14 +616,22 @@ def run_force_exit(app: Path, paths: dict[str, Path], powershell: str,
         failure = error
         raise
     finally:
-        cleanup_owned(report, "force_exit.cleanup", powershell, owned, process, failure)
+        cleanup_owned(report, "force_exit.cleanup", powershell, paths["control"],
+                      owned, process, failure)
 
 
 def cleanup_owned(report: w2.Report, stage_name: str, powershell: str,
-                  owned: dict[int, dict[str, Any]], process: subprocess.Popen[Any] | None,
+                  control: Path, owned: dict[int, dict[str, Any]],
+                  process: subprocess.Popen[Any] | None,
                   prior_failure: BaseException | None) -> None:
     with report.stage(stage_name):
         report.value["_owned_process_count"] += len(owned)
+        if prior_failure is not None:
+            try:
+                (control / "abort").write_bytes(b"abort")
+            except OSError:
+                # Cleanup must not replace the failure that caused it.
+                pass
         if owned:
             remaining = w2.wait_gone(powershell, owned, timeout=20)
             if remaining:

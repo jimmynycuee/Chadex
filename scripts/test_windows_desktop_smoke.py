@@ -71,6 +71,87 @@ class WindowsDesktopSmokeTests(unittest.TestCase):
         self.assertFalse(safe["passed"])
         self.assertNotIn("PRIVATE_TOKEN", json.dumps(safe))
 
+    def test_boolean_checkpoint_mismatch_is_visible_without_exposing_other_evidence(self) -> None:
+        report = smoke.new_report()
+        with self.assertRaises(smoke.w2.E2EFailure):
+            with report.stage("workflow.runtime_ready"):
+                smoke.validate_checkpoint({"runtime_ready": False},
+                                          {"runtime_ready": True})
+        stage_entry = next(item for item in report.value["stages"]
+                           if item["name"] == "workflow.runtime_ready")
+        stage_entry["evidence"].update({
+            "path": "/private/user/data",
+            "tokenhash": "PRIVATE_TOKEN_HASH",
+            "arbitrary": {"payload": "PRIVATE_PAYLOAD"},
+        })
+        unauthorized = next(item for item in report.value["stages"]
+                            if item["name"] == "force_exit.runtime_ready")
+        unauthorized.update(
+            status="failed",
+            error_code="checkpoint_expectation_failed",
+            evidence={"field": "private_field", "expected": True, "actual": False,
+                      "path": "/private/other"},
+        )
+
+        safe = smoke.sanitize_report(report)
+        safe_stage = next(item for item in safe["stages"]
+                          if item["name"] == "workflow.runtime_ready")
+        unsafe_stage = next(item for item in safe["stages"]
+                            if item["name"] == "force_exit.runtime_ready")
+        self.assertEqual(safe_stage["assertion"], {
+            "field": "runtime_ready", "expected": True, "actual": False,
+        })
+        self.assertNotIn("assertion", unsafe_stage)
+        serialized = json.dumps(safe)
+        for private_value in ("/private/user/data", "PRIVATE_TOKEN_HASH",
+                              "PRIVATE_PAYLOAD", "/private/other"):
+            self.assertNotIn(private_value, serialized)
+
+    def test_prior_failure_aborts_before_wait_and_fallback_without_masking_it(self) -> None:
+        report = smoke.new_report()
+        identity = {1234: {"pid": 1234}}
+        with tempfile.TemporaryDirectory() as directory:
+            control = Path(directory) / "control"
+            control.mkdir()
+            events: list[str] = []
+
+            def wait_gone(*_args: object, **_kwargs: object) -> set[int]:
+                self.assertTrue((control / "abort").is_file())
+                events.append("wait")
+                return {1234} if events.count("wait") == 1 else set()
+
+            def force_cleanup(*_args: object, **_kwargs: object) -> int:
+                self.assertTrue((control / "abort").is_file())
+                events.append("fallback")
+                return 0
+
+            original = smoke.w2.E2EFailure("checkpoint_expectation_failed")
+            with mock.patch.object(smoke.w2, "wait_gone", side_effect=wait_gone), \
+                    mock.patch.object(smoke.w2, "force_cleanup", side_effect=force_cleanup):
+                with self.assertRaises(smoke.w2.E2EFailure) as caught:
+                    try:
+                        with report.stage("workflow.runtime_ready"):
+                            raise original
+                    except smoke.w2.E2EFailure as prior_failure:
+                        smoke.cleanup_owned(report, "workflow.cleanup", "powershell",
+                                            control, identity, None, prior_failure)
+                        raise
+
+            self.assertIs(caught.exception, original)
+            self.assertEqual(events, ["wait", "fallback", "wait"])
+            report.finish()
+            self.assertEqual(report.value["status"], "failed")
+            safe_failure = next(item for item in smoke.sanitize_report(report)["stages"]
+                                if item["name"] == "workflow.runtime_ready")
+            self.assertEqual(safe_failure["error_code"], "checkpoint_expectation_failed")
+
+            (control / "runtime_ready.json").write_text("{}", encoding="utf-8")
+            (control / "runtime_ready.continue").write_bytes(b"continue")
+            smoke.clean_control(control)
+            self.assertFalse((control / "abort").exists())
+            self.assertFalse((control / "runtime_ready.json").exists())
+            self.assertFalse((control / "runtime_ready.continue").exists())
+
     def test_restore_only_requires_runtime_to_remain_offline(self) -> None:
         payload = {
             "helper_running": True,

@@ -253,6 +253,8 @@ async fn desktop_state(app: tauri::AppHandle, state: State<'_, Desktop>) -> Resu
         let label = if runtime.as_ref().is_some_and(|r| {
             r["chat_gpt_verified_for_selected_project"] == true
                 && r["chat_gpt_connected"] == true
+                && r["tunnel_ready"] == true
+                && r["phase"] == "verified"
                 && r["runtime_status"]["runtime_ready"] == true
         }) {
             "Chadex — ChatGPT 已驗證"
@@ -315,10 +317,7 @@ async fn runtime_action(
     if ["connectChatGPT", "startTunnel"].contains(&method.as_str()) {
         state.provision(&bridge).await?;
     }
-    let result = bridge
-        .request(&method, params)
-        .await
-        .map_err(bridge_error);
+    let result = bridge.request(&method, params).await.map_err(bridge_error);
     log_event(&method, result.is_ok());
     let result = result?;
     if ["activateProject", "switchLocalProject"].contains(&method.as_str()) {
@@ -361,8 +360,9 @@ async fn open_project(state: State<'_, Desktop>) -> Result<(), String> {
         .ok_or("project_required")?;
     #[cfg(windows)]
     {
-        // Explorer receives one canonical folder argument; never a shell string.
-        let path = std::fs::canonicalize(path).map_err(|_| "project_path_unavailable")?;
+        // The helper already returns a canonical Windows display path. Validate
+        // it without replacing it with std's extended-length \\?\ form.
+        std::fs::canonicalize(path).map_err(|_| "project_path_unavailable")?;
         let system_root =
             std::env::var_os("SystemRoot").ok_or("windows_system_root_unavailable")?;
         std::process::Command::new(std::path::PathBuf::from(system_root).join("explorer.exe"))
