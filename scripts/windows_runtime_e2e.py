@@ -566,8 +566,9 @@ def execute(repo: Path, report: Report) -> None:
             output, success = client.invoke("run_shell", {"project": project_id, "command": command,
                                             "cwd": "子 dir's space", "timeout_secs": 20})
             check_terminal(output, success, stdout="PS_UTF8_中文", stderr="PS_STDERR")
-            require("ENV_中文" in output.get("stdout_tail", "") and
-                    str(project / "子 dir's space").casefold() in output.get("stdout_tail", "").casefold(),
+            stdout_lines = output.get("stdout_tail", "").splitlines()
+            require("ENV_中文" in stdout_lines and output.get("cwd") == "子 dir's space" and
+                    any(line.rstrip("\\/").casefold().endswith("子 dir's space".casefold()) for line in stdout_lines),
                     "powershell_env_cwd_mismatch")
             output, success = client.invoke("run_shell", {"project": project_id,
                 "command": "[Console]::Out.WriteLine('PS_NONZERO'); [Console]::Error.WriteLine('PS_ERROR'); exit 7",
@@ -609,9 +610,11 @@ def execute(repo: Path, report: Report) -> None:
             second = call("session_shell_exec", **shell_identity,
                           command="Write-Output $global:W2State; Write-Output $env:W2State; Write-Output (Get-Location).Path",
                           timeout_secs=20)
+            persistent_lines = second.get("stdout", "").splitlines()
             require(second.get("command_completed") is True and second.get("exit_code") == 0 and
-                    "PERSIST_中文" in second.get("stdout", "") and "PERSIST_ENV" in second.get("stdout", "") and
-                    str(project / "子 dir's space").casefold() in second.get("stdout", "").casefold(),
+                    "PERSIST_中文" in persistent_lines and "PERSIST_ENV" in persistent_lines and
+                    second.get("cwd") == "子 dir's space" and
+                    any(line.rstrip("\\/").casefold().endswith("子 dir's space".casefold()) for line in persistent_lines),
                     "persistent_state_cwd_not_retained")
             status = call("session_shell_status", **shell_identity)
             require(status.get("shell_id") == opened["shell_id"] and status.get("shell_state") == "running",
@@ -659,9 +662,14 @@ def execute(repo: Path, report: Report) -> None:
             rows = remember_tree(powershell, helper.process.pid, owned)
             require(all(same_process(rows.get(pid), identity) for pid, identity in runtime_processes.items()),
                     "runtime_restarted_during_observation")
+            durable_content = "完成 UTF-8\n"
             observed = read("durable_done.txt")
-            require(observed.get("text") == "完成 UTF-8" and
-                    observed.get("sha256") == digest("完成 UTF-8\n"), "durable_file_result_missing")
+            require(observed.get("text") == durable_content.rstrip("\n") and
+                    type(observed.get("read_revision")) is int, "durable_file_result_missing")
+            durable_bytes = (project / "durable_done.txt").read_bytes()
+            require(durable_bytes == durable_content.encode("utf-8") and
+                    hashlib.sha256(durable_bytes).hexdigest() == digest(durable_content),
+                    "durable_file_bytes_mismatch")
             evidence.update(duration_ms=round(elapsed * 1000), launch_count=1, job_count=1,
                             observation_timeout_exercised=True, runtime_identity_preserved=True)
 
