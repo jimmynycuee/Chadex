@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "track": "W3 W2 regression",
+  "tested_commit": "3ecaf6e0b647d27db5e53aa6ae1385aff8bc5cd2",
+  "ci_run": 37026168474,
+  "status": "passed",
+  "passed": true,
+  "platform": "windows",
+  "helper_stderr_bytes": 0,
+  "stages": [
+    {
+      "elapsed_ms": 157,
+      "name": "preflight",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 7640,
+      "name": "helper_runtime_startup",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 1032,
+      "name": "registration_readiness",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 31,
+      "name": "file_roundtrip",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 1078,
+      "name": "powershell",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 109,
+      "name": "native_exe",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 157,
+      "name": "cmd_bat",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 1203,
+      "name": "persistent_shell",
+      "status": "passed"
+    },
+    {
+      "duration_ms": 55125,
+      "elapsed_ms": 55578,
+      "job_count": 1,
+      "launch_count": 1,
+      "name": "durable_job",
+      "observation_timeout_exercised": true,
+      "runtime_identity_preserved": true,
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 812,
+      "name": "terminal_edit_validation",
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 1907,
+      "name": "cancellation_child_cleanup",
+      "observed_payload_processes": 2,
+      "remaining_count": 0,
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 968,
+      "forced_cleanup_count": 0,
+      "name": "helper_shutdown",
+      "owned_process_count": 7,
+      "remaining_count": 0,
+      "status": "passed"
+    },
+    {
+      "elapsed_ms": 16,
+      "name": "fixture_cleanup",
+      "status": "passed"
+    }
+  ]
+}

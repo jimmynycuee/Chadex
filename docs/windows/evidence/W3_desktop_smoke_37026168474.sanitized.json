@@ -1,0 +1,165 @@
+{
+  "tested_commit": "3ecaf6e0b647d27db5e53aa6ae1385aff8bc5cd2",
+  "ci_run": 37026168474,
+  "schema": 1,
+  "track": "W3",
+  "status": "passed",
+  "passed": true,
+  "platform": "windows",
+  "scope": "real Tauri WebView, desktop restart, isolated local runtime",
+  "stages": [
+    {
+      "name": "preflight",
+      "status": "passed",
+      "elapsed_ms": 0
+    },
+    {
+      "name": "workflow.webview_ready",
+      "status": "passed",
+      "elapsed_ms": 6281
+    },
+    {
+      "name": "workflow.runtime_ready",
+      "status": "passed",
+      "elapsed_ms": 6547
+    },
+    {
+      "name": "workflow.project_switched",
+      "status": "passed",
+      "elapsed_ms": 1968
+    },
+    {
+      "name": "workflow.project_a_operation",
+      "status": "passed",
+      "elapsed_ms": 141
+    },
+    {
+      "name": "workflow.project_b_operation",
+      "status": "passed",
+      "elapsed_ms": 125
+    },
+    {
+      "name": "workflow.helper_restarted",
+      "status": "passed",
+      "elapsed_ms": 7250
+    },
+    {
+      "name": "workflow.helper_kill",
+      "status": "passed",
+      "elapsed_ms": 1922
+    },
+    {
+      "name": "workflow.helper_crash_observed",
+      "status": "passed",
+      "elapsed_ms": 563
+    },
+    {
+      "name": "workflow.old_helper_tree_gone",
+      "status": "passed",
+      "elapsed_ms": 359
+    },
+    {
+      "name": "workflow.recovered",
+      "status": "passed",
+      "elapsed_ms": 7500
+    },
+    {
+      "name": "workflow.recovered_project_operation",
+      "status": "passed",
+      "elapsed_ms": 156
+    },
+    {
+      "name": "workflow.shutdown",
+      "status": "passed",
+      "elapsed_ms": 2735
+    },
+    {
+      "name": "restore_only.app_restored",
+      "status": "passed",
+      "elapsed_ms": 2547
+    },
+    {
+      "name": "restore_only.persisted_project_identity",
+      "status": "passed",
+      "elapsed_ms": 0
+    },
+    {
+      "name": "restore_only.shutdown",
+      "status": "passed",
+      "elapsed_ms": 485
+    },
+    {
+      "name": "startup_failure.startup_failure",
+      "status": "passed",
+      "elapsed_ms": 1500
+    },
+    {
+      "name": "startup_failure.shutdown",
+      "status": "passed",
+      "elapsed_ms": 515
+    },
+    {
+      "name": "force_exit.webview_ready",
+      "status": "passed",
+      "elapsed_ms": 2328
+    },
+    {
+      "name": "force_exit.runtime_ready",
+      "status": "passed",
+      "elapsed_ms": 6515
+    },
+    {
+      "name": "force_exit.project_operation",
+      "status": "passed",
+      "elapsed_ms": 110
+    },
+    {
+      "name": "force_exit.parent_terminated",
+      "status": "passed",
+      "elapsed_ms": 984
+    },
+    {
+      "name": "workflow.cleanup",
+      "status": "passed",
+      "elapsed_ms": 375
+    },
+    {
+      "name": "restore_only.cleanup",
+      "status": "passed",
+      "elapsed_ms": 406
+    },
+    {
+      "name": "startup_failure.cleanup",
+      "status": "passed",
+      "elapsed_ms": 391
+    },
+    {
+      "name": "force_exit.cleanup",
+      "status": "passed",
+      "elapsed_ms": 406
+    },
+    {
+      "name": "fixture_cleanup",
+      "status": "passed",
+      "elapsed_ms": 16
+    }
+  ],
+  "tool_calls": {
+    "count": 10,
+    "successful_tool_names": [
+      "read_files",
+      "run_process"
+    ]
+  },
+  "owned_processes_observed": 56,
+  "owned_processes_remaining": 0,
+  "forced_count": 0,
+  "manual_checks_pending": [
+    "native_picker",
+    "explorer_open",
+    "tray",
+    "launch_at_login",
+    "notifications",
+    "credentialed_tunnel"
+  ]
+}

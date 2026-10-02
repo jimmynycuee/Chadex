@@ -64,4 +64,8 @@ Credentialed ChatGPT/OpenAI evidence must remain private or sanitized. Public CI
 
 ## Evidence status
 
-Current implementation evidence is collected in `docs/windows/evidence/`. The final acceptance report must include the final branch/SHA, CI run testing that same SHA, desktop build, W2 runtime E2E, desktop lifecycle outcomes, macOS regression and manual/private status. A later documentation commit must also receive final CI; an early implementation run is not final evidence.
+[W3 validation evidence](evidence/W3_validation_status.md) records implementation SHA `3ecaf6e0b647d27db5e53aa6ae1385aff8bc5cd2`, full successful CI run `37026168474`, exact versions, Windows test/build results, W2 13/13 stages, W3 27/27 real WebView stages and lifecycle cleanup 56→0 with no forced cleanup. Sanitized projections are committed beside the report; canonical raw W2 observations remain in Actions.
+
+The user has no Windows host and chose to retain the six native/private categories above as `not validated`. The automated implementation is verified; full W3 product acceptance remains pending. Credential Manager isolated roundtrip/deletion passed; credentialed ChatGPT/tunnel workflow remains unverified. The production-feature artifact is an unsigned direct-Cargo debug executable without smoke IPC, not a release/installer.
+
+The evidence commit must also receive full CI on its own final HEAD; the final handoff identifies that exact SHA/run. No early implementation run substitutes for final-HEAD CI. W4 may start from the final pushed W3 commit only after a new user instruction; outstanding W3 manual/private acceptance remains explicit.
