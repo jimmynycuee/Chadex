@@ -59,6 +59,35 @@ class HarnessContracts(unittest.TestCase):
         for raw in (self.frame({"failed_count": 1}), self.frame(isError=True), self.frame(success=False)):
             self.assertFalse(harness.decode_mcp(raw, 200, 1)[1])
 
+    def test_adaptive_runtime_routes_direct_and_long_tail_tools(self):
+        arguments = {"summary_only": True}
+        self.assertEqual(harness.adaptive_mcp_call("runtime_status", arguments),
+                         ("runtime_status", arguments))
+        self.assertEqual(harness.adaptive_mcp_call("work_on_project", {"instruction": "W2"}),
+                         ("work_on_project", {"instruction": "W2"}))
+        self.assertEqual(harness.adaptive_mcp_call("list_projects", {}),
+                         ("call_runtime_tool", {"tool": "list_projects", "arguments": {}}))
+        self.assertEqual(harness.adaptive_mcp_call("open_session_shell", {"project": "p"}),
+                         ("call_runtime_tool", {"tool": "open_session_shell",
+                                                "arguments": {"project": "p"}}))
+
+    def test_observe_jobs_sparse_and_full_items_normalize_without_identity_loss(self):
+        base = {"job_id": "job-1", "status": "running", "terminal": False,
+                "observation_token": "token-1", "stdout_tail": "hello"}
+        sparse = harness.decode_single_observation(
+            {"items": [base], "wait": {"outcome": "timeout", "waited_ms": 2000}}, "job-1")
+        self.assertEqual(sparse["wait_outcome"], "timeout")
+        self.assertEqual(sparse["waited_ms"], 2000)
+        full = harness.decode_single_observation(
+            {"items": [{"success": True, "output": {**base, "terminal": True, "status": "completed"}}],
+             "wait": {"outcome": "terminal"}}, "job-1")
+        self.assertTrue(full["terminal"])
+        self.assertEqual(full["waited_ms"], 0)
+        with self.assertRaises(harness.E2EFailure):
+            harness.decode_single_observation(
+                {"items": [{"success": False, "output": None}], "wait": {"outcome": "item_error"}},
+                "job-1")
+
     def test_compact_terminal_success_and_handoff_are_distinct(self):
         harness.check_terminal({"stdout_tail": "OK"}, True, stdout="OK")
         for output in ({"job_id": "job"}, {"exit_code": 8}, {"command_completed": False}):

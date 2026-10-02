@@ -36,6 +36,10 @@ MAX_FRAME = 1024 * 1024
 DURABLE_SECONDS = 55
 WAIT_OUTCOMES = {"immediate", "updated", "terminal", "timeout"}
 TERMINAL_STATUSES = {"completed", "failed", "stopped", "cancelled", "timed_out", "lost"}
+ADAPTIVE_DIRECT_TOOLS = frozenset({
+    "runtime_status", "work_on_project", "read_files", "apply_text_edits",
+    "run_process", "run_shell", "observe_jobs",
+})
 SAFE_FAILURES = {
     "local_port_unavailable", "binary_missing", "binary_directory_missing",
     "binary_version_mismatch", "binary_version_unverifiable", "bundled_runtime_missing",
@@ -235,6 +239,13 @@ class Helper:
                 stream.close()
 
 
+def adaptive_mcp_call(name: str, arguments: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Route W2 calls through the current Adaptive Runtime MCP surface."""
+    if name in ADAPTIVE_DIRECT_TOOLS:
+        return name, arguments
+    return "call_runtime_tool", {"tool": name, "arguments": arguments}
+
+
 class McpClient:
     def __init__(self, url: str, token: str, report: Report) -> None:
         parsed = urlsplit(url)
@@ -395,6 +406,25 @@ def check_terminal(output: dict[str, Any], success: bool, *, exit_code: int = 0,
         require(stderr in output.get("stderr_tail", output.get("stderr", "")), "stderr_mismatch")
 
 
+def decode_single_observation(batch: dict[str, Any], job_id: str) -> dict[str, Any]:
+    items = batch.get("items", [])
+    require(len(items) == 1 and isinstance(items[0], dict), "observation_batch_invalid")
+    observed = items[0]
+    if "success" in observed:
+        require(observed.get("success") is True and isinstance(observed.get("output"), dict),
+                "observation_item_failed")
+        observed = observed["output"]
+    else:
+        require(isinstance(observed.get("observation_token"), str), "observation_item_invalid")
+    wait_info = batch.get("wait")
+    require(isinstance(wait_info, dict), "observation_wait_missing")
+    output = dict(observed)
+    output["wait_outcome"] = wait_info.get("outcome")
+    output["waited_ms"] = wait_info.get("waited_ms", 0)
+    require(output.get("job_id") == job_id, "observation_job_identity_changed")
+    return output
+
+
 def observation_evidence(output: dict[str, Any], job_id: str) -> dict[str, Any]:
     require(output.get("job_id") == job_id, "observation_job_identity_changed")
     require(output.get("wait_outcome") in WAIT_OUTCOMES, "observation_wait_outcome_invalid")
@@ -477,7 +507,8 @@ def execute(repo: Path, report: Report) -> None:
             report.value["project_id_sha256"] = digest(project_id)
 
         def call(name: str, **arguments: Any) -> dict[str, Any]:
-            return client.invoke(name, arguments)[0]
+            wire_name, wire_arguments = adaptive_mcp_call(name, arguments)
+            return client.invoke(wire_name, wire_arguments)[0]
 
         def process(args: list[str], **options: Any) -> tuple[dict[str, Any], bool]:
             return client.invoke("run_process", {"project": project_id, "executable": sys.executable,
@@ -496,7 +527,11 @@ def execute(repo: Path, report: Report) -> None:
             require(status.get("agents", {}).get("online_count") == 1, "runner_not_ready")
             projects = call("list_projects").get("projects", [])
             require(any(item.get("id") == project_id for item in projects), "project_not_registered")
-            session = call("start_session", project=project_id, title="W2 native runtime validation")
+            session = call(
+                "work_on_project", project=project_id, instruction="W2 native runtime validation",
+                include_project_instructions=False, include_workflow_guidance=False,
+                include_extension_catalog=False,
+            )
             session_id = session.get("session_id")
             require(isinstance(session_id, str) and bool(session_id), "session_missing")
             rows = remember_tree(powershell, helper.process.pid, owned)
@@ -578,10 +613,14 @@ def execute(repo: Path, report: Report) -> None:
             require(closed.get("shell_state") == "closed", "persistent_shell_not_closed")
 
         def observe(job_id: str, previous: str | None = None, wait: int = 0) -> dict[str, Any]:
-            arguments: dict[str, Any] = {"job_id": job_id, "tail_lines": 20}
+            item: dict[str, Any] = {"job_id": job_id}
+            arguments: dict[str, Any] = {"items": [item], "tail_lines": 20}
             if previous is not None:
-                arguments.update(after_observation_token=previous, wait_secs=wait)
-            output = client.invoke("job_tail", arguments, timeout=wait + 20)[0]
+                item["after_observation_token"] = previous
+                if wait:
+                    arguments["wait_secs"] = wait
+            batch = call("observe_jobs", **arguments)
+            output = decode_single_observation(batch, job_id)
             report.value["observations"].append(observation_evidence(output, job_id))
             return output
 
