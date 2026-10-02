@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "track": "W4",
+  "date": "2026-10-03",
+  "timezone": "Asia/Taipei",
+  "branch": "codex/w4-source-converged",
+  "w3_baseline": "dd7d5ebbc4bf06c91ebe3a86a8e52c2d38fc52c3",
+  "w3_baseline_ci": {"run_id": 37029362354, "attempt": 2, "conclusion": "success"},
+  "implementation_source": "f9ba10bebf1ec1ceb4cb17e90e50c3a21b9c830e",
+  "graph": {
+    "built_at_commit": "f9ba10bebf1ec1ceb4cb17e90e50c3a21b9c830e",
+    "nodes": 59454,
+    "links": 175118,
+    "communities": 1834,
+    "normal_update": "passed",
+    "check_update_exit_code": 0,
+    "needs_update_file": false,
+    "zero_node_warning_count": 85,
+    "community_labels": "partially reused; changed communities use hub labels",
+    "windows_component_anchors": 13,
+    "missing_windows_anchors": 0,
+    "windows_anchors_without_file_notes": 0,
+    "semantic_llm_extraction": "not run"
+  },
+  "sync": {
+    "sync_version": 2,
+    "components": 17,
+    "selected_files": 48,
+    "generated_outputs": 68,
+    "manual_files": 9,
+    "written_files": 77,
+    "retired_managed_generated_files": 15,
+    "preexisting_unmanaged_files_unchanged": 177,
+    "original_modified_and_retired_files": "backed up locally before writing",
+    "check_changed": 0,
+    "check_stale_generated": 0
+  },
+  "validation": {
+    "deterministic_tests_passed": 6,
+    "checked_existing_outputs": 77,
+    "source_references": 65,
+    "commit_references": 11,
+    "wikilinks": 539,
+    "canvases": 2,
+    "yaml_source_commit_link_canvas_errors": 0,
+    "obsidian_reading_view": "not validated"
+  },
+  "w3_full_product_acceptance": "pending",
+  "w3_native_private_categories": {
+    "native_picker": "not validated",
+    "explorer_open": "not validated",
+    "tray": "not validated",
+    "launch_at_login": "not validated",
+    "notifications": "not validated",
+    "credentialed_tunnel": "not validated"
+  },
+  "w5": "not started",
+  "merged_main": false,
+  "published_release": false
+}
