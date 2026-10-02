@@ -66,7 +66,7 @@ final class CodeFerretTests: XCTestCase {
     }
 
     func testStatusPollsNeitherWakeNorConsumeRecentActivityOrSuccess() {
-        let tools = ["task_status", "job_status", "poll_job", "observe_jobs"]
+        let tools = ["task_status", "job_status", "poll_job", "observe_jobs", "observe_task", "list_jobs"]
         var c = FerretController()
         var snapshot = BackendSnapshot.initial
         c.update(snapshot: snapshot, traces: [], activities: [], now: now)
@@ -76,7 +76,7 @@ final class CodeFerretTests: XCTestCase {
         let finishedPolls = tools.enumerated().map {
             trace(UInt64($0.offset + 1), tool: $0.element, finished: 2_000_181_000, completion: "completed")
         }
-        let edit = trace(5, tool: "apply_patch", finished: 2_000_182_000, completion: "completed")
+        let edit = trace(7, tool: "apply_patch", finished: 2_000_182_000, completion: "completed")
         c.update(snapshot: snapshot, traces: finishedPolls + [edit], activities: [], now: now.addingTimeInterval(182))
         XCTAssertEqual(c.presentation.state, .coding)
         XCTAssertTrue(c.presentation.isRecentActivity)
@@ -97,7 +97,7 @@ final class CodeFerretTests: XCTestCase {
         c.update(snapshot: .initial, traces: [search, edit], activities: [], now: now.addingTimeInterval(1.1))
         XCTAssertEqual(c.presentation.state, .listening)
         XCTAssertFalse(c.presentation.isRecentActivity)
-        c.update(snapshot: .initial, traces: [search, edit], activities: [], now: now.addingTimeInterval(2))
+        c.update(snapshot: .initial, traces: [search, edit], activities: [], now: now.addingTimeInterval(2.2))
         XCTAssertEqual(c.presentation.state, .coding)
         XCTAssertFalse(c.presentation.isRecentActivity)
     }
@@ -202,7 +202,7 @@ final class CodeFerretTests: XCTestCase {
         c.update(snapshot: .initial, traces: [], activities: [], now: now)
         c.update(snapshot: .initial, traces: [], activities: [], now: now.addingTimeInterval(181))
         XCTAssertEqual(c.presentation.state, .sleep)
-        c.update(snapshot: .initial, traces: [trace()], activities: [], now: now.addingTimeInterval(182))
+        c.update(snapshot: .initial, traces: [trace(start: 2_000_182_000)], activities: [], now: now.addingTimeInterval(182))
         XCTAssertEqual(c.presentation.state, .listening)
     }
 
@@ -272,6 +272,159 @@ final class CodeFerretTests: XCTestCase {
         snapshot.taskProgress = task("unknown")
         c.update(snapshot: snapshot, traces: [], activities: [], now: now.addingTimeInterval(8))
         XCTAssertEqual(c.presentation.state, .waiting)
+    }
+
+    func testWaitingNeverReceivesOrBecomesLongTask() {
+        for status in ["queued", "cancelling"] {
+            var c = FerretController()
+            var snapshot = BackendSnapshot.initial
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+            snapshot.taskProgress = task(status)
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+            XCTAssertEqual(c.presentation.state, .waiting, status)
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now.addingTimeInterval(61))
+            XCTAssertEqual(c.presentation.state, .waiting, status)
+        }
+        for status in ["queued", "recovering", "stop_requested"] {
+            var c = FerretController()
+            var snapshot = BackendSnapshot.initial
+            snapshot.mascotJobs = []
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+            snapshot.mascotJobs = [FerretJobSnapshot(jobId: "j1", status: status, startedAtMs: 2_000_000_000)]
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+            XCTAssertEqual(c.presentation.state, .waiting, status)
+        }
+        var c = FerretController()
+        c.update(snapshot: .initial, traces: [], activities: [], now: now)
+        let wait = trace(tool: "await_job", start: 1_999_900_000)
+        c.update(snapshot: .initial, traces: [wait], activities: [], now: now)
+        XCTAssertEqual(c.presentation.state, .waiting)
+        c.update(snapshot: .initial, traces: [wait], activities: [], now: now.addingTimeInterval(61))
+        XCTAssertEqual(c.presentation.state, .waiting)
+        var snapshot = BackendSnapshot.initial
+        snapshot.currentOperation = OperationSnapshot(id: "op", kind: "task", phase: "cancelling", startedAtMs: 1_999_900_000, cancellable: true)
+        c.update(snapshot: snapshot, traces: [], activities: [], now: now.addingTimeInterval(62))
+        XCTAssertEqual(c.presentation.state, .waiting)
+    }
+
+    func testReceivingLastsOneSecondAndDoesNotReplayOldWork() {
+        var c = FerretController()
+        c.update(snapshot: .initial, traces: [], activities: [], now: now)
+        c.update(snapshot: .initial, traces: [trace()], activities: [], now: now)
+        c.update(snapshot: .initial, traces: [trace()], activities: [], now: now.addingTimeInterval(0.8))
+        XCTAssertEqual(c.presentation.state, .listening)
+        c.update(snapshot: .initial, traces: [trace()], activities: [], now: now.addingTimeInterval(1))
+        XCTAssertEqual(c.presentation.state, .searching)
+        var restored = FerretController()
+        restored.update(snapshot: .initial, traces: [trace(start: 1_999_990_000)], activities: [], now: now)
+        XCTAssertEqual(restored.presentation.state, .searching, "Already running work is not a new prompt")
+    }
+
+    func testConcurrentToolsProvideActivityWithoutInheritingOldJobOrWaitDuration() {
+        for (tool, state) in [("read_files", FerretState.searching), ("write_project_file", .coding), ("go_test", .testing)] {
+            var c = FerretController()
+            var snapshot = BackendSnapshot.initial
+            snapshot.mascotJobs = []
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+            snapshot.mascotJobs = [FerretJobSnapshot(jobId: "j1", status: "running", startedAtMs: 1_999_900_000)]
+            let wait = trace(1, tool: "await_job", start: 1_999_900_000)
+            c.update(snapshot: snapshot, traces: [wait], activities: [], now: now)
+            XCTAssertEqual(c.presentation.state, .longTask)
+            let work = trace(2, tool: tool, start: 2_000_001_000)
+            c.update(snapshot: snapshot, traces: [wait, work], activities: [], now: now.addingTimeInterval(1))
+            XCTAssertEqual(c.presentation.state, state)
+            XCTAssertEqual(c.presentation.activity, state)
+            c.update(snapshot: snapshot, traces: [wait, work], activities: [], now: now.addingTimeInterval(61))
+            XCTAssertEqual(c.presentation.state, .longTask)
+            XCTAssertEqual(c.presentation.activity, state)
+            c.update(snapshot: snapshot, traces: [wait], activities: [], now: now.addingTimeInterval(62))
+            XCTAssertEqual(c.presentation.state, .longTask, "Job remains active after tool observation ends")
+        }
+        var c = FerretController()
+        c.update(snapshot: .initial, traces: [], activities: [], now: now)
+        let wait = trace(1, tool: "await_job", start: 1_999_900_000)
+        let search = trace(2)
+        c.update(snapshot: .initial, traces: [wait, search], activities: [], now: now)
+        c.update(snapshot: .initial, traces: [wait, search], activities: [], now: now.addingTimeInterval(1))
+        XCTAssertEqual(c.presentation.state, .searching, "Waiting duration is not working duration")
+    }
+
+    func testNewFastWorkSupersedesOldSuccessAndDoesNotReplayItAfterExpiry() {
+        var c = FerretController()
+        var snapshot = BackendSnapshot.initial
+        c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+        snapshot.taskProgress = task("completed", validation: "passed")
+        c.update(snapshot: snapshot, traces: [], activities: [], now: now.addingTimeInterval(1))
+        XCTAssertEqual(c.presentation.state, .success)
+        let edit = trace(tool: "apply_patch", start: 2_000_001_100, finished: 2_000_001_200, completion: "completed")
+        c.update(snapshot: snapshot, traces: [edit], activities: [], now: now.addingTimeInterval(1.5))
+        XCTAssertEqual(c.presentation.state, .coding)
+        XCTAssertTrue(c.presentation.isRecentActivity)
+        c.update(snapshot: snapshot, traces: [edit], activities: [], now: now.addingTimeInterval(3.5))
+        XCTAssertEqual(c.presentation.state, .idle)
+    }
+
+    func testFastWorkRetainsRecentPoseDuringGenericDurableWorkButNotActualWaits() {
+        var c = FerretController()
+        var snapshot = BackendSnapshot.initial
+        snapshot.mascotJobs = []
+        c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+        snapshot.mascotJobs = [FerretJobSnapshot(jobId: "j1", status: "running", startedAtMs: 1_999_900_000)]
+        c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+        let edit = trace(tool: "apply_patch", start: 2_000_001_000, finished: 2_000_001_100, completion: "completed")
+        c.update(snapshot: snapshot, traces: [edit], activities: [], now: now.addingTimeInterval(1.5))
+        XCTAssertEqual(c.presentation.state, .coding)
+        XCTAssertTrue(c.presentation.isRecentActivity)
+        XCTAssertNil(c.presentation.progress)
+        c.update(snapshot: snapshot, traces: [edit], activities: [], foreground: false, now: now.addingTimeInterval(2))
+        XCTAssertEqual(c.presentation.state, .longTask)
+        XCTAssertFalse(c.presentation.isRecentActivity)
+        snapshot.mascotJobs?[0].status = "recovering"
+        c.update(snapshot: snapshot, traces: [edit], activities: [], now: now.addingTimeInterval(2.5))
+        XCTAssertEqual(c.presentation.state, .waiting)
+        snapshot.mascotJobs?[0].status = "running"
+        c.update(snapshot: snapshot, traces: [edit], activities: [], now: now.addingTimeInterval(3.5))
+        XCTAssertEqual(c.presentation.state, .longTask)
+        XCTAssertFalse(c.presentation.isRecentActivity)
+    }
+
+    func testFailureWinsAcrossToolTaskAndConcurrentJobResults() {
+        for jobsReversed in [false, true] {
+            var c = FerretController()
+            var snapshot = BackendSnapshot.initial
+            snapshot.mascotJobs = []
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+            snapshot.taskProgress = task("completed", validation: "passed")
+            let failed = FerretJobSnapshot(jobId: "failed", status: "failed", finishedAtMs: 2_000_001_000, exitCode: 1)
+            let succeeded = FerretJobSnapshot(jobId: "ok", status: "completed", finishedAtMs: 2_000_001_000, exitCode: 0)
+            snapshot.mascotJobs = jobsReversed ? [succeeded, failed] : [failed, succeeded]
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now.addingTimeInterval(1))
+            XCTAssertEqual(c.presentation.state, .error)
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now.addingTimeInterval(5.9))
+            XCTAssertEqual(c.presentation.state, .error)
+            c.update(snapshot: snapshot, traces: [], activities: [], now: now.addingTimeInterval(6))
+            XCTAssertEqual(c.presentation.state, .idle)
+        }
+        var c = FerretController()
+        var snapshot = BackendSnapshot.initial
+        c.update(snapshot: snapshot, traces: [], activities: [], now: now)
+        snapshot.taskProgress = task("completed", validation: "passed")
+        c.update(snapshot: snapshot, traces: [trace(finished: 2_000_001_000, completion: "backend_error")], activities: [], now: now.addingTimeInterval(1))
+        XCTAssertEqual(c.presentation.state, .error)
+        let next = trace(2, tool: "write_project_file", start: 2_000_001_100, finished: 2_000_001_200, completion: "completed")
+        c.update(snapshot: snapshot, traces: [next], activities: [], now: now.addingTimeInterval(1.5))
+        XCTAssertEqual(c.presentation.state, .coding, "New work replaces a previous failure reaction")
+    }
+
+    func testActualRuntimeToolNamesMapToSpecificStates() {
+        for tool in ["project_overview", "list_project_tracked_files", "document_symbols", "workspace_symbols", "goto_definition", "find_references", "call_hierarchy"] {
+            XCTAssertEqual(FerretController.toolState(tool), .searching, tool)
+        }
+        for tool in ["write_project_file", "apply_unified_diff"] {
+            XCTAssertEqual(FerretController.toolState(tool), .coding, tool)
+        }
+        XCTAssertEqual(FerretController.toolState("go_test"), .testing)
+        XCTAssertEqual(FerretController.toolState("cargo_fmt"), .thinking, "Trace lacks check-mode parameters")
     }
 
     func testDiagnosticsDoNotWakeIdleOrConsumeReaction() {

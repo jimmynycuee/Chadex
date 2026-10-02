@@ -14,7 +14,7 @@ Code Ferret lives in the native SwiftUI sidebar. It observes Chadex's selected p
 
 | Observed fact | Presentation |
 | --- | --- |
-| New meaningful tool request, active task, or scoped Job | Brief listening reaction, then its observed activity |
+| Fresh meaningful work request, working task, or scoped Job | One-second listening reaction, then its observed activity; restored history and actual waits do not replay listening |
 | Task search/read step; file/search tool | Search Repo |
 | Task edit/integration; edit/write tool | Coding |
 | Task validation; explicit validation tool | Running Tests |
@@ -24,13 +24,15 @@ Code Ferret lives in the native SwiftUI sidebar. It observes Chadex's selected p
 | Fresh completed task or successful terminal Job | Brief Success reaction |
 | Explicit task/validation/tool failure or failed/lost/timed-out Job | Brief Error reaction |
 | Ordinary successful work-tool response | Its actual activity for two seconds, labelled as recent activity, not whole-task success |
-| Status-only polling (`task_status`, `job_status`, `poll_job`, `observe_jobs`) | Diagnostic evidence; does not wake the companion or consume reactions |
+| Status-only polling (`task_status`, `job_status`, `poll_job`, `observe_jobs`, `observe_task`, `list_jobs`) | Diagnostic evidence; does not wake the companion or consume reactions |
 | Connection ready but awaiting selected-project verification, without observed work | Idle, then Sleep; verification remains visible in the connection UI |
 | Idle for three minutes, or inactive app with no observed work | Sleep |
 
 Non-meaningful diagnostics, including `runtime_status`, do not wake the mascot or consume reactions. Terminal host handoff remains diagnostic evidence: lack of a follow-up request never becomes an invented host failure.
 
-Fast completed work is observed even when its entire request fits between polls. Only the most recent completion is retained; there is no replay queue. The two-second hold expires without being extended by repeated snapshots, and live work, real waiting conditions, and terminal reactions take precedence. Concurrent finishes are ordered by completion time; an explicit failure is not erased by another successful finish in the same snapshot. Foreground/background polling intervals and the animation clock are unchanged.
+Fast completed work is observed even when its entire request fits between polls. Only the most recent completion is retained; there is no replay queue. The two-second hold expires without being extended by repeated snapshots. Live tools, known task steps and real waiting conditions take precedence; generic running Jobs allow this explicitly recent activity to remain visible in the foreground. Concurrent finishes are ordered by completion time; an explicit failure is not erased by another successful finish in the same snapshot. Foreground/background polling intervals and the animation clock are unchanged.
+
+New observed work supersedes an older success or error reaction rather than replaying it after the new activity finishes. Errors retain five seconds and terminal success retains three seconds when no new work arrives; a simultaneous task/Job success cannot erase a failure. Waiting calls and cancellation remain Waiting after 60 seconds. A live scoped search/edit/validation tool takes precedence over generic process Job activity, and the Long Task threshold uses the selected activity's own start time rather than an unrelated older Job or wait. Known task-step evidence retains precedence. Runtime symbol navigation and project overview tools map to Search Repo, `write_project_file` and `apply_unified_diff` to Coding, and `go_test` to Running Tests; generic shell commands and `cargo_fmt` remain Thinking because traces contain no command/check-mode parameters.
 
 ## Appearance and motion
 
