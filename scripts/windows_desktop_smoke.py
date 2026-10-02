@@ -57,6 +57,10 @@ SAFE_ERROR_CODES = frozenset(w2.SAFE_FAILURES) | frozenset({
     "desktop_shutdown_missing", "desktop_shutdown_invalid", "desktop_shutdown_not_graceful",
     "desktop_shutdown_not_clean", "unexpected_graceful_shutdown", "parent_termination_failed",
     "owned_processes_remain", "forced_cleanup_required", "fixture_cleanup_failed",
+    "helper_identity_not_owned", "process_creation_identity_missing",
+    "process_creation_identity_invalid", "process_ownership_ambiguous",
+    "process_handle_open_failed", "process_handle_query_failed",
+    "process_handle_termination_failed",
     "unexpected_exception", "unclassified",
 })
 SAFE_TOOL_NAMES = frozenset({"read_files", "run_process"})
@@ -263,7 +267,9 @@ def process_identity(powershell: str, pid: int, owned: dict[int, dict[str, Any]]
     if expected_name is not None:
         require(str(row.get("Name", "")).casefold() == expected_name.casefold(),
                 "helper_name_mismatch")
-    owned[pid] = row
+    # A checkpoint reports a PID, not ownership. The preceding desktop-tree
+    # observation must already have established this exact incarnation.
+    require(w2.same_process(row, owned.get(pid, {})), "helper_identity_not_owned")
     w2.remember_tree(powershell, pid, owned)
     return row
 
@@ -393,14 +399,11 @@ def verify_project_operation(client: w2.McpClient, project_id: str,
 
 
 def terminate_exact(powershell: str, pid: int, identity: dict[str, Any], code: str) -> None:
-    current = w2.process_inventory(powershell).get(pid)
-    require(w2.same_process(current, identity), code)
     try:
-        result = subprocess.run(["taskkill.exe", "/PID", str(pid), "/F"],
-                                capture_output=True, timeout=15)
-    except (OSError, subprocess.TimeoutExpired):
+        terminated = w2.terminate_identity(pid, identity)
+    except (OSError, w2.E2EFailure):
         raise w2.E2EFailure(code) from None
-    require(result.returncode == 0, code)
+    require(terminated, code)
 
 
 def helper_tree(powershell: str, helper_pid: int,

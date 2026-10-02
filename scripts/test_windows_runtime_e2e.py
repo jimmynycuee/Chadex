@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 import windows_runtime_e2e as harness
@@ -140,15 +142,140 @@ class HarnessContracts(unittest.TestCase):
         self.assertEqual(harness.safe_failure("PRIVATE_SECRET"), "unclassified")
 
     def test_process_tree_and_creation_time_fence(self):
-        rows = {10: {"ParentProcessId": 1, "Created": "first"},
-                11: {"ParentProcessId": 10, "Created": "child"},
-                12: {"ParentProcessId": 11, "Created": "grandchild"},
-                20: {"ParentProcessId": 1, "Created": "unrelated"}}
+        rows = {10: {"ParentProcessId": 1, "Created": "2026-10-03T00:00:01.0000000Z"},
+                11: {"ParentProcessId": 10, "Created": "2026-10-03T00:00:02.0000000Z"},
+                12: {"ParentProcessId": 11, "Created": "2026-10-03T00:00:03.0000000Z"},
+                20: {"ParentProcessId": 1, "Created": "2026-10-03T00:00:00.0000000Z"}}
         self.assertEqual(harness.descendants(rows, {10}), {10, 11, 12})
-        self.assertTrue(harness.same_process(rows[10], {"Created": "first"}))
+        self.assertTrue(harness.same_process(rows[10], {"Created": rows[10]["Created"]}))
         self.assertFalse(harness.same_process(rows[10], {"Created": "reused"}))
         self.assertFalse(harness.same_process(None, rows[10]))
         self.assertFalse(harness.same_process({}, {}))
+
+    def test_reused_parent_pid_cannot_adopt_older_unrelated_process_tree(self):
+        # Windows retains the original creator PID after that process exits.
+        # A later app with the same PID does not own the older CI runner.
+        rows = {10: {"ParentProcessId": 1, "Created": "2026-10-03T00:00:03.0000000Z"},
+                11: {"ParentProcessId": 10, "Created": "2026-10-03T00:00:04.0000000Z"},
+                12: {"ParentProcessId": 11, "Created": "2026-10-03T00:00:05.0000000Z"},
+                20: {"ParentProcessId": 10, "Created": "2026-10-03T00:00:01.0000000Z"},
+                21: {"ParentProcessId": 20, "Created": "2026-10-03T00:00:02.0000000Z"}}
+        self.assertEqual(harness.descendants(rows, {10}), {10, 11, 12})
+        owned = {10: rows[10]}
+        with mock.patch.object(harness, "process_inventory", return_value=rows):
+            harness.remember_tree("powershell", 10, owned)
+        self.assertEqual(set(owned), {10, 11, 12})
+
+    def test_cleanup_does_not_expand_beyond_identity_checked_processes(self):
+        identity = {"ParentProcessId": 1, "Created": "2026-10-03T00:00:03.0000000Z"}
+        with mock.patch.object(harness, "terminate_identity", return_value=True) as terminate:
+            self.assertEqual(harness.force_cleanup("powershell", {10: identity}), 1)
+        terminate.assert_called_once_with(10, identity)
+
+    def test_missing_child_identity_fails_closed_and_reused_identity_is_not_killed(self):
+        identity = {"ParentProcessId": 1, "Created": "2026-10-03T00:00:03.0000000Z"}
+        with self.assertRaises(harness.E2EFailure) as failure:
+            harness.descendants({10: identity, 11: {"ParentProcessId": 10}}, {10})
+        self.assertEqual(failure.exception.code, "process_creation_identity_missing")
+        with mock.patch.object(harness, "terminate_identity", return_value=False) as terminate:
+            self.assertEqual(harness.force_cleanup("powershell", {10: identity}), 0)
+        terminate.assert_called_once_with(10, identity)
+
+    def test_handle_termination_fences_reuse_and_releases_handle(self):
+        created = "2026-10-03T00:00:03.1234560Z"
+        ticks = harness.creation_ticks(created)
+        self.assertEqual(ticks % 10_000_000, 1234560)
+        for actual in (ticks, ticks + 7, ticks + 10):
+            api = mock.Mock()
+            api.OpenProcess.return_value = 4321
+            def query(_handle, creation, *_unused):
+                filetime = ctypes.cast(creation, ctypes.POINTER(harness.wintypes.FILETIME)).contents
+                filetime.dwLowDateTime = actual & 0xffffffff
+                filetime.dwHighDateTime = actual >> 32
+                return True
+            api.GetProcessTimes.side_effect = query
+            with mock.patch.object(harness, "process_api", return_value=api), \
+                    mock.patch.object(harness.subprocess, "run") as bare_pid_command:
+                self.assertEqual(harness.terminate_identity(10, {"Created": created}), actual // 10 == ticks // 10)
+            bare_pid_command.assert_not_called()
+            api.CloseHandle.assert_called_once_with(4321)
+            if actual // 10 == ticks // 10:
+                api.TerminateProcess.assert_called_once_with(4321, 1)
+            else:
+                api.TerminateProcess.assert_not_called()
+
+    def test_handle_query_failure_never_terminates_and_closes_handle(self):
+        api = mock.Mock()
+        api.OpenProcess.return_value = 4321
+        api.GetProcessTimes.return_value = False
+        with mock.patch.object(harness, "process_api", return_value=api):
+            with self.assertRaises(harness.E2EFailure) as failure:
+                harness.terminate_identity(10, {"Created": "2026-10-03T00:00:03.0000000Z"})
+        self.assertEqual(failure.exception.code, "process_handle_query_failed")
+        api.TerminateProcess.assert_not_called()
+        api.CloseHandle.assert_called_once_with(4321)
+
+    def test_creation_identity_requires_exact_utc_precision(self):
+        self.assertEqual(harness.creation_ticks("1970-01-01T00:00:00.0000000Z"), 116444736000000000)
+        for invalid in ("", "first", "2026-10-03T00:00:03Z",
+                        "2026-10-03T00:00:03.1234567+00:00", "2026-13-03T00:00:03.0000000Z"):
+            with self.assertRaises(harness.E2EFailure):
+                harness.creation_ticks(invalid)
+
+    def test_gone_or_inaccessible_process_handle_never_terminates(self):
+        for error, gone in ((87, True), (5, False)):
+            api = mock.Mock()
+            api.OpenProcess.return_value = None
+            with mock.patch.object(harness, "process_api", return_value=api), \
+                    mock.patch.object(harness.ctypes, "get_last_error", return_value=error, create=True):
+                if gone:
+                    self.assertFalse(harness.terminate_identity(10, {"Created": "2026-10-03T00:00:03.0000000Z"}))
+                else:
+                    with self.assertRaises(harness.E2EFailure) as failure:
+                        harness.terminate_identity(10, {"Created": "2026-10-03T00:00:03.0000000Z"})
+                    self.assertEqual(failure.exception.code, "process_handle_open_failed")
+            api.TerminateProcess.assert_not_called()
+            api.CloseHandle.assert_not_called()
+
+    def test_wait_tracks_late_child_and_retains_it_after_parent_exit(self):
+        parent = {"ParentProcessId": 1, "Created": "2026-10-03T00:00:01.0000000Z"}
+        child = {"ParentProcessId": 10, "Created": "2026-10-03T00:00:02.0000000Z"}
+        owned = {10: parent}
+        with mock.patch.object(harness, "process_inventory", side_effect=[{10: parent, 11: child}, {11: child}]), \
+                mock.patch.object(harness.time, "monotonic", side_effect=[0, 0, 2]), \
+                mock.patch.object(harness.time, "sleep"):
+            self.assertEqual(harness.wait_gone("powershell", owned, timeout=1), [11])
+        self.assertEqual(owned[11], child)
+
+    def test_new_orphan_cannot_be_accepted_as_zero_or_adopted_for_cleanup(self):
+        parent = {"ParentProcessId": 1, "Created": "2026-10-03T00:00:01.0000000Z"}
+        child = {"ParentProcessId": 10, "Created": "2026-10-03T00:00:02.0000000Z"}
+        owned = {10: parent}
+        with mock.patch.object(harness, "process_inventory", return_value={11: child}):
+            with self.assertRaises(harness.E2EFailure) as failure:
+                harness.wait_gone("powershell", owned, timeout=0)
+        self.assertEqual(failure.exception.code, "process_ownership_ambiguous")
+        self.assertEqual(owned, {10: parent})
+
+    def test_tracked_child_survives_parent_pid_reuse_and_keeps_real_grandchild(self):
+        parent = {"ParentProcessId": 1, "Created": "2026-10-03T00:00:01.0000000Z"}
+        child = {"ParentProcessId": 10, "Created": "2026-10-03T00:00:02.0000000Z"}
+        grandchild = {"ParentProcessId": 11, "Created": "2026-10-03T00:00:04.0000000Z"}
+        reused = {**parent, "Created": "2026-10-03T00:00:03.0000000Z"}
+        owned = {10: parent, 11: child}
+        with mock.patch.object(harness, "process_inventory", return_value={10: reused, 11: child, 12: grandchild}):
+            harness.remember_tree("powershell", 10, owned)
+        self.assertEqual(owned, {10: parent, 11: child, 12: grandchild})
+
+    def test_wait_excludes_older_stale_child_and_children_of_later_pid_owner(self):
+        parent = {"ParentProcessId": 1, "Created": "2026-10-03T00:00:02.0000000Z"}
+        older = {"ParentProcessId": 10, "Created": "2026-10-03T00:00:01.0000000Z"}
+        reused = {**parent, "Created": "2026-10-03T00:00:03.0000000Z"}
+        later = {"ParentProcessId": 10, "Created": "2026-10-03T00:00:04.0000000Z"}
+        owned = {10: parent}
+        with mock.patch.object(harness, "process_inventory", return_value={10: reused, 11: older, 12: later}):
+            self.assertEqual(harness.wait_gone("powershell", owned, timeout=0), [])
+        self.assertEqual(owned, {10: parent})
 
     def test_powershell_literal_quote(self):
         self.assertEqual(harness.ps_quote("C:\\中文 path\\dir's"), "'C:\\中文 path\\dir''s'")

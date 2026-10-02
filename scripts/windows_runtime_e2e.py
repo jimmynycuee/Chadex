@@ -16,12 +16,16 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+import ctypes
+from ctypes import wintypes
+from datetime import datetime
 import hashlib
 import http.client
 import json
 import os
 from pathlib import Path
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -350,11 +354,23 @@ def process_inventory(powershell: str) -> dict[int, dict[str, Any]]:
 
 
 def descendants(rows: dict[int, dict[str, Any]], roots: set[int]) -> set[int]:
-    result = set(roots)
+    result = set(roots) & rows.keys()
     while True:
-        added = {pid for pid, row in rows.items() if row["ParentProcessId"] in result} - result
+        added = set()
+        for pid, row in rows.items():
+            parent_pid = row["ParentProcessId"]
+            if pid in result or parent_pid not in result:
+                continue
+            parent = rows[parent_pid]
+            require(bool(row.get("Created")) and bool(parent.get("Created")),
+                    "process_creation_identity_missing")
+            # Win32_Process keeps the original creator PID after its exit.
+            # CIM dates use the same fixed-width UTC round-trip format above;
+            # an older child cannot belong to this newer incarnation of the PID.
+            if row["Created"] >= parent["Created"]:
+                added.add(pid)
         if not added:
-            return result & rows.keys()
+            return result
         result.update(added)
 
 
@@ -378,19 +394,86 @@ def wait_gone(powershell: str, owned: dict[int, dict[str, Any]], timeout: float 
     deadline = time.monotonic() + timeout
     while True:
         rows = process_inventory(powershell)
+        roots = {pid for pid, identity in owned.items() if same_process(rows.get(pid), identity)}
+        for pid in descendants(rows, roots):
+            owned[pid] = rows[pid]
+        # A child first seen after its creator exited cannot be safely adopted
+        # for termination, but also cannot establish a zero-remnant result.
+        for pid, row in rows.items():
+            parent_pid = row["ParentProcessId"]
+            if pid in owned or parent_pid not in owned or parent_pid in roots:
+                continue
+            parent = owned[parent_pid]
+            require(bool(row.get("Created")), "process_creation_identity_missing")
+            if row["Created"] < parent["Created"]:
+                continue
+            current_parent = rows.get(parent_pid)
+            if current_parent:
+                require(bool(current_parent.get("Created")), "process_creation_identity_missing")
+                if row["Created"] >= current_parent["Created"]:
+                    continue  # Child belongs to the later PID incarnation.
+            raise E2EFailure("process_ownership_ambiguous")
         remaining = [pid for pid, identity in owned.items() if same_process(rows.get(pid), identity)]
         if not remaining or time.monotonic() >= deadline:
             return remaining
         time.sleep(0.2)
 
 
+def creation_ticks(created: str) -> int:
+    # Convert the UTC DateTime round-trip representation to FILETIME units.
+    match = re.fullmatch(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{7})Z", created)
+    require(match is not None, "process_creation_identity_invalid")
+    try:
+        delta = datetime.strptime(match[1], "%Y-%m-%dT%H:%M:%S") - datetime(1601, 1, 1)
+    except ValueError:
+        raise E2EFailure("process_creation_identity_invalid") from None
+    return (delta.days * 86400 + delta.seconds) * 10_000_000 + int(match[2])
+
+
+def process_api() -> Any:
+    require(sys.platform == "win32", "windows_native_required")
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    api.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    api.OpenProcess.restype = wintypes.HANDLE
+    api.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    api.GetProcessTimes.restype = wintypes.BOOL
+    api.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    api.TerminateProcess.restype = wintypes.BOOL
+    api.CloseHandle.argtypes = [wintypes.HANDLE]
+    api.CloseHandle.restype = wintypes.BOOL
+    return api
+
+
+def terminate_identity(pid: int, identity: dict[str, Any]) -> bool:
+    expected = creation_ticks(identity.get("Created", ""))
+    api = process_api()
+    # Query and terminate the same handle; a recycled numeric PID cannot redirect
+    # termination after this OpenProcess call. Never expand an unverified tree.
+    handle = api.OpenProcess(0x1000 | 0x0001, False, pid)
+    if not handle:
+        if ctypes.get_last_error() == 87:  # ERROR_INVALID_PARAMETER: process gone.
+            return False
+        raise E2EFailure("process_handle_open_failed")
+    try:
+        created, exited, kernel, user = (wintypes.FILETIME() for _ in range(4))
+        require(bool(api.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(exited),
+                                        ctypes.byref(kernel), ctypes.byref(user))),
+                "process_handle_query_failed")
+        actual = (created.dwHighDateTime << 32) | created.dwLowDateTime
+        # CIM_DATETIME has microsecond precision; FILETIME has 100 ns units.
+        # Compare at the observed identity's precision, without a time tolerance.
+        if actual // 10 != expected // 10:
+            return False
+        require(bool(api.TerminateProcess(handle, 1)), "process_handle_termination_failed")
+        return True
+    finally:
+        api.CloseHandle(handle)
+
+
 def force_cleanup(powershell: str, owned: dict[int, dict[str, Any]]) -> int:
     forced = 0
     for pid, identity in list(owned.items()):
-        # Creation time fences PID reuse; never kill an unrelated same-number PID.
-        if same_process(process_inventory(powershell).get(pid), identity):
-            subprocess.run(["taskkill.exe", "/PID", str(pid), "/T", "/F"],
-                           capture_output=True, timeout=15)
+        if terminate_identity(pid, identity):
             forced += 1
     return forced
 

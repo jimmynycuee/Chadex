@@ -17,6 +17,40 @@ import windows_desktop_smoke as smoke
 
 
 class WindowsDesktopSmokeTests(unittest.TestCase):
+    def test_checkpoint_pid_cannot_adopt_an_unowned_or_reused_helper(self) -> None:
+        original = {"Name": "chadex-helper.exe", "ParentProcessId": 10,
+                    "Created": "2026-10-03T00:00:01.0000000Z"}
+        current = {**original, "Created": "2026-10-03T00:00:03.0000000Z"}
+        for owned in ({}, {11: original}):
+            before = dict(owned)
+            with mock.patch.object(smoke.w2, "process_inventory", return_value={11: current}), \
+                    mock.patch.object(smoke.w2, "remember_tree") as track:
+                with self.assertRaises(smoke.w2.E2EFailure) as failure:
+                    smoke.process_identity("powershell", 11, owned, expected_name="chadex-helper.exe")
+            self.assertEqual(failure.exception.code, "helper_identity_not_owned")
+            self.assertEqual(owned, before)
+            track.assert_not_called()
+
+    def test_checkpoint_accepts_already_observed_exact_helper_identity(self) -> None:
+        identity = {"Name": "chadex-helper.exe", "ParentProcessId": 10,
+                    "Created": "2026-10-03T00:00:02.0000000Z"}
+        owned = {11: identity}
+        with mock.patch.object(smoke.w2, "process_inventory", return_value={11: identity}), \
+                mock.patch.object(smoke.w2, "remember_tree") as track:
+            self.assertEqual(smoke.process_identity("powershell", 11, owned,
+                                                  expected_name="chadex-helper.exe"), identity)
+        track.assert_called_once_with("powershell", 11, owned)
+
+    def test_exact_termination_uses_shared_handle_fence_and_keeps_failure_visible(self) -> None:
+        identity = {"Created": "2026-10-03T00:00:02.0000000Z"}
+        with mock.patch.object(smoke.w2, "terminate_identity", return_value=True) as terminate:
+            smoke.terminate_exact("powershell", 11, identity, "helper_restart_not_observed")
+        terminate.assert_called_once_with(11, identity)
+        with mock.patch.object(smoke.w2, "terminate_identity", return_value=False):
+            with self.assertRaises(smoke.w2.E2EFailure) as failure:
+                smoke.terminate_exact("powershell", 11, identity, "helper_restart_not_observed")
+        self.assertEqual(failure.exception.code, "helper_restart_not_observed")
+
     def test_canonical_windows_namespace_preserves_strict_isolation(self) -> None:
         for root in (r"C:\isolated\data", r"\\server\share\isolated\data"):
             canonical = smoke.windows_extended_path(root)
