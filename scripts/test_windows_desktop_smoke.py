@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import sys
 import tempfile
 import unittest
@@ -17,6 +17,27 @@ import windows_desktop_smoke as smoke
 
 
 class WindowsDesktopSmokeTests(unittest.TestCase):
+    def test_canonical_windows_namespace_preserves_strict_isolation(self) -> None:
+        for root in (r"C:\isolated\data", r"\\server\share\isolated\data"):
+            canonical = smoke.windows_extended_path(root)
+            self.assertEqual(smoke.windows_extended_path(canonical), canonical)
+            self.assertTrue(canonical.startswith("\\\\?\\"))
+            parent = PureWindowsPath(canonical)
+            self.assertTrue(PureWindowsPath(canonical + r"\server.env").is_relative_to(parent))
+            self.assertFalse(PureWindowsPath(canonical + r"-sibling\server.env").is_relative_to(parent))
+            self.assertFalse(PureWindowsPath(r"\\?\D:\isolated\data\server.env").is_relative_to(parent))
+
+    def test_identity_failures_remain_visible_without_exposing_runtime_data(self) -> None:
+        report = smoke.new_report()
+        with self.assertRaises(smoke.w2.E2EFailure):
+            with report.stage("workflow.project_a_operation"):
+                raise smoke.w2.E2EFailure("runtime_env_outside_isolation", token="PRIVATE_TOKEN")
+        safe = smoke.sanitize_report(report)
+        stage = next(item for item in safe["stages"]
+                     if item["name"] == "workflow.project_a_operation")
+        self.assertEqual(stage["error_code"], "runtime_env_outside_isolation")
+        self.assertNotIn("PRIVATE_TOKEN", json.dumps(safe))
+
     def test_report_sanitizer_drops_secrets_paths_and_raw_outputs(self) -> None:
         report = smoke.new_report()
         report.value["status"] = "failed"
@@ -216,7 +237,10 @@ class WindowsDesktopSmokeTests(unittest.TestCase):
                 smoke.verify_persisted_project_identity(
                     root / "data", project_b, "project-B", report)
 
-            identity.assert_called_once_with(root / "data")
+            expected_data = root / "data"
+            if sys.platform == "win32":
+                expected_data = Path(smoke.windows_extended_path(str(expected_data.resolve())))
+            identity.assert_called_once_with(expected_data)
         stage = next(item for item in report.value["stages"]
                      if item["name"] == "restore_only.persisted_project_identity")
         self.assertEqual(stage["status"], "passed")

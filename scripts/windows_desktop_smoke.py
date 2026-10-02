@@ -45,6 +45,8 @@ STAGES = (
 SAFE_ERROR_CODES = frozenset(w2.SAFE_FAILURES) | frozenset({
     "windows_native_required", "app_missing", "app_must_be_exe", "powershell_missing",
     "native_python_required", "fixture_setup_failed", "app_spawn_failed",
+    "runtime_state_invalid", "runtime_identity_incomplete",
+    "runtime_env_outside_isolation", "runtime_token_missing",
     "app_identity_missing", "helper_identity_missing", "helper_name_mismatch",
     "checkpoint_timeout", "app_exited_before_checkpoint", "checkpoint_invalid",
     "checkpoint_too_large", "checkpoint_schema_invalid", "checkpoint_value_invalid",
@@ -315,8 +317,26 @@ def observed_checkpoint(report: w2.Report, stage_name: str, checkpoint_name: str
         return payload, helper_identity
 
 
+def windows_extended_path(value: str) -> str:
+    """Match Rust canonicalize's namespace without changing filesystem isolation."""
+    if value.startswith("\\\\?\\"):
+        return value
+    if value.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + value[2:]
+    return "\\\\?\\" + value
+
+
+def desktop_runtime_identity(data: Path) -> tuple[str, str, str]:
+    # The native bridge passes a Rust-canonicalized data root to the helper.
+    # pathlib retains an existing extended prefix but removes one it added;
+    # both sides of W2's strict containment check must use the same namespace.
+    if sys.platform == "win32":
+        data = Path(windows_extended_path(str(data.resolve())))
+    return w2.runtime_identity(data)
+
+
 def mcp_for_data(data: Path, report: w2.Report) -> tuple[w2.McpClient, str]:
-    url, token, project_id = w2.runtime_identity(data)
+    url, token, project_id = desktop_runtime_identity(data)
     return w2.McpClient(url, token, report), project_id
 
 
@@ -414,7 +434,7 @@ def verify_persisted_project_identity(data: Path, project_b: Path,
                                       expected_project_id: str, report: w2.Report) -> None:
     """Verify the saved selection and project fixture without contacting the stopped runtime."""
     with report.stage("restore_only.persisted_project_identity"):
-        _url, _token, restored_project_id = w2.runtime_identity(data)
+        _url, _token, restored_project_id = desktop_runtime_identity(data)
         require(restored_project_id == expected_project_id, "mcp_project_not_switched")
         try:
             persisted_result = (project_b / "smoke-result.txt").read_text(encoding="utf-8")
