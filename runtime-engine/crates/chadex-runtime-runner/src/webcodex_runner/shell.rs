@@ -3865,10 +3865,11 @@ fn execute_configured_command(
                                 stdout.normalize_with_truncation(policy.max_output_bytes);
                             let (mut stderr, mut stderr_truncated) =
                                 stderr.normalize_with_truncation(policy.max_output_bytes);
+                            let effective_timeout_secs = timeout_deadline.as_secs();
                             stderr_truncated |= append_bounded_text(
                                 &mut stderr,
                                 &format!(
-                                    "command {timeout_reason} after {} ms (class={}, soft_timeout={}s, hard_timeout={}s, grace_extensions={timeout_extensions})",
+                                    "command timed out after {effective_timeout_secs} seconds; command {timeout_reason} after {} ms (class={}, soft_timeout={}s, hard_timeout={}s, grace_extensions={timeout_extensions})",
                                     duration_ms,
                                     execution_class.label(),
                                     timeout_budget.soft.as_secs(),

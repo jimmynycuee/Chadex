@@ -508,7 +508,11 @@ def execute(repo: Path, report: Report) -> None:
 
         with report.stage("file_roundtrip"):
             call("write_project_file", project=project_id, path="中文 file.txt", content="W2 UTF-8 中文\n")
-            require(read("中文 file.txt").get("text") == "W2 UTF-8 中文\n", "file_utf8_roundtrip_failed")
+            # read_files returns selected lines without a trailing newline; its
+            # SHA-256 covers the original bytes, including that final newline.
+            observed = read("中文 file.txt")
+            require(observed.get("text") == "W2 UTF-8 中文" and
+                    observed.get("sha256") == digest("W2 UTF-8 中文\n"), "file_utf8_roundtrip_failed")
             require((project / "中文 file.txt").read_text(encoding="utf-8") == "W2 UTF-8 中文\n",
                     "file_write_not_on_runner_disk")
 
@@ -609,7 +613,9 @@ def execute(repo: Path, report: Report) -> None:
             rows = remember_tree(powershell, helper.process.pid, owned)
             require(all(same_process(rows.get(pid), identity) for pid, identity in runtime_processes.items()),
                     "runtime_restarted_during_observation")
-            require(read("durable_done.txt").get("text") == "完成 UTF-8\n", "durable_file_result_missing")
+            observed = read("durable_done.txt")
+            require(observed.get("text") == "完成 UTF-8" and
+                    observed.get("sha256") == digest("完成 UTF-8\n"), "durable_file_result_missing")
             evidence.update(duration_ms=round(elapsed * 1000), launch_count=1, job_count=1,
                             observation_timeout_exercised=True, runtime_identity_preserved=True)
 

@@ -62,6 +62,21 @@ Status: **in progress; W2 exit criteria are not yet certified**.
   The observed host is Windows Server 2025 `10.0.26100`, x64, image
   `windows-2025-vs2026` version `20260925.250.1`, not a Windows 11 smoke test.
 - Baseline remote macOS source/package gates: passed.
+- First checked checkpoint: `4b0f484`,
+  [run 36963928762](https://github.com/jimmynycuee/Chadex/actions/runs/36963928762).
+  Full Windows workspace/all-targets compile and debug entrypoint builds passed.
+  The 15 opt-in process lifecycle tests and 8 opt-in PowerShell lifecycle tests
+  passed. Runner library tests reported 781 passed, 2 failed, 2 existing opt-in
+  tests. The checked gate correctly failed with Cargo exit 101 and did not
+  proceed to helper/tunnel/runtime E2E. macOS source/package and secret scan passed.
+  The two failures concern the timeout diagnostic after large stderr output and
+  a LF fixture inheriting Windows Git `core.autocrlf` conversion. The latter is
+  addressed by explicit fixture configuration plus a separate CRLF preservation
+  test; both LF/CRLF source-preservation tests passed locally.
+  The timeout case also reproduced locally: its complete terminal stderr uses
+  the newer adaptive diagnostic instead of the legacy `command timed out after`
+  prefix. Repair preserves that prefix and retains the adaptive metadata; it
+  does not change timeout budgets or execution behavior.
 - Local macOS Swift regression: 70 passed, 0 failed.
 - Local macOS helper regression after integration: 159 unit and 3 integration
   tests passed, 0 failed; 3 pre-existing opt-in unit tests remain unchanged.
@@ -71,6 +86,11 @@ Status: **in progress; W2 exit criteria are not yet certified**.
 - Local macOS process lifecycle opt-in tests: 15 passed, 0 failed, including
   process-tree drop, explicit termination, parent EOF and 20 stress cycles.
 - Local macOS runner-config tests: 24 passed, 0 failed.
+- Local macOS runner library after timeout repair: 863 passed, 0 failed,
+  5 existing opt-in tests (`--test-threads=4`). An initial default-concurrency
+  run reported 862 passed and one CPU-progress timing failure; that test passed
+  both the narrow adaptive-timeout run and the full four-thread rerun. No tests
+  were skipped or weakened to resolve it.
 - Local macOS persistent-shell default tests: 7 passed, 4 failed, 6 existing
   opt-in tests. The failures compare logical `/tmp`/`/var` paths with physical
   `/private/tmp`/`/private/var` paths. With `TMPDIR=/private/tmp`, 8 pass and the

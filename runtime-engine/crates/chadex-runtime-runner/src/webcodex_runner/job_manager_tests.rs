@@ -2526,10 +2526,30 @@ fn structured_process_job_timeout_after_large_output_is_bounded_and_exact_once()
     assert!(snapshot.stdout.tail.len() <= output_limit);
     assert!(snapshot.stderr.tail.len() <= output_limit);
     assert!(snapshot.stdout.tail.starts_with("[output truncated]\n"));
+    assert!(
+        snapshot
+            .stderr
+            .tail
+            .contains("command timed out after 5 seconds"),
+        "timeout diagnostic missing; last stderr line: {:?}",
+        snapshot.stderr.tail.lines().last()
+    );
+    assert!(
+        snapshot
+            .stderr
+            .tail
+            .contains("command timeout_with_progress after ")
+            || snapshot
+                .stderr
+                .tail
+                .contains("command timeout_stalled after "),
+        "adaptive timeout reason missing: {:?}",
+        snapshot.stderr.tail.lines().last()
+    );
     assert!(snapshot
         .stderr
         .tail
-        .contains("command timed out after 5 seconds"));
+        .contains(" ms (class=generic, soft_timeout=5s, hard_timeout=5s, grace_extensions=0)"));
     assert!(std::str::from_utf8(snapshot.stdout.tail.as_bytes()).is_ok());
     assert!(std::str::from_utf8(snapshot.stderr.tail.as_bytes()).is_ok());
     let starts = std::fs::read_to_string(marker).unwrap();

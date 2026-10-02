@@ -1480,6 +1480,9 @@ fn managed_git(root: &Path, args: &[&str]) -> String {
 fn seed_managed_worktree_repo(source: &Path) -> (String, String) {
     std::fs::create_dir_all(source).unwrap();
     managed_git(source, &["init"]);
+    // These fixtures write and assert LF bytes; do not inherit the host's
+    // Windows Git checkout conversion. Production still honors repo config.
+    managed_git(source, &["config", "core.autocrlf", "false"]);
     managed_git(
         source,
         &["config", "user.email", "webcodex@example.invalid"],
@@ -1739,6 +1742,45 @@ fn managed_worktree_dirty_snapshot_captures_staged_unstaged_and_untracked_withou
     assert_eq!(recovered["path"], created["path"]);
     assert_eq!(recovered["base_sha"], created["base_sha"]);
     assert_eq!(recovered["outcome"], "managed_worktree_recovered");
+}
+
+#[test]
+fn managed_worktree_dirty_snapshot_respects_crlf_configuration_without_touching_source() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = tmp.path().join("source");
+    let registry = tmp.path().join("project-registry");
+    seed_managed_worktree_repo(&source);
+    managed_git(&source, &["config", "core.autocrlf", "true"]);
+    register_managed_source_project(&registry, &source);
+    std::fs::write(source.join("hello.txt"), b"staged dirty\r\n").unwrap();
+    managed_git(&source, &["add", "hello.txt"]);
+    std::fs::write(source.join("hello.txt"), b"unstaged dirty\r\n").unwrap();
+    std::fs::write(source.join("new.txt"), b"untracked\r\n").unwrap();
+    let head_before = managed_git(&source, &["rev-parse", "HEAD"]);
+    let index_before = managed_git(&source, &["write-tree"]);
+    let status_before = managed_git(&source, &["status", "--porcelain"]);
+    let request =
+        dirty_managed_worktree_request(&source, "18181818-1818-4181-8181-181818181818", None);
+    let created = project_ok(handle_prepare_managed_worktree(
+        &project_policy(tmp.path()),
+        &registry,
+        &request,
+    ));
+    assert_eq!(created["snapshot_created"], true);
+    let worktree = PathBuf::from(created["path"].as_str().unwrap());
+    for name in ["hello.txt", "new.txt"] {
+        assert_eq!(
+            std::fs::read(worktree.join(name)).unwrap(),
+            std::fs::read(source.join(name)).unwrap(),
+        );
+    }
+    assert_eq!(managed_git(&source, &["rev-parse", "HEAD"]), head_before);
+    assert_eq!(managed_git(&source, &["write-tree"]), index_before);
+    assert_eq!(
+        managed_git(&source, &["status", "--porcelain"]),
+        status_before
+    );
+    assert_eq!(managed_git(&source, &["config", "core.autocrlf"]), "true");
 }
 
 #[test]

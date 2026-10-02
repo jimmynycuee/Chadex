@@ -96,6 +96,18 @@ try {
         "test", "--locked", "--manifest-path", "rust-helper/Cargo.toml"
     )
 
+    Write-Host "== Run Windows helper EOF and blocked-stdin process cleanup tests =="
+    foreach ($cleanupTest in @(
+        "regular_tunnel_stop_closes_stdin_on_windows",
+        "desktop_real_process_windows_blocked_stdin_reclaims_the_owned_process_tree"
+    )) {
+        Invoke-NativeChecked -FilePath "cargo" -Arguments @(
+            "test", "--locked", "--manifest-path", "rust-helper/Cargo.toml",
+            "--bin", "chadex-helper", $cleanupTest,
+            "--", "--ignored", "--test-threads=1"
+        )
+    }
+
     Write-Host "== Verify official Windows tunnel asset download, reuse, replacement, and version =="
     Invoke-NativeChecked -FilePath "cargo" -Arguments @(
         "test", "--locked", "--manifest-path", "rust-helper/Cargo.toml",
