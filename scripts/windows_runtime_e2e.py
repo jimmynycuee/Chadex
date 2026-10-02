@@ -694,7 +694,8 @@ def execute(repo: Path, report: Report) -> None:
             admitted = call("run_process", project=project_id, executable=executable, args=args,
                             cwd=".", timeout_secs=120, sync_wait_secs=1)
             cancel_id = admitted.get("job_id")
-            require(admitted.get("promoted_to_job") is True and isinstance(cancel_id, str) and bool(cancel_id),
+            require(isinstance(cancel_id, str) and bool(cancel_id) and
+                    admitted.get("terminal") is False and admitted.get("command_completed") is False,
                     "cancel_job_missing")
             require(admitted.get("cwd") == "." and admitted.get("command_started") is True,
                     "cancel_job_cwd_mismatch")
