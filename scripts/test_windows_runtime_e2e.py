@@ -71,6 +71,24 @@ class HarnessContracts(unittest.TestCase):
                          ("call_runtime_tool", {"tool": "open_session_shell",
                                                 "arguments": {"project": "p"}}))
 
+    def test_job_status_vocabulary_matches_runner_lifecycle_and_recovery_overlay(self):
+        self.assertEqual(
+            harness.ACTIVE_STATUSES,
+            {"queued", "agent_queued", "started", "running", "stop_requested", "recovering"},
+        )
+        self.assertEqual(
+            harness.TERMINAL_STATUSES,
+            {"completed", "failed", "stopped", "cancelled", "timeout", "timed_out", "lost"},
+        )
+        for status in harness.ACTIVE_STATUSES | harness.TERMINAL_STATUSES:
+            output = {
+                "job_id": "job-1", "status": status,
+                "terminal": status in harness.TERMINAL_STATUSES,
+                "observation_token": "token-1", "wait_outcome": "immediate", "waited_ms": 0,
+            }
+            evidence = harness.observation_evidence(output, "job-1")
+            self.assertEqual(evidence["status"], status)
+
     def test_observe_jobs_sparse_and_full_items_normalize_without_identity_loss(self):
         base = {"job_id": "job-1", "status": "running", "terminal": False,
                 "observation_token": "token-1", "stdout_tail": "hello"}

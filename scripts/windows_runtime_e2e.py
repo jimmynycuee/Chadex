@@ -35,7 +35,8 @@ sys.dont_write_bytecode = True
 MAX_FRAME = 1024 * 1024
 DURABLE_SECONDS = 55
 WAIT_OUTCOMES = {"immediate", "updated", "terminal", "timeout"}
-TERMINAL_STATUSES = {"completed", "failed", "stopped", "cancelled", "timed_out", "lost"}
+TERMINAL_STATUSES = {"completed", "failed", "stopped", "cancelled", "timeout", "timed_out", "lost"}
+ACTIVE_STATUSES = {"queued", "agent_queued", "started", "running", "stop_requested", "recovering"}
 ADAPTIVE_DIRECT_TOOLS = frozenset({
     "runtime_status", "work_on_project", "read_files", "apply_text_edits",
     "run_process", "run_shell", "observe_jobs",
@@ -432,8 +433,7 @@ def observation_evidence(output: dict[str, Any], job_id: str) -> dict[str, Any]:
             "observation_token_missing")
     require(type(output.get("terminal")) is bool, "observation_terminal_missing")
     status = output.get("status")
-    require(status in TERMINAL_STATUSES | {"running", "queued", "pending", "stop_requested"},
-            "observation_status_invalid")
+    require(status in TERMINAL_STATUSES | ACTIVE_STATUSES, "observation_status_invalid")
     return {"job_id_sha256": digest(job_id), "status": status,
             "wait_outcome": output["wait_outcome"], "terminal": output["terminal"],
             "token_sha256": digest(output["observation_token"]),
