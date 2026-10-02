@@ -512,7 +512,7 @@ def execute(repo: Path, report: Report) -> None:
 
         def process(args: list[str], **options: Any) -> tuple[dict[str, Any], bool]:
             return client.invoke("run_process", {"project": project_id, "executable": sys.executable,
-                                 "args": args, "timeout_secs": 20, "sync_wait_secs": 20, **options},
+                                 "args": args, "timeout_secs": 20, **options},
                                  expect_success=options.get("result_expectation") != "failure")
 
         def read(relative: str) -> dict[str, Any]:
@@ -564,16 +564,14 @@ def execute(repo: Path, report: Report) -> None:
                        "[Console]::Out.WriteLine((Get-Location).Path); "
                        "[Console]::Error.WriteLine('PS_STDERR'); exit 0")
             output, success = client.invoke("run_shell", {"project": project_id, "command": command,
-                                            "cwd": "子 dir's space", "timeout_secs": 20,
-                                            "sync_wait_secs": 20})
+                                            "cwd": "子 dir's space", "timeout_secs": 20})
             check_terminal(output, success, stdout="PS_UTF8_中文", stderr="PS_STDERR")
             require("ENV_中文" in output.get("stdout_tail", "") and
                     str(project / "子 dir's space").casefold() in output.get("stdout_tail", "").casefold(),
                     "powershell_env_cwd_mismatch")
             output, success = client.invoke("run_shell", {"project": project_id,
                 "command": "[Console]::Out.WriteLine('PS_NONZERO'); [Console]::Error.WriteLine('PS_ERROR'); exit 7",
-                "timeout_secs": 20, "sync_wait_secs": 20, "result_expectation": "failure"},
-                expect_success=False)
+                "timeout_secs": 20, "result_expectation": "failure"}, expect_success=False)
             check_terminal(output, success, exit_code=7, stdout="PS_NONZERO", stderr="PS_ERROR")
 
         with report.stage("native_exe"):
@@ -591,7 +589,7 @@ def execute(repo: Path, report: Report) -> None:
                     output, success = client.invoke("run_process", {
                         "project": project_id, "executable": str(project / "tools with spaces" / f"fixture.{extension}"),
                         "args": ["literal argument with spaces", str(exit_code)], "timeout_secs": 20,
-                        "sync_wait_secs": 20, "cwd": "tools with spaces",
+                        "cwd": "tools with spaces",
                         "result_expectation": "failure" if exit_code else "success",
                     }, expect_success=exit_code == 0)
                     check_terminal(output, success, exit_code=exit_code,
