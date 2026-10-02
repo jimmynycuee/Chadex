@@ -79,6 +79,14 @@ def ps_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def cancellation_job_command(project: Path) -> tuple[str, Path]:
+    marker = project / "cancel_pids.json"
+    script = project / "cancel_tree.py"
+    command = (f"& {ps_quote(sys.executable)} -X utf8 {ps_quote(str(script))} "
+               f"{ps_quote(str(marker))}; exit $LASTEXITCODE")
+    return command, marker
+
+
 def decode_object(raw: bytes, code: str) -> dict[str, Any]:
     require(len(raw) <= MAX_FRAME, "response_too_large", bytes=len(raw))
     try:
@@ -461,7 +469,7 @@ def write_fixture(project: Path) -> None:
     (project / "cancel_tree.py").write_text(
         "import json, os, subprocess, sys, time\nfrom pathlib import Path\n"
         "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(180)'])\n"
-        "Path('cancel_pids.json').write_text(json.dumps({'parent': os.getpid(), 'child': child.pid}))\n"
+        "Path(sys.argv[1]).write_text(json.dumps({'parent': os.getpid(), 'child': child.pid}), encoding='utf-8')\n"
         "print('CANCEL_TREE_STARTED', flush=True)\ntime.sleep(180)\n", encoding="utf-8")
     for extension in ("cmd", "bat"):
         (tools / f"fixture.{extension}").write_bytes(
@@ -684,16 +692,17 @@ def execute(repo: Path, report: Report) -> None:
             check_terminal(output, success, stderr="OK")
 
         with report.stage("cancellation_child_cleanup") as evidence:
-            command = f"& {ps_quote(sys.executable)} -X utf8 cancel_tree.py; exit $LASTEXITCODE"
-            admitted = call("run_job", project=project_id, command=command, timeout_secs=120)
+            command, cancel_marker = cancellation_job_command(project)
+            admitted = call("run_job", project=project_id, command=command, cwd=".", timeout_secs=120)
             cancel_id = admitted.get("job_id")
             require(isinstance(cancel_id, str) and bool(cancel_id), "cancel_job_missing")
+            require(admitted.get("cwd") == ".", "cancel_job_cwd_mismatch")
             deadline = time.monotonic() + 20
-            while not (project / "cancel_pids.json").exists() and time.monotonic() < deadline:
+            while not cancel_marker.exists() and time.monotonic() < deadline:
                 observe(cancel_id)
                 time.sleep(0.2)
-            require((project / "cancel_pids.json").exists(), "cancel_child_never_started")
-            pids = json.loads((project / "cancel_pids.json").read_text(encoding="utf-8"))
+            require(cancel_marker.exists(), "cancel_child_never_started")
+            pids = json.loads(cancel_marker.read_text(encoding="utf-8"))
             rows = remember_tree(powershell, helper.process.pid, owned)
             require(all(type(pid) is int and pid in owned and pid in rows for pid in pids.values()),
                     "cancel_child_not_in_owned_tree")

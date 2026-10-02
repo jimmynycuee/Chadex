@@ -153,6 +153,15 @@ class HarnessContracts(unittest.TestCase):
     def test_powershell_literal_quote(self):
         self.assertEqual(harness.ps_quote("C:\\中文 path\\dir's"), "'C:\\中文 path\\dir''s'")
 
+    def test_cancellation_command_uses_absolute_fixture_and_marker_paths(self):
+        with tempfile.TemporaryDirectory(prefix="w2 cancel 中文 ") as directory:
+            project = Path(directory).resolve() / "project with spaces"
+            command, marker = harness.cancellation_job_command(project)
+            self.assertEqual(marker, project / "cancel_pids.json")
+            self.assertIn(harness.ps_quote(str(project / "cancel_tree.py")), command)
+            self.assertIn(harness.ps_quote(str(marker)), command)
+            self.assertNotIn(" -X utf8 cancel_tree.py", command)
+
     def binaries(self, directory, helper=True, runtime=True):
         directory.mkdir(parents=True, exist_ok=True)
         names = (["chadex-helper"] if helper else []) + (
