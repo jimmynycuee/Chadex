@@ -542,13 +542,18 @@ def execute(repo: Path, report: Report) -> None:
             evidence.update(online_runners=1, registered_project=True, server_count=1, runner_count=1)
 
         with report.stage("file_roundtrip"):
-            call("write_project_file", project=project_id, path="中文 file.txt", content="W2 UTF-8 中文\n")
-            # read_files returns selected lines without a trailing newline; its
-            # SHA-256 covers the original bytes, including that final newline.
+            content = "W2 UTF-8 中文\n"
+            written = call("write_project_file", project=project_id, path="中文 file.txt", content=content)
+            require(written.get("sha256") == digest(content) and
+                    written.get("bytes_written") == len(content.encode("utf-8")),
+                    "file_write_result_mismatch")
+            # Complete read_files results intentionally keep the digest internal
+            # when a read_revision handle is requested. Validate the projected
+            # text/revision, then compare exact Runner-disk UTF-8 bytes directly.
             observed = read("中文 file.txt")
-            require(observed.get("text") == "W2 UTF-8 中文" and
-                    observed.get("sha256") == digest("W2 UTF-8 中文\n"), "file_utf8_roundtrip_failed")
-            require((project / "中文 file.txt").read_text(encoding="utf-8") == "W2 UTF-8 中文\n",
+            require(observed.get("text") == content.rstrip("\n") and
+                    type(observed.get("read_revision")) is int, "file_utf8_roundtrip_failed")
+            require((project / "中文 file.txt").read_bytes() == content.encode("utf-8"),
                     "file_write_not_on_runner_disk")
 
         with report.stage("powershell"):
