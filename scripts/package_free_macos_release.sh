@@ -37,16 +37,35 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/chadex-free-release.XXXXXX")
 MOUNT=
 cleanup() { if [ -n "$MOUNT" ] && /sbin/mount | /usr/bin/grep -Fq " on $MOUNT "; then /usr/bin/hdiutil detach "$MOUNT" -quiet || true; fi; rm -rf "$TMP"; }
 trap cleanup EXIT HUP INT TERM
+retry_hdiutil() {
+  label=$1
+  shift
+  attempt=1
+  max_attempts=${CHADEX_HDIUTIL_RETRIES:-3}
+  delay=${CHADEX_HDIUTIL_RETRY_DELAY_SECONDS:-2}
+  while :; do
+    if "$@"; then
+      return 0
+    fi
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      echo "error: $label failed after $attempt attempt(s)" >&2
+      return 1
+    fi
+    echo "warning: $label failed on attempt $attempt; retrying in ${delay}s" >&2
+    /bin/sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+}
 STAGE="$TMP/stage"
 mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/Chadex.app"
 ln -s /Applications "$STAGE/Applications"
 mkdir -p "$(dirname "$OUTPUT")"
 rm -f "$OUTPUT" "$OUTPUT.sha256"
-/usr/bin/hdiutil create -volname "$VOLUME_NAME" -srcfolder "$STAGE" -ov -format UDZO "$OUTPUT" >/dev/null
+retry_hdiutil "hdiutil create" /usr/bin/hdiutil create -volname "$VOLUME_NAME" -srcfolder "$STAGE" -ov -format UDZO "$OUTPUT" >/dev/null
 MOUNT="$TMP/mount"
 mkdir -p "$MOUNT"
-/usr/bin/hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$OUTPUT" >/dev/null
+retry_hdiutil "hdiutil attach" /usr/bin/hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$OUTPUT" >/dev/null
 test -d "$MOUNT/Chadex.app"
 test -L "$MOUNT/Applications"
 /usr/bin/codesign --verify --deep --strict "$MOUNT/Chadex.app"
