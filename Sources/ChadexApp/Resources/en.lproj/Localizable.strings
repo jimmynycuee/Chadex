@@ -295,7 +295,7 @@
 "updates.section" = "Updates";
 "updates.currentVersion" = "Current version";
 "updates.autoCheck" = "Automatically check for updates";
-"updates.autoCheckNote" = "Chadex checks the latest stable GitHub Release at most once every six hours. Manual checks always run immediately.";
+"updates.autoCheckNote" = "Chadex checks once shortly after launch, then checks again when the app becomes active after six hours. Manual checks always run immediately.";
 "updates.check" = "Check for Updates…";
 "updates.checkMenu" = "Check for Updates…";
 "updates.install" = "Install v%@";

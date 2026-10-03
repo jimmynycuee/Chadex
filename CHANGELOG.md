@@ -2,6 +2,14 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.3.3
+
+- Enabled ChatGPT host-file imports for Chadex's desktop-owned loopback Server when accessed through the OpenAI Secure Tunnel with a normal user API token; non-loopback and untrusted credential paths remain rejected.
+- Made automatic update discovery run once after each app launch and again when the app becomes active after the six-hour interval, so a newly available release exposes the blue **Update** button next to Settings without requiring a manual check first.
+- Kept automatic discovery quiet while preserving the existing manual **Check for Updates…** flow and install safeguards.
+- Carried the Windows W1-W5 source work into the release tree, including runtime/desktop integration, installer/source-integrity gates, and 0.3.2 → 0.3.3 upgrade-fixture metadata. The public v0.3.3 release workflow still publishes the macOS ARM64 DMG; Windows installer candidates remain CI validation artifacts.
+- See `docs/releases/0.3.3.md` for validation and distribution boundaries.
+
 ## 0.3.2
 
 - Distinguished idle connection verification from actual queued, blocked, recovering, or cancellation waits.

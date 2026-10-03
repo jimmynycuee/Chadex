@@ -222,6 +222,7 @@ private struct MainWindowContent: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 model.applicationBecameActive()
+                updateManager.checkAutomaticallyIfDue()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
                 model.applicationResignedActive()

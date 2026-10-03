@@ -51,7 +51,7 @@ CHADEX_UPDATE_UI_REVIEW=1 swift test --filter VisualReviewTests
 `scripts/build_app.sh` accepts release metadata through environment variables:
 
 ```sh
-CHADEX_APP_VERSION=0.3.2 \
+CHADEX_APP_VERSION=0.3.3 \
 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_IDENTITY="Developer ID Application: ..." \
 ./scripts/build_app.sh
@@ -61,20 +61,20 @@ CHADEX_CODESIGN_IDENTITY="Developer ID Application: ..." \
 
 For a version bump, update the default in `scripts/build_app.sh`, the own-package versions in `chadex-runtime/Cargo.toml`, `runtime-engine/Cargo.toml` (`workspace.package.version`), and `rust-helper/Cargo.toml`, and their three lockfiles. Runtime workspace members inherit the workspace version; third-party dependency versions must remain unchanged. Add `docs/releases/X.Y.Z.md` for the exact release tag and update `CHANGELOG.md` and the README release-note link. The generated app `Info.plist` takes its version from the build environment; it is not a source file to edit.
 
-### v0.3.2 validation
+### v0.3.3 validation
 
-See `docs/releases/0.3.2.md` for executed activity/dwell validation and its boundaries. Run the source gate from a clean release checkout. A dirty-tree run with `CHADEX_RELEASE_ALLOW_DIRTY=1` is development evidence only.
+See `docs/releases/0.3.3.md` for executed file-import/update validation and its boundaries. Run the source gate from a clean release checkout. A dirty-tree run with `CHADEX_RELEASE_ALLOW_DIRTY=1` is development evidence only.
 
 For the free artifact path, explicitly select ad-hoc signing, then package the resulting bundle:
 
 ```sh
-CHADEX_APP_VERSION=0.3.2 CHADEX_APP_BUILD_NUMBER=1 \
+CHADEX_APP_VERSION=0.3.3 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_MODE=adhoc CHADEX_RUNTIME_PROFILE=release \
 ./scripts/build_app.sh
 ./scripts/package_free_macos_release.sh dist/Chadex.app
 ```
 
-The expected artifacts are `dist/Chadex-v0.3.2-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
+The expected artifacts are `dist/Chadex-v0.3.3-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
 
 ## Public Git history strategy
 

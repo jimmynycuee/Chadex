@@ -85,6 +85,9 @@ pub(super) fn ensure_desktop_server_defaults(path: &Path) -> DesktopResult<()> {
             "WEBCODEX_MCP_COMPACT_SCHEMAS={DESKTOP_MCP_COMPACT_SCHEMAS}"
         ));
     }
+    if !has_key("WEBCODEX_MCP_TRUST_LOOPBACK_API_TOKEN_FILE_IMPORT") {
+        additions.push("WEBCODEX_MCP_TRUST_LOOPBACK_API_TOKEN_FILE_IMPORT=true".to_string());
+    }
     if additions.is_empty() {
         return Ok(());
     }

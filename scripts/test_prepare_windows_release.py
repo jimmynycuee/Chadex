@@ -60,9 +60,9 @@ class PrepareWindowsReleaseTests(unittest.TestCase):
         (self.repo / "apps/windows/src-tauri").mkdir(parents=True)
         (self.repo / "apps/windows").mkdir(exist_ok=True)
         (self.repo / "apps/windows/src-tauri/tauri.conf.json").write_text(
-            json.dumps({"version": "0.3.2"}), encoding="utf-8")
+            json.dumps({"version": "0.3.3"}), encoding="utf-8")
         (self.repo / "apps/windows/package.json").write_text(
-            json.dumps({"version": "0.3.2", "dependencies": {"@tauri-apps/api": "2.12.1"}}), encoding="utf-8")
+            json.dumps({"version": "0.3.3", "dependencies": {"@tauri-apps/api": "2.12.1"}}), encoding="utf-8")
         (self.repo / "apps/windows/package-lock.json").write_text(json.dumps({"packages": {
             "": {"dependencies": {"@tauri-apps/api": "2.12.1"}},
             "node_modules/@tauri-apps/api": {"version": "2.12.1"},
@@ -70,7 +70,7 @@ class PrepareWindowsReleaseTests(unittest.TestCase):
         (self.repo / "apps/windows/src-tauri/Cargo.lock").write_text(
             'version = 4\n[[package]]\nname = "tauri"\nversion = "2.12.1"\n', encoding="utf-8")
         (self.repo / "apps/windows/src-tauri/Cargo.toml").write_text(
-            '[package]\nname = "chadex-windows"\nversion = "0.3.2"\n', encoding="utf-8")
+            '[package]\nname = "chadex-windows"\nversion = "0.3.3"\n', encoding="utf-8")
         (self.repo / "attribution").mkdir()
         (self.repo / "LICENSE").write_bytes(b"Chadex license fixture\n")
         (self.repo / "attribution/WebCodex-LICENSE.txt").write_bytes(
@@ -132,7 +132,7 @@ class PrepareWindowsReleaseTests(unittest.TestCase):
             "desktop-smoke": False,
         })
         self.assertIs(manifest["unsigned"], True)
-        self.assertEqual(manifest["version"], "0.3.2")
+        self.assertEqual(manifest["version"], "0.3.3")
         self.assertIsInstance(manifest["resources"], list)
         resources = {item["relative_path"]: item for item in manifest["resources"]}
         expected_sources = {
@@ -249,7 +249,7 @@ class PrepareWindowsReleaseTests(unittest.TestCase):
 
     def test_rejects_mismatched_versions(self) -> None:
         package_path = self.repo / "apps/windows/package.json"
-        package_path.write_text(json.dumps({"version": "0.3.3"}), encoding="utf-8")
+        package_path.write_text(json.dumps({"version": "0.3.2"}), encoding="utf-8")
 
         with self.assertRaises(release.ReleasePreparationError) as failure:
             self.prepare()

@@ -221,25 +221,40 @@ final class UpdateManager: ObservableObject {
         phase.isBusy
     }
 
+    private var automaticChecksEnabled: Bool {
+        defaults.object(forKey: ChadexPreferenceKey.autoCheckUpdates) as? Bool ?? true
+    }
+
     func configureUpdateTermination(_ handler: @escaping @MainActor () async -> Void) {
         updateTerminationHandler = handler
     }
 
     func scheduleAutomaticCheckIfNeeded() {
-        guard !scheduledAutomaticCheck else { return }
+        guard !scheduledAutomaticCheck, automaticChecksEnabled else { return }
         scheduledAutomaticCheck = true
+        let scheduledAt = now().timeIntervalSince1970
 
-        let enabled = defaults.object(forKey: ChadexPreferenceKey.autoCheckUpdates) as? Bool ?? true
-        guard enabled else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, self.automaticChecksEnabled else { return }
 
+            // Always check once shortly after a fresh app launch. If another
+            // check (manual or foreground) completed after this launch check
+            // was scheduled, reuse that result instead of issuing a duplicate.
+            let lastCheck = self.defaults.double(forKey: ChadexPreferenceKey.lastUpdateCheckAt)
+            guard lastCheck < scheduledAt else { return }
+            await self.checkForUpdates(userInitiated: false)
+        }
+    }
+
+    func checkAutomaticallyIfDue() {
+        guard automaticChecksEnabled, !phase.isBusy else { return }
         let lastCheck = defaults.double(forKey: ChadexPreferenceKey.lastUpdateCheckAt)
-        if lastCheck > 0,
-           now().timeIntervalSince1970 - lastCheck < Self.automaticCheckInterval {
+        guard lastCheck <= 0 || now().timeIntervalSince1970 - lastCheck >= Self.automaticCheckInterval else {
             return
         }
 
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
             guard let self else { return }
             await self.checkForUpdates(userInitiated: false)
         }
@@ -265,7 +280,9 @@ final class UpdateManager: ObservableObject {
             if let release {
                 availableRelease = release
                 phase = .available(release.version)
-                notice = ChadexUpdateNotice(kind: .available(release.version))
+                if userInitiated {
+                    notice = ChadexUpdateNotice(kind: .available(release.version))
+                }
             } else {
                 availableRelease = nil
                 phase = .upToDate

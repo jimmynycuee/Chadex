@@ -44,7 +44,7 @@ fn desktop_server_defaults_append_missing_values_and_preserve_explicit_config() 
     let env_file = dir.join("webcodex.env");
     std::fs::write(
         &env_file,
-        "WEBCODEX_TOKEN=secret\nWEBCODEX_MCP_COMPACT_SCHEMAS=false\n",
+        "WEBCODEX_TOKEN=secret\nWEBCODEX_MCP_COMPACT_SCHEMAS=false\nWEBCODEX_MCP_TRUST_LOOPBACK_API_TOKEN_FILE_IMPORT=false\n",
     )
     .unwrap();
 
@@ -53,6 +53,12 @@ fn desktop_server_defaults_append_missing_values_and_preserve_explicit_config() 
     assert!(once.contains("WEBCODEX_TOKEN=secret\n"));
     assert!(once.contains("WEBCODEX_MCP_COMPACT_SCHEMAS=false\n"));
     assert_eq!(once.matches("WEBCODEX_MCP_COMPACT_SCHEMAS=").count(), 1);
+    assert!(once.contains("WEBCODEX_MCP_TRUST_LOOPBACK_API_TOKEN_FILE_IMPORT=false\n"));
+    assert_eq!(
+        once.matches("WEBCODEX_MCP_TRUST_LOOPBACK_API_TOKEN_FILE_IMPORT=")
+            .count(),
+        1
+    );
 
     ensure_desktop_server_defaults(&env_file).unwrap();
     assert_eq!(std::fs::read_to_string(&env_file).unwrap(), once);
@@ -70,6 +76,7 @@ fn desktop_server_defaults_add_both_values_to_fresh_server_env() {
     let content = std::fs::read_to_string(&env_file).unwrap();
     assert!(content.starts_with("WEBCODEX_ADDR=127.0.0.1:12345\n"));
     assert!(content.contains("WEBCODEX_MCP_COMPACT_SCHEMAS=true\n"));
+    assert!(content.contains("WEBCODEX_MCP_TRUST_LOOPBACK_API_TOKEN_FILE_IMPORT=true\n"));
     std::fs::remove_dir_all(dir).unwrap();
 }
 

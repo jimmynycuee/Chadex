@@ -295,7 +295,7 @@
 "updates.section" = "更新";
 "updates.currentVersion" = "目前版本";
 "updates.autoCheck" = "自動檢查更新";
-"updates.autoCheckNote" = "Chadex 最多每六小時檢查一次最新的穩定版 GitHub Release；手動檢查會立即執行。";
+"updates.autoCheckNote" = "Chadex 啟動後會自動檢查一次；持續使用時，距離上次檢查滿六小時後再次回到 App 也會自動檢查。手動檢查仍會立即執行。";
 "updates.check" = "檢查更新…";
 "updates.checkMenu" = "檢查更新…";
 "updates.install" = "安裝 v%@";

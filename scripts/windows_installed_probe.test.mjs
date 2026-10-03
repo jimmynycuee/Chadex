@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { probe, waitForUi, waitForIpc, invokeInstalled } from './windows_installed_probe.mjs';
 
-function desktop({ smoke = false, restore = false, rendered = true, version = '0.3.2', credentialError = null } = {}) {
+function desktop({ smoke = false, restore = false, rendered = true, version = '0.3.3', credentialError = null } = {}) {
   const calls = [];
   const state = { version, startup_error: null, credential_error: credentialError, credential_stored: false,
     helper: { state: 'running', pid: 123 }, runtime: { chat_gpt_verified_for_selected_project: false },
@@ -46,7 +46,7 @@ function desktop({ smoke = false, restore = false, rendered = true, version = '0
 
 test('installed production starts runtime, saves preferences and quits', async () => {
   const app = desktop();
-  const result = await probe(1234, 'C:/專案 A', 'initial', '0.3.2', app.connector);
+  const result = await probe(1234, 'C:/專案 A', 'initial', '0.3.3', app.connector);
   assert.equal(result.runtime_ready, true);
   assert.equal(result.smoke_ipc_rejected, true);
   assert.equal(app.calls.at(-1)[0], 'quit_app');
@@ -55,35 +55,35 @@ test('installed production starts runtime, saves preferences and quits', async (
 
 test('a smoke build without fixtures cannot pass the production probe', async () => {
   const app = desktop({ smoke: true });
-  await assert.rejects(probe(1234, 'C:/專案 A', 'initial', '0.3.2', app.connector), /production_smoke_ipc_exposed/);
+  await assert.rejects(probe(1234, 'C:/專案 A', 'initial', '0.3.3', app.connector), /production_smoke_ipc_exposed/);
   assert.equal(app.calls.some(([name]) => name === 'quit_app'), false);
   assert.equal(app.closed(), true);
 });
 
 test('restored preferences are observed before a new setup request', async () => {
   const app = desktop({ restore: true });
-  const result = await probe(1234, 'C:/專案 A', 'restore', '0.3.2', app.connector);
+  const result = await probe(1234, 'C:/專案 A', 'restore', '0.3.3', app.connector);
   assert.equal(result.preferences_restored, true);
   assert.equal(app.calls.some(([name]) => name === 'save_preferences'), false);
 });
 
 test('missing restored preferences do not get silently repaired', async () => {
   const app = desktop();
-  await assert.rejects(probe(1234, 'C:/專案 A', 'restore', '0.3.2', app.connector), /installed_preferences_not_restored/);
+  await assert.rejects(probe(1234, 'C:/專案 A', 'restore', '0.3.3', app.connector), /installed_preferences_not_restored/);
   assert.equal(app.calls.some(([, args]) => args?.method === 'configureLocalSetup'), false);
 });
 
 test('an unrendered WebView or unexpected version cannot pass', async () => {
-  for (const options of [{ rendered: false }, { version: '0.3.1' }]) {
+  for (const options of [{ rendered: false }, { version: '0.3.2' }]) {
     const app = desktop(options);
-    await assert.rejects(probe(1234, 'C:/專案 A', 'initial', '0.3.2', app.connector));
+    await assert.rejects(probe(1234, 'C:/專案 A', 'initial', '0.3.3', app.connector));
     assert.equal(app.closed(), true);
   }
 });
 
 test('credential storage read failure is not an empty credential store', async () => {
   const app = desktop({ credentialError: 'credential_read_failed' });
-  await assert.rejects(probe(1234, 'C:/專案 A', 'initial', '0.3.2', app.connector), /installed_credential_read_failed/);
+  await assert.rejects(probe(1234, 'C:/專案 A', 'initial', '0.3.3', app.connector), /installed_credential_read_failed/);
 });
 
 test('backend readiness cannot replace the rendered frontend state', async () => {
