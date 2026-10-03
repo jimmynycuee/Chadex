@@ -28,6 +28,8 @@ The CI `Windows W5 installer candidate` job builds and tests on the Windows GitH
 
 The mandatory `Windows W5 source integrity` job first runs Tauri configuration resolution with an intentional no-build runner, then `cargo check` to exercise Windows build scripts. Resource copies are excluded only in this early diagnostic; the full release build still stages and verifies all production resources. Both checks require unchanged HEAD and clean source. The release builder also checks cleanliness after each native build and prints changed repository paths on failure. This does not restore or hide mutations.
 
+CI 37102421007 isolated a modified `apps/windows/src-tauri/Cargo.toml` immediately after Tauri configuration resolution, with no content diff and an LF/CRLF warning. A path-specific `.gitattributes` rule keeps that manifest in LF on Windows, matching Tauri's TOML serialization. It changes no dependency or feature and leaves all source-clean checks enabled.
+
 The installation harness requires `RUNNER_ENVIRONMENT=github-hosted`, refuses ordinary/self-hosted user hosts and pre-existing Chadex installation/data on the ephemeral runner. It installs to a new Unicode/space-containing path outside the source tree, launches the production executable from another working directory and tests:
 
 - Installer/resource hashes and the installed helper/runtime's default discovery, without developer or smoke resource overrides.

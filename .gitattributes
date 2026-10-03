@@ -1,0 +1,2 @@
+# Tauri serializes this manifest with LF during configuration resolution.
+/apps/windows/src-tauri/Cargo.toml text eol=lf
