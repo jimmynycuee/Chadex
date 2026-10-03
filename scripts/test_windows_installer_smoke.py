@@ -306,6 +306,11 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                 "runtime": r"C:\runner\install\chadex-runtime",
                 "data": str(local_data),
             }, Path(r"C:\runner\install"), local_data)
+            smoke.validate_default_paths({
+                "helper": r"\\?\C:\RUNNER\install\helper\chadex-helper.exe",
+                "runtime": r"\\?\C:\RUNNER\install\chadex-runtime",
+                "data": r"\\?\C:\RUNNER\AppData\Local\app.chadex.windows",
+            }, Path(r"C:\runner\install"), local_data)
             with self.assertRaises(smoke.SmokeFailure) as failure:
                 smoke.validate_default_paths({
                     "helper": r"C:\wrong\helper\chadex-helper.exe",

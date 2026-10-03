@@ -365,7 +365,13 @@ def registry_entry_exists() -> bool:
 
 
 def _path_key(value: str | Path) -> str:
-    return ntpath.normcase(ntpath.normpath(str(value).replace("/", "\\")))
+    text = str(value).replace("/", "\\")
+    folded = text.casefold()
+    if folded.startswith("\\\\?\\unc\\"):
+        text = "\\\\" + text[8:]
+    elif folded.startswith("\\\\?\\"):
+        text = text[4:]
+    return ntpath.normcase(ntpath.normpath(text))
 
 
 def verify_registry_owner(expected_version: str, install_dir: Path) -> dict[str, bool]:
