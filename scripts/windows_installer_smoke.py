@@ -26,7 +26,7 @@ import windows_runtime_e2e as w2
 import windows_suspended_launch as suspended
 
 
-BASELINE_VERSION = "0.3.1"
+BASELINE_VERSION = "0.3.2"
 RESOURCE_SCHEMA = "chadex.windows.release-resources.v1"
 EXPECTED_RESOURCES = frozenset({
     "helper/chadex-helper.exe",
