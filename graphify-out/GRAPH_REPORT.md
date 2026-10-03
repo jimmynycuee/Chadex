@@ -1,16 +1,16 @@
 # Graph Report - Chadex  (2026-10-03)
 
 ## Corpus Check
-- 2323 files · ~4,183,279 words
+- 2323 files · ~4,184,054 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 59656 nodes · 175606 edges · 1843 communities (1757 shown, 86 thin omitted)
+- 59667 nodes · 175634 edges · 1865 communities (1781 shown, 84 thin omitted)
 - Extraction: 88% EXTRACTED · 12% INFERRED · 0% AMBIGUOUS · INFERRED: 20879 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `96f193dd`
+- Built from commit: `81405b6a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -20,13 +20,13 @@
 - webcodex/src/tool_runtime/tests/git.rs
 - webcodex/src/tool_runtime/tests/work_on_project.rs
 - webcodex-computer/src/lib.rs
-- runtime-engine/src/tool_runtime/tests/lsp.rs
+- auth_context
 - SessionStore
 - windows_installer_smoke.py
 - lock_unpoison
 - webcodex-runner/src/webcodex_runner/shell.rs
 - webcodex-core/src/runner_protocol.rs
-- webcodex/src/auth/scopes.rs
+- webcodex/src/auth/pat.rs
 - webcodex/src/oauth_http/managed_authorize.rs
 - webcodex-cli/src/webcodex_cli/service.rs
 - project_request
@@ -49,7 +49,7 @@
 - webcodex/src/mcp/resources.rs
 - test_config
 - chadex-runtime-cli/src/webcodex_cli/tests/ops.rs
-- form_body
+- test_config
 - webcodex/src/tool_runtime/chadex_task_executor.rs
 - webcodex/src/tool_runtime/files/mutations.rs
 - webcodex/src/tool_runtime/coding_task.rs
@@ -59,10 +59,10 @@
 - PluginManager
 - webcodex/src/tool_runtime/tests/files.rs
 - ToolResult
-- auth_context
+- wait_for_patch_agent_request
 - FerretController
 - frontend/src/runtime.ts
-- webcodex/src/runtime_console_http/communication.rs
+- prepared
 - webcodex-runner/src/webcodex_runner/lsp/navigation_tests.rs
 - webcodex-workspace/src/project_context.rs
 - AppState
@@ -89,9 +89,9 @@
 - webcodex/src/runtime_http_tests.rs
 - webcodex-core/src/lsp_bridge.rs
 - webcodex-core/src/validation_evidence.rs
-- test_config
+- oauth2_enabled
 - test_runtime
-- DesktopResult
+- RuntimeCoordinator
 - webcodex-core/src/runner_operation.rs
 - webcodex-core/src/apply_patch_shared.rs
 - webcodex-workspace/src/file_read_range.rs
@@ -125,9 +125,9 @@
 - tray.rs
 - webcodex/src/project_entry_cloudflared.rs
 - enqueue_pending_request_locked
-- execute_search_command
+- runtime-engine/src/tool_runtime/tests/handoff.rs
 - webcodex-workflow-session/src/events.rs
-- run_text_search_with_profiles_and_execution_state
+- project_request
 - verification.rs
 - webcodex-workspace/src/project_overview.rs
 - command.rs
@@ -168,9 +168,9 @@
 - webcodex-store/src/agent_task_tests.rs
 - webcodex/src/project_entry.rs
 - webcodex/src/ssh_resource_gateway.rs
-- ToolRuntime
+- ProjectResolverError
 - chadex-runtime-runner/src/webcodex_runner/plugin.rs
-- webcodex/src/runner_session.rs
+- webcodex/src/runner_session_tests.rs
 - ReportGateTests
 - webcodex/src/config.rs
 - hash_token
@@ -191,7 +191,7 @@
 - test_release_publication.py
 - webcodex/src/project_entry_openai_tunnel.rs
 - webcodex/src/tool_runtime/session_shell.rs
-- webcodex-tool-contracts/src/metadata.rs
+- tool_definitions
 - webcodex-cli/src/webcodex_cli/connect/oauth.rs
 - SessionStore
 - webcodex-computer/src/platform/macos/applications.rs
@@ -215,7 +215,6 @@
 - Result
 - webcodex-runner-registry/src/validation.rs
 - cli_action
-- test.sh
 - commands/mod.rs
 - webcodex-core/src/validation_bridge.rs
 - RemoteShellTransport
@@ -288,7 +287,7 @@
 - release_publication.py
 - webcodex/src/mcp_tests/artifact_export.rs
 - webcodex/src/tool_runtime/runtime_metrics.rs
-- webcodex-cli/src/webcodex_cli/tests/ops.rs
+- runtime-engine/src/tool_runtime/git/show_changes.rs
 - process/registry.rs
 - webcodex-core/src/project_listing.rs
 - .run_process_with_contract_mode
@@ -316,7 +315,7 @@
 - runtime-engine/src/tool_runtime/tests/work_on_project.rs
 - webcodex/src/server_shutdown/tests.rs
 - runtime_compat/tunnel_config.rs
-- webcodex/src/tool_runtime/tests/support/runner.rs
+- webcodex/src/tool_runtime/tests/chadex_task_executor.rs
 - webcodex-code-mode/src/lib.rs
 - webcodex-core/src/mcp_gateway.rs
 - object_schema
@@ -366,7 +365,7 @@
 - runtime_compat/platform.rs
 - webcodex/src/test_support.rs
 - webcodex-runner/src/webcodex_runner/validation/pyright.rs
-- runtime-engine/src/tool_runtime/tests/process.rs
+- register_with_instance
 - coding_tasks.rs
 - collect_release_bundle.py
 - BootstrapTests
@@ -438,8 +437,8 @@
 - webcodex/src/oauth_http/tests/shared_key_bridge.rs
 - release-manifest-check-self-test.js
 - release_readiness.py
-- Path
-- .configure_local_setup_inner
+- webcodex-runner/src/webcodex_runner/plugin.rs
+- chadex-runtime-tool-runtime-contracts/src/tool_call.rs
 - chadex-runtime-cli/src/lib.rs
 - chadex-runtime-cli/src/webcodex_cli/service.rs
 - webcodex-lsp/src/position.rs
@@ -485,7 +484,7 @@
 - smoke_artifact_transfer.sh
 - test-claude-provider-e2e.sh
 - chadex-runtime-runner/src/webcodex_runner/external_tools.rs
-- String
+- ActionAuditRecord
 - runtime-engine/src/tool_runtime/edit_tool_telemetry.rs
 - Common issues
 - e2e_linux_socket_activation.py
@@ -527,7 +526,7 @@
 - sensitive_paths.rs
 - ActionAuditRecord
 - runtime-engine/src/tool_runtime/coding_task.rs
-- Error
+- DesktopResult
 - webcodex-runner/src/webcodex_runner/validation/path.rs
 - ServerInstanceGuard
 - input_schemas/jobs.rs
@@ -535,11 +534,11 @@
 - Chadex Architecture
 - AdminMutationController
 - release_doctor.py
-- canonical_server_url
+- spec_named
 - chadex-runtime-store/src/communication.rs
 - rpc
 - .verify
-- .new
+- runtime-engine/src/tool_request_trace.rs
 - compilerOptions
 - DesktopError
 - register_with_instance
@@ -571,7 +570,7 @@
 - admin_controller.test.mjs
 - webcodex-core/src/workflow_session_contract.rs
 - webcodex/src/tool_runtime/context_projection.rs
-- webcodex/src/tool_runtime/tests/script.rs
+- runtime_window.ts
 - output_schema_for_tool
 - CodingKeys
 - locale.tsx
@@ -627,7 +626,7 @@
 - ProcessKind
 - Windows + OpenAI Secure MCP Tunnel 实操指南
 - webcodex/src/tool_runtime/tests/targeted_inventory.rs
-- spec_named
+- .start_coding_workflow
 - validation/registry.rs
 - input_schemas/discovery.rs
 - line_edits.rs
@@ -665,7 +664,7 @@
 - Manual Multi-Window Collaboration
 - runtime.test.mjs
 - release_check.sh
-- AuthContext
+- runtime-engine/src/audit_http/tests.rs
 - ReleaseDoctorTests
 - ProjectConfig
 - MCP App presentation and autonomous-continuation findings
@@ -736,12 +735,12 @@
 - Coding 工作流
 - Release Readiness Checklist
 - register_instance_with_capabilities
-- register_project
+- runtime-engine/src/tool_runtime/tests/goals.rs
 - Chadex
 - Agent Loop Baseline Protocol
 - webcodex-process/src/lib.rs
 - String
-- webcodex-lsp/src/fake_server.rs
+- PollError
 - Swift ↔ Rust Bridge Protocol
 - AI Coding Agent Onboarding
 - AI Coding Agent 接入指南
@@ -751,7 +750,7 @@
 - 快速试用
 - runtime_bundle_contract.test.mjs
 - Chadex 體感速度與安全／功能檢查
-- runtime-engine/src/tool_runtime/tests/hygiene.rs
+- ShellEntry
 - Tool Request Tracing — Maintainer Forensics
 - Documentation Index
 - 文档索引
@@ -775,7 +774,7 @@
 - BuildIdentityTests
 - files
 - keywords
-- runtime-engine/src/tool_runtime/tests/changes.rs
+- runtime-engine/src/tool_runtime/tests/reconnect.rs
 - Model-facing identifier economy
 - Using WebCodex Desktop
 - WebCodex Desktop 使用指南
@@ -794,7 +793,7 @@
 - lookup_tool_definition
 - runtime-engine/src/tool_runtime/files/inspection.rs
 - RunnerRegistry
-- chadex-runtime-runner-registry/src/tests/job_log_wait.rs
+- get_registry
 - runtime-engine/src/tool_runtime/skills.rs
 - String
 - runtime-engine/src/mcp/tools.rs
@@ -807,7 +806,7 @@
 - enqueue_pending_request_locked
 - chadex-runtime-runner/src/webcodex_runner/projects/registration.rs
 - runtime-engine/src/tool_runtime/tests/coding_task.rs
-- chadex-runtime-tool-runtime-contracts/src/tool_call.rs
+- ToolCall
 - chadex-runtime-workflow-session/src/continuation.rs
 - chadex-runtime-core/src/plugin.rs
 - runtime-engine/src/action_audit_sessions.rs
@@ -821,7 +820,7 @@
 - chadex-runtime-workflow-session/src/events.rs
 - .code_mode_exec_effectful
 - View
-- chadex-runtime-runner-registry/src/tests/mcp_gateway.rs
+- run_runner_token_create_local
 - current_runner_registration
 - String
 - runtime-engine/src/oauth_http/managed_authorize.rs
@@ -860,12 +859,12 @@
 - runtime-engine/src/tool_runtime/window_activity.rs
 - chadex-runtime-cli/src/webcodex_cli/connect/process.rs
 - runtime-engine/src/tool_runtime/chadex_task_executor.rs
-- Option
+- get_registry
 - chadex-runtime-computer/src/platform/windows/accessibility.rs
 - Result
 - chadex-runtime-validation/src/evidence.rs
 - runtime-engine/src/project_entry_cloudflared.rs
-- auth_context
+- runner_access_from_auth
 - current_runner_registration
 - runtime-engine/src/admin_project_lifecycle.rs
 - chadex-runtime-runner/src/main_tests/runner_config.rs
@@ -889,7 +888,7 @@
 - runtime-engine/src/tool_runtime/sessions/tests.rs
 - chadex-runtime-core/src/runner_protocol/job.rs
 - runtime-engine/src/runner_quic.rs
-- ShellError
+- SpawnedChildGuard
 - chadex-runtime-runner/src/webcodex_runner/external_tools_tests.rs
 - ShutdownCoordinator
 - runtime-engine/src/mcp_tests/file_import.rs
@@ -906,7 +905,7 @@
 - chadex-runtime-workflow-session/src/continuation_tests.rs
 - .execute_chadex_task_attempt
 - runtime-engine/src/tool_runtime/session_shell.rs
-- load_recovered_task_projections_at
+- .get
 - String
 - runtime-engine/src/mcp_gateway.rs
 - webcodex/src/tool_runtime/tests/memory.rs
@@ -921,7 +920,7 @@
 - runtime-engine/src/runner_ws.rs
 - runtime-engine/src/tool_runtime/tests/chadex_task_executor.rs
 - chadex-runtime-cli/src/webcodex_cli/connect/oauth.rs
-- runtime_operations.ts
+- webcodex/src/tool_runtime/tests/hygiene.rs
 - chadex-runtime-workspace/src/workspace_checkpoint.rs
 - runtime-engine/src/tool_runtime/surface.rs
 - chadex-runtime-computer/src/platform/windows/input.rs
@@ -938,7 +937,7 @@
 - chadex-runtime-runner/src/webcodex_runner/computer_tests.rs
 - Result
 - runtime-engine/src/auth/middleware.rs
-- runtime-engine/src/console_web.rs
+- ConsoleAssetSource
 - runtime-engine/src/tool_runtime/git_review.rs
 - chadex-runtime-process/tests/managed_child.rs
 - build_server_http_client
@@ -962,14 +961,14 @@
 - runtime-engine/src/tool_runtime/hygiene.rs
 - .run_process_with_contract_mode
 - runtime-engine/src/tool_runtime/search_project_texts.rs
-- RunnerEnvelope
+- read_quic_frame
 - chadex-runtime-computer/src/platform/macos/accessibility.rs
 - chadex-runtime-core/src/validation_evidence.rs
 - .new
 - chadex-runtime-runner/src/webcodex_runner/persistent_shell.rs
 - chadex-runtime-workflow-session/src/handoff_brief.rs
 - runtime-engine/src/oauth_http/tests/shared_key_bridge.rs
-- runtime-engine/src/runner_session.rs
+- runtime-engine/src/runner_session_tests.rs
 - runtime-engine/src/tool_runtime/agent_task.rs
 - runtime-engine/src/tool_runtime/observe_jobs.rs
 - chadex-runtime-cli/src/webcodex_cli/plugin.rs
@@ -991,14 +990,14 @@
 - webcodex-workflow-session/src/handoff_brief_tests.rs
 - chadex-runtime-core/src/mcp_gateway.rs
 - chadex-runtime-runner/src/webcodex_runner/coding_agent.rs
-- String
+- .new
 - webcodex/src/tool_runtime/tests/continuation_feedback.rs
 - chadex-runtime-process/src/program.rs
 - chadex-runtime-runner/src/webcodex_runner/files.rs
 - chadex-runtime-runner/src/webcodex_runner/detached_job.rs
 - chadex-runtime-tool-contracts/src/registry/output_schemas/common.rs
 - validate_http_protocol
-- String
+- ShellEntry
 - chadex-runtime-runner/src/webcodex_runner/plugin_check_tests.rs
 - runtime-engine/src/test_support.rs
 - webcodex-runner/src/webcodex_runner/fake_claude_mcp.rs
@@ -1010,7 +1009,7 @@
 - runtime-engine/src/mcp_tests/agent_continuation_app.test.mjs
 - runtime-engine/src/tool_runtime/runtime_info.rs
 - webcodex-core/src/validation_evidence_tests.rs
-- Value
+- String
 - chadex-runtime-cli/src/webcodex_cli/connect/shared_key_oauth.rs
 - read_runner_skill
 - runtime-engine/src/openapi.rs
@@ -1019,7 +1018,7 @@
 - runtime-engine/src/tool_runtime/patch.rs
 - runtime-engine/src/tool_runtime/projects.rs
 - runtime-engine/src/tool_runtime/runtime_metrics.rs
-- adaptive_runtime_gateway_params
+- runtime-engine/src/mcp_tests/ssh_resource.rs
 - read_runner_skill
 - bridge/src/lib.rs
 - .dispatch_computer_tool
@@ -1038,12 +1037,12 @@
 - chadex-runtime-runner/src/webcodex_runner/validation/execute.rs
 - chadex-runtime-tool-contracts/src/registry/tool_specs.rs
 - runtime-engine/src/server_shutdown/tests.rs
-- Value
+- webcodex-runner-registry/src/tests/job_log_wait.rs
 - structured_validation_target_identity
 - chadex-runtime-runner-registry/src/validation.rs
 - dispatch_request_with_outcome
 - chadex-runtime-workflow-session/src/session_store_tests.rs
-- ProjectResolverError
+- .lock
 - runtime-engine/src/tool_runtime/read_revisions.rs
 - runtime-engine/src/tool_runtime/tests/session_shells.rs
 - .dispatch_computer_tool
@@ -1067,7 +1066,7 @@
 - Request
 - serve_with_signal
 - validation_summary_for_session
-- Option
+- runtime-engine/src/console_web.rs
 - build_server_http_client
 - update_snapshot
 - chadex-runtime-computer/src/platform/windows/capture.rs
@@ -1104,7 +1103,7 @@
 - benchmark_phase9_e2e.py
 - CheckpointStore
 - webcodex-cli/src/webcodex_cli/ops.rs
-- webcodex-runner/src/webcodex_runner/plugin.rs
+- prepare_provider
 - webcodex-workflow-session/src/query.rs
 - call_hierarchy
 - SshConnectionPool
@@ -1112,7 +1111,7 @@
 - chadex-runtime-workflow-session/src/model.rs
 - ToolAuditPolicy
 - runtime-engine/src/mcp_tests/agent_continuation_app.rs
-- resolve
+- serialized_json_len
 - call_hierarchy
 - webcodex-workflow-session/src/model.rs
 - chadex-runtime-core/src/project_instructions.rs
@@ -1121,11 +1120,11 @@
 - chadex-runtime-tool-contracts/src/registry/input_schemas/computer.rs
 - chadex-runtime-tool-contracts/src/tool_definition.rs
 - EffectiveAuthorityConfig
-- webcodex-workflow-session/src/util.rs
+- sanitize_persisted_event
 - cli_action
 - webcodex-runner-registry/src/tests/plugin_gateway.rs
 - runtime-engine/src/tool_runtime/lsp_tools.rs
-- webcodex/src/tool_runtime/tests/changes.rs
+- EnvGuard
 - ssh_config
 - chadex-runtime-store/src/memory_tests.rs
 - chadex-runtime-runner/src/webcodex_runner/fake_claude_mcp.rs
@@ -1141,7 +1140,7 @@
 - .code_mode_exec_effectful
 - RunnerRegistry
 - runner_registration
-- project_registry_dir
+- runtime_config
 - Result
 - StoreConnectionGuard
 - chadex-runtime-tool-contracts/src/tests/catalog_discovery.rs
@@ -1177,7 +1176,7 @@
 - chadex-runtime-tool-contracts/src/registry/input_schemas/sessions.rs
 - test_runner_config
 - .complete_message
-- runtime-engine/src/tool_request_trace.rs
+- record_runner_request_enqueued
 - phase19a_control_plane_campaign.py
 - runtime-engine/src/tool_runtime/context_projection.rs
 - ProjectResolverError
@@ -1187,19 +1186,19 @@
 - .snapshot
 - chadex-runtime-store/src/agent_wake_tests.rs
 - webcodex-runner-registry/src/tests/mcp_gateway.rs
-- SpecializedOperationPolicy
+- SpecializedGovernanceDenial
 - new_permission_decision
 - .start
 - .snapshot
-- webcodex-cli/src/webcodex_cli/tests/server/status.rs
+- run
 - new_permission_decision
 - completion_persistence_failure_publishes_only_lost_and_never_redispatches
 - chadex-runtime-computer/src/macos_live_tests.rs
 - reload_fixture
 - .start
 - chadex-runtime-store/src/agent_attention_tests.rs
-- suggested_tool_call_schema
-- window_for_auth
+- chadex-runtime-tool-contracts/src/registry/output_schemas/git.rs
+- audit_stats
 - chadex-runtime-validation/src/adapters/rust.rs
 - record_model_facing_result
 - FakeHostAdapter
@@ -1212,13 +1211,13 @@
 - src-tauri/src/activity.rs
 - benchmark_workflow.py
 - computer_error
-- webcodex-validation/src/adapters/rust.rs
+- shell_escape_simple
 - configured_project_share_subject
 - RunnerRecord
 - runtime-engine/src/tool_runtime/tests/agent_tasks.rs
 - String
 - normalize_oauth_scopes
-- normalize_exact_commit_id
+- .git_commit_paths
 - chadex-runtime-tool-contracts/src/registry/input_schemas/agent_tasks.rs
 - .apply_project_inventory_page_checked
 - webcodex/src/tool_runtime/computer_tools.rs
@@ -1227,9 +1226,9 @@
 - webcodex/src/tool_runtime/tests/jobs.rs
 - webcodex-core/src/authority.rs
 - RunnerRecord
-- chadex-runtime-runner-registry/src/tests/plugin_gateway.rs
+- Fixture
 - webcodex/src/tool_runtime/tests/schema/specs.rs
-- run_script_validation_identity
+- ServiceResponse
 - Option
 - RunnerFeature
 - WindowsDesktopSmokeTests
@@ -1255,9 +1254,9 @@
 - .verify
 - phase19a_longhaul_profile.py
 - runtime-engine/src/tool_runtime/activity.rs
-- visible_window_summary_for_auth
+- runtime-engine/src/runner_session.rs
 - Database
-- prepared
+- webcodex-cli/src/webcodex_cli/connect/mod.rs
 - RunnerRegistryInner
 - internal_mode_command
 - handle_lsp_request
@@ -1278,7 +1277,7 @@
 - chadex-runtime-core/src/project_context_contract.rs
 - chadex-runtime-core/src/sensitive_paths.rs
 - NoopRunnerRegistryTelemetry
-- validate_project_op_path
+- webcodex/src/runner_session.rs
 - execute_validation_with_shutdown
 - chadex-runtime-runner/src/webcodex_runner/validation/path.rs
 - chadex-runtime-tool-contracts/src/registry/input_schemas/jobs.rs
@@ -1286,7 +1285,7 @@
 - GoTestValidationAdapter
 - chadex-runtime-workspace/src/file_read_normalize.rs
 - .import_conversation_files
-- rpc_error
+- ShellError
 - Execution
 - .update
 - runtime-engine/src/workspace_activity_store.rs
@@ -1296,7 +1295,7 @@
 - webcodex-runner-registry/src/tests/apply_text_edit_line_scope.rs
 - GoTestValidationAdapter
 - run_runner_status
-- KeychainStore
+- rust-env.sh
 - webcodex/src/workspace_activity_store.rs
 - benchmark_phase10d_e2e.py
 - ShellJobRecord
@@ -1309,7 +1308,7 @@
 - Option
 - Phase 16C — First-Tool Variance Attribution
 - completion_persistence_failure_publishes_only_lost_and_never_redispatches
-- assert_runner_access
+- rpc_error
 - Self
 - ToolRuntime
 - Phase 17 Stage 2 — Public Release Audit
@@ -1332,7 +1331,7 @@
 - structured_process_command
 - SshConnection
 - phase19b_handoff_ab.py
-- Option
+- validation_summary
 - LifecycleHost
 - Option
 - RunnerJobLifecycle
@@ -1361,10 +1360,10 @@
 - checkpoint_project_input_schema
 - chadex-runtime-tool-contracts/src/registry/input_schemas/skills.rs
 - chadex-runtime-tool-contracts/src/registry/output_schemas/edits.rs
-- chadex-runtime-core/src/runtime_contract.rs
+- validate_project_op_path
 - .dispatch_file_tool
 - runtime-engine/src/tool_runtime/tests/diagnostics.rs
-- chadex-runtime-runner-registry/src/tests/structured_file_delete.rs
+- register_instance_with_capabilities
 - runtime-engine/tests/fixtures/process_argv_helper.rs
 - .invoke_tool
 - .state_dir
@@ -1392,17 +1391,17 @@
 - write_clipboard
 - DetachedInitiatorIdentity
 - Option
-- webcodex/src/tool_runtime/project_resolution.rs
+- bounded_text
 - prune_expired
 - README.md
 - parse_env_file_line
 - windows_support.rs
 - runtime_context_state.ts
 - ActivityRecord
-- register_patch_instance
+- ChadexAppDelegate
 - chadex-runtime-core/src/skill_store.rs
 - chadex-runtime-runner-registry/src/lib.rs
-- validation_summary
+- .update
 - RegisteredStream
 - chadex-runtime-runner/src/webcodex_runner/validation/registry.rs
 - chadex-runtime-store/src/goal_tests.rs
@@ -1437,7 +1436,7 @@
 - output_schema_for_tool
 - webcodex-tool-contracts/src/registry/output_schemas/sessions.rs
 - .dispatch_discovery_tool
-- ChadexAppDelegate
+- SidebarSplitViewAlignmentView
 - .try_from_registration
 - webcodex-tool-contracts/src/registry/input_schemas/files.rs
 - post
@@ -1469,12 +1468,12 @@
 - ToolCallStart
 - ProjectConfig
 - RunnerSemanticView
-- bounded_text
+- .idempotent
 - ToolCallStart
 - main
 - main
 - chadex-runtime-process/src/lib.rs
-- chadex-runtime-runner-registry/src/tests/apply_text_edit_line_scope.rs
+- runtime-engine/src/tool_runtime/tests/work_result.rs
 - chadex-runtime-tool-contracts/src/registry/input_schemas/cleanup.rs
 - chadex-runtime-tool-contracts/src/registry/input_schemas/coding_agents.rs
 - chadex-runtime-tool-contracts/src/registry/input_schemas/runner_config.rs
@@ -1513,14 +1512,14 @@
 - ssh_resource_input_schema
 - write_project_file_input_schema
 - wrapped_output_schema
-- chadex-runtime-runner-registry/src/tests/apply_text_edit_local_guard.rs
+- AxObservationDeadline
 - Phase 17 Stage 4 — Public RC1 Readiness
 - V8Initialization
 - DetachedOutputState
 - spawn_output_reader
 - Chadex 0.2.2
 - Phase 19A Long-Haul Benchmark Harness
-- register_occurrence_instance
+- SpawnedChildGuard
 - ORIGIN.md
 - runtime-engine/src/oauth_http.rs
 - AttributionTests
@@ -1555,7 +1554,7 @@
 - Phase19AControlPlaneCampaignTests
 - OpenAiFileIdRef
 - normalize_exact_commit_id
-- AxObservationDeadline
+- WorkOnProjectBriefProjection
 - UpdateManager
 - dispatch_with_local_agent
 - package_free_macos_release.sh
@@ -1568,7 +1567,7 @@
 - notarize_app.sh
 - public_release_check.sh
 - update_runtime_frontend.sh
-- AttemptSummary
+- update_sha256_with_json
 - update_graphify_obsidian.sh
 - phase19a_pilot_workload.py
 - Phase19ALonghaulProfileTests
@@ -1578,47 +1577,55 @@
 - Chadex 0.1.0 RC2
 - BridgeError
 - Changelog
-- append_runner_stream
 - Chadex 0.3.0
 - windows_suspended_launch.py
 - W2 進度與交接
-- TraceWrite
+- String
 - Phase16AProfilerTests
 - webcodex-runner/src/webcodex_runner/validation/validation_tree_helper.rs
 - parse_framed_git_diff_hunks_stdout
-- Vec
+- runtime-engine/src/tool_runtime/tests/startup_catalog.rs
 - runtime-engine/src/tool_runtime/computer_tools.rs
-- WindowsInstallerSmokeTests
+- Path
 - write_profile
 - StructuredProcessExecutionClass
+- AttemptSummary
 - 本機測試資料與備份
-- .start
 - phase19a_launch_traced_app.sh
 - CountingSerialize
 - RegisteredStream
 - W4 進度與交接
-- .list_project_files
+- cargo_output_schema
 - Windows Track W3 — Desktop Product
 - .import_conversation_files
+- runtime-engine/src/runtime_http/tests/model_ergonomics_tests.rs
 - benchmark_phase10_quality_replay.py
 - state.ts
 - App
 - DesktopStore
+- model_facing_recovery_event
 - Code Ferret
 - prepare_windows_desktop.py
 - agent_token_summary
 - secret_like_value
 - windows_release_source_check.ps1
 - chadex_core/activity.rs
+- register_read_runner
+- cargo_output_schema
 - bin/smoke.rs
 - entry
 - fixtures.ts
 - webcodex/src/tool_runtime/tests/work_result.rs
+- webcodex/src/runtime_http/tests/model_ergonomics_tests.rs
+- builtin_coding_workflow_projection
+- preflight_plugin_schema_node
+- serve_asset
+- import_conversation_files_to_project
+- webcodex/src/runtime_http/project_files.rs
 - prepare-ferret.mjs
 - main.json
 - DesktopPaths
-- build_script_command
-- .list_project_files
+- build_register_request
 - emit
 - probe
 - apply_regular_tunnel_next_action
@@ -1627,22 +1634,32 @@
 - Chadex W3 desktop helper bridge
 - W2 Windows validation evidence — run 36987012302
 - runtime-engine/src/tool_runtime/permissions/tests.rs
+- webcodex/src/runtime_http/jobs.rs
+- webcodex/src/runtime_http/projects.rs
 - env.d.ts
 - runner_config
-- RuntimeConsoleOverview
-- .new
+- runner_config_check
+- .new_with_tunnel_config
+- webcodex-tool-contracts/src/registry/output_schemas/memory.rs
 - ooxml_extension_for_mime
+- DetachedOutputState
 - CargoTestCountEvidenceStatus
 - windows_installed_probe.mjs
-- shell_escape_simple
+- spawn_output_reader
 - wait_until
 - wait_until
-- CargoTestCountEvidenceStatus
-- create_temporary_script
+- DesktopState
+- provider_stdin_writer
 - ChatGPTCompletionBenchmarkTests
 - Windows Track W5 — Installer and Release Readiness
 - OpenAiFileIdRef
+- is_file_request_kind
+- runner_config
 - SpecializedEffect
+- effective_status
+- .new
+- wait_until
+- wait_until
 
 ## God Nodes (most connected - your core abstractions)
 1. `test_runtime()` - 496 edges
@@ -1671,79 +1688,79 @@
 ## Import Cycles
 - None detected.
 
-## Communities (1843 total, 86 thin omitted)
+## Communities (1865 total, 84 thin omitted)
 
 ### Community 0 - "auth_context"
 Cohesion: 0.02
-Nodes (339): computer_accessibility_enqueue_requires_distinct_capability(), computer_element_state_requires_its_own_additive_capability(), computer_clipboard_enqueue_requires_independent_capabilities_and_typed_envelopes(), computer_control_enqueue_requires_independent_capability(), computer_key_input_requires_independent_capability(), computer_pointer_enqueue_requires_independent_capability_and_typed_envelope(), computer_scroll_to_element_requires_independent_capability(), computer_window_activation_requires_its_own_additive_capability() (+331 more)
+Nodes (336): apply_text_edits_ambiguous_unguarded_requires_read_before_positional_retry(), apply_text_edits_complete_rollback_is_known_completed_no_effect(), apply_text_edits_dropped_waiter_after_dispatch_is_outcome_unknown(), apply_text_edits_dry_run_does_not_write(), apply_text_edits_effect_runtime(), apply_text_edits_empty_batch_proves_preflight_no_effect_without_fake_indices(), apply_text_edits_host_structural_schema_accepts_but_runtime_rejects_unguarded_position(), apply_text_edits_line_scope_fences_all_exact_edit_kinds() (+328 more)
 
 ### Community 1 - "RunnerRegistry"
 Cohesion: 0.11
 Nodes (15): Arc, AtomicU64, AtomicUsize, Default, HashMap, Option, ReceiptRegistryState, RunnerAccess (+7 more)
 
 ### Community 2 - "webcodex/src/tool_runtime/tests/git.rs"
-Cohesion: 0.04
-Nodes (169): ToolResult, parse_show_changes_output(), parse_show_changes_status_observation(), show_changes_command(), split_show_changes_stdout(), sparsify_complete_git_review_success(), commit_file(), assert_git_diff_hunks_recovery_call_parses() (+161 more)
+Cohesion: 0.05
+Nodes (161): ToolResult, parse_show_changes_status_observation(), show_changes_command(), split_show_changes_stdout(), sparsify_complete_git_review_success(), commit_file(), assert_git_diff_hunks_recovery_call_parses(), assert_git_diff_hunks_sparse_recovery_calls_parse() (+153 more)
 
 ### Community 3 - "webcodex/src/tool_runtime/tests/work_on_project.rs"
-Cohesion: 0.03
-Nodes (159): finish_and_handoff_surfaces_return_the_same_brief_for_the_same_snapshot(), agent_job_lost_on_disconnect_stays_terminal_after_reconnect(), assert_layer_contract(), canonical_project_session_explicit_resume_survives_restart(), coding_resume_call(), coding_start_call(), coding_workflow_read_only_upgrade_is_atomic_and_permission_checked(), dispatch_coding_call_in_window() (+151 more)
+Cohesion: 0.04
+Nodes (157): agent_job_lost_on_disconnect_stays_terminal_after_reconnect(), assert_layer_contract(), canonical_project_session_explicit_resume_survives_restart(), coding_resume_call(), coding_start_call(), coding_workflow_read_only_upgrade_is_atomic_and_permission_checked(), dispatch_coding_call_in_window(), dispatch_coding_call_in_window_with_transport() (+149 more)
 
 ### Community 4 - "webcodex-computer/src/lib.rs"
 Cohesion: 0.04
-Nodes (129): accessibility_status(), accessibility_tree(), AccessibilityTreeResult, activate_window(), allocate_selector(), application_candidate_order(), application_candidates_have_stable_bounded_order(), ApplicationRecord (+121 more)
+Nodes (123): accessibility_status(), accessibility_tree(), AccessibilityTreeResult, activate_window(), allocate_selector(), application_candidate_order(), application_candidates_have_stable_bounded_order(), ApplicationRecord (+115 more)
 
-### Community 5 - "runtime-engine/src/tool_runtime/tests/lsp.rs"
-Cohesion: 0.09
-Nodes (49): assert_malformed_call_hierarchy(), call_hierarchy_dispatch_uses_typed_bridge_and_validates_bounds(), call_hierarchy_does_not_require_legacy_navigation_capability(), call_hierarchy_result(), call_hierarchy_result_boundary_rejects_cross_field_correlation_mismatches(), call_hierarchy_result_boundary_rejects_inconsistent_bounds(), call_hierarchy_result_boundary_rejects_public_symbol_and_range_violations(), call_hierarchy_result_boundary_rejects_request_path_mismatch() (+41 more)
+### Community 5 - "auth_context"
+Cohesion: 0.03
+Nodes (152): computer_accessibility_enqueue_requires_distinct_capability(), computer_element_state_requires_its_own_additive_capability(), computer_control_enqueue_requires_independent_capability(), computer_enqueue_requires_exact_owner_and_distinct_capability(), computer_snapshot_display_preserves_large_native_image_response_stdout(), computer_snapshot_region_requires_additive_capability(), computer_text_input_enqueue_preserves_max_utf8_text_after_json_escaping(), computer_text_input_enqueue_requires_exact_owner_and_independent_capability() (+144 more)
 
 ### Community 6 - "SessionStore"
 Cohesion: 0.11
 Nodes (27): elapsed_millis(), encode_observation_token(), observation_digest(), observation_outcome(), parse_observation_token(), CompleteSessionMessageInput, CompleteSessionMessageOutcome, Instant (+19 more)
 
 ### Community 7 - "windows_installer_smoke.py"
-Cohesion: 0.14
-Nodes (57): check_absent_user_state(), _checked_relative(), child_environment(), _cleanup_process_groups(), data_snapshot(), _directory(), _increment_forced(), installer_arguments() (+49 more)
+Cohesion: 0.13
+Nodes (59): check_absent_user_state(), _checked_relative(), child_environment(), _cleanup_process_groups(), data_snapshot(), _directory(), _increment_forced(), installed_cdp_policy() (+51 more)
 
 ### Community 8 - "lock_unpoison"
 Cohesion: 0.07
 Nodes (37): Write, write_message(), ConnectionState, DiagnosticsCache, framing_to_lsp_error(), handle_incoming_message(), join_owned_thread_until(), join_thread_until() (+29 more)
 
 ### Community 9 - "webcodex-runner/src/webcodex_runner/shell.rs"
-Cohesion: 0.12
-Nodes (81): apply_env_snapshot(), apply_script_environment(), apply_shell_environment(), base_shell_env(), canonicalize_existing(), capture_profile_env_snapshot(), configured_prepared_shell_command(), configured_prepared_shell_job_command() (+73 more)
+Cohesion: 0.06
+Nodes (136): align_and_restore_bom(), align_valid_utf8_tail(), apply_env_snapshot(), apply_script_environment(), apply_shell_environment(), base_shell_env(), BoundedPipeTail, capture_profile_env_snapshot() (+128 more)
 
 ### Community 10 - "webcodex-core/src/runner_protocol.rs"
 Cohesion: 0.03
-Nodes (61): canonical_cargo_check_argv_accepts_read_only_flags_only(), canonical_cargo_test_argv_accepts_filter_and_read_only_flags(), canonical_go_test_accepts_legacy_and_bounded_json_packages(), cargo_test(), cargo_test_argv(), default_policy_max_output_bytes(), default_policy_max_timeout_secs(), default_runner_request_kind() (+53 more)
+Nodes (83): cargo_test_filter_arm_is_the_fail_closed_boundary(), ClaudeCodeProviderStatus, default_runner_request_kind(), default_transport_polling(), deserialize_registration_capabilities(), legacy_job_update_and_snapshot_default_structured_lifecycle_to_absent(), normalize_host_context_text(), normalize_host_role() (+75 more)
 
-### Community 11 - "webcodex/src/auth/scopes.rs"
+### Community 11 - "webcodex/src/auth/pat.rs"
 Cohesion: 0.03
-Nodes (101): bad_json(), bad_request(), no_db(), not_found(), query_failed(), Response, audit_session(), audit_sessions() (+93 more)
+Nodes (110): json_error(), clean_token_name(), generate_account_credential(), generate_account_credential_uses_expected_format(), generate_agent_token(), generate_agent_token_uses_wc_agent_prefix(), generate_api_token(), generate_api_token_uses_wc_pat_prefix() (+102 more)
 
 ### Community 12 - "webcodex/src/oauth_http/managed_authorize.rs"
 Cohesion: 0.06
-Nodes (87): configured_project_share_subject(), generate_project_share_session_id(), project_share_scopes_are_bounded(), Config, Option, Result, String, validate_project_share_grant_subject() (+79 more)
+Nodes (86): configured_project_share_subject(), generate_project_share_session_id(), project_share_scopes_are_bounded(), Config, Option, Result, String, validate_project_share_grant_subject() (+78 more)
 
 ### Community 13 - "webcodex-cli/src/webcodex_cli/service.rs"
 Cohesion: 0.07
 Nodes (133): render_runner_systemd_unit(), absent_discovery(), active_legacy_server_migration_fails_before_pair_mutation(), best_effort_execute(), capture_install_snapshot(), capture_uninstall_snapshot(), classify_existing_unit(), control_server_unit_pair() (+125 more)
 
 ### Community 14 - "project_request"
-Cohesion: 0.07
-Nodes (70): create_project_basic_creates_readme_and_gitignore(), create_project_cleanup_removes_only_files_created_on_failure(), create_project_created_config_and_overwritten_semantics_are_accurate(), create_project_does_not_delete_pre_existing_files(), create_project_does_not_expand_to_network_shares(), create_project_empty_template_with_description_creates_no_project_files(), create_project_rejects_existing_non_empty_directory(), create_project_rejects_unknown_template() (+62 more)
+Cohesion: 0.09
+Nodes (62): create_project_basic_creates_readme_and_gitignore(), create_project_cleanup_removes_only_files_created_on_failure(), create_project_created_config_and_overwritten_semantics_are_accurate(), create_project_does_not_delete_pre_existing_files(), create_project_does_not_expand_to_network_shares(), create_project_empty_template_with_description_creates_no_project_files(), create_project_rejects_existing_non_empty_directory(), create_project_rejects_unknown_template() (+54 more)
 
 ### Community 15 - "project_policy"
 Cohesion: 0.06
-Nodes (121): handle_file_request(), apply_patch_request(), apply_patch_request_legacy_strict(), apply_patch_request_with_mode(), file_apply_patch_applies_add_update_delete_and_update_move_transactionally(), file_apply_patch_context_conflict_does_not_echo_patch_or_source_body(), file_apply_patch_context_conflict_keeps_whole_batch_unchanged(), file_apply_patch_dry_run_reports_plan_without_writing() (+113 more)
+Nodes (122): handle_file_request(), apply_patch_request(), apply_patch_request_legacy_strict(), apply_patch_request_with_mode(), file_apply_patch_applies_add_update_delete_and_update_move_transactionally(), file_apply_patch_context_conflict_does_not_echo_patch_or_source_body(), file_apply_patch_context_conflict_keeps_whole_batch_unchanged(), file_apply_patch_dry_run_reports_plan_without_writing() (+114 more)
 
 ### Community 16 - "registered_tool_specs"
-Cohesion: 0.03
-Nodes (143): registered_tool_specs(), artifact_upload_followup_descriptions_explain_required_path_binding(), project_artifact_is_compact_typed_project_read_facade(), read_project_artifact_metadata_schema_exposes_allow_missing(), read_project_artifact_uses_only_canonical_length_bound(), list_tools_schema_exposes_bounded_discovery_fields(), tool_manifest_schema_exposes_compact_discovery_fields(), action_branch() (+135 more)
+Cohesion: 0.04
+Nodes (118): registered_tool_specs(), artifact_upload_followup_descriptions_explain_required_path_binding(), project_artifact_is_compact_typed_project_read_facade(), read_project_artifact_metadata_schema_exposes_allow_missing(), read_project_artifact_uses_only_canonical_length_bound(), list_tools_schema_exposes_bounded_discovery_fields(), tool_manifest_schema_exposes_compact_discovery_fields(), action_branch() (+110 more)
 
 ### Community 17 - "webcodex-cli/src/webcodex_cli/login.rs"
-Cohesion: 0.08
-Nodes (46): a_failed_overwrite_restores_the_previous_connection(), a_fresh_login_publishes_through_staging_and_leaves_nothing_behind(), all_connections(), assert_no_internal_residue(), backup_cleanup_failure_is_reported(), default_login_device_redeems_an_unbound_code(), device_suffix_is_not_listed_as_a_connection(), device_suffix_race_reuses_the_winner() (+38 more)
+Cohesion: 0.06
+Nodes (117): canonical_server_url(), resolve_connection_parent(), a_failed_overwrite_restores_the_previous_connection(), a_failure_while_staging_leaves_no_connection_and_no_residue(), a_fresh_login_publishes_through_staging_and_leaves_nothing_behind(), a_hostname_near_the_cap_is_truncated_so_the_suffix_survives(), a_staging_directory_is_private_while_it_exists(), all_connections() (+109 more)
 
 ### Community 18 - "webcodex-store/src/communication.rs"
 Cohesion: 0.08
@@ -1755,7 +1772,7 @@ Nodes (50): atomic_write_json(), compute_package_revision(), ensure_dir(), hash_
 
 ### Community 20 - "webcodex-runner/src/webcodex_runner/job_manager_tests.rs"
 Cohesion: 0.06
-Nodes (125): test_job_snapshot(), active_gated_children(), activity_only_delivery_coalesces_without_consuming_required_semantic_queue(), arbitrary_process_output_cannot_forge_cargo_activity(), assert_gated_job_started_once(), cargo_test_terminal_count_evidence_survives_runner_stream_retention(), chatty_job_and_queued_job_progress_while_stream_transport_is_full(), collect_job_updates() (+117 more)
+Nodes (128): test_job_snapshot(), active_gated_children(), activity_only_delivery_coalesces_without_consuming_required_semantic_queue(), arbitrary_process_output_cannot_forge_cargo_activity(), assert_gated_job_started_once(), cargo_activity_returns_to_validation_plan_after_fine_phase_ends(), cargo_test_terminal_count_evidence_survives_runner_stream_retention(), chatty_job_and_queued_job_progress_while_stream_transport_is_full() (+120 more)
 
 ### Community 21 - "SessionStore"
 Cohesion: 0.04
@@ -1763,15 +1780,15 @@ Nodes (88): is_valid_session_id(), allocate_message_id(), coding_agent_lifecycle
 
 ### Community 22 - "webcodex/src/auth/tests.rs"
 Cohesion: 0.03
-Nodes (109): authenticate_bearer(), AuthEnvGuard, bootstrap_context(), restore_test_env(), Arc, AuthContext, Config, Database (+101 more)
+Nodes (107): authenticate_bearer(), AuthEnvGuard, bootstrap_context(), restore_test_env(), Arc, AuthContext, Config, Database (+99 more)
 
 ### Community 23 - "Result"
 Cohesion: 0.08
 Nodes (69): AgentTaskAttemptCompletionMutation, AgentTaskAttemptHeartbeatMutation, AgentTaskAttemptRecord, AgentTaskAttemptStartMutation, AgentTaskAttemptState, AgentTaskCodingRunBindingIntent, AgentTaskCodingRunBindingRecord, AgentTaskCodingRunDispatchClaim (+61 more)
 
 ### Community 24 - "webcodex-workflow-session/src/persistence.rs"
-Cohesion: 0.10
-Nodes (35): is_safe_job_id(), is_valid_assignment_fence_fingerprint(), cold_session_from_persisted(), cold_session_from_record(), is_lower_hex_sha256(), is_valid_persisted_message_id(), load_persisted_ledger(), LoadedSessionLedgerV2 (+27 more)
+Cohesion: 0.11
+Nodes (32): is_safe_job_id(), is_valid_assignment_fence_fingerprint(), cold_session_from_persisted(), cold_session_from_record(), is_lower_hex_sha256(), is_valid_persisted_message_id(), load_persisted_ledger(), LoadedSessionLedgerV2 (+24 more)
 
 ### Community 25 - "dispatch_request_with_outcome"
 Cohesion: 0.13
@@ -1779,15 +1796,15 @@ Nodes (36): dispatch_request(), dispatch_request_with_outcome(), escape_search_l
 
 ### Community 26 - "webcodex-cli/src/lib.rs"
 Cohesion: 0.04
-Nodes (139): cli_parse_error(), CliAction, default_ops_common_options(), default_runner_service_scope(), exit_error(), exit_help(), first_run_default_args(), foreground_run_banner() (+131 more)
+Nodes (138): cli_parse_error(), CliAction, default_ops_common_options(), default_runner_service_scope(), exit_error(), exit_help(), first_run_default_args(), foreground_run_banner() (+130 more)
 
 ### Community 27 - "rpc"
 Cohesion: 0.04
-Nodes (108): handle_mcp_request(), adaptive_artifact_export_unified_direct_and_legacy_gateway_preserve_gates(), mcp_artifact_export_is_stateless_protocol_only(), build_test_router(), changes_file_diff_call_requires_app_protocol_capability(), changes_file_diff_discards_unadvertised_recording_session_wrapper(), final_changes_descriptor_is_explicit_v3_and_lazy_diff_is_app_only(), final_changes_resource_is_advertised_v3_while_legacy_changes_resources_stay_hidden() (+100 more)
+Nodes (101): handle_mcp_request(), adaptive_artifact_export_unified_direct_and_legacy_gateway_preserve_gates(), mcp_artifact_export_is_stateless_protocol_only(), build_test_router(), changes_file_diff_call_requires_app_protocol_capability(), changes_file_diff_discards_unadvertised_recording_session_wrapper(), final_changes_descriptor_is_explicit_v3_and_lazy_diff_is_app_only(), final_changes_resource_is_advertised_v3_while_legacy_changes_resources_stay_hidden() (+93 more)
 
 ### Community 28 - "webcodex-runner/src/webcodex_runner/config.rs"
 Cohesion: 0.04
-Nodes (113): runner_profile_config_resolution_accepts_legacy_only_and_rejects_dual_files(), acp_env_mapping_rejects_webcodex_pat(), AcpAgentConfig, AcpConfig, agent(), ClaudeCodeMcpConfig, client_profile_runner_config(), config_candidate_error_response() (+105 more)
+Nodes (113): acp_env_mapping_rejects_webcodex_pat(), AcpAgentConfig, AcpConfig, agent(), ClaudeCodeMcpConfig, client_profile_runner_config(), config_candidate_error_response(), config_not_started() (+105 more)
 
 ### Community 29 - "webcodex-tool-contracts/src/tool_definition.rs"
 Cohesion: 0.12
@@ -1803,27 +1820,27 @@ Nodes (99): adapt_tool_result(), artifact_export_operation_label(), handle_list(
 
 ### Community 32 - "test_config"
 Cohesion: 0.03
-Nodes (181): build_register_request(), RunnerRegisterRequest, generated_runner_instance_id_is_non_empty_uuid_like(), computer_register_request_announces_platform_capabilities_and_generation(), current_runner_registration_advertises_v2_and_complete_generation_baseline(), mcp_gateway_register_request_projects_bounded_provider_inventory_without_local_launch_details(), phase_e2_register_request_reports_effective_job_concurrency_limit(), register_request_carries_sanitized_shell_profiles_summary() (+173 more)
+Nodes (180): build_register_request(), RunnerRegisterRequest, generated_runner_instance_id_is_non_empty_uuid_like(), computer_register_request_announces_platform_capabilities_and_generation(), current_runner_registration_advertises_v2_and_complete_generation_baseline(), mcp_gateway_register_request_projects_bounded_provider_inventory_without_local_launch_details(), phase_e2_register_request_reports_effective_job_concurrency_limit(), register_request_carries_sanitized_shell_profiles_summary() (+172 more)
 
 ### Community 33 - "chadex-runtime-cli/src/webcodex_cli/tests/ops.rs"
 Cohesion: 0.08
 Nodes (59): assert_no_workspace_preflight_tools(), clean_hygiene_fixture(), clean_show_changes_fixture(), json_http_response(), ops_common_flags_parse_without_printing_token(), ops_common_opts(), ops_http_403_reports_forbidden(), ops_http_error_output_does_not_leak_token_value() (+51 more)
 
-### Community 34 - "form_body"
-Cohesion: 0.11
-Nodes (79): post_revoke(), revoke_access_token_hint_only_revokes_access_token(), revoke_access_token_success(), revoke_does_not_update_last_used_at(), revoke_error_has_no_store_headers(), revoke_json_content_type_rejected(), revoke_missing_client_id_returns_invalid_request(), revoke_missing_client_secret_returns_invalid_client() (+71 more)
+### Community 34 - "test_config"
+Cohesion: 0.09
+Nodes (130): authorized_post_json(), create_client_json(), managed_oauth_client_api_hides_and_cannot_mutate_project_share_clients(), oauth_client_create_accepts_explicit_clipboard_scopes(), oauth_client_create_accepts_explicit_computer_launch_scope(), oauth_client_create_accepts_explicit_display_read_scope(), oauth_client_create_accepts_explicit_pointer_control_scope(), oauth_client_create_hashes_secret_only() (+122 more)
 
 ### Community 35 - "webcodex/src/tool_runtime/chadex_task_executor.rs"
 Cohesion: 0.06
-Nodes (64): adaptive_parallel_cost_gate_rejects_short_and_accepts_heavy_packages(), apply_graphify_dependency_evidence(), apply_parallel_cost_gate(), assess_plan_shape_complexity(), assess_preplan_complexity(), assess_task_complexity(), bounded_message(), bounded_tail_text() (+56 more)
+Nodes (69): adaptive_parallel_cost_gate_rejects_short_and_accepts_heavy_packages(), apply_graphify_dependency_evidence(), apply_parallel_cost_gate(), assess_plan_shape_complexity(), assess_preplan_complexity(), assess_task_complexity(), bounded_message(), bounded_tail_text() (+61 more)
 
 ### Community 36 - "webcodex/src/tool_runtime/files/mutations.rs"
 Cohesion: 0.06
 Nodes (99): apply_patch_agent_stdout_result(), apply_patch_capability_rejection(), apply_patch_context_mismatch_recovery(), apply_patch_context_recovery_does_not_invent_candidate_or_leak_bodies(), apply_patch_context_recovery_is_suppressed_for_outcome_unknown(), apply_patch_context_recovery_uses_deterministic_bounded_read_windows(), apply_patch_exact_unique_fuzzy_rejection_gets_validated_bounded_reread(), apply_patch_failure_match_diagnostic_is_validated_before_projection() (+91 more)
 
 ### Community 37 - "webcodex/src/tool_runtime/coding_task.rs"
-Cohesion: 0.05
-Nodes (109): aggregate_startup_status(), append_hygiene_warnings(), append_workspace_warnings(), attach_permission(), attach_project_resolution(), bound_line(), changed_files_count_from_counts(), CodingProjectSource (+101 more)
+Cohesion: 0.07
+Nodes (74): aggregate_startup_status(), append_hygiene_warnings(), append_workspace_warnings(), bound_line(), changed_files_count_from_counts(), compact_finish_output(), compact_finish_validation(), extract_first_lines() (+66 more)
 
 ### Community 38 - "Sendable"
 Cohesion: 0.05
@@ -1834,12 +1851,12 @@ Cohesion: 0.10
 Nodes (64): bound_call_hierarchy_name(), bound_diagnostic_field(), bound_hover_value(), bound_symbol_detail(), bound_symbol_field(), bound_symbol_name(), call_hierarchy_candidate_key(), call_hierarchy_edge_key() (+56 more)
 
 ### Community 40 - "webcodex-runner/src/webcodex_runner/artifacts.rs"
-Cohesion: 0.10
-Nodes (60): artifact_output(), artifact_request(), artifact_upload_abort_preserves_preexisting_final_file(), artifact_upload_abort_reports_cleanup_and_no_final_file(), artifact_upload_begin_enforces_per_file_maximum(), artifact_upload_begin_octet_stream_error_is_actionable(), artifact_upload_begin_octet_stream_safe_extension_succeeds(), artifact_upload_begin_rejects_project_active_upload_limit_across_directories() (+52 more)
+Cohesion: 0.11
+Nodes (57): artifact_output(), artifact_request(), artifact_upload_abort_preserves_preexisting_final_file(), artifact_upload_abort_reports_cleanup_and_no_final_file(), artifact_upload_begin_enforces_per_file_maximum(), artifact_upload_begin_octet_stream_error_is_actionable(), artifact_upload_begin_octet_stream_safe_extension_succeeds(), artifact_upload_begin_rejects_project_active_upload_limit_across_directories() (+49 more)
 
 ### Community 41 - "PluginManager"
-Cohesion: 0.09
-Nodes (24): bounded_project_catalog(), gateway_error(), plugin_config_error_code(), PluginManager, PluginReloadAttempt, PluginStderrSnapshot, provider_failure_response(), AtomicU64 (+16 more)
+Cohesion: 0.10
+Nodes (24): bounded_project_catalog(), gateway_error(), plugin_config_error_code(), PluginManager, PluginReloadAttempt, provider_failure_response(), AtomicU64, CommittedState (+16 more)
 
 ### Community 42 - "webcodex/src/tool_runtime/tests/files.rs"
 Cohesion: 0.03
@@ -1849,9 +1866,9 @@ Nodes (207): bounded_search_stdout(), CountParseEvidence, effective_search_conte
 Cohesion: 0.12
 Nodes (40): agent_wait_model_projection(), AgentWaitEventSelectorCall, AuthContext, Option, String, ToolResult, Vec, ToolRuntime (+32 more)
 
-### Community 44 - "auth_context"
+### Community 44 - "wait_for_patch_agent_request"
 Cohesion: 0.02
-Nodes (310): apply_text_edits_ambiguous_unguarded_requires_read_before_positional_retry(), apply_text_edits_coalesces_compatible_same_path_edit_changes(), apply_text_edits_complete_rollback_is_known_completed_no_effect(), apply_text_edits_dropped_waiter_after_dispatch_is_outcome_unknown(), apply_text_edits_dry_run_does_not_write(), apply_text_edits_effect_runtime(), apply_text_edits_empty_batch_proves_preflight_no_effect_without_fake_indices(), apply_text_edits_host_structural_schema_accepts_but_runtime_rejects_unguarded_position() (+302 more)
+Nodes (314): apply_text_edits_ambiguous_unguarded_requires_read_before_positional_retry(), apply_text_edits_coalesces_compatible_same_path_edit_changes(), apply_text_edits_complete_rollback_is_known_completed_no_effect(), apply_text_edits_dropped_waiter_after_dispatch_is_outcome_unknown(), apply_text_edits_dry_run_does_not_write(), apply_text_edits_effect_runtime(), apply_text_edits_empty_batch_proves_preflight_no_effect_without_fake_indices(), apply_text_edits_host_structural_schema_accepts_but_runtime_rejects_unguarded_position() (+306 more)
 
 ### Community 45 - "FerretController"
 Cohesion: 0.06
@@ -1859,31 +1876,31 @@ Nodes (32): Set, FerretController, FerretPresentation, .title, FerretReviewMode,
 
 ### Community 46 - "frontend/src/runtime.ts"
 Cohesion: 0.04
-Nodes (84): abortController(), RUNTIME_API_BASE, RuntimeApiResponse, writeClipboardText(), apiClient, appearanceMedia, applyAppearance(), applyLanguage() (+76 more)
+Nodes (79): apiClient, appearanceMedia, applyAppearance(), applyLanguage(), clearCurrentDraft(), communicationAgents, communicationConversations, communicationEndpoints (+71 more)
 
-### Community 47 - "webcodex/src/runtime_console_http/communication.rs"
-Cohesion: 0.17
-Nodes (34): communication_canonical_not_found_errors_render_as_http_404(), communication_agent_create(), communication_agent_update(), communication_agents(), communication_conversation(), communication_conversation_create(), communication_conversations(), communication_endpoint_attach() (+26 more)
+### Community 47 - "prepared"
+Cohesion: 0.12
+Nodes (50): communication_canonical_not_found_errors_render_as_http_404(), communication_agent_create(), communication_agent_update(), communication_agents(), communication_conversation(), communication_conversation_create(), communication_conversations(), communication_endpoint_attach() (+42 more)
 
 ### Community 48 - "webcodex-runner/src/webcodex_runner/lsp/navigation_tests.rs"
-Cohesion: 0.07
-Nodes (70): parse_runner_lsp_result_envelope(), call_hierarchy_bounds_raw_fanout_before_normalization(), call_hierarchy_fails_explicitly_when_provider_or_method_is_unsupported(), call_hierarchy_is_deterministic_deduplicated_and_globally_bounded(), call_hierarchy_omits_external_invalid_and_private_lsp_data(), call_hierarchy_preserves_unicode_scalar_positions_and_language_profiles(), call_hierarchy_supports_each_direction_and_bounded_depth_two_bfs(), call_hierarchy_uses_one_shared_operation_deadline() (+62 more)
+Cohesion: 0.06
+Nodes (71): parse_runner_lsp_result_envelope(), call_hierarchy_bounds_raw_fanout_before_normalization(), call_hierarchy_fails_explicitly_when_provider_or_method_is_unsupported(), call_hierarchy_is_deterministic_deduplicated_and_globally_bounded(), call_hierarchy_omits_external_invalid_and_private_lsp_data(), call_hierarchy_preserves_unicode_scalar_positions_and_language_profiles(), call_hierarchy_supports_each_direction_and_bounded_depth_two_bfs(), call_hierarchy_uses_one_shared_operation_deadline() (+63 more)
 
 ### Community 49 - "webcodex-workspace/src/project_context.rs"
 Cohesion: 0.09
 Nodes (77): binary_tracked_change_has_a_bounded_complete_fingerprint(), bounded_git_output(), BoundedGitOutput, branch_change_refreshes_git_baseline_without_refreshing_worktree(), capture_project_context(), capture_project_context_with_budget(), CaptureState, changed_and_new_local_rules_refresh_only_their_paths() (+69 more)
 
 ### Community 50 - "AppState"
-Cohesion: 0.11
-Nodes (25): apply_openai_tunnel_configuration(), AppState, control_plane_stays_observable_and_cancel_is_exact_while_mutation_is_stuck(), DesktopCore, explicit_stop_survives_refresh_and_desktop_restart(), Arc, AtomicBool, CancellationContext (+17 more)
+Cohesion: 0.08
+Nodes (50): apply_openai_tunnel_configuration(), AppState, can_refresh_legacy_runner(), ChadexRuntimeProbeTarget, ChatGptActivityProbe, control_plane_stays_observable_and_cancel_is_exact_while_mutation_is_stuck(), DesktopCore, explicit_stop_survives_refresh_and_desktop_restart() (+42 more)
 
 ### Community 51 - "require_runtime"
-Cohesion: 0.05
-Nodes (94): action_audit_output_for_tool(), extract_recording_session_id(), gpt_action_admit_target(), gpt_action_invoke(), gpt_action_suggested_tool_call_route(), import_conversation_files_to_project(), ImportConversationFilesRequest, Depot (+86 more)
+Cohesion: 0.09
+Nodes (57): action_audit_output_for_tool(), extract_recording_session_id(), gpt_action_admit_target(), gpt_action_invoke(), gpt_action_suggested_tool_call_route(), job_stop(), job_tail(), jobs_list() (+49 more)
 
 ### Community 52 - "test_runtime"
 Cohesion: 0.03
-Nodes (181): cargo_tools_reject_unsafe_cwd_before_project_dispatch(), dispatch_create_project_rejects_relative_path(), dispatch_create_project_rejects_unknown_client_id(), dispatch_register_project_rejects_unknown_client_id(), dispatch_register_project_rejects_unsafe_id(), dispatch_unregister_project_reuses_lifecycle_validation_without_project_preresolution(), dispatch_records_edit_tool_usage_without_sensitive_args(), edit_tool_usage_does_not_change_session_ledger_shape() (+173 more)
+Nodes (170): model_visible_tool_definitions(), runner_project_runtime_id(), coding_workflow_unknown_project_still_fails(), cargo_tools_reject_unsafe_cwd_before_project_dispatch(), dispatch_create_project_rejects_relative_path(), dispatch_create_project_rejects_unknown_client_id(), dispatch_register_project_rejects_unknown_client_id(), dispatch_register_project_rejects_unsafe_id() (+162 more)
 
 ### Community 53 - "bootstrap_auth_context"
 Cohesion: 0.07
@@ -1895,7 +1912,7 @@ Nodes (65): build_admin_request(), FlagParser, parse_admin_cli(), parse_common_f
 
 ### Community 55 - "webcodex-runner-registry/src/tests/reconciliation.rs"
 Cohesion: 0.09
-Nodes (94): recovery_timeout_sweep(), job_recovery_grace_secs(), computer_snapshot_artifact_rechecks_current_target_project_and_authority_under_registry_lock(), access(), durable(), receipts_active_hidden_cleanup_and_detached_are_never_saved(), receipts_all_sequenced_terminal_classes_restore_without_execution_authority(), receipts_failure_keeps_completed_result_and_reconciliation_lost_is_captured() (+86 more)
+Nodes (95): recovery_timeout_sweep(), job_recovery_grace_secs(), computer_snapshot_artifact_rechecks_current_target_project_and_authority_under_registry_lock(), access(), durable(), receipts_active_hidden_cleanup_and_detached_are_never_saved(), receipts_all_sequenced_terminal_classes_restore_without_execution_authority(), receipts_failure_keeps_completed_result_and_reconciliation_lost_is_captured() (+87 more)
 
 ### Community 56 - "runtime-engine/src/tool_runtime/tests/targeted_inventory.rs"
 Cohesion: 0.15
@@ -1903,7 +1920,7 @@ Nodes (25): exact_project_resolution_cache_is_partitioned_by_authority(), large_
 
 ### Community 57 - "now_ts"
 Cohesion: 0.11
-Nodes (33): runner_visible_to_access(), offline_last_seen(), expire_staging(), now_ts(), reject_same_instance_feature_downgrade(), Arc, CodingAgentProvider, CodingAgentRunInventory (+25 more)
+Nodes (32): expire_staging(), now_ts(), resolve_disconnected_sync_requests_locked(), reject_same_instance_feature_downgrade(), Arc, CodingAgentProvider, CodingAgentRunInventory, CodingAgentRunSnapshot (+24 more)
 
 ### Community 58 - "webcodex-core/src/runner_protocol/job.rs"
 Cohesion: 0.08
@@ -1911,19 +1928,19 @@ Nodes (55): default_shell_job_kind(), is_canonical_cargo_check_args(), is_canoni
 
 ### Community 59 - "webcodex-runner/src/lib.rs"
 Cohesion: 0.04
-Nodes (110): append_bounded_tail(), bounded_endpoint_path(), bounded_response_content_type(), bounded_runner_error(), bounded_single_line(), BoundedResponseBody, build_register_request_with_provider_status(), build_shell_profiles_summary() (+102 more)
+Nodes (104): append_bounded_tail(), append_runner_stream(), bounded_endpoint_path(), bounded_response_content_type(), bounded_runner_error(), bounded_single_line(), BoundedResponseBody, build_shell_profiles_summary() (+96 more)
 
 ### Community 60 - "project.rs"
 Cohesion: 0.08
 Nodes (81): activation_adds_exact_root_even_when_parent_or_cwd_anywhere_already_authorizes_path(), activation_config(), activation_config_write_rejects_concurrent_operator_change(), activation_existing_exact_root_and_project_skips_config_reload(), activation_generation_conflict_reobserves_and_converges_without_duplicate_root(), activation_reload_candidate_fence_detects_post_write_operator_edit(), activation_uncertain_project_reconciles_inventory_without_second_registration(), activation_uncertain_reload_rechecks_generation_without_blind_retry() (+73 more)
 
 ### Community 61 - "webcodex-runner/src/webcodex_runner/projects/registration.rs"
-Cohesion: 0.06
-Nodes (91): CommandResult, err_cmd(), ok_cmd(), Instant, Option, Self, ShellCommandExecutionState, String (+83 more)
+Cohesion: 0.07
+Nodes (85): paths_equal(), cleanup_unregister_tombstones(), handle_project_lifecycle_operation(), handle_project_operation(), lifecycle_config_path(), matching_existing_project(), ProjectUnregisterError, recovered_project_result() (+77 more)
 
 ### Community 62 - "runtime-engine/src/tool_runtime/tests/script.rs"
 Cohesion: 0.14
-Nodes (32): CapturingActivity, complete_script_lifecycle(), model_facing_run_script_session_denials_keep_phase_a_tuple(), register_script_agent(), register_script_job_agent(), ActivityRecord, ActivityRecorder, Into (+24 more)
+Nodes (31): CapturingActivity, complete_script_lifecycle(), model_facing_run_script_session_denials_keep_phase_a_tuple(), register_script_agent(), register_script_job_agent(), ActivityRecord, ActivityRecorder, Into (+23 more)
 
 ### Community 63 - "webcodex/src/tool_runtime/tests/process.rs"
 Cohesion: 0.12
@@ -1938,8 +1955,8 @@ Cohesion: 0.06
 Nodes (65): apply_config_projection(), atomic_replace(), atomic_save_interruption_keeps_prior_valid_state(), atomic_save_preserves_previous_known_good_backup(), ChadexProjectActivationObservation, ChadexProjectActivationTarget, ChadexRuntimeTunnelTarget, chatgpt_activity_observation_is_fenced_to_the_captured_project_identity() (+57 more)
 
 ### Community 66 - "webcodex-core/src/plugin.rs"
-Cohesion: 0.09
-Nodes (71): bounded_schema_usize(), catalog_digest_is_deterministic_for_canonical_validated_catalog(), check_contract_is_typed_and_report_is_bounded(), diagnose_invalid_tools(), parse_plugin_schema_type(), plugin_catalog_digest_from_canonical_tools(), plugin_schema_matches(), plugin_schema_profile_validates_supported_subset_and_instances() (+63 more)
+Cohesion: 0.10
+Nodes (64): catalog_digest_is_deterministic_for_canonical_validated_catalog(), check_contract_is_typed_and_report_is_bounded(), diagnose_invalid_tools(), plugin_catalog_digest_from_canonical_tools(), plugin_schema_matches(), plugin_schema_profile_validates_supported_subset_and_instances(), PluginCatalog, PluginCheckDiagnostic (+56 more)
 
 ### Community 67 - "RunnerRegistry"
 Cohesion: 0.07
@@ -1966,20 +1983,20 @@ Cohesion: 0.07
 Nodes (47): bound_error_message(), bound_error_message_redacts_before_truncation(), CallHierarchyDirection, CallHierarchyEdgeDirection, CallHierarchyResult, clamp_document_diagnostics_limit(), clamp_document_symbols_limit(), clamp_find_references_limit() (+39 more)
 
 ### Community 73 - "webcodex-core/src/validation_evidence.rs"
-Cohesion: 0.13
-Nodes (43): aggregate_cargo_test_summaries(), AssociatedPanic, bounded_go_test_identity(), CargoDiagnostic, CargoTestSummary, collect_associated_panics(), collect_failed_tests(), combined_lines() (+35 more)
+Cohesion: 0.12
+Nodes (44): aggregate_cargo_test_summaries(), AssociatedPanic, bounded_go_test_identity(), CargoDiagnostic, CargoTestCountEvidenceStatus, CargoTestSummary, collect_associated_panics(), collect_failed_tests() (+36 more)
 
-### Community 74 - "test_config"
-Cohesion: 0.09
-Nodes (131): authorize_accepts_user_pat_for_code_issuance(), authorize_code_contains_user_client_redirect_scope_pkce_metadata(), authorize_https_issuer_adds_rfc9207_iss_to_error_redirect(), authorize_https_issuer_adds_rfc9207_iss_to_success_redirect(), authorize_issues_code_and_redirects_with_state(), authorize_oauth2_disabled_returns_404_invalid_request_without_code(), authorize_omitted_scope_defaults_to_client_allowed_scopes(), authorize_redirect_error_appends_with_ampersand_when_redirect_uri_has_query() (+123 more)
+### Community 74 - "oauth2_enabled"
+Cohesion: 0.12
+Nodes (69): authorize_accepts_user_pat_for_code_issuance(), authorize_code_contains_user_client_redirect_scope_pkce_metadata(), authorize_https_issuer_adds_rfc9207_iss_to_error_redirect(), authorize_https_issuer_adds_rfc9207_iss_to_success_redirect(), authorize_issues_code_and_redirects_with_state(), authorize_oauth2_disabled_returns_404_invalid_request_without_code(), authorize_omitted_scope_defaults_to_client_allowed_scopes(), authorize_redirect_error_appends_with_ampersand_when_redirect_uri_has_query() (+61 more)
 
 ### Community 75 - "test_runtime"
 Cohesion: 0.11
 Nodes (58): ConcurrentHttpResponse, gated_marker_command(), inventory_status(), job_update_success_response(), poll_delivery_response(), poll_inventory_response(), polling_401_and_403_are_terminal_auth_errors(), polling_graceful_shutdown_sends_instance_scoped_offline_notice() (+50 more)
 
-### Community 76 - "DesktopResult"
-Cohesion: 0.09
-Nodes (35): can_refresh_legacy_runner(), ChadexProjectActivationTarget, process_is_active(), ActivityEntry, ActivityLog, Arc, AtomicBool, CancellationContext (+27 more)
+### Community 76 - "RuntimeCoordinator"
+Cohesion: 0.12
+Nodes (26): Error, can_refresh_legacy_runner(), ChadexProjectActivationObservation, ChadexProjectActivationTarget, ChadexRuntimeTunnelTarget, ChatGptActivityProbe, process_is_active(), project_not_loaded_error() (+18 more)
 
 ### Community 77 - "webcodex-core/src/runner_operation.rs"
 Cohesion: 0.06
@@ -1998,8 +2015,8 @@ Cohesion: 0.06
 Nodes (73): mcp_url(), String, bounded_tunnel_log_summary(), clipboard_outcome_name(), CloudflareTunnel, drain_tunnel_readers(), fake_cloudflared(), local_only_share_output_does_not_claim_remote_chatgpt_readiness() (+65 more)
 
 ### Community 81 - "webcodex/src/mcp/tools.rs"
-Cohesion: 0.05
-Nodes (95): output_is_bounded_non_secret_metadata(), mcp_suggested_call_output_schema_tracks_adaptive_route(), context_ack_capable_tool_consumes_ack_without_ignored_metadata(), mcp_tools_list_compact_is_smaller_than_full_serialized(), mcp_tools_list_compact_omits_output_schema_only(), mcp_tools_list_explicit_full_projection_retains_output_schema(), mcp_tools_list_exposes_host_file_params_for_conversation_import(), mcp_work_on_project_schema_exposes_managed_worktree_without_internal_operation() (+87 more)
+Cohesion: 0.06
+Nodes (85): output_is_bounded_non_secret_metadata(), context_ack_capable_tool_consumes_ack_without_ignored_metadata(), memory_tools_are_stateless_protocol_extensions_scope_filtered_and_schema_static(), reobservable_tool_accepts_known_context_ack_as_ignored_invocation_metadata(), skill_management_tools_require_admin_and_remain_fixed_schema(), skill_runtime_tools_are_stateless_protocol_extensions_and_schema_static(), stateless_ack_wrapper_normalizes_and_is_removed_before_concrete_tool_parsing(), stateless_context_request_is_deduped_open_ended_and_removed_before_parsing() (+77 more)
 
 ### Community 82 - "webcodex/src/tool_runtime/jobs.rs"
 Cohesion: 0.07
@@ -2007,7 +2024,7 @@ Nodes (67): active_job_brief(), active_job_continuation_brief(), activity_progre
 
 ### Community 83 - "webcodex/src/tool_runtime/startup_brief.rs"
 Cohesion: 0.07
-Nodes (77): action_item(), bounded_extension_description(), bounded_json_string(), bounded_list(), bounded_string_items(), build_startup_brief(), changed_instruction_sources(), continuation_projection() (+69 more)
+Nodes (76): action_item(), bounded_json_string(), bounded_list(), bounded_string_items(), build_startup_brief(), changed_instruction_sources(), continuation_projection(), continuation_projection_preserves_only_explicit_active_job_handle() (+68 more)
 
 ### Community 84 - "handle_authorization_code_grant"
 Cohesion: 0.08
@@ -2023,11 +2040,11 @@ Nodes (72): bootstrap_token_parser_never_needs_to_persist_the_secret(), bounded_
 
 ### Community 87 - "webcodex-runner-registry/src/jobs.rs"
 Cohesion: 0.06
-Nodes (60): command_preview(), previews_are_bounded_and_secret_safe(), process_preview(), IntoIterator, Item, String, append_log_limited(), assert_active_instance_locked() (+52 more)
+Nodes (61): command_preview(), previews_are_bounded_and_secret_safe(), process_preview(), IntoIterator, Item, String, append_log_limited(), assert_active_instance_locked() (+53 more)
 
 ### Community 88 - "webcodex-runner/src/webcodex_runner/projects/catalog.rs"
-Cohesion: 0.07
-Nodes (74): legacy_managed_project_without_explicit_lineage_stays_unassociated(), legacy_auto_registered_record_keeps_raw_revision_and_projects_as_auto_registered(), legacy_managed_temporary_record_remains_readable_as_registry_data(), missing_project_registry_dir_returns_empty_list(), runner_project_toml_parse_sorts_hook_names(), BoundedGitOutput, CleanupPath, effective_registration_source() (+66 more)
+Cohesion: 0.06
+Nodes (77): legacy_managed_project_without_explicit_lineage_stays_unassociated(), legacy_auto_registered_record_keeps_raw_revision_and_projects_as_auto_registered(), legacy_managed_temporary_record_remains_readable_as_registry_data(), missing_project_registry_dir_returns_empty_list(), runner_project_toml_hints_when_server_projects_format_is_used(), runner_project_toml_parse_sorts_hook_names(), runner_project_toml_rejects_invalid_id(), runner_project_toml_rejects_invalid_shell_profile() (+69 more)
 
 ### Community 89 - "webcodex-validation/src/evidence_tests.rs"
 Cohesion: 0.08
@@ -2054,16 +2071,16 @@ Cohesion: 0.10
 Nodes (39): critical_overflow_is_explicit_and_terminal_event_is_retained(), desktop_real_process_windows_regular_tunnel_stop_closes_stdin_for_canonical_graceful_shutdown(), drain_stream(), finish_drain_task(), local_parent_liveness_lease_closes_on_desktop_stop(), machine_event_channel(), machine_event_is_progress(), machine_event_is_terminal() (+31 more)
 
 ### Community 95 - "webcodex/src/tool_runtime/tests/coding_task.rs"
-Cohesion: 0.08
-Nodes (87): assert_action_list_contains(), assert_action_list_not_contains(), assert_check_status(), assert_compact_verdict_safe(), assert_finish_uses_canonical_outcomes(), assert_no_raw_validation_output_fields(), assert_reason_list_contains(), assert_reason_list_not_contains() (+79 more)
+Cohesion: 0.06
+Nodes (104): committed_final_tree_is_presentable_even_when_worktree_is_clean(), file_by_path(), file_diff(), final_changes_neutralizes_repository_configured_clean_and_process_filters(), final_changes_uses_startup_tree_whole_final_workspace_and_frozen_lazy_diff(), git(), present(), presentation_needed() (+96 more)
 
 ### Community 96 - "webcodex-runner/src/webcodex_runner/patches.rs"
-Cohesion: 0.09
-Nodes (75): is_sensitive_edit_path(), handle_file_operation(), CommandResult, RunnerFileOperation, line_edit_stdout(), AppliedFileChange, apply_change(), apply_patch_conflict() (+67 more)
+Cohesion: 0.10
+Nodes (71): is_sensitive_edit_path(), AppliedFileChange, apply_change(), apply_patch_conflict(), apply_patch_match_diagnostic_json(), apply_patch_matching_mode(), apply_patch_matching_mode_rejection(), apply_write_project_file_change() (+63 more)
 
 ### Community 97 - "webcodex-runner/src/webcodex_runner/shell_tests.rs"
-Cohesion: 0.05
-Nodes (74): configured_script_interpreter(), create_temporary_script(), Error, PathBuf, ShellScriptLanguage, ShellScriptPayload, TempPath, run_script_with_profiles_and_execution_state() (+66 more)
+Cohesion: 0.04
+Nodes (79): build_script_command(), configured_script_interpreter(), create_temporary_script(), fixed_script_prefix_args(), Error, PathBuf, ShellScriptLanguage, TempPath (+71 more)
 
 ### Community 98 - "ReceiptRegistryState"
 Cohesion: 0.10
@@ -2082,20 +2099,20 @@ Cohesion: 0.04
 Nodes (65): App, CaseIterable, Darwin, EnvironmentKey, Scene, ActivityFilter, all, .id (+57 more)
 
 ### Community 102 - "ChadexPreferences"
-Cohesion: 0.09
-Nodes (21): FileManager, NSImage, SearchPathDirectory, SearchPathDomainMask, .selectedProject, ChadexPreferences, JSONEncoder, .pretty (+13 more)
+Cohesion: 0.07
+Nodes (28): FileManager, LocalizedError, OSStatus, SearchPathDirectory, SearchPathDomainMask, Security, .selectedProject, KeychainStore (+20 more)
 
 ### Community 103 - "webcodex-validation/src/evidence.rs"
 Cohesion: 0.10
-Nodes (70): authoritative_validation_start_event_index(), cargo_test_zero_tests_success(), classify_validation_failures(), current_validation_evidence_for_events(), current_validation_evidence_for_session(), CurrentValidationEvidenceProjection, event_is_job_acceptance_only(), event_observes_validation_activity() (+62 more)
+Nodes (71): authoritative_validation_start_event_index(), cargo_test_zero_tests_success(), classify_validation_failures(), current_validation_evidence_for_events(), current_validation_evidence_for_session(), CurrentValidationEvidenceProjection, event_is_job_acceptance_only(), event_observes_validation_activity() (+63 more)
 
 ### Community 104 - "webcodex-cli/src/webcodex_cli/connect/process.rs"
 Cohesion: 0.10
 Nodes (70): BoundedRunnerLog, ensure_runner_unlocked(), finish_owned_log_writer(), follow_log_tail(), immediate_runner_failure_does_not_leave_active_state(), linux_process_start(), load_runner_state(), local_runner_log_archive_path() (+62 more)
 
 ### Community 105 - "webcodex/src/tool_runtime/projects.rs"
-Cohesion: 0.07
-Nodes (18): existing_project_path_result(), parse_project_summary_from_result(), parse_summary_defaults_name_to_id(), parse_summary_extracts_fields(), project_candidates(), project_git_available(), project_projection_reconcile_required(), project_query_matches() (+10 more)
+Cohesion: 0.06
+Nodes (43): ContinuationCarrier, ContinuationKind, ContinuationSemantics, Result, Self, String, Value, validate_project_op_path() (+35 more)
 
 ### Community 106 - "CodingAgentManager"
 Cohesion: 0.13
@@ -2111,19 +2128,19 @@ Nodes (69): build_managed_download_client(), cloudflared_asset_for(), Cloudflare
 
 ### Community 109 - "enqueue_pending_request_locked"
 Cohesion: 0.10
-Nodes (53): apply_text_edits_capability_requirements(), encode_file_operation(), encode_runner_operation(), enqueue_pending_request_locked(), EnqueueLspError, EnqueueRunnerSkillError, next_request_id(), notify_runner_locked() (+45 more)
+Nodes (52): apply_text_edits_capability_requirements(), encode_file_operation(), encode_runner_operation(), enqueue_pending_request_locked(), EnqueueLspError, EnqueueRunnerSkillError, next_request_id(), notify_runner_locked() (+44 more)
 
-### Community 110 - "execute_search_command"
-Cohesion: 0.10
-Nodes (34): BoundedPipeTail, collect_profile_prepare_output(), ContinuousPipeDrain, execute_search_command(), join_profile_prepare_reader_until(), ProfilePreparePipeReader, receive_search_reader(), CapturedOutputEncoding (+26 more)
+### Community 110 - "runtime-engine/src/tool_runtime/tests/handoff.rs"
+Cohesion: 0.07
+Nodes (85): accepted_exit_codes_match_only_completed_known_process_results(), assert_action_list_contains(), assert_action_list_not_contains(), assert_compact_verdict_safe(), assert_no_raw_validation_output_fields(), assert_reason_list_contains(), assert_reason_list_not_contains(), assert_review_evidence_tools_safe() (+77 more)
 
 ### Community 111 - "webcodex-workflow-session/src/events.rs"
 Cohesion: 0.07
-Nodes (77): ToolSessionEvidencePolicy, runtime_tool_session_evidence_policy(), actual_failure_kind_for_tool_result(), canonical_tool_call_finished_events(), cargo_test_tests_detected(), cargo_test_tests_failed(), cargo_test_tests_passed(), cargo_test_tests_run_count() (+69 more)
+Nodes (74): ToolSessionEvidencePolicy, runtime_tool_session_evidence_policy(), actual_failure_kind_for_tool_result(), canonical_tool_call_finished_events(), cargo_test_tests_detected(), cargo_test_tests_failed(), cargo_test_tests_passed(), cargo_test_tests_run_count() (+66 more)
 
-### Community 112 - "run_text_search_with_profiles_and_execution_state"
-Cohesion: 0.12
-Nodes (26): align_and_restore_bom(), align_valid_utf8_tail(), build_script_command(), fixed_script_prefix_args(), incomplete_utf8_sequence_len(), IncrementalUtf8Validator, leading_bom(), read_bounded_pipe_tail() (+18 more)
+### Community 112 - "project_request"
+Cohesion: 0.07
+Nodes (71): create_project_basic_creates_readme_and_gitignore(), create_project_cleanup_removes_only_files_created_on_failure(), create_project_created_config_and_overwritten_semantics_are_accurate(), create_project_does_not_delete_pre_existing_files(), create_project_does_not_expand_to_network_shares(), create_project_empty_template_with_description_creates_no_project_files(), create_project_rejects_existing_non_empty_directory(), create_project_rejects_unknown_template() (+63 more)
 
 ### Community 113 - "verification.rs"
 Cohesion: 0.05
@@ -2142,8 +2159,8 @@ Cohesion: 0.06
 Nodes (56): bridge_error(), is_provider_notification(), McpGatewayManager, McpGatewayReloadSummary, McpGatewayState, provider_failure_response(), provider_stdout_reader(), ProviderConnection (+48 more)
 
 ### Community 117 - "lock"
-Cohesion: 0.12
-Nodes (43): appendChip(), attachCommunicationEndpoint(), RuntimeCommunicationRefreshCoordinator, runtimeCommunicationTranscriptAfterSeq(), communicationAgent(), communicationEndpoint(), communicationEndpointId(), connectRuntimeCredential() (+35 more)
+Cohesion: 0.13
+Nodes (39): appendChip(), attachCommunicationEndpoint(), clearNode(), RuntimeCommunicationRefreshCoordinator, runtimeCommunicationTranscriptAfterSeq(), communicationAgent(), communicationEndpoint(), communicationEndpointId() (+31 more)
 
 ### Community 118 - "webcodex-core/src/coding_agent.rs"
 Cohesion: 0.10
@@ -2154,8 +2171,8 @@ Cohesion: 0.18
 Nodes (39): AllowedIdentityFlags, array_field(), bounded_json(), bounded_line(), command_exit_code(), flag_value(), parse_flags(), parse_plugin_command() (+31 more)
 
 ### Community 120 - "translate"
-Cohesion: 0.07
-Nodes (63): activityDescription(), activityFacts(), activityKindLabel(), appendActivityPreview(), createTimelineEvent(), durationLabel(), formatLivenessPresentation(), formatSessionDateTime() (+55 more)
+Cohesion: 0.06
+Nodes (68): activityDescription(), activityFacts(), activityKindLabel(), appendActivityPreview(), createTimelineEvent(), durationLabel(), formatLivenessPresentation(), formatSessionDateTime() (+60 more)
 
 ### Community 121 - "webcodex-computer/src/platform/windows/accessibility.rs"
 Cohesion: 0.11
@@ -2166,44 +2183,44 @@ Cohesion: 0.14
 Nodes (20): configured(), list_and_resolve_responses_fail_closed_on_identity_inconsistency(), managed(), normalize_runner_skill_resource_path(), read_request_pins_source_and_rejects_invalid_cross_source_revision_shape(), request_family_round_trips_all_runtime_and_management_operations(), Option, Result (+12 more)
 
 ### Community 123 - "runtime-engine/src/tool_runtime/tests/metadata.rs"
-Cohesion: 0.03
-Nodes (148): computer_display_snapshot_clamps_budget_before_runner_and_validates_effective_bound(), String, sha256_hex(), dispatch_unregister_project_removes_server_inventory_after_terminal_runner_success(), register_project_crosses_historical_64_threshold_and_is_immediately_resolvable(), register_project_projection_failure_returns_reconcile_required_without_retrying_mutation(), context(), mismatch_and_invalid_context_fail_closed_without_root_fallback() (+140 more)
+Cohesion: 0.04
+Nodes (94): runner_project_runtime_id(), dispatch_unregister_project_removes_server_inventory_after_terminal_runner_success(), register_project_crosses_historical_64_threshold_and_is_immediately_resolvable(), register_project_projection_failure_returns_reconcile_required_without_retrying_mutation(), show_changes_accepts_unique_short_id(), memory_scope_lifecycle_is_offline_safe_unregister_explicit_and_purge_only(), bootstrap_auth(), bounded_list_tools_hides_schemas_and_finds_artifact_upload_tools() (+86 more)
 
 ### Community 124 - "CanonicalOrchestrationHost"
 Cohesion: 0.07
 Nodes (38): CanonicalOrchestrationHost, CompositionSchedulingGuard, ConsequentialChildOutcome, ConsequentialChildReceipt, is_server_owned_orchestration_argument(), mutation_result_without_authoritative_state_changed_fails_closed(), NestedCallGuard, OrchestrationCompositionAccumulator (+30 more)
 
 ### Community 125 - "webcodex-cli/src/webcodex_cli/connect/profile.rs"
-Cohesion: 0.08
-Nodes (72): ConnectResult, ControlledWriter, explicit_key_result_never_creates_a_disclosure_marker(), generated_key_marker_is_committed_only_after_write_and_flush(), generated_result(), marker_failure_warns_without_secret_and_keeps_connect_successful(), ConnectOptions, Option (+64 more)
+Cohesion: 0.11
+Nodes (56): run_shared_key_connect(), atomic_config_updates_preserve_secret_permissions_and_merge_roots(), atomic_write(), ConnectAuth, ConnectOptions, derived_oauth_profile(), derived_profile(), ensure_private_directory() (+48 more)
 
 ### Community 126 - "webcodex-tool-runtime-contracts/src/tool_audit.rs"
-Cohesion: 0.08
-Nodes (62): agent_continuation_app_audit_omits_host_binding_and_resume_secrets(), agent_task_active_turn_heartbeat_audit_omits_raw_proof_and_attempt_fence(), agent_wake_consume_audit_omits_raw_consume_token_and_payload_fields(), AgentTaskRequestAudit, coding_agent_audit_is_body_free_for_requests_and_observations(), coding_agent_observation_result_audit(), communication_audit_omits_profile_and_message_bodies(), CommunicationRequestAudit (+54 more)
+Cohesion: 0.06
+Nodes (80): agent_continuation_app_audit_omits_host_binding_and_resume_secrets(), agent_task_active_turn_heartbeat_audit_omits_raw_proof_and_attempt_fence(), agent_wake_consume_audit_omits_raw_consume_token_and_payload_fields(), AgentTaskRequestAudit, audit_tool_call_from_request(), bounded_completion_key_fingerprint(), canonical_cargo_validation_target(), coding_agent_audit_is_body_free_for_requests_and_observations() (+72 more)
 
 ### Community 127 - "webcodex-workflow-session/src/console.rs"
 Cohesion: 0.07
-Nodes (70): activity_from_interaction(), activity_presentation_for_tool(), activity_preview(), aggregate_console_list(), aggregate_console_list_preserves_bounds_and_attention_counts(), build_detail(), build_interactions(), build_list_item() (+62 more)
+Nodes (74): ToolActivityInteraction, ToolActivitySemantics, runtime_tool_activity_interaction(), runtime_tool_activity_semantics(), activity_from_interaction(), activity_presentation_for_tool(), activity_preview(), aggregate_console_list() (+66 more)
 
 ### Community 128 - "webcodex-workflow-session/src/continuation.rs"
-Cohesion: 0.06
-Nodes (82): attempt_open_failures(), AttemptActivity, AttemptBoundary, AttemptChanges, AttemptEventRange, AttemptExploration, AttemptGuidance, AttemptInstruction (+74 more)
+Cohesion: 0.08
+Nodes (69): attempt_open_failures(), AttemptActivity, AttemptBoundary, AttemptChanges, AttemptEventRange, AttemptExploration, AttemptGuidance, AttemptInstruction (+61 more)
 
 ### Community 129 - "webcodex/src/tool_runtime/window_activity.rs"
 Cohesion: 0.08
 Nodes (53): active_request_eviction_marks_observation_partial_until_evicted_guard_finishes(), active_window_request_visible_cached(), ActiveWindowRequest, ActiveWindowSummary, app_control_requests_remain_seen_but_are_not_meaningful(), classify_transition_and_mark_overlap(), CompletedMeaningfulCall, completion() (+45 more)
 
 ### Community 130 - "webcodex-runner/src/main_tests/runner_config.rs"
-Cohesion: 0.04
-Nodes (62): parse_runner_args(), I, usage(), reload_field_classification_is_exhaustive_and_allowlisted(), configured_skill_storage_does_not_expand_generic_file_authority(), default_policy_denies_paths_outside_allowed_roots(), load_config_defaults_empty_allowed_roots_to_home(), load_config_empty_roots_without_home_and_no_cwd_anywhere_errors() (+54 more)
+Cohesion: 0.05
+Nodes (57): parse_runner_args(), I, usage(), reload_field_classification_is_exhaustive_and_allowlisted(), load_config_defaults_empty_allowed_roots_to_home(), load_config_empty_roots_without_home_and_no_cwd_anywhere_errors(), load_config_explicit_allowed_roots_override_home_default(), register_project_rejects_dangerous_subpaths_without_explicit_root() (+49 more)
 
 ### Community 131 - "runtime_backend.rs"
-Cohesion: 0.07
-Nodes (73): ChadexProjectActivationObservation, ChadexProjectActivationTarget, ChadexRuntimeProbeTarget, RunnerReadiness, activation_observation(), activation_observation_requires_exact_runtime_identity(), activation_target(), active_activation_authority() (+65 more)
+Cohesion: 0.09
+Nodes (60): ChadexProjectActivationObservation, ChadexProjectActivationTarget, ChadexRuntimeProbeTarget, activation_observation(), activation_observation_requires_exact_runtime_identity(), activation_target(), active_activation_authority(), ActiveActivationAuthority (+52 more)
 
 ### Community 132 - "webcodex/src/tool_runtime/surface.rs"
-Cohesion: 0.09
-Nodes (51): tool_manifest_intents_reference_only_known_model_visible_tools(), required_runner_capability_matches_metadata_risk_table(), available_tool_manifest_intent_names(), resolve_tool_manifest_intent(), Option, Result, String, ToolManifestIntent (+43 more)
+Cohesion: 0.11
+Nodes (44): available_tool_manifest_intent_names(), Vec, runtime_tool_category(), runtime_tool_metadata(), build_list_tools_summary_entries(), build_manifest_categories(), build_risk_summary(), compact_manifest_tool_entry() (+36 more)
 
 ### Community 133 - "GoalStoreError"
 Cohesion: 0.11
@@ -2211,7 +2228,7 @@ Nodes (43): Database, goal_request_hash(), goal_store_error(), GoalCorrelation, 
 
 ### Community 134 - "webcodex-tool-runtime-contracts/src/tool_call_tests.rs"
 Cohesion: 0.03
-Nodes (8): ToolSpec, Value, sample_field_value(), sample_tool_args(), sample_tool_args_for_spec(), sample_tool_args_with_session(), tool_call_project_accessor_covers_project_tool_specs(), tool_call_session_id_accessor_covers_session_tool_specs()
+Nodes (9): ToolSpec, Value, sample_field_value(), sample_tool_args(), sample_tool_args_for_spec(), sample_tool_args_with_session(), runner_config_tools_parse_closed_contracts_and_keep_governance_split(), tool_call_project_accessor_covers_project_tool_specs() (+1 more)
 
 ### Community 135 - "webcodex/src/mcp_tests/plugin_tools.rs"
 Cohesion: 0.12
@@ -2219,7 +2236,7 @@ Nodes (58): any_plugin_scope_exposes_only_the_stable_gateway(), complete_plugin_
 
 ### Community 136 - "state/tests.rs"
 Cohesion: 0.07
-Nodes (49): ensure_desktop_server_defaults(), atomic_replace(), desktop_state_backup_path(), desktop_state_corrupt(), desktop_state_unavailable(), load_config(), read_stored_config(), recover_config_from_backup() (+41 more)
+Nodes (49): atomic_replace(), desktop_state_backup_path(), desktop_state_corrupt(), desktop_state_unavailable(), load_config(), read_stored_config(), recover_config_from_backup(), ActivityLog (+41 more)
 
 ### Community 137 - "runtime_bridge.rs"
 Cohesion: 0.06
@@ -2227,15 +2244,15 @@ Nodes (69): GraphifyStatus, JoinError, RuntimeStatus, TunnelState, abort_and_dra
 
 ### Community 138 - "webcodex-runner-config/src/paths.rs"
 Cohesion: 0.08
-Nodes (57): canonicalize_usable_allowed_roots(), config_base_honors_xdg_on_unix_and_ignores_it_on_windows(), config_base_never_falls_back_to_current_directory(), default_client_config_base_dir(), default_client_state_base_dir(), EnvVarRestore, existing_runner_config_path(), home_dir() (+49 more)
+Nodes (56): canonicalize_usable_allowed_roots(), config_base_honors_xdg_on_unix_and_ignores_it_on_windows(), config_base_never_falls_back_to_current_directory(), default_client_config_base_dir(), default_client_state_base_dir(), EnvVarRestore, existing_runner_config_path(), home_dir() (+48 more)
 
 ### Community 139 - "ShutdownCoordinator"
 Cohesion: 0.07
 Nodes (31): ActivityGuard, ActivityTracker, BackgroundJoinResult, BackgroundThreads, elapsed_ms(), phase_list(), ActivityGuard, Arc (+23 more)
 
 ### Community 140 - "webcodex/src/tool_runtime/git/diff_hunks.rs"
-Cohesion: 0.11
-Nodes (58): bounded_git_diff_hunks_stderr(), clean_optional_paths(), committed_git_diff_hunks_scope_value(), decode_git_diff_hunks_continuation(), decode_git_diff_hunks_v2_continuation(), decode_lower_hex_bytes(), decode_payload(), encode_git_diff_hunks_committed_continuation() (+50 more)
+Cohesion: 0.10
+Nodes (65): bounded_git_diff_hunks_stderr(), clean_optional_paths(), committed_git_diff_hunks_scope_value(), decode_git_diff_hunks_continuation(), decode_git_diff_hunks_v2_continuation(), decode_lower_hex_bytes(), decode_payload(), encode_git_diff_hunks_committed_continuation() (+57 more)
 
 ### Community 141 - "INDEX.md"
 Cohesion: 0.13
@@ -2246,8 +2263,8 @@ Cohesion: 0.11
 Nodes (52): require_agent_attention_event_for_wake(), Option, agent_task_wake_is_dispatchable(), AgentConversationBootstrapRecord, AgentInboxBootstrapSummary, AgentWakeAttemptRecord, AgentWakeAttemptState, AgentWakeBootstrapSummary (+44 more)
 
 ### Community 143 - "webcodex-runner/src/webcodex_runner/output_text.rs"
-Cohesion: 0.09
-Nodes (49): append_bounded_text(), bound_presented_text(), captured_windows_output_uses_oem_for_test(), CapturedOutputEncoding, current_oem_code_page(), decode_legacy_bytes(), decode_legacy_stream(), decode_oem_unit() (+41 more)
+Cohesion: 0.10
+Nodes (48): append_bounded_text(), bound_presented_text(), captured_windows_output_uses_oem_for_test(), CapturedOutputEncoding, current_oem_code_page(), decode_legacy_bytes(), decode_legacy_stream(), decode_oem_unit() (+40 more)
 
 ### Community 144 - "AgentContinuationController"
 Cohesion: 0.06
@@ -2258,8 +2275,8 @@ Cohesion: 0.12
 Nodes (55): build_launch(), build_launch_at_cwd(), error_result(), exec_reapplies_current_output_limit(), exec_result(), fixture(), limits(), PersistentShellManager (+47 more)
 
 ### Community 146 - "RuntimeSnapshot"
-Cohesion: 0.06
-Nodes (30): map_project(), Arc, ChadexResult, ProjectSelection, RuntimeBackendAdapter, ChadexResult, Option, PathBuf (+22 more)
+Cohesion: 0.05
+Nodes (43): RunnerReadiness, adapter_projects_only_chadex_runtime_fields(), exposure_readiness(), map_project(), map_snapshot(), project_readiness(), readiness_summary_kind(), Arc (+35 more)
 
 ### Community 147 - "webcodex/src/mcp_tests/file_import.rs"
 Cohesion: 0.08
@@ -2271,7 +2288,7 @@ Nodes (57): canonicalize_with_missing_tail(), configured_readiness(), contains_s
 
 ### Community 149 - "runtime-engine/src/tool_runtime/tests/files.rs"
 Cohesion: 0.03
-Nodes (209): bounded_search_stdout(), CountParseEvidence, effective_search_context_clamps_values(), empty_search_project_text_output(), escape_search_literal_for_regex(), external_provider_error_result(), first_search_payload_line(), grep_search_command() (+201 more)
+Nodes (205): bounded_search_stdout(), CountParseEvidence, effective_search_context_clamps_values(), empty_search_project_text_output(), escape_search_literal_for_regex(), external_provider_error_result(), first_search_payload_line(), grep_search_command() (+197 more)
 
 ### Community 150 - "webcodex-store/src/agent_task_tests.rs"
 Cohesion: 0.15
@@ -2285,25 +2302,25 @@ Nodes (52): collect_readiness(), collect_readiness_from_remote(), configure_cons
 Cohesion: 0.10
 Nodes (50): audit_arguments(), audit_projection_never_contains_target_or_default_cwd(), authorized(), Binding, binding_required_error(), BindingStore, call(), CallerIdentity (+42 more)
 
-### Community 153 - "ToolRuntime"
-Cohesion: 0.28
-Nodes (9): ProjectResolverCandidate, ResolvedProject, AuthContext, Option, ProjectConfig, RunnerProjectLineage, RunnerProjectSummary, RunnerView (+1 more)
+### Community 153 - "ProjectResolverError"
+Cohesion: 0.10
+Nodes (28): AuthorizedProjectKnowledgeSource, ProjectKnowledgeSourceResolution, ProjectKnowledgeUnavailableReason, ProjectResolutionCache, ProjectResolutionCacheKey, ProjectResolverCandidate, ProjectResolverError, ProjectResolverErrorKind (+20 more)
 
 ### Community 154 - "chadex-runtime-runner/src/webcodex_runner/plugin.rs"
 Cohesion: 0.06
 Nodes (49): bounded_project_catalog_description(), CommittedState, failed_check_report(), initialize_failure_detail(), plugin_config_check_detail(), PluginEnvironmentSnapshot, PluginProfileEnvironment, PluginStderrDiagnostics (+41 more)
 
-### Community 155 - "webcodex/src/runner_session.rs"
-Cohesion: 0.09
-Nodes (44): classify_pump_poll_error(), dispatch_inbound(), PumpExit, RecvOutcome, RegisterPreludeError, Arc, JoinHandle, Notify (+36 more)
+### Community 155 - "webcodex/src/runner_session_tests.rs"
+Cohesion: 0.13
+Nodes (25): alive_writer(), deadline(), PendingReader, pump_exit_terminates_pending_reader_and_reconciles_exact_connection(), pump_task_panic_terminates_session(), register_streaming(), Arc, Instant (+17 more)
 
 ### Community 157 - "webcodex/src/config.rs"
 Cohesion: 0.12
 Nodes (14): EnvFileLoad, load_env_file(), load_startup_env_files(), load_startup_env_files_explicit_path_loads_webcodex_env(), oauth2_config_defaults_to_disabled(), oauth2_config_from_env_parses_overrides(), oauth2_config_issuer_prefers_oauth2_issuer_over_public_url(), quic_server_config_from_env_disabled_by_default() (+6 more)
 
 ### Community 158 - "hash_token"
-Cohesion: 0.10
-Nodes (51): generate_account_credential(), generate_account_credential_uses_expected_format(), generate_agent_token(), generate_agent_token_uses_wc_agent_prefix(), generate_api_token(), generate_api_token_uses_wc_pat_prefix(), generate_oauth_access_token(), generate_oauth_access_token_uses_wc_oat_prefix() (+43 more)
+Cohesion: 0.28
+Nodes (27): hash_token(), access_token_resource_by_plaintext(), access_token_shared_key_hash_by_plaintext(), access_token_subject_by_plaintext(), refresh_token_resource_by_plaintext(), refresh_token_shared_key_hash_by_plaintext(), refresh_token_subject_by_plaintext(), Database (+19 more)
 
 ### Community 159 - "webcodex/src/tool_runtime/runtime_info.rs"
 Cohesion: 0.09
@@ -2314,12 +2331,12 @@ Cohesion: 0.12
 Nodes (55): dispatch_pointer(), dispatch_windows_pointer_with(), enter_pointer_coordinate_context(), key_input(), map_windows_pointer_coordinate(), normalize_pointer_axis(), PointerCoordinateContext, prepare_pointer() (+47 more)
 
 ### Community 161 - "webcodex-validation/src/recipe.rs"
-Cohesion: 0.20
-Nodes (34): check_unavailable(), digest_files(), filter_unsupported(), go_steps(), manifest_invalid(), nearest_recipe_root(), node_steps(), normalize_test_filter() (+26 more)
+Cohesion: 0.11
+Nodes (53): check_unavailable(), digest_files(), filter_unsupported(), go_steps(), manifest_invalid(), nearest_recipe_root(), node_steps(), normalize_test_filter() (+45 more)
 
 ### Community 162 - "webcodex-runner/src/webcodex_runner/plugin_tests.rs"
-Cohesion: 0.08
-Nodes (58): bad_version_and_invalid_initial_provider_do_not_block_manager(), concurrent_reload_is_busy_while_existing_calls_continue_and_later_reload_wins(), crash_after_effect_send_is_outcome_unknown_and_instance_is_retired(), current_providers(), current_tools(), explicit_reload_restarts_provider_when_config_is_unchanged(), failed_candidate_keeps_previous_instance_and_removal_has_no_fallback(), fake_binary() (+50 more)
+Cohesion: 0.14
+Nodes (38): bad_version_and_invalid_initial_provider_do_not_block_manager(), concurrent_reload_is_busy_while_existing_calls_continue_and_later_reload_wins(), crash_after_effect_send_is_outcome_unknown_and_instance_is_retired(), current_providers(), explicit_reload_restarts_provider_when_config_is_unchanged(), failed_candidate_keeps_previous_instance_and_removal_has_no_fallback(), fake_binary(), generic_config_activation_holds_plugin_gate_through_followup_commit() (+30 more)
 
 ### Community 163 - "Result"
 Cohesion: 0.10
@@ -2330,8 +2347,8 @@ Cohesion: 0.09
 Nodes (51): add_run_process_expectation_projection(), caller_uses_default_search_timeout(), complete_batch_item(), decorate_structured_execution_prestart_denial(), failure_projection_keeps_permission_denials_and_unknown_outcomes(), failure_projection_removes_audit_noise_but_preserves_decision_relevant_facts(), is_structured_validation_tool(), ModelFacingProjection (+43 more)
 
 ### Community 165 - "webcodex/src/tool_runtime/sessions/tests.rs"
-Cohesion: 0.07
-Nodes (50): batch_budget_preserves_recorder_overlay_for_no_ack_read_batch(), coding_agent_lifecycle_evidence_is_project_scoped_body_free_and_durable(), concurrent_persistence_reloads_current_snapshot_before_write(), console_exploration_grouping_is_ordered_bounded_and_stops_at_fact_barriers(), console_list_orders_recent_activity_first_with_deterministic_session_id_ties(), console_list_uses_only_unfinished_call_as_now_and_keeps_job_handoff_as_last(), console_list_without_running_work_shows_last_meaningful_activity(), console_overview_counts_runtime_work_attention_and_sanitizes_reported_progress() (+42 more)
+Cohesion: 0.06
+Nodes (53): PersistedSessionLedger, write_ledger_atomic(), batch_budget_preserves_recorder_overlay_for_no_ack_read_batch(), coding_agent_lifecycle_evidence_is_project_scoped_body_free_and_durable(), concurrent_persistence_reloads_current_snapshot_before_write(), console_exploration_grouping_is_ordered_bounded_and_stops_at_fact_barriers(), console_list_orders_recent_activity_first_with_deterministic_session_id_ties(), console_list_uses_only_unfinished_call_as_now_and_keeps_job_handoff_as_last() (+45 more)
 
 ### Community 166 - "webcodex/src/admin_project_lifecycle.rs"
 Cohesion: 0.07
@@ -2339,11 +2356,11 @@ Nodes (54): active_job_request(), AdminProjectLifecycleService, api_error(), cre
 
 ### Community 167 - "chadex-runtime-computer/src/lib.rs"
 Cohesion: 0.04
-Nodes (123): accessibility_status(), accessibility_tree(), AccessibilityTreeResult, activate_window(), allocate_selector(), application_candidate_order(), application_candidates_have_stable_bounded_order(), ApplicationRecord (+115 more)
+Nodes (129): accessibility_status(), accessibility_tree(), AccessibilityTreeResult, activate_window(), allocate_selector(), application_candidate_order(), application_candidates_have_stable_bounded_order(), ApplicationRecord (+121 more)
 
 ### Community 168 - "webcodex-cli/src/webcodex_cli/tests/plugin.rs"
-Cohesion: 0.07
-Nodes (59): absolute_compiled_entrypoint(), derive_provider_id(), ensure_directory_empty(), parse_plugin_init(), PluginInitOptions, prepare_destination(), ProviderSnippet, render_provider_configuration() (+51 more)
+Cohesion: 0.08
+Nodes (56): absolute_compiled_entrypoint(), derive_provider_id(), ensure_directory_empty(), parse_plugin_init(), PluginInitOptions, prepare_destination(), ProviderSnippet, render_provider_configuration() (+48 more)
 
 ### Community 169 - "webcodex-workspace/src/workspace_checkpoint.rs"
 Cohesion: 0.12
@@ -2373,9 +2390,9 @@ Nodes (53): configure_runtime_command(), create_private_tool_dir(), download_err
 Cohesion: 0.11
 Nodes (39): normalize_persistent_result_state(), normalized_result_states(), persistent_record_to_tool(), persistent_result_to_tool(), prune_terminal_records(), relative_cwd(), resolve_remote_cwd(), Arc (+31 more)
 
-### Community 176 - "webcodex-tool-contracts/src/metadata.rs"
-Cohesion: 0.07
-Nodes (32): checkpoint_metadata_separates_effect_from_existing_authority(), iter_tool_metadata(), lookup_tool_metadata(), metadata(), Item, Iterator, Option, ToolAuthorityPolicy (+24 more)
+### Community 176 - "tool_definitions"
+Cohesion: 0.04
+Nodes (55): checkpoint_metadata_separates_effect_from_existing_authority(), iter_tool_metadata(), lookup_tool_metadata(), metadata(), Item, Iterator, Option, ToolAuthorityPolicy (+47 more)
 
 ### Community 177 - "webcodex-cli/src/webcodex_cli/connect/oauth.rs"
 Cohesion: 0.11
@@ -2391,7 +2408,7 @@ Nodes (52): application_identity_revalidates_for_test(), bounded_bundle_string()
 
 ### Community 180 - "runtime_console_state.ts"
 Cohesion: 0.07
-Nodes (52): emptyCollaborationState(), resetCollaborationState(), adoptRuntimeWorkflowSessionDetail(), beginRuntimeCredential(), clearRuntimeWorkflowSession(), compareText(), filterAndSortRuntimeProjects(), initialRuntimeConsoleState() (+44 more)
+Nodes (51): emptyCollaborationState(), resetCollaborationState(), adoptRuntimeWorkflowSessionDetail(), beginRuntimeCredential(), clearRuntimeWorkflowSession(), compareText(), filterAndSortRuntimeProjects(), initialRuntimeConsoleState() (+43 more)
 
 ### Community 181 - "webcodex-computer/src/platform/macos/display.rs"
 Cohesion: 0.10
@@ -2399,11 +2416,11 @@ Nodes (53): computer_raw_capture_bound_fails_closed_on_multiplication_overflow()
 
 ### Community 182 - "webcodex-computer/src/platform/macos/input.rs"
 Cohesion: 0.10
-Nodes (56): clean_input_state(), closed_key_codes_and_modifier_flags_are_stable(), dispatch_macos_pointer_with(), dispatch_pointer(), display(), geometry(), key_code(), key_input() (+48 more)
+Nodes (58): clean_input_state(), closed_key_codes_and_modifier_flags_are_stable(), dispatch_macos_pointer_with(), dispatch_pointer(), display(), geometry(), input_text(), key_code() (+50 more)
 
 ### Community 183 - "Process"
 Cohesion: 0.04
-Nodes (49): CheckedContinuation, Pipe, Process, main(), String, spawn_grandchild(), Item, Iterator (+41 more)
+Nodes (48): CheckedContinuation, Pipe, Process, main(), String, spawn_grandchild(), Item, Iterator (+40 more)
 
 ### Community 184 - "SettingsView.swift"
 Cohesion: 0.06
@@ -2422,8 +2439,8 @@ Cohesion: 0.09
 Nodes (57): aged_last_seen(), build_router(), connect_with_bearer(), handle_runner_ws(), provider_status(), read_register(), recv_envelope(), register_envelope() (+49 more)
 
 ### Community 188 - "webcodex/src/console_web.rs"
-Cohesion: 0.10
-Nodes (37): admin_app_js(), admin_html(), admin_styles_css(), apply_asset_headers(), build_test_router(), ConsoleAsset, ConsoleAssetConfigError, ConsoleAssetDirectory (+29 more)
+Cohesion: 0.11
+Nodes (28): apply_asset_headers(), build_test_router(), ConsoleAsset, ConsoleAssetConfigError, ConsoleAssetDirectory, ConsoleAssetSource, development_directory_requires_runtime_core_and_loopback(), development_runtime_assets_are_reread_and_fail_closed() (+20 more)
 
 ### Community 189 - "webcodex-process/tests/managed_child.rs"
 Cohesion: 0.09
@@ -2451,7 +2468,7 @@ Nodes (44): Edge, Font, ChadexFontStyle, .baseSize, body, callout, caption, capt
 
 ### Community 196 - "runtime_compat/models.rs"
 Cohesion: 0.10
-Nodes (42): aggregate_readiness(), BinaryInfo, ChatGptActivitySnapshot, DesktopOperationKind, DesktopOperationPhase, DesktopOperationSnapshot, DesktopStateSnapshot, Enrollment (+34 more)
+Nodes (45): aggregate_readiness(), BinaryInfo, ChatGptActivitySnapshot, DesktopOperationKind, DesktopOperationPhase, DesktopOperationSnapshot, DesktopStateSnapshot, Enrollment (+37 more)
 
 ### Community 197 - "Result"
 Cohesion: 0.15
@@ -2462,12 +2479,8 @@ Cohesion: 0.11
 Nodes (35): stale_connection_runtime_metadata_does_not_overwrite_current(), validate_run_request_allows_bounded_stdin_beyond_command_limit(), validate_run_request_rejects_oversized_stdin(), validate_run_request_uses_the_internal_raw_shell_wire_bound(), bounded_provider_text(), config_reload_status_is_whitelisted_sorted_and_bounded(), normalize_config_reload(), normalize_provider_call() (+27 more)
 
 ### Community 199 - "cli_action"
-Cohesion: 0.03
-Nodes (95): cli_action(), I, cli_exit(), I, Result, connect_defaults_project_and_allows_automatic_key(), connect_help_is_a_top_level_quick_start(), connect_parses_explicit_key_project_and_overrides() (+87 more)
-
-### Community 200 - "test.sh"
-Cohesion: 0.03
-Nodes (28): api_batch_call_records_one_generic_outer_invocation(), api_model_ergonomics_failure_uses_structured_kinds_without_private_text(), api_model_ergonomics_success_is_exact_and_queryable(), api_pre_result_invalid_arguments_still_counts_without_fabricated_bytes(), api_work_on_project_preferences_persist_as_privacy_bounded_action_audit_facts(), Database, Value, single_model_ergonomics() (+20 more)
+Cohesion: 0.04
+Nodes (105): cli_action(), I, cli_exit(), I, Result, connect_defaults_project_and_allows_automatic_key(), connect_help_is_a_top_level_quick_start(), connect_parses_explicit_key_project_and_overrides() (+97 more)
 
 ### Community 201 - "commands/mod.rs"
 Cohesion: 0.19
@@ -2487,7 +2500,7 @@ Nodes (48): allow_project_share_mcp_query_token(), AuthMiddleware, authority_mat
 
 ### Community 205 - "webcodex/src/tool_runtime/git_review.rs"
 Cohesion: 0.10
-Nodes (43): bounded_output_path(), build_review_signals(), classify_path(), classify_review_paths(), collect_symbol_hints(), contains_any(), coverage_value(), git_review_failure() (+35 more)
+Nodes (46): checked_git_pipeline_to_file(), bounded_output_path(), bounded_review_diff_command(), build_review_signals(), classify_path(), classify_review_paths(), collect_symbol_hints(), contains_any() (+38 more)
 
 ### Community 206 - "tool_runtime/hygiene.rs"
 Cohesion: 0.10
@@ -2523,7 +2536,7 @@ Nodes (99): configure_local_loopback_bypass_environment(), configure_tunnel_prox
 
 ### Community 214 - "webcodex-cli/src/webcodex_cli/connections.rs"
 Cohesion: 0.11
-Nodes (43): canon(), canonical_matches_verified_path(), Connection, connection_listing_fails_closed_when_both_registry_layouts_exist(), ConnectionPaths, connections_for_server(), default_base_dir(), descriptor_field() (+35 more)
+Nodes (45): canon(), canonical_matches_verified_path(), CanonicalServerUrl, Connection, connection_listing_fails_closed_when_both_registry_layouts_exist(), ConnectionPaths, connections_for_server(), default_base_dir() (+37 more)
 
 ### Community 215 - "WindowsShellProcess"
 Cohesion: 0.08
@@ -2531,11 +2544,11 @@ Nodes (33): powershell_bootstrap_script(), powershell_command_frame(), Arc, Atom
 
 ### Community 216 - "webcodex/src/tool_runtime/execution_workspace.rs"
 Cohesion: 0.08
-Nodes (39): choose_isolation_mode(), configured_limit(), ExecutionScheduler, ExecutionWorkspace, IsolationMode, load_workspace_manifests(), package_paths_are_independent(), persist_workspace_manifest() (+31 more)
+Nodes (38): choose_isolation_mode(), configured_limit(), ExecutionScheduler, ExecutionWorkspace, IsolationMode, load_workspace_manifests(), package_paths_are_independent(), persist_workspace_manifest() (+30 more)
 
 ### Community 217 - "webcodex-runner/src/main_tests.rs"
 Cohesion: 0.03
-Nodes (156): RunnerCapabilities, runner_register_capabilities(), append_fake_zip_entry(), assert_descendant_reaped(), canonical_registered_client_json(), concurrent_managed_worktree_bootstraps_choose_distinct_runner_paths(), DescendantCleanup, detached_process_capability_matches_supported_native_backends() (+148 more)
+Nodes (155): RunnerCapabilities, runner_register_capabilities(), append_fake_zip_entry(), assert_descendant_reaped(), canonical_registered_client_json(), concurrent_managed_worktree_bootstraps_choose_distinct_runner_paths(), DescendantCleanup, detached_process_capability_matches_supported_native_backends() (+147 more)
 
 ### Community 218 - "webcodex-runner/src/webcodex_runner/external_tools_tests.rs"
 Cohesion: 0.08
@@ -2554,8 +2567,8 @@ Cohesion: 0.12
 Nodes (36): atomic_write_json(), bounded_single_line(), BuildEvidence, default_root_for_runner(), default_root_for_runner_with_base(), ensure_directory_not_symlink(), lifecycle_record_preserves_exit_classification_without_payloads(), LifecycleRecord (+28 more)
 
 ### Community 222 - "args"
-Cohesion: 0.04
-Nodes (130): parse_cli_runner_init(), parse_runner_status(), parse_server_install_service(), Box, Error, run(), default_server_paths(), is_effective_root() (+122 more)
+Cohesion: 0.05
+Nodes (97): parse_cli_runner_init(), parse_runner_install_service(), parse_server_install_service(), RunnerInitOptions, RunnerInstallServiceOptions, run_runner_install_service(), run_server_install_service(), env_test_guard() (+89 more)
 
 ### Community 223 - "webcodex-runner/src/webcodex_runner/mcp_gateway_tests.rs"
 Cohesion: 0.11
@@ -2566,12 +2579,12 @@ Cohesion: 0.07
 Nodes (44): AbsentTarget, AuthorizedTarget, BackendOptions, defaultSpawnSync, ensureRealDirectory(), failed(), FreedesktopOptions, FreedesktopTrashResult (+36 more)
 
 ### Community 225 - "webcodex-runner/src/webcodex_runner/artifacts/upload.rs"
-Cohesion: 0.17
-Nodes (38): read_upload_state_rejects_oversized_sidecar(), read_upload_state_rejects_requested_path_mismatch(), ArtifactUploadProjectUsage, ArtifactUploadState, ArtifactUploadTempFiles, commit_artifact_upload_part(), current_artifact_upload_project_usage(), enforce_artifact_upload_begin_admission() (+30 more)
+Cohesion: 0.15
+Nodes (42): artifact_upload_project_sweep_cleans_orphans_and_stale_pairs(), read_upload_state_rejects_oversized_sidecar(), read_upload_state_rejects_requested_path_mismatch(), ArtifactUploadState, test_upload_state(), ArtifactUploadProjectUsage, ArtifactUploadState, ArtifactUploadTempFiles (+34 more)
 
 ### Community 226 - "state/policy.rs"
-Cohesion: 0.07
-Nodes (46): apply_config_projection(), apply_openai_tunnel_configuration(), apply_regular_tunnel_next_action(), default_management_project_dir(), effective_topology(), effective_tunnel_proxy(), EffectiveTunnelProxy, environment_tunnel_proxy() (+38 more)
+Cohesion: 0.08
+Nodes (44): ChadexRuntimeProbeTarget, apply_config_projection(), apply_openai_tunnel_configuration(), apply_regular_tunnel_next_action(), default_management_project_dir(), effective_topology(), effective_tunnel_proxy(), EffectiveTunnelProxy (+36 more)
 
 ### Community 227 - "webcodex/src/tool_runtime/observe_jobs.rs"
 Cohesion: 0.12
@@ -2594,60 +2607,60 @@ Cohesion: 0.13
 Nodes (45): bounded_failure_list(), bounded_path_list(), build_handoff_brief(), enforce_hard_limit(), exact_char_bound(), handoff_brief_size(), HandoffBriefInput, instruction_excerpt() (+37 more)
 
 ### Community 232 - "webcodex-persistent-shell/src/lib.rs"
-Cohesion: 0.13
-Nodes (49): assert_private_completion_isolation(), assert_status_integrity(), close_during_exec_never_resurrects_the_shell(), close_is_idempotent_and_exit_is_observable(), close_is_idempotent_and_kills_owned_descendants(), command_failure_does_not_lose_shell(), concurrent_exec_is_serialized_by_busy_guard(), concurrent_exec_returns_busy_without_mixing_output() (+41 more)
+Cohesion: 0.18
+Nodes (38): assert_private_completion_isolation(), assert_status_integrity(), close_during_exec_never_resurrects_the_shell(), close_is_idempotent_and_exit_is_observable(), close_is_idempotent_and_kills_owned_descendants(), command_failure_does_not_lose_shell(), concurrent_exec_is_serialized_by_busy_guard(), concurrent_exec_returns_busy_without_mixing_output() (+30 more)
 
 ### Community 233 - "webcodex/src/tool_runtime/git/show_changes.rs"
-Cohesion: 0.09
-Nodes (57): annotate_show_changes_hunk_source_completeness(), apply_show_changes_session(), collect_show_changes_untracked_previews_for_root(), diff_stat_status_json(), diff_status_json(), enrich_show_changes_files_with_numstat(), frame_bytes_match(), framed_clean_show_changes_test_stdout() (+49 more)
+Cohesion: 0.08
+Nodes (62): annotate_show_changes_hunk_source_completeness(), apply_show_changes_session(), collect_show_changes_untracked_previews_for_root(), diff_stat_status_json(), diff_status_json(), enrich_show_changes_files_with_numstat(), frame_bytes_match(), framed_clean_show_changes_test_stdout() (+54 more)
 
 ### Community 234 - "webcodex-store/src/db_tests.rs"
 Cohesion: 0.07
 Nodes (45): assert_oauth_subject_columns(), can_insert_and_get_access_token_by_hash(), can_insert_and_get_authorization_code_by_hash(), can_insert_and_get_oauth_client(), can_insert_and_get_refresh_token_by_hash(), can_revoke_access_token(), can_revoke_refresh_token(), can_update_access_token_last_used() (+37 more)
 
 ### Community 235 - "webcodex-tool-contracts/src/registry/tool_specs.rs"
-Cohesion: 0.13
-Nodes (35): Value, tool_annotations(), coding_workflow_diagnostic_output_schema_for_test(), output_schema_for_tool(), Value, agent_continuation_app_tool_specs(), changes_app_tool_specs(), collect_schema_descriptions() (+27 more)
+Cohesion: 0.15
+Nodes (33): Value, tool_annotations(), agent_continuation_app_tool_specs(), changes_app_tool_specs(), collect_schema_descriptions(), duplicate_definition_owned_model_specs_fail_closed(), goal_plan_app_tool_specs(), memory_management_tool_specs() (+25 more)
 
 ### Community 236 - "webcodex/src/admin_http.rs"
 Cohesion: 0.10
 Nodes (43): activity_is_bounded_and_projection_has_no_secret_fields(), admin_dashboard_accepts_bootstrap_and_admin_pat_without_secrets(), admin_pat_projection_hides_paths(), call(), compatibility_by_client(), create_project(), dashboard(), dashboard_projection_exposes_lifecycle_actions() (+35 more)
 
 ### Community 237 - "ToolRequestLifecycle"
-Cohesion: 0.08
-Nodes (27): mcp_post(), completed_drop_is_silent(), completion_timing_preserves_subsecond_monotonic_precision(), current_active_trace_id(), current_full_trace_ref(), full_mode_lifecycle_persists_only_hashed_client_window_metadata(), incomplete_drop_is_safe_when_disabled(), json_sha256_or_empty() (+19 more)
+Cohesion: 0.10
+Nodes (15): completion_timing_preserves_subsecond_monotonic_precision(), full_mode_lifecycle_persists_only_hashed_client_window_metadata(), RequestCompletionTiming, AtomicBool, ClientWindow, Drop, F, Into (+7 more)
 
 ### Community 238 - "webcodex/src/tool_runtime/handoff.rs"
 Cohesion: 0.09
 Nodes (47): closeout_work_projection(), SessionEvent, Value, actionable_unexpected_failure_count(), apply_compact_workflow_outcomes(), bound_chars(), bound_messages(), CloseoutEvidenceReconciliation (+39 more)
 
 ### Community 239 - "runtime-engine/src/tool_runtime/tests/git.rs"
-Cohesion: 0.03
-Nodes (228): ToolResult, annotate_show_changes_hunk_source_completeness(), apply_show_changes_session(), collect_show_changes_untracked_previews_for_root(), diff_stat_status_json(), diff_status_json(), enrich_show_changes_files_with_numstat(), frame_bytes_match() (+220 more)
+Cohesion: 0.04
+Nodes (168): ToolResult, parse_show_changes_output(), parse_show_changes_status_observation(), show_changes_command(), split_show_changes_stdout(), sparsify_complete_git_review_success(), commit_file(), assert_git_diff_hunks_recovery_call_parses() (+160 more)
 
 ### Community 240 - "webcodex/src/tool_runtime/tests/observe_jobs.rs"
 Cohesion: 0.12
 Nodes (43): assert_item_has_no_wait_metadata(), canonical_batch(), canonical_observation(), canonical_success_item(), compact_projection(), item(), observation_token(), observe_jobs_all_terminal_item_errors_return_without_waiting_for_running_job() (+35 more)
 
 ### Community 241 - "webcodex-computer/src/platform/macos/accessibility.rs"
-Cohesion: 0.18
-Nodes (49): accessibility_error(), accessibility_status(), accessibility_tree(), activate_window(), ax_array_count(), ax_attribute_settable(), ax_element_at(), ax_elements() (+41 more)
+Cohesion: 0.19
+Nodes (47): accessibility_error(), accessibility_status(), accessibility_tree(), activate_window(), ax_array_count(), ax_attribute_settable(), ax_element_at(), ax_elements() (+39 more)
 
 ### Community 242 - ".execute_chadex_task_attempt"
-Cohesion: 0.12
-Nodes (44): compact_failure_details(), compact_result_summary(), elapsed_ms(), execute_task_result(), failure_category(), failure_details_preserve_actionable_diagnostics_but_bound_stdio(), first_failed_batch_item(), initial_package_target() (+36 more)
+Cohesion: 0.13
+Nodes (41): compact_failure_details(), compact_result_summary(), elapsed_ms(), execute_task_result(), ToolResult, uncertain_result(), failure_category(), first_failed_batch_item() (+33 more)
 
 ### Community 243 - "fetchProjects"
-Cohesion: 0.13
-Nodes (39): css, abort(), abortAll(), abortCollaboration(), abortProjectWork(), applyRunnerFilter(), clearProjectWindows(), clearSessionSurface() (+31 more)
+Cohesion: 0.14
+Nodes (40): css, abort(), abortAll(), abortCollaboration(), abortProjectWork(), applyRunnerFilter(), clearSessionSurface(), runtimeCollaborationRequest() (+32 more)
 
 ### Community 244 - "webcodex-computer/src/windows_uia_tests.rs"
 Cohesion: 0.10
 Nodes (13): computer_windows_control_fixture_live_smoke(), computer_windows_key_input_fixture_live_smoke(), computer_windows_scroll_to_element_fixture_live_smoke(), computer_windows_uia_live_smoke(), computer_windows_uia_stale_identity_rejects_indistinguishable_replacement_live(), computer_windows_window_activation_live_smoke(), Child, Drop (+5 more)
 
 ### Community 245 - "webcodex/src/action_audit_sessions.rs"
-Cohesion: 0.05
-Nodes (65): secret_like_value(), action_principal_attribution(), action_status(), ActionAudit, ActionAuditRecord, ActionAuditRecordTiming, agent_allowed_client_id_is_not_oauth_client_attribution(), audit_record_timing_preserves_subsecond_monotonic_precision() (+57 more)
+Cohesion: 0.12
+Nodes (37): ActionAttributionStats, ActionAuditEventInput, ActionAuditWorkflowLinkInput, ActionEventView, ActionSessionStats, compute_attribution_stats(), compute_stats(), compute_stats_classifies_gpt_actions_by_canonical_operation() (+29 more)
 
 ### Community 246 - "phase16c_connected_campaign.py"
 Cohesion: 0.28
@@ -2658,16 +2671,16 @@ Cohesion: 0.15
 Nodes (43): _audit_sort_key(), _benchmark_metadata(), _build_parser(), _case_by_id(), _case_compatibility(), _code_mode_composition(), compare_reports(), _get_path() (+35 more)
 
 ### Community 248 - "validate_http_protocol"
-Cohesion: 0.14
-Nodes (26): decode_mcp_name_header(), header_mismatch(), request_header(), request_mcp_name(), Into, JsonRpcRequest, McpProtocolEra, Option (+18 more)
+Cohesion: 0.10
+Nodes (41): decode_mcp_name_header(), header_mismatch(), request_header(), request_mcp_name(), Into, JsonRpcRequest, McpProtocolEra, Option (+33 more)
 
 ### Community 249 - "webcodex/src/tool_runtime/model_ergonomics_telemetry.rs"
 Cohesion: 0.10
 Nodes (49): completion(), context_recovery_v5_measures_only_final_projection_without_body_leakage(), ContextAckShape, ContextRecoveryKind, continuity_facts(), ContinuityFacts, ContinuityProjection, edit_conflict_kind() (+41 more)
 
 ### Community 250 - "webcodex-runner/src/webcodex_runner/files.rs"
-Cohesion: 0.12
-Nodes (47): is_file_request_kind(), is_artifact_request_kind(), is_checkpoint_request_kind(), canonical_existing_ancestor(), canonical_skill_package_root(), canonical_skill_resource_request_path(), delete_project_files_error(), DeleteProjectFilesPayload (+39 more)
+Cohesion: 0.10
+Nodes (53): handle_file_operation(), CommandResult, RunnerFileOperation, configured_skill_storage_does_not_expand_generic_file_authority(), default_policy_denies_paths_outside_allowed_roots(), payload(), Path, RunnerFilePayload (+45 more)
 
 ### Community 251 - "String"
 Cohesion: 0.17
@@ -2703,35 +2716,35 @@ Nodes (38): dropped_result_log_line(), HttpSendConfig, permanent_result_rejectio
 
 ### Community 259 - "webcodex/src/openapi.rs"
 Cohesion: 0.11
-Nodes (41): gpt_action_direct_tool_definitions(), action_is_consequential(), action_operation_description(), action_operation_descriptions_inherit_when_canonical_copy_already_fits(), action_request_schema(), action_response_schemas_match_tool_result_serde_shape(), action_tool_result_failure_schema(), action_tool_result_schema() (+33 more)
+Nodes (40): gpt_action_direct_tool_definitions(), action_is_consequential(), action_operation_description(), action_operation_descriptions_inherit_when_canonical_copy_already_fits(), action_request_schema(), action_response_schemas_match_tool_result_serde_shape(), action_tool_result_failure_schema(), action_tool_result_schema() (+32 more)
 
 ### Community 260 - "webcodex-workflow-session/src/continuation_tests.rs"
-Cohesion: 0.10
-Nodes (60): add_instruction(), attempt_does_not_recount_recorder_finish_when_business_finish_precedes_boundary(), attempt_only_counts_events_after_the_last_task_instruction(), attempt_without_task_instruction_falls_back_to_session_start(), changed_paths_are_deduped_bounded_and_report_total_and_truncated(), continuation_feedback_does_not_leak_raw_output_or_commands(), continuation_feedback_output_is_bounded_in_size(), create_session() (+52 more)
+Cohesion: 0.15
+Nodes (44): add_instruction(), attempt_does_not_recount_recorder_finish_when_business_finish_precedes_boundary(), attempt_only_counts_events_after_the_last_task_instruction(), attempt_without_task_instruction_falls_back_to_session_start(), changed_paths_are_deduped_bounded_and_report_total_and_truncated(), continuation_feedback_does_not_leak_raw_output_or_commands(), continuation_feedback_output_is_bounded_in_size(), create_session() (+36 more)
 
 ### Community 261 - "classify"
 Cohesion: 0.09
 Nodes (5): classify(), GitRangeIntegrationTests, InvocationOverrideFixtureTests, PathRiskFixtureTests, Path
 
 ### Community 262 - "runtime-engine/src/tool_runtime/work_result.rs"
-Cohesion: 0.10
-Nodes (37): Error, Result, Sha256, T, Write, Sha256Writer, streaming_json_sha256_matches_buffered_serialization(), update_sha256_with_json() (+29 more)
+Cohesion: 0.24
+Nodes (19): bounded_plain_text(), bounded_token(), current_validation_status(), AuthContext, Option, String, ToolResult, Value (+11 more)
 
 ### Community 263 - "presentation.ts"
 Cohesion: 0.06
 Nodes (38): activityKeys, binaryErrors, enrollmentErrors, ErrorPresentation, nextActionKeys, operationKeys, processErrors, projectErrors (+30 more)
 
 ### Community 264 - "test_config"
-Cohesion: 0.03
-Nodes (195): build_register_request(), generated_runner_instance_id_is_non_empty_uuid_like(), computer_register_request_announces_platform_capabilities_and_generation(), current_runner_registration_advertises_v2_and_complete_generation_baseline(), mcp_gateway_register_request_projects_bounded_provider_inventory_without_local_launch_details(), phase_e2_register_request_reports_effective_job_concurrency_limit(), register_request_carries_sanitized_shell_profiles_summary(), test_config() (+187 more)
+Cohesion: 0.04
+Nodes (139): test_config(), mcp_conformance_fixture_server(), authority_probe(), full_trace_dir_with_payload(), http_mcp_2026_collaboration_completion_preserves_explicit_recorder_provenance(), http_mcp_2026_context_request_projects_post_tool_materials_nonfatally(), http_mcp_2026_invalid_request_metadata_maps_to_invalid_params_before_dispatch(), http_mcp_2026_observe_session_messages_preserves_stateless_delta_contract() (+131 more)
 
 ### Community 265 - "runtime-engine/src/oauth_http/tests/managed_authorize.rs"
 Cohesion: 0.32
 Nodes (15): consent_form_body(), consent_form_body_with_resource(), oauth_authorize_consent_allow_redirects_with_code(), oauth_authorize_consent_allow_stores_resource_on_code(), oauth_authorize_consent_deny_redirects_with_access_denied(), oauth_authorize_consent_requires_valid_session(), oauth_authorize_consent_revalidates_redirect_uri(), post_form_with_cookie() (+7 more)
 
 ### Community 266 - "lock_unpoison"
-Cohesion: 0.13
-Nodes (18): command_token(), ensure_local_shell_supported(), lock_unpoison(), now_ts(), PersistentShellManager, Display, Error, Formatter (+10 more)
+Cohesion: 0.14
+Nodes (12): command_token(), lock_unpoison(), now_ts(), PersistentShellManager, Duration, ExitStatus, MutexGuard, T (+4 more)
 
 ### Community 267 - "ManagedChild"
 Cohesion: 0.11
@@ -2742,8 +2755,8 @@ Cohesion: 0.11
 Nodes (13): Any, TaskService, TaskBridge, TaskResult, TaskResult, TaskRuntime, Path, TaskResult (+5 more)
 
 ### Community 269 - "webcodex-tool-contracts/src/registry/output_schemas/common.rs"
-Cohesion: 0.10
-Nodes (37): array_schema(), attempt_activity_schema(), attempt_boundary_schema(), attempt_changes_schema(), attempt_event_range_schema(), attempt_exploration_schema(), attempt_guidance_schema(), attempt_instruction_schema() (+29 more)
+Cohesion: 0.09
+Nodes (41): coding_workflow_diagnostic_output_schema_for_test(), array_schema(), attempt_activity_schema(), attempt_boundary_schema(), attempt_changes_schema(), attempt_event_range_schema(), attempt_exploration_schema(), attempt_guidance_schema() (+33 more)
 
 ### Community 270 - "release_publication.py"
 Cohesion: 0.18
@@ -2757,9 +2770,9 @@ Nodes (38): adaptive_artifact_export_gateway_returns_resource_link_and_round_tri
 Cohesion: 0.10
 Nodes (25): code_mode_metrics_sink_failure_is_fail_open(), McpCallMetricObservation, metrics_sink_panics_are_fail_open(), observe_code_mode_composition(), observe_fail_open(), observe_mcp_call(), observe_skill_source(), observe_tool_call() (+17 more)
 
-### Community 274 - "webcodex-cli/src/webcodex_cli/tests/ops.rs"
-Cohesion: 0.10
-Nodes (51): assert_no_workspace_preflight_tools(), clean_hygiene_fixture(), clean_show_changes_fixture(), json_http_response(), ops_common_opts(), ops_http_403_reports_forbidden(), ops_http_error_output_does_not_leak_token_value(), ops_json_and_human_outputs_do_not_contain_secret_values() (+43 more)
+### Community 274 - "runtime-engine/src/tool_runtime/git/show_changes.rs"
+Cohesion: 0.09
+Nodes (57): annotate_show_changes_hunk_source_completeness(), apply_show_changes_session(), collect_show_changes_untracked_previews_for_root(), diff_stat_status_json(), diff_status_json(), enrich_show_changes_files_with_numstat(), frame_bytes_match(), framed_clean_show_changes_test_stdout() (+49 more)
 
 ### Community 275 - "process/registry.rs"
 Cohesion: 0.12
@@ -2778,16 +2791,16 @@ Cohesion: 0.17
 Nodes (38): _asset_digest(), canonical_archive_name(), canonical_desktop_name(), _content_length(), _copy_tar_member(), desktop_platforms_for_version(), desktop_required(), download_file() (+30 more)
 
 ### Community 279 - "test_runtime"
-Cohesion: 0.03
-Nodes (184): cargo_tools_reject_unsafe_cwd_before_project_dispatch(), dispatch_create_project_rejects_relative_path(), dispatch_create_project_rejects_unknown_client_id(), dispatch_register_project_rejects_unknown_client_id(), dispatch_register_project_rejects_unsafe_id(), dispatch_unregister_project_reuses_lifecycle_validation_without_project_preresolution(), dispatch_records_edit_tool_usage_without_sensitive_args(), edit_tool_usage_does_not_change_session_ledger_shape() (+176 more)
+Cohesion: 0.02
+Nodes (182): e2a_outer_job_run_scope_denial_starts_no_validation_process(), computer_display_snapshot_clamps_budget_before_runner_and_validates_effective_bound(), String, sha256_hex(), dispatch_records_edit_tool_usage_without_sensitive_args(), edit_tool_usage_does_not_change_session_ledger_shape(), kernel_generic_telemetry_and_edit_enrichment_each_emit_once(), context() (+174 more)
 
 ### Community 280 - "setup"
 Cohesion: 0.15
 Nodes (37): SetupReport, setup(), assert_no_project_state_artifacts(), console_assets_are_validated_and_passed_only_to_the_serve_child(), doctor_and_status_share_canonical_readiness_facts_and_stay_read_only(), doctor_reports_conflicting_registration(), doctor_reports_malformed_registration(), doctor_reports_missing_private_credential() (+29 more)
 
 ### Community 281 - "webcodex/src/tool_runtime/helpers.rs"
-Cohesion: 0.16
-Nodes (35): authored_raw_shell_bound_and_explicit_wrapper_headroom_are_consistent(), command_failed_message(), command_outcome_unknown_message(), command_timeout_message(), decode_git_quoted_path(), explicit_shell_dispatch_command(), git_for_windows_shell(), looks_like_command_timeout() (+27 more)
+Cohesion: 0.14
+Nodes (38): authored_raw_shell_bound_and_explicit_wrapper_headroom_are_consistent(), command_failed_message(), command_outcome_unknown_message(), command_timeout_message(), decode_git_quoted_path(), explicit_shell_dispatch_command(), git_for_windows_shell(), looks_like_command_timeout() (+30 more)
 
 ### Community 282 - "webcodex/src/tool_runtime/memory.rs"
 Cohesion: 0.12
@@ -2822,12 +2835,12 @@ Cohesion: 0.12
 Nodes (33): bound_stderr(), CapturedProcess, CleanupPath, helper_binary(), read_pid(), resolve_executable(), AtomicBool, Deref (+25 more)
 
 ### Community 290 - "webcodex/src/mcp_tests/result_app.rs"
-Cohesion: 0.20
-Nodes (19): assert_presentation_strings_bounded(), git_changes_presentation_bounds_diff_hunks_and_text(), git_changes_presentation_bounds_paths_and_excludes_raw_private_fields(), git_changes_presentation_distributes_diff_preview_across_presented_files(), git_changes_presentation_matches_diff_hunks_before_display_path_truncation(), git_changes_presentation_preserves_canonical_workspace_states(), git_review_presentation_bounds_file_metadata_and_excludes_raw_diff_context(), git_review_presentation_preserves_scope_stats_files_and_partial_state() (+11 more)
+Cohesion: 0.12
+Nodes (37): assert_presentation_strings_bounded(), complete_result_app_show_changes(), complete_result_app_validation_job(), git_changes_presentation_bounds_diff_hunks_and_text(), git_changes_presentation_bounds_paths_and_excludes_raw_private_fields(), git_changes_presentation_distributes_diff_preview_across_presented_files(), git_changes_presentation_matches_diff_hunks_before_display_path_truncation(), git_changes_presentation_preserves_canonical_workspace_states() (+29 more)
 
 ### Community 291 - ".govern_specialized_invocation"
-Cohesion: 0.14
-Nodes (20): auth(), bounded_ledger_arguments(), denial_terminal_projection(), AuthContext, Option, PermissionDecision, Result, SessionMode (+12 more)
+Cohesion: 0.11
+Nodes (24): auth(), bounded_ledger_arguments(), denial_terminal_projection(), AuthContext, Option, PermissionDecision, Result, Self (+16 more)
 
 ### Community 292 - "adaptive_runtime_gateway_params"
 Cohesion: 0.27
@@ -2842,8 +2855,8 @@ Cohesion: 0.09
 Nodes (34): LegacyProjectRegisterOutput, LegacyRegisteredProjectOutput, LoginOutput, OpsProject, OpsProjectsOutput, OpsProjectsSummary, OpsWindow, OpsWindowsOutput (+26 more)
 
 ### Community 295 - "webcodex/src/oauth_http/shared_key_bridge.rs"
-Cohesion: 0.13
-Nodes (45): bridge_baseline_scope_ceiling_is_valid(), bridge_client_has_coding_agent_scope(), bridge_client_has_local_mcp_scope(), bridge_client_has_local_plugin_scopes(), bridge_client_has_local_ssh_scope(), bridge_client_has_optional_computer_scope(), bridge_client_is_computer_enabled(), bridge_client_scopes_are_current() (+37 more)
+Cohesion: 0.10
+Nodes (51): bridge_baseline_scope_ceiling_is_valid(), bridge_client_has_coding_agent_scope(), bridge_client_has_local_mcp_scope(), bridge_client_has_local_plugin_scopes(), bridge_client_has_local_ssh_scope(), bridge_client_has_optional_computer_scope(), bridge_client_is_computer_enabled(), bridge_client_scopes_are_current() (+43 more)
 
 ### Community 296 - "ci_path_risk.py"
 Cohesion: 0.14
@@ -2858,8 +2871,8 @@ Cohesion: 0.09
 Nodes (27): ConvertTo-WindowsAccountSid(), ConvertTo-WindowsRunnerLifecycleFullPath(), Get-PowerShellFileArgument(), Get-PowerShellLifecycleSupervisorArgument(), Get-RunnerConfigPathFromPrimaryIdentity(), Get-WindowsRunnerLifecyclePlan(), Get-WindowsRunnerLifecycleTaskEnabled(), Get-WindowsRunnerLifecycleTaskObservation() (+19 more)
 
 ### Community 299 - "runtime-engine/src/tool_runtime/tests/work_on_project.rs"
-Cohesion: 0.03
-Nodes (162): agent_job_lost_on_disconnect_stays_terminal_after_reconnect(), assert_layer_contract(), canonical_project_session_explicit_resume_survives_restart(), coding_resume_call(), coding_start_call(), coding_workflow_read_only_upgrade_is_atomic_and_permission_checked(), dispatch_coding_call_in_window(), dispatch_coding_call_in_window_with_transport() (+154 more)
+Cohesion: 0.05
+Nodes (127): dispatch_coding_call_in_window(), load_project_instructions_inherits_agents_from_visible_ancestor_chain(), call_kernel_with_fake_operator_store(), call_kernel_with_local_agent(), configured_descriptor(), configured_exact_read_pins_probe_revision_across_resource_read(), configured_skill_exact_read_uses_unified_resolve_then_read(), configured_skill_resource_executes_without_model_source_roundtrip_and_fences_revision() (+119 more)
 
 ### Community 300 - "webcodex/src/server_shutdown/tests.rs"
 Cohesion: 0.08
@@ -2869,9 +2882,9 @@ Nodes (34): _assert_infallible(), counted_handler(), CountGate, drain_admission_
 Cohesion: 0.14
 Nodes (27): config_error(), config_path(), credential_file_is_private_and_symlinks_are_rejected(), CredentialMode, environment_snapshot(), failed_updates_keep_the_previous_saved_credentials(), invalid_saved_data_fails_closed_and_can_be_repaired(), memory_mode_is_inert_and_never_exposes_credentials() (+19 more)
 
-### Community 302 - "webcodex/src/tool_runtime/tests/support/runner.rs"
-Cohesion: 0.06
-Nodes (77): authorized_session(), call(), e3_assignment_schema_parser_scope_and_audit_are_synchronized(), e3_assignment_tool_round_trip_stale_projection_and_fresh_fence(), post(), AuthContext, Option, SessionMessageKind (+69 more)
+### Community 302 - "webcodex/src/tool_runtime/tests/chadex_task_executor.rs"
+Cohesion: 0.09
+Nodes (56): authorized_session(), call(), e3_assignment_schema_parser_scope_and_audit_are_synchronized(), e3_assignment_tool_round_trip_stale_projection_and_fresh_fence(), post(), AuthContext, Option, SessionMessageKind (+48 more)
 
 ### Community 303 - "webcodex-code-mode/src/lib.rs"
 Cohesion: 0.10
@@ -2902,8 +2915,8 @@ Cohesion: 0.09
 Nodes (11): _ci_run(), DispatchClassificationTests, MainCiProofTests, _Opener, ReadinessSelectionTests, ReadinessStateTests, _Response, _run() (+3 more)
 
 ### Community 310 - ".new"
-Cohesion: 0.14
-Nodes (34): accounting_snapshot(), agent_continuation_app_lifecycle_never_captures_host_binding_or_resume_secrets(), estimate_json_bytes_is_none_when_trace_disabled(), event_line_len(), flush_full_trace_writer(), full_mode_accounting_rebuilds_when_same_root_config_changes(), full_mode_accounting_rebuilds_when_trace_root_changes(), full_mode_accounting_tracks_writes_without_rescanning_hot_path() (+26 more)
+Cohesion: 0.13
+Nodes (39): accounting_snapshot(), agent_continuation_app_lifecycle_never_captures_host_binding_or_resume_secrets(), completed_drop_is_silent(), estimate_json_bytes_is_none_when_trace_disabled(), event_line_len(), flush_full_trace_writer(), full_mode_accounting_rebuilds_when_same_root_config_changes(), full_mode_accounting_rebuilds_when_trace_root_changes() (+31 more)
 
 ### Community 311 - "src-tauri/src/platform/mod.rs"
 Cohesion: 0.09
@@ -2942,20 +2955,20 @@ Cohesion: 0.24
 Nodes (19): bounded_plain_text(), bounded_token(), current_validation_status(), AuthContext, Option, String, ToolResult, Value (+11 more)
 
 ### Community 320 - "lookup_tool_definition"
-Cohesion: 0.03
-Nodes (109): tool_metadata_covers_all_known_tools(), model_visible_definitions_own_all_registered_model_specs(), adaptive_runtime_direct_declarations_are_visible_ranked_and_unique(), code_mode_composition_policy_is_canonical_closed_and_independent_from_frontend_admission(), every_runtime_tool_has_an_explicit_fail_closed_audit_contract(), execution_selection_contract_is_canonical_closed_and_sparse(), experimental_code_mode_effectful_has_conservative_e2a_envelope(), experimental_code_mode_is_visible_read_only_and_feature_scoped() (+101 more)
+Cohesion: 0.04
+Nodes (72): adaptive_runtime_direct_declarations_are_visible_ranked_and_unique(), code_mode_composition_policy_is_canonical_closed_and_independent_from_frontend_admission(), execution_selection_contract_is_canonical_closed_and_sparse(), experimental_code_mode_effectful_has_conservative_e2a_envelope(), experimental_code_mode_is_visible_read_only_and_feature_scoped(), experimental_code_mode_mutating_has_conservative_e2b_envelope(), final_changes_requires_the_typed_internal_posix_runner_capability(), tool_definitions_are_activity_semantics_ssot() (+64 more)
 
 ### Community 321 - "serve_with_signal"
 Cohesion: 0.11
 Nodes (24): DrainAdmission, parent_eof_signal(), A, Arc, AtomicU8, Default, Depot, Duration (+16 more)
 
 ### Community 322 - "webcodex-runner/src/webcodex_runner/computer_tests.rs"
-Cohesion: 0.09
-Nodes (23): computer_runtime(), ensure_exact_payload_fields(), handle_computer_operation(), handle_computer_request(), optional_snapshot_dimension(), optional_snapshot_region(), CommandResult, ComputerRuntime (+15 more)
+Cohesion: 0.07
+Nodes (33): computer_runtime(), ensure_exact_payload_fields(), handle_computer_operation(), handle_computer_request(), optional_snapshot_dimension(), optional_snapshot_region(), CommandResult, ComputerRuntime (+25 more)
 
 ### Community 323 - "webcodex/src/model_surface.rs"
-Cohesion: 0.13
-Nodes (27): adaptive_runtime_gateway_target_route(), adaptive_runtime_tool_invocation_route(), adaptive_runtime_tool_invocation_route_with_operator_extension(), AdaptiveRuntimeGatewayTargetRoute, coding_intent_tools_are_reachable(), collect_suggested_call_targets(), effective_mcp_compact_schemas(), finish_coding_task_nested_show_changes_recovery_projects_with_route() (+19 more)
+Cohesion: 0.11
+Nodes (31): adaptive_runtime_direct_tool_specs(), adaptive_runtime_gateway_target_route(), adaptive_runtime_tool_invocation_route(), adaptive_runtime_tool_invocation_route_with_operator_extension(), AdaptiveRuntimeGatewayTargetRoute, coding_intent_tools_are_reachable(), collect_suggested_call_targets(), direct_specs_are_definition_derived_and_model_visible() (+23 more)
 
 ### Community 324 - "webcodex-workflow-session/src/session_store_tests.rs"
 Cohesion: 0.11
@@ -2967,11 +2980,11 @@ Nodes (29): api_post(), assert_eq(), assert_ne(), assert_nonempty(), check_deadl
 
 ### Community 326 - "runner_registration"
 Cohesion: 0.04
-Nodes (72): agent_auth_context(), auth_context(), canonical_runner_feature_set_tracks_each_individual_wire_bool(), canonical_sticky_feature_fence_preserves_allowed_reconnect_transitions(), coding_agent_registration_consistency_uses_canonical_feature_semantics(), current_protocol_generation_never_infers_registration_required_host_features(), generation_baseline_features_reject_reregistration_downgrade(), generation_baseline_project_features_cannot_downgrade_on_reregistration() (+64 more)
+Nodes (72): assert_runner_access(), assert_runner_owner(), job_visible_to_access(), lightweight_group_matches(), Option, Result, RunnerAccess, RunnerAccessGroup (+64 more)
 
 ### Community 327 - "registered_tool_specs"
-Cohesion: 0.04
-Nodes (119): registered_tool_specs(), artifact_upload_followup_descriptions_explain_required_path_binding(), project_artifact_is_compact_typed_project_read_facade(), read_project_artifact_metadata_schema_exposes_allow_missing(), read_project_artifact_uses_only_canonical_length_bound(), list_tools_schema_exposes_bounded_discovery_fields(), tool_manifest_schema_exposes_compact_discovery_fields(), action_branch() (+111 more)
+Cohesion: 0.03
+Nodes (146): registered_tool_specs(), artifact_upload_followup_descriptions_explain_required_path_binding(), project_artifact_is_compact_typed_project_read_facade(), read_project_artifact_metadata_schema_exposes_allow_missing(), read_project_artifact_uses_only_canonical_length_bound(), list_tools_schema_exposes_bounded_discovery_fields(), tool_manifest_schema_exposes_compact_discovery_fields(), action_branch() (+138 more)
 
 ### Community 328 - "ToolRuntime"
 Cohesion: 0.06
@@ -2986,8 +2999,8 @@ Cohesion: 0.07
 Nodes (27): bin, install.js, manifest.json, bin, webcodex, bugs, url, description (+19 more)
 
 ### Community 331 - "webcodex-runner/src/webcodex_runner/plugin_check_tests.rs"
-Cohesion: 0.12
-Nodes (35): default_websocket_connect_timeout_secs(), candidate_gate_serializes_check_and_reload_without_blocking_current_providers(), check_observes_edited_v2_without_replacing_current_v1(), check_reports_executable_config_and_large_catalog_without_sensitive_details(), check_success_is_disposable_and_preserves_committed_plugin_state(), check_tool_validation_failures_have_safe_actionable_diagnostics(), checked_report(), CheckFixture (+27 more)
+Cohesion: 0.16
+Nodes (28): candidate_gate_serializes_check_and_reload_without_blocking_current_providers(), check_observes_edited_v2_without_replacing_current_v1(), check_reports_executable_config_and_large_catalog_without_sensitive_details(), check_success_is_disposable_and_preserves_committed_plugin_state(), check_tool_validation_failures_have_safe_actionable_diagnostics(), checked_report(), CheckFixture, fake_binary() (+20 more)
 
 ### Community 332 - "context.ts"
 Cohesion: 0.11
@@ -3002,8 +3015,8 @@ Cohesion: 0.15
 Nodes (24): capture_display(), capture_window_gdi(), create_bounded_bitmap(), ensure_capture_permission(), ensure_platform_capture_bound(), focus_state(), MemoryDc, OwnedBitmap (+16 more)
 
 ### Community 335 - "Execution"
-Cohesion: 0.18
-Nodes (14): Execution, ExecutionState, restore_receipts(), File, HashSet, Option, Path, PathBuf (+6 more)
+Cohesion: 0.19
+Nodes (14): Execution, ExecutionState, restore_receipts(), Arc, File, HashSet, Option, Path (+6 more)
 
 ### Community 336 - "plugin-sdk/package.json"
 Cohesion: 0.12
@@ -3023,7 +3036,7 @@ Nodes (22): build_instruction_file(), candidate_paths(), char_truncation_keeps_f
 
 ### Community 340 - "structured_validation_target_identity"
 Cohesion: 0.13
-Nodes (28): assertion_validation_identity(), canonical_validation_identity_json_is_feature_order_independent(), canonicalize_json_value(), is_structured_validation_target_identity(), is_validation_execution_identity(), normalized_cargo_target_value(), normalized_go_test_target_packages(), normalized_rust_test_target_filter() (+20 more)
+Nodes (27): assertion_validation_identity(), canonical_validation_identity_json_is_feature_order_independent(), canonicalize_json_value(), is_structured_validation_target_identity(), is_validation_execution_identity(), normalized_cargo_target_value(), normalized_go_test_target_packages(), normalized_rust_test_target_filter() (+19 more)
 
 ### Community 341 - "webcodex-runner-registry/src/tests/project_inventory.rs"
 Cohesion: 0.22
@@ -3039,7 +3052,7 @@ Nodes (31): AnySchema, ArraySchemaShape, BooleanSchemaShape, cloneAndFreezeJson(
 
 ### Community 344 - "webcodex/src/tool_runtime/tests/lsp.rs"
 Cohesion: 0.09
-Nodes (49): assert_malformed_call_hierarchy(), call_hierarchy_dispatch_uses_typed_bridge_and_validates_bounds(), call_hierarchy_does_not_require_legacy_navigation_capability(), call_hierarchy_result(), call_hierarchy_result_boundary_rejects_cross_field_correlation_mismatches(), call_hierarchy_result_boundary_rejects_inconsistent_bounds(), call_hierarchy_result_boundary_rejects_public_symbol_and_range_violations(), call_hierarchy_result_boundary_rejects_request_path_mismatch() (+41 more)
+Nodes (48): assert_malformed_call_hierarchy(), call_hierarchy_dispatch_uses_typed_bridge_and_validates_bounds(), call_hierarchy_does_not_require_legacy_navigation_capability(), call_hierarchy_result(), call_hierarchy_result_boundary_rejects_cross_field_correlation_mismatches(), call_hierarchy_result_boundary_rejects_inconsistent_bounds(), call_hierarchy_result_boundary_rejects_public_symbol_and_range_violations(), call_hierarchy_result_boundary_rejects_request_path_mismatch() (+40 more)
 
 ### Community 345 - "webcodex/src/project_entry_windows.rs"
 Cohesion: 0.19
@@ -3051,7 +3064,7 @@ Nodes (39): 1. Workflow Session, 2. Action Audit Session, 3. No unified state ma
 
 ### Community 347 - "webcodex/src/runner_quic.rs"
 Cohesion: 0.11
-Nodes (62): quic_frame_round_trips_through_read_write(), read_quic_frame(), W, write_quic_frame(), write_quic_register_frame(), bind_server(), build_server_crypto(), client_crypto() (+54 more)
+Nodes (58): write_quic_register_frame(), bind_server(), build_server_crypto(), client_crypto(), connect_quic_client(), drain_quic_stream_limited(), handle_quic_connection(), load_certs() (+50 more)
 
 ### Community 348 - "table_columns"
 Cohesion: 0.25
@@ -3069,9 +3082,9 @@ Nodes (34): apply_project_inventory_snapshot(), current_runner_capabilities(), A
 Cohesion: 0.14
 Nodes (29): classify_pyright_status(), cmp_diagnostics(), map_severity(), OmitReason, omits_external_paths(), parse_one_diagnostic(), parse_pyright_for_status(), parse_pyright_json() (+21 more)
 
-### Community 352 - "runtime-engine/src/tool_runtime/tests/process.rs"
-Cohesion: 0.10
-Nodes (55): job_handoff_model_projection_keeps_identity_and_exceptional_receipts(), model_facing_stop_job_stops_agent_job_with_same_session(), adaptive_build_promotes_when_hard_deadline_outlives_soft_sync_window(), adaptive_direct_process_waits_through_runner_hard_deadline(), authority_denied_run_process_has_prestart_lifecycle(), closed_session_run_process_has_prestart_lifecycle(), complete_process_lifecycle(), detached_process_call() (+47 more)
+### Community 352 - "register_with_instance"
+Cohesion: 0.05
+Nodes (53): abandoned_sync_cleanup_removes_only_closed_waiters(), async_job_capabilities(), delayed_polling_offline_cannot_disconnect_same_instance_streaming_reconnect(), late_job_update_on_stale_connection_is_accepted_without_refreshing_liveness(), late_result_on_stale_connection_is_accepted_without_refreshing_liveness(), register_with_connection(), RunnerRegistry, RunnerView (+45 more)
 
 ### Community 353 - "coding_tasks.rs"
 Cohesion: 0.14
@@ -3119,7 +3132,7 @@ Nodes (20): assertClassicScript(), atomicWriteOutputs(), buildJs(), checkOutputs
 
 ### Community 364 - "webcodex/src/tool_runtime/files/inspection.rs"
 Cohesion: 0.07
-Nodes (43): assert_parity(), bounded_tracked_source(), content_is_empty_instruction(), io_error_reason(), list_tracked_stderr_excerpt(), local_read(), map_runner_read_error(), parse_instruction_runner_stdout() (+35 more)
+Nodes (66): assert_parity(), bounded_tracked_source(), build_read_file_success(), content_is_empty_instruction(), effective_read_file_range(), has_leading_runner_result_retention_truncation_marker(), instruction_candidate_missing(), io_error_reason() (+58 more)
 
 ### Community 365 - "enumerate_native_applications"
 Cohesion: 0.19
@@ -3130,8 +3143,8 @@ Cohesion: 0.07
 Nodes (28): icons/128x128@2x.png, icons/128x128.png, icons/32x32.png, icons/icon.icns, app, security, windows, build (+20 more)
 
 ### Community 367 - "run"
-Cohesion: 0.05
-Nodes (78): parse_server_status(), Box, Error, ServerStatusOptions, run(), default_server_paths(), is_effective_root(), parse_env_content_value() (+70 more)
+Cohesion: 0.06
+Nodes (83): parse_runner_install_service(), parse_server_install_service(), Box, Error, run(), default_server_paths(), is_effective_root(), parse_env_content_value() (+75 more)
 
 ### Community 368 - "runner_access_from_auth"
 Cohesion: 0.08
@@ -3186,8 +3199,8 @@ Cohesion: 0.14
 Nodes (41): absolute_batch_path_resolves_as_batch(), absolute_cmd_still_resolves_directly(), absolute_path_with_spaces_resolves_directly(), classify_candidate(), cmd_wins_over_extensionless_shim_in_same_directory(), com_executable_is_native(), executable_lookup_matches_windows_exe_suffix_resolution(), explicit_bat_bare_name_matches_exactly() (+33 more)
 
 ### Community 381 - "Result"
-Cohesion: 0.14
-Nodes (41): accounting_requires_reconcile(), append_event_locked(), commit_trace_write(), create_private_trace_dir(), directory_stats(), ensure_trace_owner_marker(), flush_trace_writer_for_read(), invalid_trace_ref() (+33 more)
+Cohesion: 0.12
+Nodes (44): accounting_requires_reconcile(), append_event_locked(), commit_trace_write(), create_private_trace_dir(), directory_stats(), ensure_trace_owner_marker(), flush_trace_writer_for_read(), invalid_trace_ref() (+36 more)
 
 ### Community 382 - "webcodex/src/mcp_tests/agent_continuation_app.rs"
 Cohesion: 0.18
@@ -3198,8 +3211,8 @@ Cohesion: 0.15
 Nodes (26): complete_import_artifact_uploads(), http_response(), import_body(), import_http_accepts_office_mime_and_extension_policy(), import_http_existing_mime_policy_still_passes_before_host_validation(), import_http_existing_png_pdf_zip_text_formats_still_import(), import_http_preserves_overwrite_false_protection(), import_http_rejects_http_download_link() (+18 more)
 
 ### Community 384 - "chadex-runtime-runner/src/webcodex_runner/shell.rs"
-Cohesion: 0.10
-Nodes (79): apply_env_snapshot(), apply_script_environment(), apply_shell_environment(), base_shell_env(), capture_profile_env_snapshot(), configured_prepared_shell_command(), configured_prepared_shell_job_command(), configured_process_command() (+71 more)
+Cohesion: 0.05
+Nodes (157): CommandExecutionClass, adaptive_timeout_budget(), AdaptiveTimeoutBudget, align_and_restore_bom(), align_valid_utf8_tail(), apply_env_snapshot(), apply_script_environment(), apply_shell_environment() (+149 more)
 
 ### Community 385 - "webcodex/src/route_metadata.rs"
 Cohesion: 0.10
@@ -3238,16 +3251,16 @@ Cohesion: 0.31
 Nodes (26): parse_runner_status_with_identity(), client_base_dir_for_scope(), client_output_dir_for_profile(), client_profile_dir(), client_profile_project_registry_dir(), client_profile_runner_config(), client_profile_runner_token_file(), client_profile_runner_token_file_for_scope() (+18 more)
 
 ### Community 394 - "chadex-runtime-lsp/src/fake_server.rs"
-Cohesion: 0.24
-Nodes (25): append_marker(), call_hierarchy_item(), json_escape(), json_string_field(), json_string_field_from_last_item(), json_u64_field(), main(), maybe_publish_diagnostics() (+17 more)
+Cohesion: 0.12
+Nodes (50): append_marker(), call_hierarchy_item(), json_escape(), json_string_field(), json_string_field_from_last_item(), json_u64_field(), main(), maybe_publish_diagnostics() (+42 more)
 
 ### Community 395 - "webcodex-tool-contracts/src/tests/catalog_discovery.rs"
-Cohesion: 0.12
-Nodes (10): model_tool_contracts_do_not_teach_retired_runner_as_agent_prose(), recommended_flows(), registered_tool_categories(), Value, Vec, tool_categories_and_recommended_flows_are_well_formed(), tool_categories_include_edit_group(), tool_categories_include_projects_with_management_tools() (+2 more)
+Cohesion: 0.09
+Nodes (16): model_tool_contracts_do_not_teach_retired_runner_as_agent_prose(), recommended_flows(), registered_tool_categories(), Value, Vec, tool_categories_and_recommended_flows_are_well_formed(), tool_categories_include_edit_group(), tool_categories_include_projects_with_management_tools() (+8 more)
 
 ### Community 396 - "register_runner_project_at_path"
 Cohesion: 0.04
-Nodes (142): assert_invalid_checkpoint_metadata(), checkpoint_allows_security_domain_source_names_but_keeps_envrc_protected(), checkpoint_create_call(), checkpoint_create_call_with_metadata(), checkpoint_create_call_with_session(), checkpoint_create_lists_and_shows_metadata(), checkpoint_create_records_kind_labels_validation(), checkpoint_defaults_metadata_for_old_or_minimal_checkpoint() (+134 more)
+Nodes (143): assert_invalid_checkpoint_metadata(), checkpoint_allows_security_domain_source_names_but_keeps_envrc_protected(), checkpoint_create_call(), checkpoint_create_call_with_metadata(), checkpoint_create_call_with_session(), checkpoint_create_lists_and_shows_metadata(), checkpoint_create_records_kind_labels_validation(), checkpoint_defaults_metadata_for_old_or_minimal_checkpoint() (+135 more)
 
 ### Community 397 - "mcp_conformance_report.py"
 Cohesion: 0.18
@@ -3302,8 +3315,8 @@ Cohesion: 0.09
 Nodes (28): computer_effect_validated_result(), computer_snapshot_artifact_lifecycle_failure(), is_native_accessibility_platform(), ShellCommandExecutionState, accessibility_tree(), application(), assert_computer_suggested_call(), computer_accessibility_read_validators_accept_windows_platform() (+20 more)
 
 ### Community 410 - "PermissionEvaluator"
-Cohesion: 0.20
-Nodes (11): permission_decision_for_tool(), PermissionEvaluator, Arc, AtomicUsize, AuthorityMode, EffectiveAuthorityConfig, Option, PermissionDecision (+3 more)
+Cohesion: 0.25
+Nodes (9): permission_decision_for_tool(), PermissionEvaluator, Arc, AtomicUsize, AuthorityMode, EffectiveAuthorityConfig, Option, PermissionDecision (+1 more)
 
 ### Community 411 - "runtime_collaboration.ts"
 Cohesion: 0.16
@@ -3342,12 +3355,12 @@ Cohesion: 0.17
 Nodes (22): changes_file_diff_input_schema(), close_session_input_schema(), complete_session_message_input_schema(), get_session_assignment_input_schema(), list_session_messages_input_schema(), observe_session_messages_input_schema(), post_session_message_input_schema(), resolve_session_message_input_schema() (+14 more)
 
 ### Community 420 - "schema_type"
-Cohesion: 0.16
-Nodes (18): bounded_failure_message_schema(), content_schema(), effect_receipt_schema(), failure_kind_schema(), output_schema_for_tool(), Option, Value, stats_schema() (+10 more)
+Cohesion: 0.33
+Nodes (9): bounded_failure_message_schema(), content_schema(), effect_receipt_schema(), failure_kind_schema(), output_schema_for_tool(), Option, Value, stats_schema() (+1 more)
 
 ### Community 421 - "webcodex/src/oauth_http/tests/shared_key_bridge.rs"
-Cohesion: 0.14
-Nodes (41): bridge_oauth_computer_enabled_scopes(), all_optional_computer_capabilities(), bridge_authorize_code_exchanges_to_shared_key_tokens_and_verifies(), bridge_authorize_coding_agent_requires_shared_key_owned_opt_in(), bridge_authorize_local_mcp_requires_shared_key_owned_opt_in(), bridge_authorize_local_plugin_requires_shared_key_owned_opt_in(), bridge_authorize_local_ssh_requires_shared_key_owned_opt_in(), bridge_authorize_omitted_scope_grants_baseline_but_not_optional_permissions() (+33 more)
+Cohesion: 0.15
+Nodes (46): bridge_oauth_computer_enabled_scopes(), all_optional_computer_capabilities(), bridge_authorize_code_exchanges_to_shared_key_tokens_and_verifies(), bridge_authorize_coding_agent_requires_shared_key_owned_opt_in(), bridge_authorize_get_disabled_creates_no_code(), bridge_authorize_get_invalid_client_or_redirect_creates_no_code(), bridge_authorize_get_renders_form_and_creates_no_code(), bridge_authorize_local_mcp_requires_shared_key_owned_opt_in() (+38 more)
 
 ### Community 422 - "release-manifest-check-self-test.js"
 Cohesion: 0.15
@@ -3357,21 +3370,21 @@ Nodes (21): assert, EXPECTED_BINARIES, expectedArtifactUrl(), fs, install, loadM
 Cohesion: 0.24
 Nodes (22): _apply_run_snapshot(), DispatchOutcomeUnknown, DispatchRejected, _get_bound_run(), _list_runs(), _load_state(), _main_sha(), _post_dispatch() (+14 more)
 
-### Community 424 - "Path"
-Cohesion: 0.13
-Nodes (43): CommandExecutionClass, adaptive_timeout_budget(), AdaptiveTimeoutBudget, artifact_activity_token(), artifact_roots(), canonicalize_existing(), classify_process_command(), classify_shell_command() (+35 more)
+### Community 424 - "webcodex-runner/src/webcodex_runner/plugin.rs"
+Cohesion: 0.08
+Nodes (37): bounded_project_catalog_description(), CommittedState, failed_check_report(), plugin_config_check_detail(), PluginEnvironmentSnapshot, PluginProfileEnvironment, PluginStderrDiagnostics, PluginStderrLine (+29 more)
 
-### Community 425 - ".configure_local_setup_inner"
-Cohesion: 0.13
-Nodes (25): can_refresh_legacy_runner(), ChadexRuntimeProbeTarget, ChatGptActivityProbe, exposure_readiness(), identity_from_config(), native_local_full_dogfood_reuses_enrollment_and_stops_owned_runtime(), process_is_active(), project_not_loaded_error() (+17 more)
+### Community 425 - "chadex-runtime-tool-runtime-contracts/src/tool_call.rs"
+Cohesion: 0.16
+Nodes (31): AgentWaitEventSelectorCall, deserialize_non_empty_job_id(), deserialize_non_empty_read_path(), deserialize_observe_jobs_items(), deserialize_observe_jobs_tail_lines(), deserialize_observe_jobs_wait_secs(), deserialize_optional_git_diff_hunks_continuation(), deserialize_optional_observation_token() (+23 more)
 
 ### Community 426 - "chadex-runtime-cli/src/lib.rs"
 Cohesion: 0.04
-Nodes (138): cli_parse_error(), CliAction, default_ops_common_options(), default_runner_service_scope(), exit_error(), exit_help(), first_run_default_args(), foreground_run_banner() (+130 more)
+Nodes (139): cli_parse_error(), CliAction, default_ops_common_options(), default_runner_service_scope(), exit_error(), exit_help(), first_run_default_args(), foreground_run_banner() (+131 more)
 
 ### Community 427 - "chadex-runtime-cli/src/webcodex_cli/service.rs"
 Cohesion: 0.07
-Nodes (132): absent_discovery(), active_legacy_server_migration_fails_before_pair_mutation(), best_effort_execute(), capture_install_snapshot(), capture_uninstall_snapshot(), classify_existing_unit(), control_server_unit_pair(), control_server_unit_pair_with_executor() (+124 more)
+Nodes (133): render_runner_systemd_unit(), absent_discovery(), active_legacy_server_migration_fails_before_pair_mutation(), best_effort_execute(), capture_install_snapshot(), capture_uninstall_snapshot(), classify_existing_unit(), control_server_unit_pair() (+125 more)
 
 ### Community 428 - "webcodex-lsp/src/position.rs"
 Cohesion: 0.10
@@ -3418,8 +3431,8 @@ Cohesion: 0.08
 Nodes (24): A3 — Agent Task + fenced TaskAttempt, A4a — TaskAttempt -> existing CodingAgentRun (implemented), A4b — TaskAttempt -> Agent Endpoint continuation (implemented), Agent continuity across windows, Agent Task execution acceptance baseline, Asynchronous Agent work, Asynchronous events and scheduling are derived capabilities, Attempt authority and lease semantics (+16 more)
 
 ### Community 439 - "Foundation"
-Cohesion: 0.05
-Nodes (39): AppKit, ChadexApp, Combine, NSSplitView, NSView, NSViewRepresentable, OSLog, ServiceManagement (+31 more)
+Cohesion: 0.07
+Nodes (31): AppKit, ChadexApp, Combine, OSLog, ServiceManagement, ActivityPresentation, ActivityRow, .body (+23 more)
 
 ### Community 440 - "compilerOptions"
 Cohesion: 0.10
@@ -3434,8 +3447,8 @@ Cohesion: 0.08
 Nodes (24): Acceptance criteria, Canonical nested invocation boundary, Codex code and Code Mode, Combined design principles, Concurrency contract, Current execution selection contract (T1), Current result follow-up contract (T2), E1 — implemented read-only control (+16 more)
 
 ### Community 443 - "webcodex-cli/src/webcodex_cli/system.rs"
-Cohesion: 0.21
-Nodes (24): discover_internal_binary(), discover_named_binary_absolute(), discover_sibling_binary(), protect_windows_secret_handle(), read_optional_token(), read_optional_user_api_token(), resolve_user_api_token(), HANDLE (+16 more)
+Cohesion: 0.18
+Nodes (26): discover_internal_binary(), discover_named_binary_absolute(), discover_sibling_binary(), protect_windows_secret_handle(), read_optional_token(), read_optional_user_api_token(), resolve_user_api_token(), HANDLE (+18 more)
 
 ### Community 444 - "Experimental Code Mode — E1 Read-Only, E2a Effectful Foundation, and E2b Guarded Mutation"
 Cohesion: 0.08
@@ -3490,8 +3503,8 @@ Cohesion: 0.09
 Nodes (23): Allowed roots, Connecting to the Server, Core terms, Jobs and concurrency, Local MCP providers, LSP navigation (read-only), Operating the Runner, Outbound proxy for the Runner (+15 more)
 
 ### Community 457 - "chadex-runtime-runner/src/lib.rs"
-Cohesion: 0.03
-Nodes (135): append_bounded_tail(), bounded_endpoint_path(), bounded_response_content_type(), bounded_runner_error(), bounded_single_line(), BoundedResponseBody, build_register_request_with_provider_status(), build_shell_profiles_summary() (+127 more)
+Cohesion: 0.04
+Nodes (81): append_runner_stream(), bounded_endpoint_path(), bounded_response_content_type(), bounded_single_line(), BoundedResponseBody, build_register_request_with_provider_status(), build_shell_profiles_summary(), CreatedProjectPaths (+73 more)
 
 ### Community 458 - "webcodex-tool-contracts/src/registry/input_schemas/memory.rs"
 Cohesion: 0.32
@@ -3502,8 +3515,8 @@ Cohesion: 0.21
 Nodes (20): failed_reload_keeps_generation_and_can_recover(), first_class_check_reports_sanitized_parse_and_structural_failures(), first_class_check_validates_candidate_without_mutating_active_config(), first_class_invalid_reload_preserves_active_snapshot_and_generation(), first_class_partial_reload_reports_exact_restart_only_fields(), first_class_reload_applies_hot_candidate_once_and_fences_stale_generation(), formal_reload_and_legacy_trigger_share_one_generation_sequence(), mcp_provider_config_is_hot_reloadable_with_exact_identity_replacement() (+12 more)
 
 ### Community 460 - "webcodex/src/tool_request_trace.rs"
-Cohesion: 0.12
-Nodes (41): base_event(), capture_owned_payload_for_trace(), capture_payload_for_trace(), capture_runner_job_update(), capture_runner_result(), correlations(), CountingSerialize, enqueue_metadata_event() (+33 more)
+Cohesion: 0.10
+Nodes (49): base_event(), capture_owned_payload_for_trace(), capture_payload_for_trace(), capture_runner_job_update(), capture_runner_result(), correlations(), CountingSerialize, current_active_trace_id() (+41 more)
 
 ### Community 461 - "webcodex-store/src/agent_wait_tests.rs"
 Cohesion: 0.36
@@ -3545,9 +3558,9 @@ Nodes (17): agent_registered(), api_get(), api_post(), assert_groups_gone(), cle
 Cohesion: 0.05
 Nodes (88): apply_safe_environment(), build_arguments(), call_summary(), capability_error(), ClaudeCodeMcpProvider, cleanup_failed_mcp_child(), command_result(), command_result_with_exit() (+80 more)
 
-### Community 471 - "String"
-Cohesion: 0.13
-Nodes (41): a_failure_while_staging_leaves_no_connection_and_no_residue(), a_staging_directory_is_private_while_it_exists(), base_dir_or_default(), cleanup_errors_do_not_contain_credentials(), create_staging_dir(), default_device_name(), default_hostname(), destination_is_server_then_user() (+33 more)
+### Community 471 - "ActionAuditRecord"
+Cohesion: 0.11
+Nodes (25): action_principal_attribution(), action_status(), ActionAudit, ActionAuditRecord, ActionAuditRecordTiming, agent_allowed_client_id_is_not_oauth_client_attribution(), audit_record_timing_preserves_subsecond_monotonic_precision(), ActionAuditRecord (+17 more)
 
 ### Community 472 - "runtime-engine/src/tool_runtime/edit_tool_telemetry.rs"
 Cohesion: 0.12
@@ -3562,24 +3575,24 @@ Cohesion: 0.33
 Nodes (17): socket, api_post_json(), child_exec(), http_probe(), main(), Path, Popen, reserve_port() (+9 more)
 
 ### Community 475 - "Dashboard.tsx"
-Cohesion: 0.21
-Nodes (16): chatgptActivityObserved(), connectionCardState(), connectionExplanation(), connectionLabel(), Dashboard(), quickShareClipboardLabel(), serviceExplanation(), serviceLabel() (+8 more)
+Cohesion: 0.26
+Nodes (14): chatgptActivityObserved(), connectionCardState(), connectionExplanation(), connectionLabel(), Dashboard(), quickShareClipboardLabel(), serviceExplanation(), serviceLabel() (+6 more)
 
 ### Community 476 - "webcodex-computer/src/macos_live_tests.rs"
-Cohesion: 0.09
-Nodes (26): bounded_text(), assert_test_application_bundle(), computer_macos_application_replacement_after_launch_preparation_never_dispatches(), computer_macos_application_replacement_at_same_path_is_stale(), computer_macos_application_scan_is_bounded_symlink_safe_and_treats_apps_as_leaves(), create_test_application(), live_accessibility_smoke(), live_focus_control_smoke() (+18 more)
+Cohesion: 0.14
+Nodes (12): assert_test_application_bundle(), computer_macos_application_replacement_after_launch_preparation_never_dispatches(), computer_macos_application_replacement_at_same_path_is_stale(), computer_macos_application_scan_is_bounded_symlink_safe_and_treats_apps_as_leaves(), create_test_application(), live_accessibility_smoke(), live_focus_control_smoke(), Fn (+4 more)
 
 ### Community 477 - "常见问题"
 Cohesion: 0.09
 Nodes (23): `application/octet-stream` 因 unsafe extension 被拒绝, `artifact_upload_chunk` 报 `path` 缺失, `client online: no`, Client 上 doctor 警告 `binary webcodex not found in PATH`, Client 显示 `webcodex: command not found`, Client 误运行 `pairing create`，且 `/etc/webcodex/webcodex.env` 缺失, `connect` 拒绝 `wc_*`, GPT Action 仍在使用旧 schema (+15 more)
 
 ### Community 478 - "ToolRequestLifecycle"
-Cohesion: 0.09
-Nodes (21): completed_drop_is_silent(), completion_timing_preserves_subsecond_monotonic_precision(), current_active_trace_id(), full_mode_lifecycle_persists_only_hashed_client_window_metadata(), metadata_lifecycle_persists_only_safe_boundaries(), new_trace_id(), RequestCompletionTiming, AtomicBool (+13 more)
+Cohesion: 0.11
+Nodes (21): base_event(), completion_timing_preserves_subsecond_monotonic_precision(), enqueue_metadata_event(), full_mode_lifecycle_persists_only_hashed_client_window_metadata(), merge_event_fields(), metadata_lifecycle_persists_only_safe_boundaries(), persist_payload(), record_active_phase() (+13 more)
 
 ### Community 479 - "ShellProcess"
-Cohesion: 0.11
-Nodes (30): BoundedBuffer, BusyGuard, find_bytes(), ManagerInner, output_sync_marker(), output_sync_parser_strips_split_markers(), process_output_pending(), Arc (+22 more)
+Cohesion: 0.12
+Nodes (26): BoundedBuffer, control_pipe_descriptors_are_close_on_exec(), create_control_pipe(), find_bytes(), output_sync_marker(), output_sync_parser_strips_split_markers(), process_output_pending(), Arc (+18 more)
 
 ### Community 481 - "e2e_reconnect_ws.sh"
 Cohesion: 0.21
@@ -3587,11 +3600,11 @@ Nodes (15): api_post(), assert_eq(), assert_nonempty(), check_deadline(), fail()
 
 ### Community 482 - "chadex-runtime-cli/src/webcodex_cli/login.rs"
 Cohesion: 0.06
-Nodes (105): user_slug(), a_failed_overwrite_restores_the_previous_connection(), a_failure_while_staging_leaves_no_connection_and_no_residue(), a_fresh_login_publishes_through_staging_and_leaves_nothing_behind(), a_hostname_near_the_cap_is_truncated_so_the_suffix_survives(), a_staging_directory_is_private_while_it_exists(), all_connections(), allowed_root_without_project_remains_policy_only() (+97 more)
+Nodes (119): canonical_server_url(), CanonicalServerUrl, resolve_connection_parent(), user_slug(), a_failed_overwrite_restores_the_previous_connection(), a_failure_while_staging_leaves_no_connection_and_no_residue(), a_fresh_login_publishes_through_staging_and_leaves_nothing_behind(), a_hostname_near_the_cap_is_truncated_so_the_suffix_survives() (+111 more)
 
 ### Community 483 - "lock_unpoison"
-Cohesion: 0.06
-Nodes (52): append_runner_stream(), cargo_activity_from_stderr(), job_prestart_lifecycle(), job_update_from_delivery(), job_update_from_snapshot(), JobManager, JobUpdateDeliveryQueue, join_reader_threads_until() (+44 more)
+Cohesion: 0.05
+Nodes (89): append_bounded_tail(), bounded_runner_error(), cargo_activity_from_stderr(), cleanup_managed_tree(), decode_failure_prestart_lifecycle(), DetachedJobRef, finish_cargo_test_count_evidence(), job_prestart_lifecycle() (+81 more)
 
 ### Community 484 - "TaskHistoryStore"
 Cohesion: 0.19
@@ -3646,8 +3659,8 @@ Cohesion: 0.24
 Nodes (13): chadex_backend_keeps_webcodex_tunnel_config_empty_and_inert(), credential_file_is_private_and_symlinks_are_not_loaded(), Fixture, invalid_or_unreadable_saved_config_fails_closed_and_can_be_repaired(), Drop, Option, PathBuf, Self (+5 more)
 
 ### Community 497 - "update_snapshot"
-Cohesion: 0.11
-Nodes (26): ExecutionGuard, Arc, Drop, TaskControl, uncertain_workspace_error(), is_terminal(), now_ms(), FnOnce (+18 more)
+Cohesion: 0.12
+Nodes (23): ExecutionGuard, Drop, TaskControl, uncertain_workspace_error(), now_ms(), FnOnce, update_snapshot(), cancellation_is_only_a_request_until_work_stops() (+15 more)
 
 ### Community 498 - "project_policy"
 Cohesion: 0.06
@@ -3667,7 +3680,7 @@ Nodes (16): file_list_entry_schema(), key_file_schema(), output_schema_for_tool(
 
 ### Community 502 - "chadex-runtime-runner/src/webcodex_runner/job_manager_tests.rs"
 Cohesion: 0.06
-Nodes (125): test_job_snapshot(), active_gated_children(), activity_only_delivery_coalesces_without_consuming_required_semantic_queue(), arbitrary_process_output_cannot_forge_cargo_activity(), assert_gated_job_started_once(), cargo_test_terminal_count_evidence_survives_runner_stream_retention(), chatty_job_and_queued_job_progress_while_stream_transport_is_full(), collect_job_updates() (+117 more)
+Nodes (127): test_job_context(), test_job_snapshot(), job_manager_stop_all_clears_queue_and_requests_running_stop(), active_gated_children(), activity_only_delivery_coalesces_without_consuming_required_semantic_queue(), arbitrary_process_output_cannot_forge_cargo_activity(), assert_gated_job_started_once(), cargo_test_terminal_count_evidence_survives_runner_stream_retention() (+119 more)
 
 ### Community 503 - "Path"
 Cohesion: 0.27
@@ -3686,8 +3699,8 @@ Cohesion: 0.22
 Nodes (13): empty_content_returned_lines_zero(), no_unknown_fields_in_success(), numbered_format_preserves_cursor(), numbered_text(), plain_success_fields(), read(), FileReadRange, Option (+5 more)
 
 ### Community 507 - "FirstRun.tsx"
-Cohesion: 0.19
-Nodes (15): DashboardProps, actionLabel(), FirstRun(), FirstRunProps, modeLabel(), providerDescription(), providerLabel(), sameServerOrigin() (+7 more)
+Cohesion: 0.24
+Nodes (12): actionLabel(), FirstRun(), modeLabel(), providerDescription(), providerLabel(), sameServerOrigin(), setupDescription(), SetupMode (+4 more)
 
 ### Community 508 - "部署指南"
 Cohesion: 0.09
@@ -3713,9 +3726,9 @@ Nodes (25): action_principal_attribution(), action_status(), ActionAudit, Action
 Cohesion: 0.05
 Nodes (109): aggregate_startup_status(), append_hygiene_warnings(), append_workspace_warnings(), attach_permission(), attach_project_resolution(), bound_line(), changed_files_count_from_counts(), CodingProjectSource (+101 more)
 
-### Community 514 - "Error"
-Cohesion: 0.10
-Nodes (18): Error, ChadexProjectActivationObservation, ChadexRuntimeProbeTarget, ChadexRuntimeTunnelTarget, ChatGptActivityProbe, ProcessBaseline, ProcessCleanup, project_not_loaded_error() (+10 more)
+### Community 514 - "DesktopResult"
+Cohesion: 0.11
+Nodes (23): ProcessBaseline, ProcessCleanup, ActivityEntry, ActivityLog, Arc, AtomicBool, CancellationSignal, DesktopOperationKind (+15 more)
 
 ### Community 515 - "webcodex-runner/src/webcodex_runner/validation/path.rs"
 Cohesion: 0.22
@@ -3741,9 +3754,9 @@ Nodes (25): Accessibility / UI, Chadex Architecture, ChatGPT turn economy 與 in
 Cohesion: 0.28
 Nodes (14): _actionlint(), _compile_verifiers(), DoctorError, _platform_contract(), Path, RuntimeError, _record(), _require_tools() (+6 more)
 
-### Community 522 - "canonical_server_url"
-Cohesion: 0.14
-Nodes (32): canonical_server_url(), CanonicalServerUrl, resolve_connection_parent(), user_slug(), a_hostname_near_the_cap_is_truncated_so_the_suffix_survives(), allowed_root_without_project_remains_policy_only(), assert_no_credentials_in(), base_paths_may_be_relative_and_contain_dot_components() (+24 more)
+### Community 522 - "spec_named"
+Cohesion: 0.08
+Nodes (34): apply_text_edits_occurrence_and_recovery_schemas_are_model_visible(), coding_task_tools_are_registered_in_metadata_and_openapi(), git_diff_hunks_tool_is_known_and_schema_is_bounded(), show_changes_tool_is_known_and_parses(), goal_schemas_are_bounded_private_and_existing_coding_tools_do_not_accept_goal_id(), workspace_hygiene_check_is_known_and_in_specs(), read_files_input_schema_enforces_batch_and_item_bounds(), required_runner_capability_matches_metadata_risk_table() (+26 more)
 
 ### Community 523 - "chadex-runtime-store/src/communication.rs"
 Cohesion: 0.08
@@ -3751,15 +3764,15 @@ Nodes (84): AgentEndpointLifecycle, AgentEndpointMutation, AgentEndpointRecord, 
 
 ### Community 524 - "rpc"
 Cohesion: 0.04
-Nodes (103): handle_mcp_request(), adaptive_artifact_export_unified_direct_and_legacy_gateway_preserve_gates(), mcp_artifact_export_is_stateless_protocol_only(), changes_file_diff_call_requires_app_protocol_capability(), changes_file_diff_discards_unadvertised_recording_session_wrapper(), final_changes_descriptor_is_explicit_v3_and_lazy_diff_is_app_only(), final_changes_resource_is_advertised_v3_while_legacy_changes_resources_stay_hidden(), handle_with_server_apps_enabled() (+95 more)
+Nodes (105): handle_mcp_request(), adaptive_runtime_gateway_params(), adaptive_artifact_export_unified_direct_and_legacy_gateway_preserve_gates(), mcp_artifact_export_is_stateless_protocol_only(), build_test_router(), changes_file_diff_call_requires_app_protocol_capability(), changes_file_diff_discards_unadvertised_recording_session_wrapper(), final_changes_descriptor_is_explicit_v3_and_lazy_diff_is_app_only() (+97 more)
 
 ### Community 525 - ".verify"
 Cohesion: 0.22
 Nodes (15): authenticate(), is_oauth2_access_token(), OAuth2Verifier, PatVerifier, Arc, AuthContext, AuthError, Config (+7 more)
 
-### Community 526 - ".new"
-Cohesion: 0.15
-Nodes (33): accounting_snapshot(), agent_continuation_app_lifecycle_never_captures_host_binding_or_resume_secrets(), estimate_json_bytes_is_none_when_trace_disabled(), event_line_len(), flush_full_trace_writer(), full_mode_accounting_rebuilds_when_same_root_config_changes(), full_mode_accounting_rebuilds_when_trace_root_changes(), full_mode_accounting_tracks_writes_without_rescanning_hot_path() (+25 more)
+### Community 526 - "runtime-engine/src/tool_request_trace.rs"
+Cohesion: 0.12
+Nodes (41): accounting_snapshot(), agent_continuation_app_lifecycle_never_captures_host_binding_or_resume_secrets(), completed_drop_is_silent(), estimate_json_bytes_is_none_when_trace_disabled(), event_line_len(), flush_full_trace_writer(), full_mode_accounting_rebuilds_when_same_root_config_changes(), full_mode_accounting_rebuilds_when_trace_root_changes() (+33 more)
 
 ### Community 527 - "compilerOptions"
 Cohesion: 0.13
@@ -3771,7 +3784,7 @@ Nodes (11): DesktopError, details_are_optional_and_display_is_stable(), Display,
 
 ### Community 529 - "register_with_instance"
 Cohesion: 0.05
-Nodes (52): abandoned_sync_cleanup_removes_only_closed_waiters(), async_job_capabilities(), delayed_polling_offline_cannot_disconnect_same_instance_streaming_reconnect(), late_job_update_on_stale_connection_is_accepted_without_refreshing_liveness(), late_result_on_stale_connection_is_accepted_without_refreshing_liveness(), register_with_connection(), RunnerRegistry, RunnerView (+44 more)
+Nodes (55): abandoned_sync_cleanup_removes_only_closed_waiters(), async_job_capabilities(), delayed_polling_offline_cannot_disconnect_same_instance_streaming_reconnect(), failed_streaming_registration_preserves_current_session_exactly(), late_job_update_on_stale_connection_is_accepted_without_refreshing_liveness(), late_result_on_stale_connection_is_accepted_without_refreshing_liveness(), register_with_connection(), RunnerRegistry (+47 more)
 
 ### Community 530 - "attach"
 Cohesion: 0.19
@@ -3794,8 +3807,8 @@ Cohesion: 0.18
 Nodes (23): SessionMessageError, session_message_error_result(), unknown_session_result(), invalid_execution_context_result(), invalid_session_message_observation_request(), AuthContext, Option, ResolvedProject (+15 more)
 
 ### Community 536 - "webcodex/src/tool_runtime/tests/goals.rs"
-Cohesion: 0.19
-Nodes (28): create_goal(), goal_activity(), goal_activity_auth(), goal_activity_bounded_partial_window_scan_never_manufactures_attention(), goal_activity_is_unobserved_without_windows_and_inflight_work_prevents_false_attention(), goal_activity_respects_principal_project_visibility_and_runtime_read_scope(), goal_activity_tracks_window_wide_work_and_separates_seen_from_meaningful(), goal_agent_task_link_reauthorizes_task_and_task_completion_never_completes_goal() (+20 more)
+Cohesion: 0.18
+Nodes (29): create_goal(), goal_activity(), goal_activity_auth(), goal_activity_bounded_partial_window_scan_never_manufactures_attention(), goal_activity_is_unobserved_without_windows_and_inflight_work_prevents_false_attention(), goal_activity_respects_principal_project_visibility_and_runtime_read_scope(), goal_activity_tracks_window_wide_work_and_separates_seen_from_meaningful(), goal_agent_task_link_reauthorizes_task_and_task_completion_never_completes_goal() (+21 more)
 
 ### Community 537 - "webcodex-workflow-session/src/collaboration_tests.rs"
 Cohesion: 0.19
@@ -3873,9 +3886,9 @@ Nodes (9): ExecutionPurpose, ExecutionShell, is_validation_like_execution_purpos
 Cohesion: 0.17
 Nodes (21): context_material_keys_csv(), context_material_scope_available(), context_material_spec(), context_material_surface_available(), ContextMaterialCapabilities, ContextMaterialScopePolicy, ContextMaterialSpec, ContextMaterialSurface (+13 more)
 
-### Community 558 - "webcodex/src/tool_runtime/tests/script.rs"
-Cohesion: 0.14
-Nodes (31): CapturingActivity, complete_script_lifecycle(), model_facing_run_script_session_denials_keep_phase_a_tuple(), register_script_agent(), register_script_job_agent(), ActivityRecord, ActivityRecorder, Into (+23 more)
+### Community 558 - "runtime_window.ts"
+Cohesion: 0.11
+Nodes (34): writeClipboardText(), clearProjectWindows(), runtimeWindowActivityLabel(), runtimeWindowAvailabilityAfterHttpResponse(), runtimeWindowShortKey(), copyRuntimeValue(), formatProjectWindowStatusText(), openWindowInspector() (+26 more)
 
 ### Community 559 - "output_schema_for_tool"
 Cohesion: 0.47
@@ -3894,8 +3907,8 @@ Cohesion: 0.20
 Nodes (5): Result, Self, String, runner_job_lifecycle_wire_semantics_are_canonical(), RunnerJobLifecycle
 
 ### Community 563 - "args"
-Cohesion: 0.06
-Nodes (79): parse_cli_runner_init(), parse_runner_install_service(), parse_server_install_service(), RunnerInitOptions, run_runner_install_service(), run_server_install_service(), env_test_guard(), MutexGuard (+71 more)
+Cohesion: 0.03
+Nodes (103): parse_cli_runner_init(), parse_server_status(), ServerStatusOptions, env_test_guard(), MutexGuard, ops_connection_failure_reports_runtime_unreachable(), args(), managed_server_lifecycle_fails_closed_on_windows() (+95 more)
 
 ### Community 564 - "FakeHostAdapter"
 Cohesion: 0.14
@@ -3920,6 +3933,10 @@ Nodes (11): coding_agent_event_schema_is_closed_and_terminal_is_nullable(), comm
 ### Community 569 - "webcodex-tool-contracts/src/registry/output_schemas/goals.rs"
 Cohesion: 0.30
 Nodes (11): correlation_schema(), goal_activity_schema(), goal_detail_schema(), goal_mutation_schema(), goal_plan_schema(), goal_summary_schema(), lifecycle_schema(), nullable_integer() (+3 more)
+
+### Community 570 - "RuntimeApiClient"
+Cohesion: 0.20
+Nodes (5): abortController(), isAbortError(), RUNTIME_API_BASE, RuntimeApiClient, RuntimeApiResponse
 
 ### Community 572 - "repo-info/src/plugin.ts"
 Cohesion: 0.24
@@ -3950,8 +3967,8 @@ Cohesion: 0.36
 Nodes (5): Deadline, nested_deadline_never_resets_outer_budget(), Duration, Instant, Self
 
 ### Community 579 - "lock_unpoison"
-Cohesion: 0.06
-Nodes (68): cargo_activity_from_stderr(), cleanup_managed_tree(), job_prestart_lifecycle(), job_update_from_delivery(), job_update_from_snapshot(), JobManager, JobManagerOwnerLifetime, JobShutdownBatch (+60 more)
+Cohesion: 0.05
+Nodes (78): build_register_request_with_provider_status(), cargo_activity_from_stderr(), cleanup_managed_tree(), decode_failure_prestart_lifecycle(), DetachedJobRef, disable_job_state_reconciliation_for_test(), job_prestart_lifecycle(), job_update_from_delivery() (+70 more)
 
 ### Community 580 - "execute_validation_with_shutdown"
 Cohesion: 0.31
@@ -3974,8 +3991,8 @@ Cohesion: 0.15
 Nodes (12): devDependencies, typescript, typescript, name, private, scripts, build, check:dist (+4 more)
 
 ### Community 585 - "ShellProcess"
-Cohesion: 0.07
-Nodes (51): BoundedBuffer, BusyGuard, canonical_dialect(), command_wrapper(), CompletionProgress, ControlFrame, drain_sync_receiver(), find_bytes() (+43 more)
+Cohesion: 0.15
+Nodes (22): BoundedBuffer, drain_sync_receiver(), find_bytes(), output_sync_marker(), output_sync_parser_strips_split_markers(), process_output_pending(), Arc, AsRawFd (+14 more)
 
 ### Community 586 - "repo-info/plugin.test.mjs"
 Cohesion: 0.27
@@ -4058,12 +4075,12 @@ Cohesion: 0.10
 Nodes (20): Adaptive Runtime extensions, Adaptive Runtime routing, Advanced / reference, Built-in local MCP gateway, ChatGPT file bridge, ChatGPT: recommended full setup, ChatGPT: temporary `share`, Claude and other MCP clients (+12 more)
 
 ### Community 606 - "webcodex/src/tool_runtime/session_context.rs"
-Cohesion: 0.09
-Nodes (44): add_session_attention(), add_session_attention_projection(), add_session_context_continuity(), add_session_hint(), bound_utf8_bytes(), bounded_model_facing_recovery_events(), canonical_repository_key(), completion_persistence_uncertain_exposes_exact_retry_same_recovery() (+36 more)
+Cohesion: 0.10
+Nodes (43): add_session_attention(), add_session_attention_projection(), add_session_context_continuity(), add_session_hint(), bound_utf8_bytes(), bounded_model_facing_recovery_events(), canonical_repository_key(), completion_persistence_uncertain_exposes_exact_retry_same_recovery() (+35 more)
 
 ### Community 607 - "chadex-runtime-runner/src/webcodex_runner/skill_store.rs"
-Cohesion: 0.07
-Nodes (88): advance_replay_timestamp(), archive_rejects_traversal_absolute_duplicate_case_and_special_entries(), archive_requires_valid_definition_and_enforces_decompressed_total_bound(), atomic_write_json(), claimed_intent_binding_is_retention_bounded_and_expired_key_can_be_reclaimed(), compute_package_revision(), ensure_dir(), failed_state_write_leaves_previous_active_pointer() (+80 more)
+Cohesion: 0.08
+Nodes (70): advance_replay_timestamp(), archive_rejects_traversal_absolute_duplicate_case_and_special_entries(), archive_requires_valid_definition_and_enforces_decompressed_total_bound(), atomic_write_json(), compute_package_revision(), ensure_dir(), hash_install_intent(), hash_simple_intent() (+62 more)
 
 ### Community 608 - "runtime-engine/src/auth/scopes.rs"
 Cohesion: 0.04
@@ -4089,9 +4106,9 @@ Nodes (20): 1. 前置条件, 2. 初始化 Windows 前台 Server, 3. Pairing、lo
 Cohesion: 0.15
 Nodes (25): exact_project_resolution_cache_is_partitioned_by_authority(), large_fixture_projects(), list_projects_batch_job_counts_join_exact_projects_and_skip_empty_selection(), list_projects_call(), list_projects_filters_only_after_authorization_visibility(), list_projects_large_single_runner_inventory_preserves_linear_staging_contract(), list_projects_targets_visible_inventory_before_limit_and_compacts(), list_runners_call() (+17 more)
 
-### Community 614 - "spec_named"
-Cohesion: 0.08
-Nodes (33): apply_text_edits_occurrence_and_recovery_schemas_are_model_visible(), coding_task_tools_are_registered_in_metadata_and_openapi(), git_diff_hunks_tool_is_known_and_schema_is_bounded(), show_changes_tool_is_known_and_parses(), workspace_hygiene_check_is_known_and_in_specs(), read_files_input_schema_enforces_batch_and_item_bounds(), tool_manifest_exact_tool_returns_input_contract_without_output_schema(), assert_model_facing_surfaces_do_not_list_name() (+25 more)
+### Community 614 - ".start_coding_workflow"
+Cohesion: 0.14
+Nodes (23): attach_permission(), attach_project_resolution(), CodingProjectSource, CodingStartupOptions, invalid_project_source(), invalid_project_source_exposes_fix_input_recovery(), non_empty_optional_field(), registration_scope_denied() (+15 more)
 
 ### Community 615 - "validation/registry.rs"
 Cohesion: 0.36
@@ -4146,8 +4163,8 @@ Cohesion: 0.36
 Nodes (6): decode(), encode(), random_suffix(), AsRef, Option, String
 
 ### Community 629 - "webcodex/src/tool_runtime/tests/handoff_brief.rs"
-Cohesion: 0.20
-Nodes (20): add_instruction_for_project(), assert_all_objects_strict(), brief_for(), clean_workspace(), discussion(), empty_jobs(), handoff_brief_schema_is_shared_strict_and_absent_from_startup(), internal_handoff_projection_does_not_append_events_or_enqueue_agent_requests() (+12 more)
+Cohesion: 0.19
+Nodes (21): add_instruction_for_project(), assert_all_objects_strict(), brief_for(), clean_workspace(), discussion(), empty_jobs(), finish_and_handoff_surfaces_return_the_same_brief_for_the_same_snapshot(), handoff_brief_schema_is_shared_strict_and_absent_from_startup() (+13 more)
 
 ### Community 630 - "input_schemas/agent_waits.rs"
 Cohesion: 0.46
@@ -4202,8 +4219,8 @@ Cohesion: 0.33
 Nodes (6): app(), cleanGit, element(), html, partialReview, passed
 
 ### Community 646 - "Option"
-Cohesion: 0.18
-Nodes (23): Result, String, validate_project_op_path(), existing_project_path_result(), ListProjectsOptions, project_projection_reconcile_required(), project_registry_mutation_denied(), project_registry_scope_denied() (+15 more)
+Cohesion: 0.23
+Nodes (18): existing_project_path_result(), ListProjectsOptions, project_registry_mutation_denied(), project_registry_scope_denied(), resolve_project_shell_profile(), AuthContext, Option, Result (+10 more)
 
 ### Community 647 - "MCP"
 Cohesion: 0.11
@@ -4233,9 +4250,9 @@ Nodes (3): captureStream(), execute(), serveLines()
 Cohesion: 0.60
 Nodes (5): die(), log(), ok(), release_check.sh script, stage_start()
 
-### Community 654 - "AuthContext"
-Cohesion: 0.21
-Nodes (38): apply_running_jobs_to_list(), authorize_exact_project(), authorize_runtime_session_project(), list_runners_value(), listed_projects_for_auth(), messages_from_result(), overview_for_auth(), project_read_available() (+30 more)
+### Community 654 - "runtime-engine/src/audit_http/tests.rs"
+Cohesion: 0.14
+Nodes (29): build_audit_router(), effective_status(), http_audit_responses_do_not_leak_secret_fields_or_values(), http_audit_session_happy_path_returns_session_and_events(), http_audit_session_keeps_principal_attribution_out_of_event_details(), http_audit_session_not_found(), http_audit_session_requires_bearer_auth(), http_audit_sessions_happy_path_returns_seeded_session() (+21 more)
 
 ### Community 656 - "ProjectConfig"
 Cohesion: 0.40
@@ -4246,8 +4263,8 @@ Cohesion: 0.11
 Nodes (18): Branch review follow-up — 2026-09-12, Confirmed autonomous multi-turn continuation, Confirmed one-shot background continuation, Confirmed presentation behavior, Durable wake safety lessons, Goal-correlated terminal attention carrier, Host admission and background-carrier follow-up — 2026-09-13, Important background-tab boundary (+10 more)
 
 ### Community 658 - "webcodex/src/tool_runtime/tests/metadata.rs"
-Cohesion: 0.06
-Nodes (69): dispatch_unregister_project_removes_server_inventory_after_terminal_runner_success(), register_project_crosses_historical_64_threshold_and_is_immediately_resolvable(), register_project_projection_failure_returns_reconcile_required_without_retrying_mutation(), memory_scope_lifecycle_is_offline_safe_unregister_explicit_and_purge_only(), bootstrap_auth(), bounded_list_tools_hides_schemas_and_finds_artifact_upload_tools(), bounded_list_tools_limit_reports_truncation(), coding_agent_start_uses_canonical_runner_capability_gate() (+61 more)
+Cohesion: 0.03
+Nodes (136): apply_text_edits_read_only_session_rejected(), dispatch_unregister_project_removes_server_inventory_after_terminal_runner_success(), register_project_crosses_historical_64_threshold_and_is_immediately_resolvable(), register_project_projection_failure_returns_reconcile_required_without_retrying_mutation(), show_changes_accepts_unique_short_id(), run_job_rejects_server_configured_project_without_local_spawn(), memory_scope_lifecycle_is_offline_safe_unregister_explicit_and_purge_only(), bootstrap_auth() (+128 more)
 
 ### Community 659 - "main"
 Cohesion: 0.40
@@ -4374,12 +4391,12 @@ Cohesion: 0.22
 Nodes (25): apply_snapshot(), assert_resolves_edges(), completed_snapshot_atomically_removes_projects_and_stale_pages_cannot_resurrect_them(), dynamic_register_unregister_retire_prior_generation_and_converge_with_full_snapshot(), generation2_registration_accepts_canonical_inventory_pages(), inventory_preserves_explicit_managed_lineage_and_rejects_malformed_identity(), inventory_round_trip_preserves_registration_source_and_tolerates_future_values(), malformed_and_oversized_inventory_degrades_without_revoking_runner_liveness() (+17 more)
 
 ### Community 803 - "ToolResult"
-Cohesion: 0.08
-Nodes (54): nonempty_env(), ProjectAgentTokenVerifier, ProjectAuthState, ProjectCredentialVerifier, read_protected_secret(), AuthContext, Option, Path (+46 more)
+Cohesion: 0.12
+Nodes (40): agent_wait_model_projection(), AgentWaitEventSelectorCall, AuthContext, Option, String, ToolResult, Vec, ToolRuntime (+32 more)
 
 ### Community 804 - "runtime-engine/src/tool_runtime/session_context.rs"
-Cohesion: 0.10
-Nodes (43): add_session_attention(), add_session_attention_projection(), add_session_context_continuity(), add_session_hint(), bound_utf8_bytes(), bounded_model_facing_recovery_events(), canonical_repository_key(), completion_persistence_uncertain_exposes_exact_retry_same_recovery() (+35 more)
+Cohesion: 0.13
+Nodes (34): add_session_attention(), add_session_attention_projection(), add_session_context_continuity(), add_session_hint(), bound_utf8_bytes(), bounded_model_facing_recovery_events(), canonical_repository_key(), completion_persistence_uncertain_exposes_exact_retry_same_recovery() (+26 more)
 
 ### Community 805 - "OpenAPI / GPT Action Guidelines"
 Cohesion: 0.15
@@ -4422,12 +4439,12 @@ Cohesion: 0.18
 Nodes (11): 10. Post-Deployment Acceptance Smoke, 1. Source Validation, 2. Focused Runtime Tests, 3. Product Documentation Check, 4. Legacy Surface Guard, 5. E2E Smoke, 6. Eval Harness, 7. Security And Leakage Checks (+3 more)
 
 ### Community 815 - "register_instance_with_capabilities"
-Cohesion: 0.06
-Nodes (50): enqueue_apply_patch_requires_explicit_capability_and_queues_atomically(), patch_request(), register_patch_instance(), Result, RunnerRegistry, RunnerView, ShellFileOpRequest, String (+42 more)
+Cohesion: 0.05
+Nodes (53): enqueue_apply_patch_requires_explicit_capability_and_queues_atomically(), patch_request(), register_patch_instance(), Result, RunnerRegistry, RunnerView, ShellFileOpRequest, String (+45 more)
 
-### Community 816 - "register_project"
-Cohesion: 0.11
-Nodes (34): browser_message_mutation_json_and_uncertain_errors_are_distinct(), browser_message_mutation_persistence_uncertain_is_503_and_retains_live_state(), browser_message_mutation_routes_succeed_and_retain_history(), browser_message_mutations_fail_closed_on_authority_and_state_conflicts(), collaboration_message_projection_reuses_authority_fence_and_hides_completion_identity(), collaboration_mutations_require_session_collaborate_before_session_lookup(), collaboration_observation_route_preserves_baseline_update_timeout_and_paging_semantics(), collaboration_observation_route_surfaces_history_loss_from_authoritative_retention() (+26 more)
+### Community 816 - "runtime-engine/src/tool_runtime/tests/goals.rs"
+Cohesion: 0.19
+Nodes (28): create_goal(), goal_activity(), goal_activity_auth(), goal_activity_bounded_partial_window_scan_never_manufactures_attention(), goal_activity_is_unobserved_without_windows_and_inflight_work_prevents_false_attention(), goal_activity_respects_principal_project_visibility_and_runtime_read_scope(), goal_activity_tracks_window_wide_work_and_separates_seen_from_meaningful(), goal_agent_task_link_reauthorizes_task_and_task_completion_never_completes_goal() (+20 more)
 
 ### Community 817 - "Chadex"
 Cohesion: 0.14
@@ -4445,9 +4462,9 @@ Nodes (3): GracefulTermination, Self, SpawnOptions
 Cohesion: 0.18
 Nodes (19): CodingAgentServerState, load_or_create_observation_mac_key(), mark_server_binding_lost(), merge_server_run_binding_locked(), new_observation_mac_key(), prune_server_runs_locked(), read_observation_mac_key(), AsRef (+11 more)
 
-### Community 821 - "webcodex-lsp/src/fake_server.rs"
-Cohesion: 0.24
-Nodes (25): append_marker(), call_hierarchy_item(), json_escape(), json_string_field(), json_string_field_from_last_item(), json_u64_field(), main(), maybe_publish_diagnostics() (+17 more)
+### Community 821 - "PollError"
+Cohesion: 0.13
+Nodes (15): PollError, PollErrorKind, PollingDispatchCompletion, PollingDispatchCompletionOnDrop, PollingDispatchSupervisor, PollingRecoveryAction, BackgroundThreads, Drop (+7 more)
 
 ### Community 822 - "Swift ↔ Rust Bridge Protocol"
 Cohesion: 0.22
@@ -4485,9 +4502,9 @@ Nodes (8): analyzeRuntimeClassicBundleModules(), assertRuntimeClassicBundleContr
 Cohesion: 0.25
 Nodes (7): Chadex 體感速度與安全／功能檢查, 已確認與修補, 既有真實 connector 的呼叫方式比較, 速度證據, 重跑與驗收界線, 隔離、真實 backend／Runner 的本機比較, 驗證範圍
 
-### Community 831 - "runtime-engine/src/tool_runtime/tests/hygiene.rs"
-Cohesion: 0.19
-Nodes (23): assert_reason_list_contains(), assert_review_verdict_shape(), assert_verdict_omits_raw_output_and_sensitive_values(), dispatch_hygiene_with_agent(), Option, String, TempDir, ToolResult (+15 more)
+### Community 831 - "ShellEntry"
+Cohesion: 0.14
+Nodes (26): canonical_dialect(), command_wrapper(), CompletionProgress, ControlFrame, ManagerInner, AtomicBool, AtomicU64, AtomicUsize (+18 more)
 
 ### Community 832 - "Tool Request Tracing — Maintainer Forensics"
 Cohesion: 0.25
@@ -4543,7 +4560,7 @@ Nodes (17): create_goal(), goal_auth(), goal_plan_app_descriptor_is_sparse_app_o
 
 ### Community 845 - "run_shell"
 Cohesion: 0.05
-Nodes (90): assert_descendant_reaped(), prepared_profile_unicode_env_round_trip_and_unicode_init_path(), shell_job_profile_prepare_stop_reaps_whole_tree(), shell_profile_prepare_stop_cleans_up_whole_tree(), shell_profile_prepare_timeout_cleans_up_whole_tree(), Option, PreparedShellProfileCache, RunnerPolicy (+82 more)
+Nodes (91): assert_descendant_reaped(), prepared_profile_unicode_env_round_trip_and_unicode_init_path(), shell_job_profile_prepare_stop_reaps_whole_tree(), shell_profile_prepare_stop_cleans_up_whole_tree(), shell_profile_prepare_timeout_cleans_up_whole_tree(), Option, PreparedShellProfileCache, RunnerPolicy (+83 more)
 
 ### Community 846 - "Deterministic committed-range review summary"
 Cohesion: 0.33
@@ -4577,9 +4594,9 @@ Nodes (5): dist, examples, README.zh-CN.md, files, README.md
 Cohesion: 0.40
 Nodes (5): plugin, typescript, webcodex, developer-tools, keywords
 
-### Community 855 - "runtime-engine/src/tool_runtime/tests/changes.rs"
-Cohesion: 0.25
-Nodes (20): committed_final_tree_is_presentable_even_when_worktree_is_clean(), file_by_path(), file_diff(), final_changes_neutralizes_repository_configured_clean_and_process_filters(), final_changes_uses_startup_tree_whole_final_workspace_and_frozen_lazy_diff(), git(), present(), presentation_needed() (+12 more)
+### Community 855 - "runtime-engine/src/tool_runtime/tests/reconnect.rs"
+Cohesion: 0.07
+Nodes (57): committed_final_tree_is_presentable_even_when_worktree_is_clean(), file_by_path(), file_diff(), final_changes_neutralizes_repository_configured_clean_and_process_filters(), final_changes_uses_startup_tree_whole_final_workspace_and_frozen_lazy_diff(), git(), present(), presentation_needed() (+49 more)
 
 ### Community 856 - "Model-facing identifier economy"
 Cohesion: 0.40
@@ -4631,19 +4648,19 @@ Nodes (11): append(), main(), Option, Path, Result, String, Write, send() (+3 mo
 
 ### Community 872 - "lookup_tool_definition"
 Cohesion: 0.03
-Nodes (109): tool_metadata_covers_all_known_tools(), model_visible_definitions_own_all_registered_model_specs(), adaptive_runtime_direct_declarations_are_visible_ranked_and_unique(), code_mode_composition_policy_is_canonical_closed_and_independent_from_frontend_admission(), every_runtime_tool_has_an_explicit_fail_closed_audit_contract(), execution_selection_contract_is_canonical_closed_and_sparse(), experimental_code_mode_effectful_has_conservative_e2a_envelope(), experimental_code_mode_is_visible_read_only_and_feature_scoped() (+101 more)
+Nodes (107): tool_metadata_covers_all_known_tools(), model_visible_definitions_own_all_registered_model_specs(), adaptive_runtime_direct_declarations_are_visible_ranked_and_unique(), code_mode_composition_policy_is_canonical_closed_and_independent_from_frontend_admission(), every_runtime_tool_has_an_explicit_fail_closed_audit_contract(), execution_selection_contract_is_canonical_closed_and_sparse(), experimental_code_mode_effectful_has_conservative_e2a_envelope(), experimental_code_mode_is_visible_read_only_and_feature_scoped() (+99 more)
 
 ### Community 873 - "runtime-engine/src/tool_runtime/files/inspection.rs"
 Cohesion: 0.07
-Nodes (43): assert_parity(), bounded_tracked_source(), content_is_empty_instruction(), io_error_reason(), list_tracked_stderr_excerpt(), local_read(), map_runner_read_error(), parse_instruction_runner_stdout() (+35 more)
+Nodes (66): assert_parity(), bounded_tracked_source(), build_read_file_success(), content_is_empty_instruction(), effective_read_file_range(), has_leading_runner_result_retention_truncation_marker(), instruction_candidate_missing(), io_error_reason() (+58 more)
 
 ### Community 874 - "RunnerRegistry"
 Cohesion: 0.07
 Nodes (58): allocate_job_id(), detached_job_id_for_key(), frozen_shell_job_log_projection(), invalid_progress(), JobLogWait, JobLogWaitOutcome, JobPublicMutationSignature, public_mutation_signature() (+50 more)
 
-### Community 875 - "chadex-runtime-runner-registry/src/tests/job_log_wait.rs"
-Cohesion: 0.17
-Nodes (23): agent_job_log_bounded_wait_uses_compact_delta_and_timeout_is_empty(), agent_job_log_observation_is_baseline_then_independent_deltas(), agent_job_log_replays_partial_lines_until_each_stream_completes(), agent_job_log_resets_when_retention_advances_past_token_cursor(), job_log_wait_epoch_mismatch_refreshes_immediately(), job_log_wait_observation_update_between_calls_is_immediate(), job_log_wait_recovery_transition_between_calls_is_immediate(), job_log_wait_resets_cross_job_and_rejects_malformed_tokens() (+15 more)
+### Community 875 - "get_registry"
+Cohesion: 0.21
+Nodes (25): detached_initiator_identity_from_auth(), effective_register_owner(), enforce_register_owner(), enforce_runner_transport(), requested_by_from_auth(), require_runner_transport_scope(), AuthContext, DetachedInitiatorIdentity (+17 more)
 
 ### Community 876 - "runtime-engine/src/tool_runtime/skills.rs"
 Cohesion: 0.08
@@ -4655,15 +4672,15 @@ Nodes (19): CodingAgentServerState, load_or_create_observation_mac_key(), mark_s
 
 ### Community 878 - "runtime-engine/src/mcp/tools.rs"
 Cohesion: 0.06
-Nodes (90): output_is_bounded_non_secret_metadata(), context_ack_capable_tool_consumes_ack_without_ignored_metadata(), memory_tools_are_stateless_protocol_extensions_scope_filtered_and_schema_static(), reobservable_tool_accepts_known_context_ack_as_ignored_invocation_metadata(), skill_management_tools_require_admin_and_remain_fixed_schema(), skill_runtime_tools_are_stateless_protocol_extensions_and_schema_static(), stateless_ack_wrapper_normalizes_and_is_removed_before_concrete_tool_parsing(), stateless_context_request_is_deduped_open_ended_and_removed_before_parsing() (+82 more)
+Nodes (87): context_ack_capable_tool_consumes_ack_without_ignored_metadata(), memory_tools_are_stateless_protocol_extensions_scope_filtered_and_schema_static(), reobservable_tool_accepts_known_context_ack_as_ignored_invocation_metadata(), skill_runtime_tools_are_stateless_protocol_extensions_and_schema_static(), stateless_ack_wrapper_normalizes_and_is_removed_before_concrete_tool_parsing(), stateless_context_request_is_deduped_open_ended_and_removed_before_parsing(), stateless_context_revision_ack_is_request_scoped_and_removed_before_parsing(), stateless_invocation_metadata_stays_typed_and_business_arguments_stay_clean() (+79 more)
 
 ### Community 880 - "runtime-engine/src/tool_runtime/git/diff_hunks.rs"
-Cohesion: 0.08
+Cohesion: 0.07
 Nodes (80): String, shell_escape_simple(), bounded_git_diff_hunks_stderr(), clean_optional_paths(), committed_git_diff_hunks_scope_value(), decode_git_diff_hunks_continuation(), decode_git_diff_hunks_v2_continuation(), decode_lower_hex_bytes() (+72 more)
 
 ### Community 881 - "chadex-runtime-runner/src/webcodex_runner/config.rs"
 Cohesion: 0.04
-Nodes (113): acp_env_mapping_rejects_webcodex_pat(), AcpAgentConfig, AcpConfig, agent(), ClaudeCodeMcpConfig, client_profile_runner_config(), config_candidate_error_response(), config_not_started() (+105 more)
+Nodes (114): runner_profile_config_resolution_accepts_legacy_only_and_rejects_dual_files(), acp_env_mapping_rejects_webcodex_pat(), AcpAgentConfig, AcpConfig, agent(), ClaudeCodeMcpConfig, client_profile_runner_config(), config_candidate_error_response() (+106 more)
 
 ### Community 882 - "runtime_compat/process/tests/macos.rs"
 Cohesion: 0.31
@@ -4674,8 +4691,8 @@ Cohesion: 0.28
 Nodes (12): build_info_includes_package_version(), build_info_runtime_build_metadata_is_safe(), build_info_version_output_includes_build_commit_or_unknown(), BuildInfo, current(), non_empty(), parse_bool(), Option (+4 more)
 
 ### Community 884 - "Result"
-Cohesion: 0.16
-Nodes (39): accounting_requires_reconcile(), append_event_locked(), commit_trace_write(), create_private_trace_dir(), directory_stats(), ensure_trace_owner_marker(), flush_trace_writer_for_read(), invalid_trace_ref() (+31 more)
+Cohesion: 0.12
+Nodes (46): accounting_requires_reconcile(), append_event_locked(), commit_trace_write(), create_private_trace_dir(), directory_stats(), ensure_trace_owner_marker(), flush_trace_writer_for_read(), invalid_trace_ref() (+38 more)
 
 ### Community 885 - "chadex-runtime-lsp/src/supervisor.rs"
 Cohesion: 0.08
@@ -4687,19 +4704,19 @@ Nodes (52): apply_text_edits_capability_requirements(), encode_file_operation(),
 
 ### Community 887 - "chadex-runtime-runner/src/webcodex_runner/projects/registration.rs"
 Cohesion: 0.07
-Nodes (84): cleanup_unregister_tombstones(), handle_project_lifecycle_operation(), handle_project_operation(), lifecycle_config_path(), matching_existing_project(), ProjectUnregisterError, recovered_project_result(), CommandResult (+76 more)
+Nodes (87): ok_cmd(), Value, cleanup_unregister_tombstones(), handle_project_lifecycle_operation(), handle_project_operation(), lifecycle_config_path(), matching_existing_project(), ProjectUnregisterError (+79 more)
 
 ### Community 888 - "runtime-engine/src/tool_runtime/tests/coding_task.rs"
 Cohesion: 0.08
 Nodes (85): assert_action_list_contains(), assert_action_list_not_contains(), assert_check_status(), assert_compact_verdict_safe(), assert_finish_uses_canonical_outcomes(), assert_no_raw_validation_output_fields(), assert_reason_list_contains(), assert_reason_list_not_contains() (+77 more)
 
-### Community 889 - "chadex-runtime-tool-runtime-contracts/src/tool_call.rs"
+### Community 889 - "ToolCall"
 Cohesion: 0.07
-Nodes (67): AgentWaitEventSelectorCall, ChadexTaskAcceptance, ChadexTaskBatchItem, ChadexTaskPolicy, ChadexTaskPreplan, ChadexTaskProcess, ChadexTaskStep, ComputerControlToolCall (+59 more)
+Nodes (36): ChadexTaskAcceptance, ChadexTaskBatchItem, ChadexTaskPolicy, ChadexTaskPreplan, ChadexTaskProcess, ChadexTaskStep, ComputerControlToolCall, ComputerObserveToolCall (+28 more)
 
 ### Community 890 - "chadex-runtime-workflow-session/src/continuation.rs"
-Cohesion: 0.08
-Nodes (69): attempt_open_failures(), AttemptActivity, AttemptBoundary, AttemptChanges, AttemptEventRange, AttemptExploration, AttemptGuidance, AttemptInstruction (+61 more)
+Cohesion: 0.06
+Nodes (82): attempt_open_failures(), AttemptActivity, AttemptBoundary, AttemptChanges, AttemptEventRange, AttemptExploration, AttemptGuidance, AttemptInstruction (+74 more)
 
 ### Community 891 - "chadex-runtime-core/src/plugin.rs"
 Cohesion: 0.11
@@ -4735,15 +4752,15 @@ Nodes (19): bounded_model_error(), e1_allowlist_remains_canonically_read_only(),
 
 ### Community 906 - "View"
 Cohesion: 0.06
-Nodes (50): Decodable, FerretPresentation, ScrollViewProxy, CodeFerretCompanion, .body, .displayed, CodeFerretStage, .accent (+42 more)
+Nodes (51): Decodable, FerretPresentation, NSImage, ScrollViewProxy, CodeFerretCompanion, .body, .displayed, CodeFerretStage (+43 more)
 
-### Community 907 - "chadex-runtime-runner-registry/src/tests/mcp_gateway.rs"
-Cohesion: 0.17
-Nodes (19): bridge_dequeue_rechecks_exact_provider_instance_after_inventory_change(), bridge_dequeue_rechecks_exact_runner_instance_after_replacement(), bridge_dequeue_rejects_missing_exact_target_fence(), bridge_enqueue_rechecks_owner_and_exact_runner_instance(), bridge_provider(), bridge_registration(), bridge_registration_inventory_is_bounded_and_exact(), dispatched_bridge_disconnect_is_outcome_unknown_and_not_replayed() (+11 more)
+### Community 907 - "run_runner_token_create_local"
+Cohesion: 0.15
+Nodes (25): runner_token_create_local_does_not_send_plaintext_token_to_server(), runner_token_create_local_prefers_admin_token_over_default_account_credential(), runner_token_create_local_uses_default_account_credential(), token_create_local_does_not_send_plaintext_token_to_server(), direct_server_http(), ServerHttpOptions, post_json_with_bearer(), resolve_account_credential() (+17 more)
 
 ### Community 908 - "current_runner_registration"
 Cohesion: 0.05
-Nodes (59): lease_register_rejects_empty_instance_id(), agent_job_log_bounded_wait_uses_compact_delta_and_timeout_is_empty(), agent_job_log_observation_is_baseline_then_independent_deltas(), agent_job_log_replays_partial_lines_until_each_stream_completes(), agent_job_log_resets_when_retention_advances_past_token_cursor(), job_log_wait_activity_only_legacy_transition_advances_revision_and_wakes_waiter(), job_log_wait_epoch_mismatch_refreshes_immediately(), job_log_wait_legacy_update_between_calls_and_noop_replacement() (+51 more)
+Nodes (48): computer_accessibility_enqueue_requires_distinct_capability(), computer_element_state_requires_its_own_additive_capability(), computer_clipboard_enqueue_requires_independent_capabilities_and_typed_envelopes(), computer_control_enqueue_requires_independent_capability(), computer_key_input_requires_independent_capability(), computer_pointer_enqueue_requires_independent_capability_and_typed_envelope(), computer_scroll_to_element_requires_independent_capability(), computer_window_activation_requires_its_own_additive_capability() (+40 more)
 
 ### Community 909 - "String"
 Cohesion: 0.17
@@ -4762,12 +4779,12 @@ Cohesion: 0.07
 Nodes (70): parse_runner_lsp_result_envelope(), call_hierarchy_bounds_raw_fanout_before_normalization(), call_hierarchy_fails_explicitly_when_provider_or_method_is_unsupported(), call_hierarchy_is_deterministic_deduplicated_and_globally_bounded(), call_hierarchy_omits_external_invalid_and_private_lsp_data(), call_hierarchy_preserves_unicode_scalar_positions_and_language_profiles(), call_hierarchy_supports_each_direction_and_bounded_depth_two_bfs(), call_hierarchy_uses_one_shared_operation_deadline() (+62 more)
 
 ### Community 915 - "chadex-runtime-runner/src/webcodex_runner/shell_tests.rs"
-Cohesion: 0.06
-Nodes (68): run_script_with_profiles_and_execution_state(), run_shell_impl(), arbitrary_configured_shell_is_not_treated_as_a_script_language(), compile_internal_posix_test_executable(), create_fake_native_executable(), execution_environment_inherits_path_filters_credentials_and_honors_overrides(), internal_posix_interpreter_prefers_git_toolchain_over_wsl_bash(), internal_posix_interpreter_rejects_wsl_only_bash() (+60 more)
+Cohesion: 0.05
+Nodes (74): create_temporary_script(), PathBuf, TempPath, arbitrary_configured_shell_is_not_treated_as_a_script_language(), compile_internal_posix_test_executable(), create_fake_native_executable(), execution_environment_inherits_path_filters_credentials_and_honors_overrides(), internal_posix_interpreter_prefers_git_toolchain_over_wsl_bash() (+66 more)
 
 ### Community 916 - "chadex-runtime-tool-contracts/src/metadata.rs"
-Cohesion: 0.10
-Nodes (25): checkpoint_metadata_separates_effect_from_existing_authority(), iter_tool_metadata(), lookup_tool_metadata(), metadata(), Item, Iterator, Option, ToolAuthorityPolicy (+17 more)
+Cohesion: 0.07
+Nodes (33): checkpoint_metadata_separates_effect_from_existing_authority(), iter_tool_metadata(), lookup_tool_metadata(), metadata(), Item, Iterator, Option, ToolAuthorityPolicy (+25 more)
 
 ### Community 917 - "chadex-runtime-workspace/src/project_context.rs"
 Cohesion: 0.09
@@ -4786,8 +4803,8 @@ Cohesion: 0.15
 Nodes (21): assert_direct_args(), command_args(), configure_private_process_group(), conservative_windows_command_line_utf16_bound(), is_safe_resource_name(), is_safe_session_id(), PreparedSshCommand, reuses_session_transport_but_not_remote_shell_state_and_reconnects() (+13 more)
 
 ### Community 921 - "bootstrap_auth_context"
-Cohesion: 0.06
-Nodes (87): call_code_mode_with_local_runners(), canonical_orchestration_host_rejects_server_owned_metadata_without_frontend_help(), canonical_orchestration_host_runs_without_the_v8_frontend(), code_mode_binds_exact_project_and_session_through_real_canonical_reads(), code_mode_does_not_admit_effectful_or_recursive_tools(), code_mode_failure_detail_is_bounded_without_persisting_source_derived_text(), code_mode_rejects_nested_target_override_before_runner_dispatch(), e1_still_rejects_structured_validation_before_runner_dispatch() (+79 more)
+Cohesion: 0.07
+Nodes (72): call_code_mode_with_local_runners(), canonical_orchestration_host_rejects_server_owned_metadata_without_frontend_help(), canonical_orchestration_host_runs_without_the_v8_frontend(), code_mode_binds_exact_project_and_session_through_real_canonical_reads(), code_mode_does_not_admit_effectful_or_recursive_tools(), code_mode_failure_detail_is_bounded_without_persisting_source_derived_text(), code_mode_rejects_nested_target_override_before_runner_dispatch(), e1_still_rejects_structured_validation_before_runner_dispatch() (+64 more)
 
 ### Community 922 - "chadex-runtime-runner/src/webcodex_runner/managed_ssh.rs"
 Cohesion: 0.08
@@ -4799,7 +4816,7 @@ Nodes (73): mcp_url(), String, bounded_tunnel_log_summary(), clipboard_outcome_n
 
 ### Community 924 - "chadex-runtime-runner/src/webcodex_runner/projects/catalog.rs"
 Cohesion: 0.07
-Nodes (70): legacy_managed_project_without_explicit_lineage_stays_unassociated(), legacy_auto_registered_record_keeps_raw_revision_and_projects_as_auto_registered(), runner_project_toml_parse_sorts_hook_names(), BoundedGitOutput, CleanupPath, effective_registration_source(), find_project_shell_context(), find_project_shell_context_by_id() (+62 more)
+Nodes (70): legacy_auto_registered_record_keeps_raw_revision_and_projects_as_auto_registered(), missing_project_registry_dir_returns_empty_list(), runner_project_toml_parse_sorts_hook_names(), BoundedGitOutput, CleanupPath, effective_registration_source(), find_project_shell_context(), find_project_shell_context_by_id() (+62 more)
 
 ### Community 925 - "bundle"
 Cohesion: 0.08
@@ -4819,11 +4836,11 @@ Nodes (77): is_sensitive_edit_path(), handle_file_operation(), CommandResult, Ru
 
 ### Community 929 - "chadex-runtime-runner-registry/src/jobs.rs"
 Cohesion: 0.06
-Nodes (61): command_preview(), previews_are_bounded_and_secret_safe(), process_preview(), IntoIterator, Item, String, append_log_limited(), assert_active_instance_locked() (+53 more)
+Nodes (62): command_preview(), previews_are_bounded_and_secret_safe(), process_preview(), IntoIterator, Item, String, append_log_limited(), assert_active_instance_locked() (+54 more)
 
 ### Community 930 - "chadex-runtime-runner/src/main_tests.rs"
-Cohesion: 0.03
-Nodes (139): RunnerCapabilities, ShellJobContext, runner_register_capabilities(), validate_runner_job_context(), append_fake_zip_entry(), canonical_registered_client_json(), concurrent_managed_worktree_bootstraps_choose_distinct_runner_paths(), DescendantCleanup (+131 more)
+Cohesion: 0.05
+Nodes (69): RunnerCapabilities, ShellJobContext, runner_register_capabilities(), validate_runner_job_context(), append_fake_zip_entry(), canonical_registered_client_json(), concurrent_managed_worktree_bootstraps_choose_distinct_runner_paths(), DescendantCleanup (+61 more)
 
 ### Community 931 - "chadex-runtime-runner/src/webcodex_runner/transport_tests.rs"
 Cohesion: 0.05
@@ -4854,8 +4871,8 @@ Cohesion: 0.06
 Nodes (37): canonical_cargo_check_argv_accepts_read_only_flags_only(), canonical_cargo_test_argv_accepts_filter_and_read_only_flags(), canonical_go_test_accepts_legacy_and_bounded_json_packages(), cargo_test(), cargo_test_argv(), filter_boundary_is_flat_argv_information_loss_not_acceptance(), flat_argv_with_option_like_value_is_rejected_by_normalization(), go_test_package_scope_is_narrow_bounded_and_canonical() (+29 more)
 
 ### Community 938 - "webcodex/src/runtime_console_http.rs"
-Cohesion: 0.07
-Nodes (78): add_console_aggregate(), bounded_client_id(), bounded_project_path(), bounded_text(), compare_recent_sessions(), empty_console_aggregate(), finalize_recent_sessions(), merge_console_aggregate() (+70 more)
+Cohesion: 0.04
+Nodes (193): active_window_request_visible_cached(), add_console_aggregate(), apply_running_jobs_to_list(), authorize_exact_project(), authorize_runtime_session_project(), bounded_client_id(), bounded_project_path(), bounded_text() (+185 more)
 
 ### Community 939 - "chadex-runtime-validation/src/evidence_tests.rs"
 Cohesion: 0.08
@@ -4874,8 +4891,8 @@ Cohesion: 0.05
 Nodes (63): captured_initialize_options(), concurrent_document_refresh_uses_one_monotonic_version(), diagnostics_cache_is_cleared_with_server_instance_restart(), document_version_overflow_is_safe_and_state_is_fingerprint_only(), failed_did_change_does_not_advance_document_state(), Fixture, gopls_process_environment_overrides_ambient_network_settings(), lsp_command_resolution_uses_explicit_env_then_path_without_shell() (+55 more)
 
 ### Community 943 - "runtime-engine/src/tool_runtime/startup_brief.rs"
-Cohesion: 0.06
-Nodes (86): action_item(), bounded_extension_description(), bounded_json_string(), bounded_list(), bounded_string_items(), build_startup_brief(), builtin_coding_workflow_projection(), changed_instruction_sources() (+78 more)
+Cohesion: 0.08
+Nodes (73): action_item(), bounded_extension_description(), bounded_json_string(), bounded_list(), bounded_string_items(), build_startup_brief(), changed_instruction_sources(), continuation_projection() (+65 more)
 
 ### Community 944 - "windows_desktop_smoke.py"
 Cohesion: 0.17
@@ -4887,15 +4904,15 @@ Nodes (59): active_request_eviction_marks_observation_partial_until_evicted_guar
 
 ### Community 946 - "chadex-runtime-cli/src/webcodex_cli/connect/process.rs"
 Cohesion: 0.10
-Nodes (68): BoundedRunnerLog, ensure_runner_unlocked(), finish_owned_log_writer(), follow_log_tail(), immediate_runner_failure_does_not_leave_active_state(), linux_process_start(), load_runner_state(), local_runner_log_archive_path() (+60 more)
+Nodes (70): BoundedRunnerLog, ensure_runner_unlocked(), finish_owned_log_writer(), follow_log_tail(), immediate_runner_failure_does_not_leave_active_state(), linux_process_start(), load_runner_state(), local_runner_log_archive_path() (+62 more)
 
 ### Community 947 - "runtime-engine/src/tool_runtime/chadex_task_executor.rs"
 Cohesion: 0.05
 Nodes (89): adaptive_execution_telemetry_path(), adaptive_parallel_cost_gate_rejects_short_and_accepts_heavy_packages(), adaptive_parallel_overhead_ewma_learns_and_persists_local_cost(), AdaptiveExecutionTelemetry, apply_graphify_dependency_evidence(), apply_parallel_cost_gate(), bounded_message(), bounded_tail_text() (+81 more)
 
-### Community 948 - "Option"
-Cohesion: 0.24
-Nodes (17): ListProjectsOptions, project_registry_mutation_denied(), project_registry_scope_denied(), resolve_project_shell_profile(), AuthContext, Option, Result, RunnerView (+9 more)
+### Community 948 - "get_registry"
+Cohesion: 0.21
+Nodes (25): detached_initiator_identity_from_auth(), effective_register_owner(), enforce_register_owner(), enforce_runner_transport(), requested_by_from_auth(), require_runner_transport_scope(), AuthContext, DetachedInitiatorIdentity (+17 more)
 
 ### Community 949 - "chadex-runtime-computer/src/platform/windows/accessibility.rs"
 Cohesion: 0.11
@@ -4907,35 +4924,35 @@ Nodes (52): require_agent_attention_event_for_wake(), Option, agent_task_wake_is
 
 ### Community 951 - "chadex-runtime-validation/src/evidence.rs"
 Cohesion: 0.10
-Nodes (71): authoritative_validation_start_event_index(), cargo_test_zero_tests_success(), classify_validation_failures(), current_validation_evidence_for_events(), current_validation_evidence_for_session(), CurrentValidationEvidenceProjection, event_is_job_acceptance_only(), event_observes_validation_activity() (+63 more)
+Nodes (70): authoritative_validation_start_event_index(), cargo_test_zero_tests_success(), classify_validation_failures(), current_validation_evidence_for_events(), current_validation_evidence_for_session(), CurrentValidationEvidenceProjection, event_is_job_acceptance_only(), event_observes_validation_activity() (+62 more)
 
 ### Community 952 - "runtime-engine/src/project_entry_cloudflared.rs"
 Cohesion: 0.09
 Nodes (69): build_managed_download_client(), cloudflared_asset_for(), CloudflaredAsset, create_private_tool_dir(), download_cloudflared_asset(), download_cloudflared_asset_with_network(), download_error(), download_request_failure() (+61 more)
 
-### Community 953 - "auth_context"
+### Community 953 - "runner_access_from_auth"
 Cohesion: 0.08
-Nodes (37): agent_auth_context(), async_job_capabilities(), auth_context(), effective_register_owner_agent_token_fills_username(), enforce_register_owner_cases(), requested_by_from_auth_uses_bootstrap_username_or_anonymous(), oauth_bridge_auth_context(), open_auth_context() (+29 more)
+Nodes (39): RunnerAccess, runner_access_from_auth(), agent_auth_context(), async_job_capabilities(), auth_context(), effective_register_owner_agent_token_fills_username(), enforce_register_owner_cases(), requested_by_from_auth_uses_bootstrap_username_or_anonymous() (+31 more)
 
 ### Community 954 - "current_runner_registration"
 Cohesion: 0.04
-Nodes (67): computer_accessibility_enqueue_requires_distinct_capability(), computer_element_state_requires_its_own_additive_capability(), computer_clipboard_enqueue_requires_independent_capabilities_and_typed_envelopes(), computer_control_enqueue_requires_independent_capability(), computer_key_input_requires_independent_capability(), computer_pointer_enqueue_requires_independent_capability_and_typed_envelope(), computer_scroll_to_element_requires_independent_capability(), computer_window_activation_requires_its_own_additive_capability() (+59 more)
+Nodes (72): computer_clipboard_enqueue_requires_independent_capabilities_and_typed_envelopes(), computer_key_input_requires_independent_capability(), computer_pointer_enqueue_requires_independent_capability_and_typed_envelope(), computer_scroll_to_element_requires_independent_capability(), computer_window_activation_requires_its_own_additive_capability(), agent_job_log_bounded_wait_uses_compact_delta_and_timeout_is_empty(), agent_job_log_observation_is_baseline_then_independent_deltas(), agent_job_log_replays_partial_lines_until_each_stream_completes() (+64 more)
 
 ### Community 955 - "runtime-engine/src/admin_project_lifecycle.rs"
-Cohesion: 0.09
-Nodes (46): active_job_request(), AdminProjectLifecycleService, api_error(), create_result_preserves_recovery_metadata(), CreateProjectRequest, digest(), digest_json_or_empty(), idempotency_locks() (+38 more)
+Cohesion: 0.11
+Nodes (19): active_job_request(), create_result_preserves_recovery_metadata(), CreateProjectRequest, digest(), is_persistable_terminal(), lifecycle_summary(), old_transient_with_different_payload_is_conflict_before_delete(), ProjectMutationRequest (+11 more)
 
 ### Community 956 - "chadex-runtime-runner/src/main_tests/runner_config.rs"
 Cohesion: 0.04
-Nodes (62): parse_runner_args(), I, usage(), reload_field_classification_is_exhaustive_and_allowlisted(), default_policy_denies_paths_outside_allowed_roots(), load_config_defaults_empty_allowed_roots_to_home(), load_config_empty_roots_without_home_and_no_cwd_anywhere_errors(), load_config_explicit_allowed_roots_override_home_default() (+54 more)
+Nodes (61): parse_runner_args(), I, usage(), reload_field_classification_is_exhaustive_and_allowlisted(), default_policy_denies_paths_outside_allowed_roots(), load_config_defaults_empty_allowed_roots_to_home(), load_config_empty_roots_without_home_and_no_cwd_anywhere_errors(), load_config_explicit_allowed_roots_override_home_default() (+53 more)
 
 ### Community 957 - "chadex-runtime-workspace/src/project_overview.rs"
 Cohesion: 0.08
 Nodes (68): basename(), build_project_overview(), classify_key_file(), detection_trusts_the_git_index_over_untracked_tool_state(), effective_project_overview_limit(), effective_project_overview_max_depth(), EntryKind, git_tracked_index() (+60 more)
 
 ### Community 958 - "runtime-engine/src/tool_runtime/dispatch.rs"
-Cohesion: 0.07
-Nodes (60): add_run_process_expectation_projection(), caller_uses_default_search_timeout(), complete_batch_item(), decorate_structured_execution_prestart_denial(), failure_projection_keeps_permission_denials_and_unknown_outcomes(), failure_projection_removes_audit_noise_but_preserves_decision_relevant_facts(), is_structured_validation_tool(), ModelFacingProjection (+52 more)
+Cohesion: 0.09
+Nodes (51): add_run_process_expectation_projection(), caller_uses_default_search_timeout(), complete_batch_item(), decorate_structured_execution_prestart_denial(), failure_projection_keeps_permission_denials_and_unknown_outcomes(), failure_projection_removes_audit_noise_but_preserves_decision_relevant_facts(), is_structured_validation_tool(), ModelFacingProjection (+43 more)
 
 ### Community 959 - "chadex-runtime-runner/src/webcodex_runner/artifacts.rs"
 Cohesion: 0.07
@@ -4991,7 +5008,7 @@ Nodes (65): active_turn_proof_fails_closed_for_wrong_identity_authority_and_cont
 
 ### Community 972 - "require_runtime"
 Cohesion: 0.05
-Nodes (93): action_audit_output_for_tool(), extract_recording_session_id(), gpt_action_admit_target(), gpt_action_invoke(), gpt_action_suggested_tool_call_route(), import_conversation_files_to_project(), ImportConversationFilesRequest, Depot (+85 more)
+Nodes (94): action_audit_output_for_tool(), extract_recording_session_id(), gpt_action_admit_target(), gpt_action_invoke(), gpt_action_suggested_tool_call_route(), import_conversation_files_to_project(), ImportConversationFilesRequest, Depot (+86 more)
 
 ### Community 973 - "chadex-runtime-lsp/src/navigation.rs"
 Cohesion: 0.10
@@ -5009,9 +5026,9 @@ Nodes (55): default_shell_job_kind(), is_canonical_cargo_check_args(), is_canoni
 Cohesion: 0.11
 Nodes (62): quic_frame_round_trips_through_read_write(), read_quic_frame(), W, write_quic_frame(), write_quic_register_frame(), bind_server(), build_server_crypto(), client_crypto() (+54 more)
 
-### Community 977 - "ShellError"
-Cohesion: 0.10
-Nodes (21): control_pipe_descriptors_are_close_on_exec(), create_control_pipe(), ensure_local_shell_supported(), persistent_shell_unsupported_error(), resolve_control_program(), Box, Child, Display (+13 more)
+### Community 977 - "SpawnedChildGuard"
+Cohesion: 0.21
+Nodes (6): BusyGuard, Child, Drop, Into, Self, SpawnedChildGuard
 
 ### Community 978 - "chadex-runtime-runner/src/webcodex_runner/external_tools_tests.rs"
 Cohesion: 0.08
@@ -5022,8 +5039,8 @@ Cohesion: 0.07
 Nodes (31): ActivityGuard, ActivityTracker, BackgroundJoinResult, BackgroundThreads, elapsed_ms(), phase_list(), ActivityGuard, Arc (+23 more)
 
 ### Community 980 - "runtime-engine/src/mcp_tests/file_import.rs"
-Cohesion: 0.08
-Nodes (56): adaptive_gateway_file_import_preserves_target_aware_host_trust(), adaptive_gateway_file_import_preserves_target_aware_host_trust_impl(), build_mcp_import_oauth_management_router(), complete_mcp_import_save(), complete_mcp_import_until_abort(), lock_mcp_import_test(), loopback_api_token_mcp_file_import_saves_pptx_when_explicitly_enabled(), loopback_api_token_mcp_file_import_saves_pptx_when_explicitly_enabled_impl() (+48 more)
+Cohesion: 0.09
+Nodes (53): adaptive_gateway_file_import_preserves_target_aware_host_trust(), adaptive_gateway_file_import_preserves_target_aware_host_trust_impl(), build_mcp_import_oauth_management_router(), complete_mcp_import_save(), complete_mcp_import_until_abort(), lock_mcp_import_test(), loopback_api_token_mcp_file_import_saves_pptx_when_explicitly_enabled(), loopback_api_token_mcp_file_import_saves_pptx_when_explicitly_enabled_impl() (+45 more)
 
 ### Community 981 - "windows_runtime_e2e.py"
 Cohesion: 0.13
@@ -5051,7 +5068,7 @@ Nodes (52): collect_readiness(), collect_readiness_from_remote(), configure_cons
 
 ### Community 987 - "runtime-engine/src/runtime_http_tests.rs"
 Cohesion: 0.06
-Nodes (78): extract_tool_call(), api_tools_call_accepts_hidden_testing_metadata_and_records_expectation(), api_tools_call_message_tool_keeps_business_session_id_with_recording_session_id(), api_tools_call_records_success_event_with_session_id(), api_tools_call_uses_recording_session_id_for_recorder_metadata(), assert_oauth_scope_rejected(), bridge_oauth2_tools_call_still_requires_project_read_and_job_run_scopes(), complete_one_agent_request() (+70 more)
+Nodes (89): extract_tool_call(), all_project_endpoints_require_bearer_auth(), api_show_changes_with_session_id(), api_tools_call_accepts_hidden_testing_metadata_and_records_expectation(), api_tools_call_message_tool_keeps_business_session_id_with_recording_session_id(), api_tools_call_records_success_event_with_session_id(), api_tools_call_uses_recording_session_id_for_recorder_metadata(), assert_oauth_scope_rejected() (+81 more)
 
 ### Community 988 - "chadex-runtime-cli/src/webcodex_cli/tests/plugin.rs"
 Cohesion: 0.08
@@ -5066,8 +5083,8 @@ Cohesion: 0.13
 Nodes (49): canonicalize_memory_tags(), Database, ensure_scope_for_mutation(), get_scope_record(), list_project_memories_with_conn(), memory_definition_hash(), memory_state_revision(), MemoryDeleteOutcome (+41 more)
 
 ### Community 991 - "chadex-runtime-workflow-session/src/continuation_tests.rs"
-Cohesion: 0.15
-Nodes (44): add_instruction(), attempt_does_not_recount_recorder_finish_when_business_finish_precedes_boundary(), attempt_only_counts_events_after_the_last_task_instruction(), attempt_without_task_instruction_falls_back_to_session_start(), changed_paths_are_deduped_bounded_and_report_total_and_truncated(), continuation_feedback_does_not_leak_raw_output_or_commands(), continuation_feedback_output_is_bounded_in_size(), create_session() (+36 more)
+Cohesion: 0.10
+Nodes (60): add_instruction(), attempt_does_not_recount_recorder_finish_when_business_finish_precedes_boundary(), attempt_only_counts_events_after_the_last_task_instruction(), attempt_without_task_instruction_falls_back_to_session_start(), changed_paths_are_deduped_bounded_and_report_total_and_truncated(), continuation_feedback_does_not_leak_raw_output_or_commands(), continuation_feedback_output_is_bounded_in_size(), create_session() (+52 more)
 
 ### Community 992 - ".execute_chadex_task_attempt"
 Cohesion: 0.09
@@ -5077,9 +5094,9 @@ Nodes (61): ChadexTaskStore, compact_failure_details(), compact_result_summary()
 Cohesion: 0.11
 Nodes (39): normalize_persistent_result_state(), normalized_result_states(), persistent_record_to_tool(), persistent_result_to_tool(), prune_terminal_records(), relative_cwd(), resolve_remote_cwd(), Arc (+31 more)
 
-### Community 994 - "load_recovered_task_projections_at"
-Cohesion: 0.13
-Nodes (28): adaptive_execution_telemetry_path(), adaptive_parallel_overhead_ewma_learns_and_persists_local_cost(), AdaptiveExecutionTelemetry, file_age_secs(), gc_task_storage(), load_adaptive_execution_telemetry(), load_adaptive_execution_telemetry_at(), load_recovered_task_projections() (+20 more)
+### Community 994 - ".get"
+Cohesion: 0.08
+Nodes (48): adaptive_execution_telemetry_path(), adaptive_parallel_overhead_ewma_learns_and_persists_local_cost(), AdaptiveExecutionTelemetry, bounded_text(), ChadexTaskStore, compact_projection_reduces_result_bytes_and_respects_budget(), compact_step_value(), compact_task_projection() (+40 more)
 
 ### Community 995 - "String"
 Cohesion: 0.09
@@ -5095,7 +5112,7 @@ Nodes (26): context_material_registry_enforces_scope_and_surface_before_provider
 
 ### Community 998 - "chadex-runtime-computer/src/platform/macos/input.rs"
 Cohesion: 0.10
-Nodes (58): clean_input_state(), closed_key_codes_and_modifier_flags_are_stable(), dispatch_macos_pointer_with(), dispatch_pointer(), display(), geometry(), input_text(), key_code() (+50 more)
+Nodes (56): clean_input_state(), closed_key_codes_and_modifier_flags_are_stable(), dispatch_macos_pointer_with(), dispatch_pointer(), display(), geometry(), key_code(), key_input() (+48 more)
 
 ### Community 999 - "ProviderFailure"
 Cohesion: 0.13
@@ -5110,16 +5127,16 @@ Cohesion: 0.11
 Nodes (56): run_shared_key_connect(), atomic_config_updates_preserve_secret_permissions_and_merge_roots(), atomic_write(), ConnectAuth, ConnectOptions, derived_oauth_profile(), derived_profile(), ensure_private_directory() (+48 more)
 
 ### Community 1002 - "String"
-Cohesion: 0.17
-Nodes (26): is_checkpoint_kind(), is_checkpoint_validation_status(), changed_paths_from_diff(), checkpoint_file_list(), checkpoint_id_of(), checkpoint_kind(), checkpoint_labels(), checkpoint_metadata_secret_like_text() (+18 more)
+Cohesion: 0.16
+Nodes (25): secret_like_value(), is_checkpoint_validation_status(), changed_paths_from_diff(), checkpoint_file_list(), checkpoint_id_of(), checkpoint_labels(), checkpoint_metadata_secret_like_text(), checkpoint_summary() (+17 more)
 
 ### Community 1003 - "runtime-engine/src/tool_runtime/kernel.rs"
 Cohesion: 0.09
 Nodes (47): mcp_artifact_export_oauth_binding_survives_access_token_refresh(), agent_task_coding_run_tools_require_task_and_execution_authority(), check_runtime_tool_scope(), check_session_message_resolution_scope(), coding_agent_tools_require_independent_execution_scope(), collaboration_session_tool(), collaboration_target_session_id(), computer_gateway_outer_scopes_are_minimal_and_action_neutral() (+39 more)
 
 ### Community 1004 - "runtime-engine/src/mcp_tests/plugin_tools.rs"
-Cohesion: 0.16
-Nodes (46): complete_plugin_request(), describe_binding_with_provider_set(), describe_dynamic_binding(), generic_runtime_plugin_gateway_list_describe_call_and_error_certainty_share_exact_dispatch(), generic_runtime_plugin_governance_is_action_aware_and_records_one_api_lifecycle(), outer_direct_provider_tool_call_is_never_plugin_dispatch(), plugin_auth(), plugin_auth_for() (+38 more)
+Cohesion: 0.12
+Nodes (58): any_plugin_scope_exposes_only_the_stable_gateway(), complete_plugin_request(), describe_binding_with_provider_set(), describe_dynamic_binding(), generic_runtime_plugin_gateway_list_describe_call_and_error_certainty_share_exact_dispatch(), generic_runtime_plugin_governance_is_action_aware_and_records_one_api_lifecycle(), outer_direct_provider_tool_call_is_never_plugin_dispatch(), plugin_auth() (+50 more)
 
 ### Community 1005 - "runtime-engine/src/project_entry_openai_tunnel.rs"
 Cohesion: 0.12
@@ -5137,9 +5154,9 @@ Nodes (79): authorized_session(), call(), e3_assignment_schema_parser_scope_and_
 Cohesion: 0.11
 Nodes (52): build_oauth_connect_result(), create_oauth_client(), create_runner_token(), ensure_oauth_client(), exact_string_array(), FailingOutput, fetch_oauth_metadata(), json_responses() (+44 more)
 
-### Community 1009 - "runtime_operations.ts"
-Cohesion: 0.13
-Nodes (21): communicationTimeLabel(), createAgentRow(), createConversationMessageCard(), createConversationRow(), createInboxDeliveryCard(), deliveryAgentLabel(), parseAgentIds(), renderAgentRows() (+13 more)
+### Community 1009 - "webcodex/src/tool_runtime/tests/hygiene.rs"
+Cohesion: 0.19
+Nodes (23): assert_reason_list_contains(), assert_review_verdict_shape(), assert_verdict_omits_raw_output_and_sensitive_values(), dispatch_hygiene_with_agent(), Option, String, TempDir, ToolResult (+15 more)
 
 ### Community 1010 - "chadex-runtime-workspace/src/workspace_checkpoint.rs"
 Cohesion: 0.12
@@ -5182,12 +5199,12 @@ Cohesion: 0.10
 Nodes (38): dropped_result_log_line(), HttpSendConfig, permanent_result_rejection_log_line(), post_json_raw(), result_http_error_disposition(), ResultHttpErrorDisposition, ResultSubmission, Arc (+30 more)
 
 ### Community 1020 - "webcodex/src/pairing_http.rs"
-Cohesion: 0.14
-Nodes (18): a_bound_pairing_code_still_rejects_a_different_device(), clean_display_name(), generate_pairing_code(), pairing_create_stores_hash_only(), pairing_enroll_consumes_once(), pairing_enroll_returns_expected_token_kinds_and_scopes(), pairing_expired_and_wrong_client_are_rejected_by_consume(), PairingCreateRequest (+10 more)
+Cohesion: 0.13
+Nodes (19): a_bound_pairing_code_still_rejects_a_different_device(), clean_display_name(), generate_pairing_code(), pairing_create_stores_hash_only(), pairing_endpoints_are_absent_from_openapi(), pairing_enroll_consumes_once(), pairing_enroll_returns_expected_token_kinds_and_scopes(), pairing_expired_and_wrong_client_are_rejected_by_consume() (+11 more)
 
 ### Community 1021 - "chadex-runtime-cli/src/webcodex_cli/connections.rs"
-Cohesion: 0.09
-Nodes (57): canon(), canonical_matches_verified_path(), canonical_server_url(), CanonicalServerUrl, Connection, connection_listing_fails_closed_when_both_registry_layouts_exist(), ConnectionPaths, connections_for_server() (+49 more)
+Cohesion: 0.11
+Nodes (43): canon(), canonical_matches_verified_path(), Connection, connection_listing_fails_closed_when_both_registry_layouts_exist(), ConnectionPaths, connections_for_server(), default_base_dir(), descriptor_field() (+35 more)
 
 ### Community 1022 - "chadex-runtime-computer/src/platform/macos/applications.rs"
 Cohesion: 0.10
@@ -5195,7 +5212,7 @@ Nodes (52): application_identity_revalidates_for_test(), bounded_bundle_string()
 
 ### Community 1023 - "chadex-runtime-runner/src/webcodex_runner/computer_tests.rs"
 Cohesion: 0.07
-Nodes (33): computer_runtime(), ensure_exact_payload_fields(), handle_computer_operation(), handle_computer_request(), optional_snapshot_dimension(), optional_snapshot_region(), CommandResult, ComputerRuntime (+25 more)
+Nodes (31): computer_runtime(), ensure_exact_payload_fields(), handle_computer_operation(), handle_computer_request(), optional_snapshot_dimension(), optional_snapshot_region(), CommandResult, ComputerRuntime (+23 more)
 
 ### Community 1024 - "Result"
 Cohesion: 0.10
@@ -5205,13 +5222,13 @@ Nodes (23): Database, RotateResult, row_to_oauth_access_token(), row_to_oauth_au
 Cohesion: 0.08
 Nodes (67): bad_json(), bad_request(), no_db(), not_found(), query_failed(), Response, audit_session(), audit_sessions() (+59 more)
 
-### Community 1026 - "runtime-engine/src/console_web.rs"
-Cohesion: 0.10
-Nodes (37): admin_app_js(), admin_html(), admin_styles_css(), apply_asset_headers(), build_test_router(), ConsoleAsset, ConsoleAssetConfigError, ConsoleAssetDirectory (+29 more)
+### Community 1026 - "ConsoleAssetSource"
+Cohesion: 0.15
+Nodes (16): apply_asset_headers(), ConsoleAsset, ConsoleAssetConfigError, ConsoleAssetDirectory, ConsoleAssetSource, development_directory_requires_runtime_core_and_loopback(), AsRef, Display (+8 more)
 
 ### Community 1027 - "runtime-engine/src/tool_runtime/git_review.rs"
-Cohesion: 0.10
-Nodes (44): bounded_output_path(), bounded_review_diff_command(), build_review_signals(), classify_path(), classify_review_paths(), collect_symbol_hints(), contains_any(), coverage_value() (+36 more)
+Cohesion: 0.08
+Nodes (57): checked_git_pipeline_to_file(), committed_git_isolated_view_setup(), committed_git_scope_command(), CommittedGitScope, normalize_exact_commit_id(), parse_committed_git_scope(), parse_scope_value(), parse_u64_scope() (+49 more)
 
 ### Community 1028 - "chadex-runtime-process/tests/managed_child.rs"
 Cohesion: 0.09
@@ -5226,8 +5243,8 @@ Cohesion: 0.09
 Nodes (47): closeout_work_projection(), SessionEvent, Value, actionable_unexpected_failure_count(), apply_compact_workflow_outcomes(), bound_chars(), bound_messages(), CloseoutEvidenceReconciliation (+39 more)
 
 ### Community 1031 - "runtime-engine/src/runner_http/mod.rs"
-Cohesion: 0.08
-Nodes (77): detached_initiator_identity_from_auth(), effective_register_owner(), enforce_register_owner(), enforce_runner_transport(), requested_by_from_auth(), require_runner_transport_scope(), AuthContext, DetachedInitiatorIdentity (+69 more)
+Cohesion: 0.13
+Nodes (50): assert_registry_runner_owner(), authorize_job_access(), record_shell_file_action(), record_shell_job_action(), record_shell_job_log_action(), record_shell_job_status_action(), record_shell_job_stop_action(), record_shell_jobs_list_action() (+42 more)
 
 ### Community 1032 - "ssh_config"
 Cohesion: 0.16
@@ -5238,16 +5255,16 @@ Cohesion: 0.20
 Nodes (21): authority_fingerprint(), coding_agent_error(), coding_agent_start_failure_from_response(), CodingAgentPreparedStart, CodingAgentStartCertainty, CodingAgentStartFailure, CodingAgentTypedStartOutcome, intent_fingerprint() (+13 more)
 
 ### Community 1034 - "webcodex/src/runner_http/mod.rs"
-Cohesion: 0.08
-Nodes (75): detached_initiator_identity_from_auth(), effective_register_owner(), enforce_register_owner(), enforce_runner_transport(), requested_by_from_auth(), require_runner_transport_scope(), AuthContext, DetachedInitiatorIdentity (+67 more)
+Cohesion: 0.13
+Nodes (50): assert_registry_runner_owner(), authorize_job_access(), record_shell_file_action(), record_shell_job_action(), record_shell_job_log_action(), record_shell_job_status_action(), record_shell_job_stop_action(), record_shell_jobs_list_action() (+42 more)
 
 ### Community 1035 - "Phase 16A — Chadex vs WebCodex First-Tool Differential Profiling"
 Cohesion: 0.06
 Nodes (30): Artifacts and validation, Canonical backend runtime catalog, Cause classification, Chadex, Chadex helper ingress, Comparable request paths, Confirmed, Connector / relay / helper observability (+22 more)
 
 ### Community 1036 - "chadex-runtime-core/src/validation_bridge.rs"
-Cohesion: 0.09
-Nodes (42): absolute_path_token_end(), assert_preserves(), assert_redacts(), bound_error_message(), bridge_error_sanitizes_spawn_path_before_serialization(), bridge_text_sanitizer_redacts_absolute_paths_without_damaging_normal_text(), BridgeDiagnostic, BridgeDiagnostics (+34 more)
+Cohesion: 0.10
+Nodes (40): absolute_path_token_end(), assert_preserves(), assert_redacts(), bound_error_message(), bridge_error_sanitizes_spawn_path_before_serialization(), bridge_text_sanitizer_redacts_absolute_paths_without_damaging_normal_text(), BridgeDiagnostic, BridgeDiagnostics (+32 more)
 
 ### Community 1037 - "ServerInstance"
 Cohesion: 0.13
@@ -5294,20 +5311,20 @@ Cohesion: 0.10
 Nodes (41): bound_findings_no_truncation(), bound_findings_truncates(), bound_hygiene_findings(), build_hygiene_summary(), build_summary_clean_git_repo(), build_summary_non_git_project(), build_summary_with_findings(), classify_cache_path() (+33 more)
 
 ### Community 1048 - ".run_process_with_contract_mode"
-Cohesion: 0.11
-Nodes (38): add_structured_continuation_facts(), classify_process_failure(), command_completed(), command_failure_result(), command_started(), decorate(), outcome_unknown_result(), process_tool_failure_result() (+30 more)
+Cohesion: 0.10
+Nodes (40): add_structured_continuation_facts(), classify_process_failure(), command_completed(), command_failure_result(), command_started(), decorate(), outcome_unknown_result(), process_tool_failure_result() (+32 more)
 
 ### Community 1049 - "runtime-engine/src/tool_runtime/search_project_texts.rs"
-Cohesion: 0.09
-Nodes (53): assert_exact_len(), CountingWriter, exact_json_length_matches_buffered_serialization(), Error, Result, T, Write, serialized_json_len() (+45 more)
+Cohesion: 0.12
+Nodes (45): actionable_search_continuation_is_parser_ready_and_hard_cap_fails_closed(), add_actionable_search_continuation(), apply_model_facing_output_budget(), apply_output_budget(), batch_failure_detail_code(), batch_failure_stage(), batch_item(), batch_output() (+37 more)
 
-### Community 1050 - "RunnerEnvelope"
-Cohesion: 0.10
-Nodes (31): quic_frame_encode_prefixes_u32_be_length(), encode_quic_frame(), encode_quic_json(), encode_quic_register_frame(), QuicFrameError, QuicRegisterFrame, QuicRegisterFrameType, read_quic_frame_body() (+23 more)
+### Community 1050 - "read_quic_frame"
+Cohesion: 0.09
+Nodes (41): job_reconciliation_inventory_round_trips_across_all_register_transports(), quic_frame_encode_prefixes_u32_be_length(), quic_frame_round_trips_through_read_write(), quic_register_codec_round_trips_current_wire_shape(), structured_process_job_request_round_trips_polling_websocket_and_quic(), structured_process_request_round_trips_polling_websocket_and_quic(), structured_script_job_request_round_trips_polling_websocket_and_quic(), structured_script_request_round_trips_polling_websocket_and_quic() (+33 more)
 
 ### Community 1051 - "chadex-runtime-computer/src/platform/macos/accessibility.rs"
-Cohesion: 0.19
-Nodes (47): accessibility_error(), accessibility_status(), accessibility_tree(), activate_window(), ax_array_count(), ax_attribute_settable(), ax_element_at(), ax_elements() (+39 more)
+Cohesion: 0.18
+Nodes (49): accessibility_error(), accessibility_status(), accessibility_tree(), activate_window(), ax_array_count(), ax_attribute_settable(), ax_element_at(), ax_elements() (+41 more)
 
 ### Community 1052 - "chadex-runtime-core/src/validation_evidence.rs"
 Cohesion: 0.13
@@ -5329,9 +5346,9 @@ Nodes (44): bounded_failure_list(), bounded_path_list(), build_handoff_brief(), 
 Cohesion: 0.16
 Nodes (45): bridge_oauth_computer_enabled_scopes(), all_optional_computer_capabilities(), bridge_authorize_code_exchanges_to_shared_key_tokens_and_verifies(), bridge_authorize_coding_agent_requires_shared_key_owned_opt_in(), bridge_authorize_get_disabled_creates_no_code(), bridge_authorize_get_invalid_client_or_redirect_creates_no_code(), bridge_authorize_get_renders_form_and_creates_no_code(), bridge_authorize_local_mcp_requires_shared_key_owned_opt_in() (+37 more)
 
-### Community 1057 - "runtime-engine/src/runner_session.rs"
-Cohesion: 0.09
-Nodes (44): classify_pump_poll_error(), dispatch_inbound(), PumpExit, RecvOutcome, RegisterPreludeError, Arc, JoinHandle, Notify (+36 more)
+### Community 1057 - "runtime-engine/src/runner_session_tests.rs"
+Cohesion: 0.13
+Nodes (25): alive_writer(), deadline(), PendingReader, pump_exit_terminates_pending_reader_and_reconciles_exact_connection(), pump_task_panic_terminates_session(), register_streaming(), Arc, Instant (+17 more)
 
 ### Community 1058 - "runtime-engine/src/tool_runtime/agent_task.rs"
 Cohesion: 0.14
@@ -5346,8 +5363,8 @@ Cohesion: 0.18
 Nodes (39): AllowedIdentityFlags, array_field(), bounded_json(), bounded_line(), command_exit_code(), flag_value(), parse_flags(), parse_plugin_command() (+31 more)
 
 ### Community 1061 - "lock_unpoison"
-Cohesion: 0.19
-Nodes (8): command_token(), lock_unpoison(), now_ts(), PersistentShellManager, MutexGuard, T, Weak, spawn_idle_sweeper()
+Cohesion: 0.14
+Nodes (15): command_token(), ensure_local_shell_supported(), lock_unpoison(), now_ts(), persistent_shell_unsupported_error(), PersistentShellManager, resolve_control_program(), Display (+7 more)
 
 ### Community 1062 - "chadex-runtime-runner/src/webcodex_runner/exit_diagnostics.rs"
 Cohesion: 0.12
@@ -5382,8 +5399,8 @@ Cohesion: 0.13
 Nodes (42): bounded_root_entries(), configured_skill_id(), ConfiguredSkillScanStats, ConfiguredSkillScanTrigger, discover(), discover_with_trigger(), LiveDiscovery, LiveSkill (+34 more)
 
 ### Community 1070 - "String"
-Cohesion: 0.16
-Nodes (39): atomic_write_json(), DetachedLaunchSpec, DetachedStartRequest, ensure_private_dir(), exclusive_lock(), execution_id_for(), FileLock, lifetime_lock_is_held() (+31 more)
+Cohesion: 0.22
+Nodes (31): atomic_write_json(), ensure_private_dir(), exclusive_lock(), FileLock, lifetime_lock_is_held(), read_json_bounded(), read_launch_frame(), read_state_record_locked() (+23 more)
 
 ### Community 1071 - "chadex-runtime-workflow-session/src/handoff_brief_tests.rs"
 Cohesion: 0.15
@@ -5398,8 +5415,8 @@ Cohesion: 0.11
 Nodes (27): elapsed_millis(), encode_observation_token(), observation_digest(), observation_outcome(), parse_observation_token(), CompleteSessionMessageInput, CompleteSessionMessageOutcome, Instant (+19 more)
 
 ### Community 1074 - "runtime-engine/src/route_metadata.rs"
-Cohesion: 0.07
-Nodes (68): api_path(), audit_class_for_event(), audit_class_for_path(), audit_class_for_runtime_tool(), AuditClass, canonical_route_metadata_has_unique_method_path_pairs(), desktop_project_activation_operator_routes_stay_hidden_and_narrowly_scoped(), direct_child_path() (+60 more)
+Cohesion: 0.10
+Nodes (40): api_path(), audit_class_for_event(), audit_class_for_path(), audit_class_for_runtime_tool(), AuditClass, canonical_route_metadata_has_unique_method_path_pairs(), desktop_project_activation_operator_routes_stay_hidden_and_narrowly_scoped(), direct_child_path() (+32 more)
 
 ### Community 1075 - "LspError"
 Cohesion: 0.18
@@ -5417,9 +5434,9 @@ Nodes (37): McpGatewayContent, McpGatewayDispatchState, McpGatewayError, McpGate
 Cohesion: 0.13
 Nodes (21): bounded_json_summary(), bounded_text(), bounded_text_never_exceeds_utf8_byte_budget(), CodingAgentWorkerDrain, config_override_is_current(), config_override_is_valid(), config_params(), durable_store_replaces_existing_state_cross_platform() (+13 more)
 
-### Community 1079 - "String"
+### Community 1079 - ".new"
 Cohesion: 0.06
-Nodes (68): cargo_test_filter_arm_is_the_fail_closed_boundary(), ClaudeCodeProviderStatus, deserialize_registration_capabilities(), normalize_host_context_text(), normalize_host_role(), PersistentShellRequest, PersistentShellResult, process_uses_shell_command_mode() (+60 more)
+Nodes (40): canonical_cargo_check_argv_accepts_read_only_flags_only(), canonical_cargo_test_argv_accepts_filter_and_read_only_flags(), canonical_go_test_accepts_legacy_and_bounded_json_packages(), cargo_test(), cargo_test_argv(), default_policy_max_output_bytes(), default_policy_max_timeout_secs(), filter_boundary_is_flat_argv_information_loss_not_acceptance() (+32 more)
 
 ### Community 1080 - "webcodex/src/tool_runtime/tests/continuation_feedback.rs"
 Cohesion: 0.13
@@ -5434,20 +5451,20 @@ Cohesion: 0.11
 Nodes (48): is_file_request_kind(), configured_skill_storage_does_not_expand_generic_file_authority(), is_artifact_request_kind(), is_checkpoint_request_kind(), canonical_existing_ancestor(), canonical_skill_package_root(), canonical_skill_resource_request_path(), delete_project_files_error() (+40 more)
 
 ### Community 1083 - "chadex-runtime-runner/src/webcodex_runner/detached_job.rs"
-Cohesion: 0.13
-Nodes (35): append_output_tail(), bound_error(), cleanup_pre_accept_supervisor(), detached_retained_line_count(), DetachedHandoffOutcome, DetachedJobPhase, DetachedJobRecord, DetachedJobStore (+27 more)
+Cohesion: 0.14
+Nodes (29): bound_error(), cleanup_pre_accept_supervisor(), DetachedHandoffOutcome, DetachedJobPhase, DetachedJobRecord, DetachedLaunchSpec, DetachedStartRequest, DetachedTerminalResult (+21 more)
 
 ### Community 1084 - "chadex-runtime-tool-contracts/src/registry/output_schemas/common.rs"
 Cohesion: 0.10
 Nodes (37): array_schema(), attempt_activity_schema(), attempt_boundary_schema(), attempt_changes_schema(), attempt_event_range_schema(), attempt_exploration_schema(), attempt_guidance_schema(), attempt_instruction_schema() (+29 more)
 
 ### Community 1085 - "validate_http_protocol"
-Cohesion: 0.10
-Nodes (41): decode_mcp_name_header(), header_mismatch(), request_header(), request_mcp_name(), Into, JsonRpcRequest, McpProtocolEra, Option (+33 more)
+Cohesion: 0.14
+Nodes (26): decode_mcp_name_header(), header_mismatch(), request_header(), request_mcp_name(), Into, JsonRpcRequest, McpProtocolEra, Option (+18 more)
 
-### Community 1086 - "String"
-Cohesion: 0.22
-Nodes (16): canonical_dialect(), command_wrapper(), CompletionProgress, ControlFrame, Option, PathBuf, String, shell_quote() (+8 more)
+### Community 1086 - "ShellEntry"
+Cohesion: 0.12
+Nodes (28): canonical_dialect(), command_wrapper(), CompletionProgress, ControlFrame, ManagerInner, AtomicBool, AtomicU64, AtomicUsize (+20 more)
 
 ### Community 1087 - "chadex-runtime-runner/src/webcodex_runner/plugin_check_tests.rs"
 Cohesion: 0.16
@@ -5470,8 +5487,8 @@ Cohesion: 0.11
 Nodes (26): auth(), bounded_ledger_arguments(), denial_terminal_projection(), AuthContext, Option, PermissionDecision, Result, Self (+18 more)
 
 ### Community 1092 - "shared_key_auth_context"
-Cohesion: 0.07
-Nodes (67): e2a_outer_job_run_scope_denial_starts_no_validation_process(), ack_and_resolve_same_outer_request_observes_ack_before_business_mutation(), call_with_recorder(), call_with_recorder_metadata(), collaboration_completion_without_recording_session_has_null_author_even_with_window(), collaboration_cross_project_recorder_fails_closed_before_completion(), collaboration_explicit_recording_session_is_completion_author(), collaboration_foreign_owner_cannot_read_or_complete_known_session_and_todo_ids() (+59 more)
+Cohesion: 0.08
+Nodes (60): ack_and_resolve_same_outer_request_observes_ack_before_business_mutation(), call_with_recorder(), call_with_recorder_metadata(), collaboration_completion_without_recording_session_has_null_author_even_with_window(), collaboration_cross_project_recorder_fails_closed_before_completion(), collaboration_explicit_recording_session_is_completion_author(), collaboration_foreign_owner_cannot_read_or_complete_known_session_and_todo_ids(), collaboration_mixed_project_scope_fails_closed_in_both_directions() (+52 more)
 
 ### Community 1093 - "ManagedChild"
 Cohesion: 0.11
@@ -5493,9 +5510,9 @@ Nodes (43): active_jobs_for_client(), compact_runner_clients(), compact_runtime_
 Cohesion: 0.09
 Nodes (39): diagnostics_unavailable(), parse_cargo_check_diagnostics(), parse_cargo_test_diagnostics(), parse_go_test_diagnostics(), CargoDiagnostic, CargoTestSummary, FailedTestDetail, cargo_check_parser_counts_invalid_diagnostics_without_guessing() (+31 more)
 
-### Community 1098 - "Value"
-Cohesion: 0.15
-Nodes (19): bounded_text(), ChadexTaskStore, compact_projection_reduces_result_bytes_and_respects_budget(), compact_step_value(), compact_task_projection(), PackageExecutionOutcome, packaging_projection(), persist_task_state() (+11 more)
+### Community 1098 - "String"
+Cohesion: 0.25
+Nodes (14): nonempty_env(), ProjectAgentTokenVerifier, ProjectAuthState, ProjectCredentialVerifier, read_protected_secret(), AuthContext, Option, Path (+6 more)
 
 ### Community 1099 - "chadex-runtime-cli/src/webcodex_cli/connect/shared_key_oauth.rs"
 Cohesion: 0.15
@@ -5523,15 +5540,15 @@ Nodes (38): analyze_unified_diff(), bounded_stderr(), consume_unified_hunk_line(
 
 ### Community 1105 - "runtime-engine/src/tool_runtime/projects.rs"
 Cohesion: 0.07
-Nodes (15): parse_project_summary_from_result(), parse_summary_defaults_name_to_id(), parse_summary_extracts_fields(), project_candidates(), project_git_available(), project_query_matches(), project_source(), ProjectCandidate (+7 more)
+Nodes (17): parse_project_summary_from_result(), parse_summary_defaults_name_to_id(), parse_summary_extracts_fields(), project_candidates(), project_git_available(), project_projection_reconcile_required(), project_query_matches(), project_source() (+9 more)
 
 ### Community 1106 - "runtime-engine/src/tool_runtime/runtime_metrics.rs"
 Cohesion: 0.10
 Nodes (25): code_mode_metrics_sink_failure_is_fail_open(), McpCallMetricObservation, metrics_sink_panics_are_fail_open(), observe_code_mode_composition(), observe_fail_open(), observe_mcp_call(), observe_skill_source(), observe_tool_call() (+17 more)
 
-### Community 1107 - "adaptive_runtime_gateway_params"
-Cohesion: 0.13
-Nodes (36): adaptive_runtime_gateway_params(), build_test_router(), Arc, AuthContext, Config, Database, Router, SessionMode (+28 more)
+### Community 1107 - "runtime-engine/src/mcp_tests/ssh_resource.rs"
+Cohesion: 0.27
+Nodes (24): call_in_task(), complete_response(), generic_runtime_ssh_resource_dispatch_preserves_native_requests_and_results(), list_binding(), managed_ssh_binding_rejects_runner_instance_replacement(), managed_ssh_invalid_post_dispatch_response_is_outcome_unknown_and_binding_is_retired(), managed_ssh_list_register_keeps_target_out_of_model_result(), managed_ssh_stale_revision_invalidates_binding_without_lost_update() (+16 more)
 
 ### Community 1108 - "read_runner_skill"
 Cohesion: 0.11
@@ -5546,8 +5563,8 @@ Cohesion: 0.10
 Nodes (31): bounded_text(), computer_control_policy(), computer_error_recovery_message(), computer_observe_policy(), computer_snapshot_artifact_definite_failure(), computer_specialized_terminal(), effective_snapshot_dimension_bound(), effective_snapshot_dimension_bounds() (+23 more)
 
 ### Community 1111 - "chadex-runtime-cli/src/webcodex_cli/connect/disconnect.rs"
-Cohesion: 0.13
-Nodes (37): canonical_matching_and_multi_profile_ambiguity_are_exact(), DisconnectOptions, DisconnectResult, ExactRegistrationObservation, known_no_unregister_error(), live_unregister_uses_structured_endpoint_and_revision(), LiveUnregisterError, lost_unregister_response_reobserves_runner_removed_registration_as_absent() (+29 more)
+Cohesion: 0.11
+Nodes (40): canonical_matching_and_multi_profile_ambiguity_are_exact(), DisconnectOptions, DisconnectResult, ExactRegistrationObservation, known_no_unregister_error(), live_unregister_uses_structured_endpoint_and_revision(), LiveUnregisterError, lost_unregister_response_reobserves_runner_removed_registration_as_absent() (+32 more)
 
 ### Community 1112 - "RunnerEnvelope"
 Cohesion: 0.10
@@ -5558,16 +5575,16 @@ Cohesion: 0.15
 Nodes (30): append(), bounded_limit(), collect_session_window_rows(), collect_window_event_rows(), collect_window_events(), collect_window_session_rows(), Database, event() (+22 more)
 
 ### Community 1114 - "oauth_mcp_request"
-Cohesion: 0.15
-Nodes (38): effective_status(), oauth_mcp_request(), adaptive_gateway_params(), assert_mcp_oauth_scope_rejected(), listed_tool_names(), oauth2_adaptive_gateway_preserves_canonical_target_scope_errors(), oauth2_coding_agent_tools_require_independent_scope_in_catalog_and_direct_call(), oauth2_managed_ssh_resource_surface_requires_explicit_ssh_local_scope() (+30 more)
+Cohesion: 0.13
+Nodes (41): effective_status(), oauth_mcp_request(), adaptive_gateway_params(), assert_mcp_oauth_scope_rejected(), listed_tool_names(), oauth2_adaptive_gateway_preserves_canonical_target_scope_errors(), oauth2_coding_agent_tools_require_independent_scope_in_catalog_and_direct_call(), oauth2_managed_ssh_resource_surface_requires_explicit_ssh_local_scope() (+33 more)
 
 ### Community 1115 - "setup"
 Cohesion: 0.15
 Nodes (37): SetupReport, setup(), assert_no_project_state_artifacts(), console_assets_are_validated_and_passed_only_to_the_serve_child(), doctor_and_status_share_canonical_readiness_facts_and_stay_read_only(), doctor_reports_conflicting_registration(), doctor_reports_malformed_registration(), doctor_reports_missing_private_credential() (+29 more)
 
 ### Community 1116 - "runtime-engine/src/tool_runtime/helpers.rs"
-Cohesion: 0.15
-Nodes (36): authored_raw_shell_bound_and_explicit_wrapper_headroom_are_consistent(), command_failed_message(), command_failure_kind_from_stderr(), command_outcome_unknown_message(), command_timeout_message(), decode_git_quoted_path(), explicit_shell_dispatch_command(), git_for_windows_shell() (+28 more)
+Cohesion: 0.13
+Nodes (39): authored_raw_shell_bound_and_explicit_wrapper_headroom_are_consistent(), command_failed_message(), command_failure_kind_from_stderr(), command_outcome_unknown_message(), command_timeout_message(), decode_git_quoted_path(), explicit_shell_dispatch_command(), git_for_windows_shell() (+31 more)
 
 ### Community 1117 - "ToolSessionEvidencePolicy"
 Cohesion: 0.14
@@ -5605,9 +5622,9 @@ Nodes (36): Value, tool_annotations(), coding_workflow_diagnostic_output_schema_
 Cohesion: 0.08
 Nodes (34): _assert_infallible(), counted_handler(), CountGate, drain_admission_fence_closes_salvo_command_channel_accept_race(), drain_disables_existing_http1_keepalive_before_new_handler_dispatch(), finite_request_started_before_drain_reaches_client_before_server_exit(), graceful_deadline_forces_hung_finite_request_boundedly(), no_signal_keeps_server_running() (+26 more)
 
-### Community 1126 - "Value"
-Cohesion: 0.25
-Nodes (13): base_event(), enqueue_metadata_event(), merge_event_fields(), persist_metadata_event(), persist_payload(), record_active_phase(), record_runner_request_dispatched(), record_runner_result_metrics() (+5 more)
+### Community 1126 - "webcodex-runner-registry/src/tests/job_log_wait.rs"
+Cohesion: 0.17
+Nodes (23): agent_job_log_bounded_wait_uses_compact_delta_and_timeout_is_empty(), agent_job_log_observation_is_baseline_then_independent_deltas(), agent_job_log_replays_partial_lines_until_each_stream_completes(), agent_job_log_resets_when_retention_advances_past_token_cursor(), job_log_wait_epoch_mismatch_refreshes_immediately(), job_log_wait_observation_update_between_calls_is_immediate(), job_log_wait_recovery_transition_between_calls_is_immediate(), job_log_wait_resets_cross_job_and_rejects_malformed_tokens() (+15 more)
 
 ### Community 1127 - "structured_validation_target_identity"
 Cohesion: 0.13
@@ -5625,9 +5642,9 @@ Nodes (36): dispatch_request(), dispatch_request_with_outcome(), escape_search_l
 Cohesion: 0.11
 Nodes (31): coding_git_baseline_and_repository_edit_fact_persist_resume_and_default_legacy_false(), corrupted_ledger_does_not_panic(), evicted_session_is_not_reactivated_by_events_or_messages(), flush_and_restore(), input_summary_redacts_sensitive_keys(), legacy_session_events_without_observed_paths_restore_with_empty_evidence(), legacy_session_events_without_validation_output_summary_restore(), list_session_messages_filters_and_clamps_limit() (+23 more)
 
-### Community 1131 - "ProjectResolverError"
-Cohesion: 0.15
-Nodes (12): ProjectResolverError, Display, Formatter, From, Result, Self, String, ToolResult (+4 more)
+### Community 1131 - ".lock"
+Cohesion: 0.26
+Nodes (18): claimed_intent_binding_is_retention_bounded_and_expired_key_can_be_reclaimed(), failed_state_write_leaves_previous_active_pointer(), interrupted_staging_is_cleaned_without_publishing_active_skill(), prepared_retry_refreshes_effect_retention_before_reentering_effect_boundary(), replay_atomic_writes_keep_crash_debris_out_of_gc_directory(), replay_capacity_gc_admits_new_key_only_by_expiring_eligible_record(), replay_capacity_rejects_new_key_but_preserves_existing_completed_and_prepared_recovery(), replay_fixture() (+10 more)
 
 ### Community 1132 - "runtime-engine/src/tool_runtime/read_revisions.rs"
 Cohesion: 0.11
@@ -5663,7 +5680,7 @@ Nodes (39): finalize_mcp_tool_observability(), handle_mcp_request_with_lifecycle
 
 ### Community 1140 - "runtime-engine/src/mcp_tests/result_app.rs"
 Cohesion: 0.12
-Nodes (36): assert_presentation_strings_bounded(), complete_result_app_show_changes(), complete_result_app_validation_job(), git_changes_presentation_bounds_diff_hunks_and_text(), git_changes_presentation_bounds_paths_and_excludes_raw_private_fields(), git_changes_presentation_distributes_diff_preview_across_presented_files(), git_changes_presentation_matches_diff_hunks_before_display_path_truncation(), git_changes_presentation_preserves_canonical_workspace_states() (+28 more)
+Nodes (35): assert_presentation_strings_bounded(), complete_result_app_show_changes(), complete_result_app_validation_job(), git_changes_presentation_bounds_diff_hunks_and_text(), git_changes_presentation_bounds_paths_and_excludes_raw_private_fields(), git_changes_presentation_distributes_diff_preview_across_presented_files(), git_changes_presentation_matches_diff_hunks_before_display_path_truncation(), git_changes_presentation_preserves_canonical_workspace_states() (+27 more)
 
 ### Community 1141 - "runtime-engine/src/tool_runtime/conversation_import.rs"
 Cohesion: 0.12
@@ -5674,12 +5691,12 @@ Cohesion: 0.15
 Nodes (35): assert_optional_sections_disabled(), coding_task_semantic_navigation_agent_failure_uses_fixed_reason_code(), coding_task_semantic_navigation_available_is_recommended_and_bounded(), coding_task_semantic_navigation_crashed_does_not_lower_startup_verdict(), coding_task_semantic_navigation_disconnected_agent_is_nonblocking(), coding_task_semantic_navigation_initializing_is_available_not_recommended(), coding_task_semantic_navigation_malformed_result_is_sanitized(), coding_task_semantic_navigation_non_rust_agent_is_not_applicable() (+27 more)
 
 ### Community 1143 - "webcodex/src/mcp.rs"
-Cohesion: 0.11
-Nodes (34): finalize_mcp_tool_observability(), handle_mcp_request_with_lifecycle(), log_mcp_computer_app_resource_delivery(), log_mcp_computer_app_resource_outcome(), mcp_info(), mcp_runtime_tool_result(), mcp_tools_list_audit_summary(), McpOutcome (+26 more)
+Cohesion: 0.12
+Nodes (35): finalize_mcp_tool_observability(), handle_mcp_request_with_lifecycle(), log_mcp_computer_app_resource_delivery(), log_mcp_computer_app_resource_outcome(), mcp_info(), mcp_post(), mcp_runtime_tool_result(), mcp_tools_list_audit_summary() (+27 more)
 
 ### Community 1144 - "chadex-runtime-code-mode/src/runtime.rs"
-Cohesion: 0.16
-Nodes (32): adaptive_second_call_depends_on_first_result(), ambient_host_authority_is_absent(), awaits_one_nested_tool_call(), cpu_bound_infinite_loop_is_terminated_by_deadline(), e1_timeout_does_not_wait_for_blocked_host_call(), effectful_frontend_success_does_not_hide_stuck_host_work(), effectful_timeout_bounds_drain_and_cancels_stuck_host_work(), effectful_timeout_closes_frontend_and_drains_started_host_call() (+24 more)
+Cohesion: 0.17
+Nodes (31): adaptive_second_call_depends_on_first_result(), ambient_host_authority_is_absent(), awaits_one_nested_tool_call(), cpu_bound_infinite_loop_is_terminated_by_deadline(), e1_timeout_does_not_wait_for_blocked_host_call(), effectful_frontend_success_does_not_hide_stuck_host_work(), effectful_timeout_bounds_drain_and_cancels_stuck_host_work(), effectful_timeout_closes_frontend_and_drains_started_host_call() (+23 more)
 
 ### Community 1145 - "chadex-runtime-lsp/src/protocol.rs"
 Cohesion: 0.09
@@ -5718,12 +5735,12 @@ Cohesion: 0.11
 Nodes (24): DrainAdmission, parent_eof_signal(), A, Arc, AtomicU8, Default, Depot, Duration (+16 more)
 
 ### Community 1154 - "validation_summary_for_session"
-Cohesion: 0.09
-Nodes (36): apply_text_edits_read_only_session_rejected(), sample_edit_tool_args_are_not_required_by_telemetry_module(), run_job_rejects_server_configured_project_without_local_spawn(), closed_session_blocks_write_tools_and_message_post(), read_only_session_rejects_write_project_file_before_mutation(), unknown_session_id_fails_before_execution_or_mutation(), load_project_instructions_empty_when_no_candidates_exist(), local_project_config() (+28 more)
+Cohesion: 0.06
+Nodes (49): apply_text_edits_read_only_session_rejected(), sample_edit_tool_args_are_not_required_by_telemetry_module(), run_job_rejects_server_configured_project_without_local_spawn(), closed_session_blocks_write_tools_and_message_post(), latest_finished_event(), mutation_cross_project_session_fails_before_write(), read_only_cross_project_session_is_blocked_before_execution(), read_only_recording_session_does_not_guard_same_project_write() (+41 more)
 
-### Community 1155 - "Option"
-Cohesion: 0.28
-Nodes (16): build_read_file_success(), effective_read_file_range(), instruction_candidate_missing(), list_tracked_error(), list_tracked_files_command(), list_tracked_files_command_with_head_fallbacks(), read_file_content_result(), read_file_content_result_with_options() (+8 more)
+### Community 1155 - "runtime-engine/src/console_web.rs"
+Cohesion: 0.19
+Nodes (21): admin_app_js(), admin_html(), admin_styles_css(), build_test_router(), development_runtime_assets_are_reread_and_fail_closed(), development_service(), embedded_runtime_and_admin_assets_preserve_bodies_and_headers(), embedded_service() (+13 more)
 
 ### Community 1156 - "build_server_http_client"
 Cohesion: 0.15
@@ -5750,8 +5767,8 @@ Cohesion: 0.11
 Nodes (19): darwin_group_has_live_members(), defer_darwin_direct_child_reap(), group_exists(), group_has_live_members(), ManagedChild, AtomicBool, Child, Command (+11 more)
 
 ### Community 1162 - "chadex-runtime-runner/src/webcodex_runner/validation/pyright.rs"
-Cohesion: 0.14
-Nodes (29): classify_pyright_status(), cmp_diagnostics(), map_severity(), OmitReason, omits_external_paths(), parse_one_diagnostic(), parse_pyright_for_status(), parse_pyright_json() (+21 more)
+Cohesion: 0.13
+Nodes (31): bound_message(), bound_rule(), classify_pyright_status(), cmp_diagnostics(), map_severity(), OmitReason, omits_external_paths(), parse_one_diagnostic() (+23 more)
 
 ### Community 1163 - "runtime-engine/src/model_surface.rs"
 Cohesion: 0.13
@@ -5766,8 +5783,8 @@ Cohesion: 0.19
 Nodes (31): current_user_sid(), current_user_sid_for_test(), dacl_sddl(), install_protected_dacl(), assert_hardened(), assert_hardened_directory(), assert_narrow_acl(), git() (+23 more)
 
 ### Community 1166 - ".run_shell_with_contract_for_resource"
-Cohesion: 0.16
-Nodes (21): bounded_tail(), command_completed(), command_execution_state_name(), command_started(), decorate_execution_output(), dispatch_uncertainty_lifecycle(), ProjectCommandOutput, AsRef (+13 more)
+Cohesion: 0.17
+Nodes (19): bounded_tail(), command_completed(), command_execution_state_name(), command_started(), decorate_execution_output(), dispatch_uncertainty_lifecycle(), ProjectCommandOutput, AsRef (+11 more)
 
 ### Community 1167 - "chadex-runtime-code-mode/src/lib.rs"
 Cohesion: 0.10
@@ -5867,11 +5884,11 @@ Nodes (9): checkpoint_publication_retries_collision_without_overwrite(), Checkpo
 
 ### Community 1191 - "webcodex-cli/src/webcodex_cli/ops.rs"
 Cohesion: 0.11
-Nodes (68): call_runtime_tool(), compact_project(), compact_projects(), content_type_is_json(), display_value(), fetch_ops_json_output(), fetch_ops_json_output_bounded(), fetch_projects() (+60 more)
+Nodes (69): call_runtime_tool(), compact_project(), compact_projects(), content_type_is_json(), display_value(), fetch_ops_json_output(), fetch_ops_json_output_bounded(), fetch_projects() (+61 more)
 
-### Community 1192 - "webcodex-runner/src/webcodex_runner/plugin.rs"
-Cohesion: 0.05
-Nodes (75): bounded_project_catalog_description(), initialize_eof_detail_is_actionable_without_inventing_a_root_cause(), CommittedState, failed_check_report(), initialize_failure_detail(), plugin_config_check_detail(), PluginEnvironmentSnapshot, PluginProfileEnvironment (+67 more)
+### Community 1192 - "prepare_provider"
+Cohesion: 0.11
+Nodes (30): initialize_failure_detail(), PluginToolsListFailure, PluginToolsListResult, prepare_provider(), provider_stdout_reader(), ProviderConnection, ProviderEntry, ProviderFailure (+22 more)
 
 ### Community 1193 - "webcodex-workflow-session/src/query.rs"
 Cohesion: 0.13
@@ -5901,9 +5918,9 @@ Nodes (15): ToolAuditContextPolicy, ToolAuditExecutionPolicy, ToolAuditRequestPo
 Cohesion: 0.18
 Nodes (29): agent_continuation_app_protocol_uses_standard_result_without_model_projection_leaks(), agent_continuation_app_surface_is_sparse_app_only_and_resource_backed(), agent_continuation_app_uses_hashed_openai_session_as_client_window_fence(), agent_continuation_hidden_kernel_entry_is_fail_closed_without_protocol_capability(), attach(), continuation_auth(), continuation_runtime(), create_agent() (+21 more)
 
-### Community 1200 - "resolve"
-Cohesion: 0.22
-Nodes (19): cwd_symlink_escape_is_rejected(), go_test_json_argv_is_bound_into_durable_invocation_identity(), manifestless_explicit_python_uses_stable_unittest_plan(), manifests_and_node_package_manager_evidence_are_validated_without_script_bodies(), node_package_manager_resolution_covers_declared_and_lockfile_evidence(), recipe_resolution_fails_closed_for_ambiguity_mismatch_and_missing_marker(), recipe_resolution_is_nearest_deterministic_and_project_bounded(), recipes_emit_only_canonical_argv_and_never_select_mutating_node_format() (+11 more)
+### Community 1200 - "serialized_json_len"
+Cohesion: 0.13
+Nodes (14): assert_exact_len(), CountingWriter, exact_json_length_matches_buffered_serialization(), Error, Result, T, Write, serialized_json_len() (+6 more)
 
 ### Community 1201 - "call_hierarchy"
 Cohesion: 0.21
@@ -5937,13 +5954,13 @@ Nodes (23): adaptive_runtime_direct(), context_continuity(), context_recovery_on
 Cohesion: 0.12
 Nodes (16): authority_profile_payload_for(), AuthoritySource, decide_for_required_tool(), EffectiveAuthorityConfig, illegal_mode_is_explicit_error(), resolve_authority_mode(), AuthorityMode, AuthorityModeParseError (+8 more)
 
-### Community 1209 - "webcodex-workflow-session/src/util.rs"
-Cohesion: 0.15
-Nodes (26): audit_policy_for_tool(), context_result_summary_for_tool_result(), direct_session_store_execution_inputs_keep_the_existing_body_free_fence(), execution_policy_for_tool(), field_output_name(), project_context_fields(), result_projection_reuse_and_working_tree_semantics_are_definition_owned(), Option (+18 more)
+### Community 1209 - "sanitize_persisted_event"
+Cohesion: 0.13
+Nodes (29): audit_policy_for_tool(), context_result_summary_for_tool_result(), direct_session_store_execution_inputs_keep_the_existing_body_free_fence(), execution_policy_for_tool(), field_output_name(), project_context_fields(), result_projection_reuse_and_working_tree_semantics_are_definition_owned(), Option (+21 more)
 
 ### Community 1210 - "cli_action"
-Cohesion: 0.04
-Nodes (90): cli_action(), I, cli_exit(), I, Result, connect_defaults_project_and_allows_automatic_key(), connect_help_is_a_top_level_quick_start(), connect_parses_explicit_key_project_and_overrides() (+82 more)
+Cohesion: 0.06
+Nodes (47): cli_action(), I, cli_exit(), I, Result, connect_defaults_project_and_allows_automatic_key(), connect_help_is_a_top_level_quick_start(), connect_parses_explicit_key_project_and_overrides() (+39 more)
 
 ### Community 1211 - "webcodex-runner-registry/src/tests/plugin_gateway.rs"
 Cohesion: 0.20
@@ -5953,9 +5970,9 @@ Nodes (17): plugin_check_rejects_mismatched_provider_report_after_dispatch(), pl
 Cohesion: 0.14
 Nodes (26): is_known_error_code(), contains_forbidden_path_material(), is_safe_project_relative_path(), map_runner_transport_error(), normalize_requested_call_hierarchy_path(), roundtrip_typed_result(), CallHierarchyDirection, CallHierarchyResult (+18 more)
 
-### Community 1213 - "webcodex/src/tool_runtime/tests/changes.rs"
-Cohesion: 0.25
-Nodes (20): committed_final_tree_is_presentable_even_when_worktree_is_clean(), file_by_path(), file_diff(), final_changes_neutralizes_repository_configured_clean_and_process_filters(), final_changes_uses_startup_tree_whole_final_workspace_and_frozen_lazy_diff(), git(), present(), presentation_needed() (+12 more)
+### Community 1213 - "EnvGuard"
+Cohesion: 0.13
+Nodes (14): args(), build_metadata(), canonical_test_tempdir(), EnvGuard, Drop, Option, OsString, RuntimeBuildMetadata (+6 more)
 
 ### Community 1214 - "ssh_config"
 Cohesion: 0.16
@@ -5994,8 +6011,8 @@ Cohesion: 0.31
 Nodes (26): parse_runner_status_with_identity(), client_base_dir_for_scope(), client_output_dir_for_profile(), client_profile_dir(), client_profile_project_registry_dir(), client_profile_runner_config(), client_profile_runner_token_file(), client_profile_runner_token_file_for_scope() (+18 more)
 
 ### Community 1223 - "chadex-runtime-cli/src/webcodex_cli/system.rs"
-Cohesion: 0.18
-Nodes (26): discover_internal_binary(), discover_named_binary_absolute(), discover_sibling_binary(), protect_windows_secret_handle(), read_optional_token(), read_optional_user_api_token(), resolve_user_api_token(), HANDLE (+18 more)
+Cohesion: 0.21
+Nodes (24): discover_internal_binary(), discover_named_binary_absolute(), discover_sibling_binary(), protect_windows_secret_handle(), read_optional_token(), read_optional_user_api_token(), resolve_user_api_token(), HANDLE (+16 more)
 
 ### Community 1224 - "chadex-runtime-lsp/src/language.rs"
 Cohesion: 0.13
@@ -6014,12 +6031,12 @@ Cohesion: 0.11
 Nodes (15): Arc, AtomicU64, AtomicUsize, Default, HashMap, Option, ReceiptRegistryState, RunnerAccess (+7 more)
 
 ### Community 1228 - "runner_registration"
-Cohesion: 0.02
-Nodes (116): abandoned_sync_cleanup_removes_only_closed_waiters(), agent_auth_context(), enqueue_scoped_occurrence_requires_both_capabilities_before_admission(), async_job_capabilities(), auth_context(), canonical_runner_feature_set_tracks_each_individual_wire_bool(), canonical_sticky_feature_fence_preserves_allowed_reconnect_transitions(), coding_agent_registration_consistency_uses_canonical_feature_semantics() (+108 more)
+Cohesion: 0.05
+Nodes (63): agent_auth_context(), enqueue_scoped_occurrence_requires_both_capabilities_before_admission(), auth_context(), canonical_runner_feature_set_tracks_each_individual_wire_bool(), canonical_sticky_feature_fence_preserves_allowed_reconnect_transitions(), coding_agent_registration_consistency_uses_canonical_feature_semantics(), current_protocol_generation_never_infers_registration_required_host_features(), generation_baseline_features_reject_reregistration_downgrade() (+55 more)
 
-### Community 1229 - "project_registry_dir"
-Cohesion: 0.19
-Nodes (22): dispatch_request_edit_routes_to_file_handler(), dispatch_request_rejects_unsupported_file_kinds_without_starting_command(), dispatch_request_detached_process_job_enters_job_manager_without_generic_result(), dispatch_request_internal_posix_script_ignores_configured_shell_parser(), dispatch_request_internal_search_uses_posix_runtime_not_configured_shell_parser(), dispatch_request_run_shell_rejects_oversized_wire_command_before_start(), dispatch_request_run_shell_sends_result_over_sink(), dispatch_request_structured_process_uses_typed_argv_and_never_shell_fallback() (+14 more)
+### Community 1229 - "runtime_config"
+Cohesion: 0.18
+Nodes (21): dispatch_request_edit_routes_to_file_handler(), dispatch_request_rejects_unsupported_file_kinds_without_starting_command(), dispatch_request_detached_process_job_enters_job_manager_without_generic_result(), dispatch_request_internal_posix_script_ignores_configured_shell_parser(), dispatch_request_internal_search_uses_posix_runtime_not_configured_shell_parser(), dispatch_request_run_shell_rejects_oversized_wire_command_before_start(), dispatch_request_run_shell_sends_result_over_sink(), dispatch_request_structured_process_uses_typed_argv_and_never_shell_fallback() (+13 more)
 
 ### Community 1230 - "Result"
 Cohesion: 0.21
@@ -6102,8 +6119,8 @@ Cohesion: 0.19
 Nodes (15): AcpOutboundWriter, BlockingWrite, BlockingWriteState, outbound_writer_blocking_sink_does_not_block_lifecycle_owner(), OutboundWriteRequest, OutboundWriterFinished, release_blocking_write(), BackgroundThreads (+7 more)
 
 ### Community 1250 - "EnvGuard"
-Cohesion: 0.13
-Nodes (15): args(), build_metadata(), canonical_test_tempdir(), EnvGuard, Drop, Option, OsString, RuntimeBuildMetadata (+7 more)
+Cohesion: 0.11
+Nodes (27): compare_build_commits(), known_build_commit(), local_cli_build_metadata(), render_build_metadata_block(), RevisionComparison, Option, String, Value (+19 more)
 
 ### Community 1251 - "String"
 Cohesion: 0.23
@@ -6161,9 +6178,9 @@ Nodes (20): run_websocket_runner(), auto_websocket_register_rejected_is_fatal_wi
 Cohesion: 0.18
 Nodes (24): assignment_fence_fingerprint(), assignment_fence_from_state(), assignment_semantic_digest(), AssignmentState, current_assignment_state(), current_state(), encode_assignment_fence(), hash_semantic_message() (+16 more)
 
-### Community 1265 - "runtime-engine/src/tool_request_trace.rs"
-Cohesion: 0.14
-Nodes (33): capture_owned_payload_for_trace(), capture_payload_for_trace(), capture_runner_job_update(), capture_runner_result(), correlations(), current_full_trace_ref(), estimate_json_bytes(), finalize_runner_job_correlation() (+25 more)
+### Community 1265 - "record_runner_request_enqueued"
+Cohesion: 0.17
+Nodes (24): capture_owned_payload_for_trace(), capture_payload_for_trace(), capture_runner_job_update(), capture_runner_result(), correlations(), estimate_json_bytes(), finalize_runner_job_correlation(), finalize_runner_result_correlation() (+16 more)
 
 ### Community 1266 - "phase19a_control_plane_campaign.py"
 Cohesion: 0.29
@@ -6175,7 +6192,7 @@ Nodes (21): context_material_keys_csv(), context_material_scope_available(), con
 
 ### Community 1268 - "ProjectResolverError"
 Cohesion: 0.10
-Nodes (29): AuthorizedProjectKnowledgeSource, ProjectKnowledgeSourceResolution, ProjectKnowledgeUnavailableReason, ProjectResolutionCache, ProjectResolutionCacheKey, ProjectResolverCandidate, ProjectResolverError, ProjectResolverErrorKind (+21 more)
+Nodes (28): AuthorizedProjectKnowledgeSource, ProjectKnowledgeSourceResolution, ProjectKnowledgeUnavailableReason, ProjectResolutionCache, ProjectResolutionCacheKey, ProjectResolverCandidate, ProjectResolverError, ProjectResolverErrorKind (+20 more)
 
 ### Community 1269 - "webcodex-workflow-session/src/assignment.rs"
 Cohesion: 0.20
@@ -6197,9 +6214,9 @@ Nodes (21): a4b_wake_schema_migration_preserves_inbox_wake_and_rebuilds_indexes(
 Cohesion: 0.17
 Nodes (19): bridge_dequeue_rechecks_exact_provider_instance_after_inventory_change(), bridge_dequeue_rechecks_exact_runner_instance_after_replacement(), bridge_dequeue_rejects_missing_exact_target_fence(), bridge_enqueue_rechecks_owner_and_exact_runner_instance(), bridge_provider(), bridge_registration(), bridge_registration_inventory_is_bounded_and_exact(), dispatched_bridge_disconnect_is_outcome_unknown_and_not_replayed() (+11 more)
 
-### Community 1275 - "SpecializedOperationPolicy"
-Cohesion: 0.20
-Nodes (7): Self, SessionToolContract, String, SpecializedAuthorityRequirement, SpecializedEffect, SpecializedOperationPolicy, SpecializedSource
+### Community 1275 - "SpecializedGovernanceDenial"
+Cohesion: 0.50
+Nodes (3): String, ToolResult, SpecializedGovernanceDenial
 
 ### Community 1276 - "new_permission_decision"
 Cohesion: 0.11
@@ -6213,9 +6230,9 @@ Nodes (19): config_generation_change_does_not_interrupt_active_remote_channel(),
 Cohesion: 0.18
 Nodes (12): concurrent_pre_prompt_terminal_transitions_commit_one_terminal_truth(), pre_barrier_restart_is_not_started_and_child_tree_is_reaped(), real_codex_acp_opt_in_dogfood(), response_error(), CodingAgentDispatchState, CodingAgentProvider, CodingAgentResponse, CodingAgentRunInventory (+4 more)
 
-### Community 1279 - "webcodex-cli/src/webcodex_cli/tests/server/status.rs"
-Cohesion: 0.06
-Nodes (44): parse_server_status(), ServerStatusOptions, compare_build_commits(), known_build_commit(), local_cli_build_metadata(), render_build_metadata_block(), RevisionComparison, Option (+36 more)
+### Community 1279 - "run"
+Cohesion: 0.05
+Nodes (80): parse_server_status(), Box, Error, ServerStatusOptions, run(), default_server_paths(), is_effective_root(), parse_env_content_value() (+72 more)
 
 ### Community 1280 - "new_permission_decision"
 Cohesion: 0.11
@@ -6226,8 +6243,8 @@ Cohesion: 0.23
 Nodes (10): assert_terminal_persistence_uncertain(), completed_terminal_is_persisted_before_live_publication_and_restart(), completion_persistence_failure_publishes_only_lost_and_never_redispatches(), mark_lost_persistence_failure_replaces_specific_lost_reason(), post_prompt_failed_persistence_failure_is_lost_without_original_error_truth(), CodingAgentObserveResult, setup_timeout_persistence_failure_is_failed_not_started(), TerminalWriteGate (+2 more)
 
 ### Community 1282 - "chadex-runtime-computer/src/macos_live_tests.rs"
-Cohesion: 0.14
-Nodes (12): assert_test_application_bundle(), computer_macos_application_replacement_after_launch_preparation_never_dispatches(), computer_macos_application_replacement_at_same_path_is_stale(), computer_macos_application_scan_is_bounded_symlink_safe_and_treats_apps_as_leaves(), create_test_application(), live_accessibility_smoke(), live_focus_control_smoke(), Fn (+4 more)
+Cohesion: 0.09
+Nodes (26): bounded_text(), assert_test_application_bundle(), computer_macos_application_replacement_after_launch_preparation_never_dispatches(), computer_macos_application_replacement_at_same_path_is_stale(), computer_macos_application_scan_is_bounded_symlink_safe_and_treats_apps_as_leaves(), create_test_application(), live_accessibility_smoke(), live_focus_control_smoke() (+18 more)
 
 ### Community 1283 - "reload_fixture"
 Cohesion: 0.21
@@ -6241,13 +6258,13 @@ Nodes (19): config_generation_change_does_not_interrupt_active_remote_channel(),
 Cohesion: 0.32
 Nodes (20): active_goal_fanout_is_bounded_before_completion_and_maximum_fanout_is_deterministic(), attention_wake_count(), attention_write_failure_rolls_back_task_attempt_event_wake_and_replay_record(), correlated_success_is_atomic_replay_safe_and_never_mutates_goal(), create_agent(), create_goal_and_link(), create_task_and_attempt(), events() (+12 more)
 
-### Community 1286 - "suggested_tool_call_schema"
-Cohesion: 0.17
-Nodes (20): output_schema_for_tool(), project_artifact_output_schema(), project_artifact_suggested_call_schema(), read_project_artifact_suggested_call_schema(), Option, Value, observe_job_continuation_schema(), suggested_tool_call_schema() (+12 more)
+### Community 1286 - "chadex-runtime-tool-contracts/src/registry/output_schemas/git.rs"
+Cohesion: 0.36
+Nodes (10): git_diff_hunks_recovery_arguments_schema(), git_diff_hunks_recovery_call_schema(), git_diff_hunks_recovery_schema(), output_schema_for_tool(), Option, Value, show_changes_diff_file_schema(), show_changes_diff_hunk_schema() (+2 more)
 
-### Community 1287 - "window_for_auth"
-Cohesion: 0.21
-Nodes (21): code_mode_composition_projects_on_one_outer_window_activity(), record_timed_window_event(), record_window_event(), record_window_event_with_activity(), revoked_project_event_cannot_be_bridged_by_window_gap_projection(), Arc, Database, test_bootstrap_auth() (+13 more)
+### Community 1287 - "audit_stats"
+Cohesion: 0.20
+Nodes (21): bad_json(), bad_request(), no_db(), not_found(), query_failed(), ActionEventView, Response, sanitize_event() (+13 more)
 
 ### Community 1288 - "chadex-runtime-validation/src/adapters/rust.rs"
 Cohesion: 0.20
@@ -6274,8 +6291,8 @@ Cohesion: 0.21
 Nodes (19): git_log_command(), git_log_command_at_head(), git_log_invocation(), git_log_next_skip(), git_log_suggested_call(), normalize_git_log_limit(), normalize_git_log_skip(), parse_git_log_commits() (+11 more)
 
 ### Community 1294 - "PermissionEvaluator"
-Cohesion: 0.20
-Nodes (11): permission_decision_for_tool(), PermissionEvaluator, Arc, AtomicUsize, AuthorityMode, EffectiveAuthorityConfig, Option, PermissionDecision (+3 more)
+Cohesion: 0.25
+Nodes (9): permission_decision_for_tool(), PermissionEvaluator, Arc, AtomicUsize, AuthorityMode, EffectiveAuthorityConfig, Option, PermissionDecision (+1 more)
 
 ### Community 1295 - ".dispatch_runner_config_tool"
 Cohesion: 0.24
@@ -6297,9 +6314,9 @@ Nodes (15): Helper, main(), main(), summary(), timed_request(), first_readable_f
 Cohesion: 0.15
 Nodes (18): computer_effect_delivery_failure(), computer_effect_not_started(), computer_effect_outcome_unknown(), computer_error(), computer_error_with_client(), computer_text_input_runner_error(), is_native_window_activation_platform(), computer_control_runner_errors_preserve_structured_error_kinds() (+10 more)
 
-### Community 1300 - "webcodex-validation/src/adapters/rust.rs"
-Cohesion: 0.20
-Nodes (15): cargo_check_command(), cargo_fmt_command(), cargo_test_command(), has_stable_cargo_fmt_diff(), Option, Result, String, ValidationAdapter (+7 more)
+### Community 1300 - "shell_escape_simple"
+Cohesion: 0.15
+Nodes (17): String, shell_escape_simple(), cargo_check_command(), cargo_fmt_command(), cargo_test_command(), has_stable_cargo_fmt_diff(), Option, Result (+9 more)
 
 ### Community 1301 - "configured_project_share_subject"
 Cohesion: 0.18
@@ -6321,9 +6338,9 @@ Nodes (23): durable_record_contains_no_prompt_or_event_bodies(), durable_record_
 Cohesion: 0.14
 Nodes (18): normalize_oauth_scopes(), oauth_discovery_scopes_supported(), oauth_scopes_supported(), OAuthAuthorizeError, Option, Result, String, Vec (+10 more)
 
-### Community 1306 - "normalize_exact_commit_id"
-Cohesion: 0.12
-Nodes (27): checked_git_pipeline_to_file(), committed_git_isolated_view_setup(), committed_git_scope_command(), CommittedGitScope, normalize_exact_commit_id(), parse_committed_git_scope(), parse_scope_value(), parse_u64_scope() (+19 more)
+### Community 1306 - ".git_commit_paths"
+Cohesion: 0.24
+Nodes (14): git_commit_paths_failure_output(), git_commit_paths_outcome_unknown(), git_commit_paths_script(), GitCommitMarker, parse_git_commit_marker(), Option, Result, String (+6 more)
 
 ### Community 1307 - "chadex-runtime-tool-contracts/src/registry/input_schemas/agent_tasks.rs"
 Cohesion: 0.22
@@ -6346,8 +6363,8 @@ Cohesion: 0.18
 Nodes (16): CliCommandOutput, is_project_command(), project_cli_action(), project_help_is_available_without_server_startup(), ProjectCliAction, RegularServerTunnelOptions, I, PathBuf (+8 more)
 
 ### Community 1312 - "webcodex/src/tool_runtime/tests/jobs.rs"
-Cohesion: 0.03
-Nodes (134): e2a_outer_job_run_scope_denial_starts_no_validation_process(), ack_and_resolve_same_outer_request_observes_ack_before_business_mutation(), call_with_recorder(), call_with_recorder_metadata(), collaboration_cross_project_recorder_fails_closed_before_completion(), collaboration_explicit_recording_session_is_completion_author(), collaboration_foreign_owner_cannot_read_or_complete_known_session_and_todo_ids(), collaboration_mixed_project_scope_fails_closed_in_both_directions() (+126 more)
+Cohesion: 0.04
+Nodes (121): e2a_outer_job_run_scope_denial_starts_no_validation_process(), ack_and_resolve_same_outer_request_observes_ack_before_business_mutation(), call_with_recorder(), call_with_recorder_metadata(), collaboration_completion_without_recording_session_has_null_author_even_with_window(), collaboration_cross_project_recorder_fails_closed_before_completion(), collaboration_explicit_recording_session_is_completion_author(), collaboration_foreign_owner_cannot_read_or_complete_known_session_and_todo_ids() (+113 more)
 
 ### Community 1313 - "webcodex-core/src/authority.rs"
 Cohesion: 0.36
@@ -6357,17 +6374,17 @@ Nodes (10): OAuthBodyAwarePolicy, OAuthRouteScopePolicy, parse_project_share_sub
 Cohesion: 0.12
 Nodes (17): ProjectInventoryStaging, ProjectInventoryState, AcceptedRunnerProtocol, CodingAgentProvider, CodingAgentRunInventory, HashSet, ProjectedStructuredTerminalSuppression, RunnerAccessGroup (+9 more)
 
-### Community 1315 - "chadex-runtime-runner-registry/src/tests/plugin_gateway.rs"
-Cohesion: 0.20
-Nodes (17): plugin_check_rejects_mismatched_provider_report_after_dispatch(), plugin_check_targets_exact_runner_without_registration_provider_inventory(), plugin_dequeue_rechecks_exact_runner_before_dispatch(), plugin_enqueue_rechecks_owner_and_exact_runner_but_not_provider_inventory(), plugin_registration(), plugin_registration_needs_only_native_plugin_capability_not_provider_inventory(), plugin_reload_can_target_exact_plugin_capable_runner_without_registration_catalog(), plugin_tool() (+9 more)
+### Community 1315 - "Fixture"
+Cohesion: 0.13
+Nodes (18): current_tools(), FakeBinary, Fixture, invalid_input_schema_is_not_started_and_provider_sees_no_call(), maximum_bounded_arguments(), Arc, Option, PathBuf (+10 more)
 
 ### Community 1316 - "webcodex/src/tool_runtime/tests/schema/specs.rs"
-Cohesion: 0.20
-Nodes (12): assert_schema_property_names_are_safe(), input_schema_properties(), Map, String, ToolSpec, Value, supports_model_facing_result_expectation(), supports_model_facing_validation_assertion() (+4 more)
-
-### Community 1317 - "run_script_validation_identity"
 Cohesion: 0.22
-Nodes (18): audit_tool_call_from_request(), bounded_completion_key_fingerprint(), canonical_cargo_validation_target(), generic_validation_digest(), GenericValidationIdentity, normalized_exact_git_commit_for_audit(), IntoIterator, Item (+10 more)
+Nodes (11): assert_schema_property_names_are_safe(), input_schema_properties(), Map, String, ToolSpec, Value, supports_model_facing_result_expectation(), supports_model_facing_validation_assertion() (+3 more)
+
+### Community 1317 - "ServiceResponse"
+Cohesion: 0.27
+Nodes (16): api_error(), map_agent_error(), map_create_result(), parse_runtime_project(), project_projection_reconcile_response(), project_unregister_rejects_cross_owner_before_active_job_fence(), require_online_client(), AuthContext (+8 more)
 
 ### Community 1318 - "Option"
 Cohesion: 0.19
@@ -6390,16 +6407,16 @@ Cohesion: 0.38
 Nodes (18): acquire_mcp_app(), bind_mcp_app(), mcp_app_binding_input_requires_canonical_view_fence(), mcp_app_consume_ack_race_and_teardown_preserve_exact_wake_semantics(), mcp_app_fifty_message_burst_coalesces_to_one_current_attempt(), mcp_app_post_fence_unbind_is_unknown_but_exact_turn_can_still_consume(), mcp_app_restart_recovery_never_bypasses_endpoint_lifecycle(), mcp_app_same_view_bind_retry_preserves_claim_and_every_dispatch_phase() (+10 more)
 
 ### Community 1324 - "el"
-Cohesion: 0.11
-Nodes (55): announceNewCollaborationMessages(), applyWorkspaceView(), beginCollaborationEdit(), cancelCollaborationEdit(), chatIsNearLatest(), clearNode(), closeAppearanceMenus(), closeComposerOptions() (+47 more)
+Cohesion: 0.12
+Nodes (43): announceNewCollaborationMessages(), applyWorkspaceView(), beginCollaborationEdit(), cancelCollaborationEdit(), captureStaticUiSources(), chatIsNearLatest(), closeAppearanceMenus(), closeComposerOptions() (+35 more)
 
 ### Community 1325 - "runtime-engine/src/runner_http/telemetry.rs"
 Cohesion: 0.15
 Nodes (13): Arc, Option, RunnerJobUpdateRequest, RunnerOperation, RunnerRegistryTelemetry, RunnerRequest, RunnerResultPayload, SshResourceRequest (+5 more)
 
 ### Community 1326 - "validation_summary_for_session"
-Cohesion: 0.09
-Nodes (37): apply_text_edits_read_only_session_rejected(), run_job_rejects_server_configured_project_without_local_spawn(), closed_session_blocks_write_tools_and_message_post(), unknown_session_id_fails_before_execution_or_mutation(), load_project_instructions_empty_when_no_candidates_exist(), local_project_config(), Path, ProjectConfig (+29 more)
+Cohesion: 0.30
+Nodes (14): assertion_name_is_inert_for_non_validation_execution(), changed_generic_command_without_assertion_keeps_legacy_identity_isolation(), different_assertions_do_not_cross_resolve_in_same_project(), generic_assertion_success_cannot_resolve_structured_failure_with_hidden_assertion_metadata(), record_run_process(), Option, SessionStore, Value (+6 more)
 
 ### Community 1327 - "phase19a_longhaul_campaign.py"
 Cohesion: 0.33
@@ -6446,8 +6463,8 @@ Cohesion: 0.61
 Nodes (7): create_project_fields(), output_schema_for_tool(), register_project_fields(), Option, Value, Vec, unregister_project_fields()
 
 ### Community 1338 - "chadex-runtime-tool-contracts/src/registry/output_schemas/jobs.rs"
-Cohesion: 0.23
-Nodes (17): job_command_execution_state_schema(), job_structured_execution_metadata_schema(), job_summary_schema(), list_jobs_recovery_call_schema(), observe_jobs_batch_followup_arguments_schema(), observe_jobs_output_schema(), output_schema_for_tool(), persistent_shell_output_schema() (+9 more)
+Cohesion: 0.13
+Nodes (27): output_schema_for_tool(), project_artifact_output_schema(), project_artifact_suggested_call_schema(), read_project_artifact_suggested_call_schema(), Option, Value, observe_job_continuation_schema(), suggested_tool_call_schema() (+19 more)
 
 ### Community 1339 - "ToolRuntime"
 Cohesion: 0.26
@@ -6465,25 +6482,25 @@ Nodes (16): delta_ms(), event_ns(), find_connection_layers(), first_named(), hea
 Cohesion: 0.13
 Nodes (14): activity_scope_from_auth(), ActivityRecorder, NoopActivityRecorder, paths_from_sanitized_arguments(), ActivityRecord, ActivityScope, AuthContext, Option (+6 more)
 
-### Community 1343 - "visible_window_summary_for_auth"
-Cohesion: 0.18
-Nodes (17): active_window_request_visible_cached(), project_visible_window_activity(), project_window_activity(), project_window_loop_timings(), ActiveWindowRequest, HashMap, RuntimeConsoleCodeModeComposition, RuntimeConsoleSessionWindow (+9 more)
+### Community 1343 - "runtime-engine/src/runner_session.rs"
+Cohesion: 0.22
+Nodes (19): classify_pump_poll_error(), dispatch_inbound(), PumpExit, RecvOutcome, RegisterPreludeError, Arc, JoinHandle, Notify (+11 more)
 
 ### Community 1344 - "Database"
 Cohesion: 0.16
 Nodes (13): Database, PairingConsumeResult, Arc, Connection, Mutex, MutexGuard, PairingCodeRecord, Path (+5 more)
 
-### Community 1345 - "prepared"
-Cohesion: 0.38
-Nodes (16): overview(), prepared(), projects(), render_error(), Depot, Response, runner(), window() (+8 more)
+### Community 1345 - "webcodex-cli/src/webcodex_cli/connect/mod.rs"
+Cohesion: 0.21
+Nodes (16): ConnectResult, ControlledWriter, explicit_key_result_never_creates_a_disclosure_marker(), generated_key_marker_is_committed_only_after_write_and_flush(), generated_result(), marker_failure_warns_without_secret_and_keeps_connect_successful(), ConnectOptions, Option (+8 more)
 
 ### Community 1346 - "RunnerRegistryInner"
 Cohesion: 0.15
 Nodes (17): CodingAgentDispatchFence, PendingShellRequest, PluginGatewayDispatchFence, ProjectedStructuredTerminalSuppression, CodingAgentResponse, HashMap, McpGatewayResponse, NotifierEntry (+9 more)
 
 ### Community 1347 - "internal_mode_command"
-Cohesion: 0.19
-Nodes (17): detached_supervisor_command(), internal_mode_command(), make_new_session(), OutputEvent, Command, JoinHandle, Receiver, Send (+9 more)
+Cohesion: 0.25
+Nodes (14): detached_supervisor_command(), internal_mode_command(), make_new_session(), Command, ManagedChild, Receiver, Write, spawn_byte_reader() (+6 more)
 
 ### Community 1348 - "handle_lsp_request"
 Cohesion: 0.27
@@ -6553,9 +6570,9 @@ Nodes (7): is_bulk_excluded_path(), is_bulk_skipped_path(), is_secret_path(), pa
 Cohesion: 0.17
 Nodes (10): NoopRunnerRegistryTelemetry, Debug, Option, RunnerJobUpdateRequest, RunnerOperation, RunnerRequest, RunnerResultPayload, Send (+2 more)
 
-### Community 1366 - "validate_project_op_path"
-Cohesion: 0.19
-Nodes (8): ContinuationCarrier, ContinuationKind, ContinuationSemantics, Result, Self, String, Value, validate_project_op_path()
+### Community 1366 - "webcodex/src/runner_session.rs"
+Cohesion: 0.22
+Nodes (19): classify_pump_poll_error(), dispatch_inbound(), PumpExit, RecvOutcome, RegisterPreludeError, Arc, JoinHandle, Notify (+11 more)
 
 ### Community 1367 - "execute_validation_with_shutdown"
 Cohesion: 0.31
@@ -6585,9 +6602,9 @@ Nodes (13): empty_content_returned_lines_zero(), no_unknown_fields_in_success(),
 Cohesion: 0.50
 Nodes (8): import_upload_failure_is_definite(), ImportConversationFilesInput, AuthContext, Option, SessionTransport, ToolCall, ToolResult, ToolRuntime
 
-### Community 1374 - "rpc_error"
-Cohesion: 0.28
-Nodes (15): mcp_complete_result(), mcp_runtime_tool_result_fallback(), mcp_runtime_tool_result_fallback_with_compat(), mcp_stateless_result(), mcp_tool_text_content(), rpc_error(), rpc_error_with_data(), rpc_result() (+7 more)
+### Community 1374 - "ShellError"
+Cohesion: 0.17
+Nodes (14): control_pipe_descriptors_are_close_on_exec(), create_control_pipe(), ensure_local_shell_supported(), persistent_shell_unsupported_error(), resolve_control_program(), Display, Error, File (+6 more)
 
 ### Community 1375 - "Execution"
 Cohesion: 0.16
@@ -6622,12 +6639,12 @@ Cohesion: 0.13
 Nodes (9): GoTestValidationAdapter, Option, Result, String, ValidationAdapter, ValidationCommandOptions, ValidationDiagnostics, ValidationFailureEvidence (+1 more)
 
 ### Community 1383 - "run_runner_status"
-Cohesion: 0.16
-Nodes (25): allowed_roots_summary(), human_readiness_requires_registered_project_and_observed_connection(), read_runner_config_metadata(), render_runner_readiness_summary(), render_runner_systemd_unit(), Option, Path, PathBuf (+17 more)
+Cohesion: 0.15
+Nodes (25): allowed_roots_summary(), human_readiness_requires_registered_project_and_observed_connection(), read_runner_config_metadata(), render_runner_readiness_summary(), Option, Path, PathBuf, Result (+17 more)
 
-### Community 1384 - "KeychainStore"
-Cohesion: 0.24
-Nodes (8): LocalizedError, OSStatus, Security, KeychainStore, KeychainStoreError, .errorDescription, unexpectedStatus, String
+### Community 1384 - "rust-env.sh"
+Cohesion: 0.19
+Nodes (12): app_bundle_is_running(), CARGO_BUILD_JOBS, build_app.sh script, sign_code(), acquire_release_lock(), CARGO_BUILD_JOBS, release_check.sh script, chadex_pin_runtime_identity() (+4 more)
 
 ### Community 1385 - "webcodex/src/workspace_activity_store.rs"
 Cohesion: 0.26
@@ -6654,8 +6671,8 @@ Cohesion: 0.19
 Nodes (13): required_runner_capability(), AuthContext, Into, Option, ProjectResolverError, ResolvedProject, Result, RunnerCapabilityRequirement (+5 more)
 
 ### Community 1391 - "ApplyFileChangeInput"
-Cohesion: 0.14
-Nodes (14): ApplyFileChangeInput, CheckpointValidationInput, ListToolsOptions, ApplyFileChangeKind, ApplyTextEditInput, D, Deserialize, Error (+6 more)
+Cohesion: 0.13
+Nodes (16): ApplyFileChangeInput, CheckpointValidationInput, is_checkpoint_kind(), ListToolsOptions, ApplyFileChangeKind, ApplyTextEditInput, D, Deserialize (+8 more)
 
 ### Community 1392 - "phase16a_first_tool_profile.py"
 Cohesion: 0.36
@@ -6677,9 +6694,9 @@ Nodes (15): 1. Exact helper-ingress timing projected into the existing Server tr
 Cohesion: 0.23
 Nodes (10): assert_terminal_persistence_uncertain(), completed_terminal_is_persisted_before_live_publication_and_restart(), completion_persistence_failure_publishes_only_lost_and_never_redispatches(), mark_lost_persistence_failure_replaces_specific_lost_reason(), post_prompt_failed_persistence_failure_is_lost_without_original_error_truth(), CodingAgentObserveResult, setup_timeout_persistence_failure_is_failed_not_started(), TerminalWriteGate (+2 more)
 
-### Community 1397 - "assert_runner_access"
+### Community 1397 - "rpc_error"
 Cohesion: 0.28
-Nodes (12): assert_runner_access(), assert_runner_owner(), job_visible_to_access(), lightweight_group_matches(), Option, Result, RunnerAccess, RunnerAccessGroup (+4 more)
+Nodes (15): mcp_complete_result(), mcp_runtime_tool_result_fallback(), mcp_runtime_tool_result_fallback_with_compat(), mcp_stateless_result(), mcp_tool_text_content(), rpc_error(), rpc_error_with_data(), rpc_result() (+7 more)
 
 ### Community 1399 - "ToolRuntime"
 Cohesion: 0.26
@@ -6765,13 +6782,13 @@ Nodes (14): append_bounded_line(), apply_transport_failure_policy(), close_contr
 Cohesion: 0.31
 Nodes (12): app_paths(), compact_json_bytes(), force_handoff(), force_late_failure(), force_midflight_observation(), main(), project_tool_id(), Any (+4 more)
 
-### Community 1420 - "Option"
-Cohesion: 0.28
-Nodes (16): build_read_file_success(), effective_read_file_range(), instruction_candidate_missing(), list_tracked_error(), list_tracked_files_command(), list_tracked_files_command_with_head_fallbacks(), read_file_content_result(), read_file_content_result_with_options() (+8 more)
+### Community 1420 - "validation_summary"
+Cohesion: 0.19
+Nodes (16): Vec, scope_identity_is_opaque_hash_and_does_not_leak_command(), validation_delta_fail_a_to_fail_a_reports_still_failing(), validation_delta_fail_a_to_fail_b_reports_newly_failed_and_resolved(), validation_delta_fail_to_pass_reports_resolved_failure(), validation_delta_multi_failure_partial_resolution(), validation_delta_pass_to_fail_reports_newly_failed(), validation_delta_passed_count_decrease_is_negative_not_zero() (+8 more)
 
 ### Community 1421 - "LifecycleHost"
-Cohesion: 0.20
-Nodes (9): ConcurrentHost, LifecycleHost, AtomicBool, AtomicUsize, Barrier, CodeModeHost, Notify, Self (+1 more)
+Cohesion: 0.18
+Nodes (10): ConcurrentHost, execution_slots(), LifecycleHost, AtomicBool, AtomicUsize, Barrier, CodeModeHost, Notify (+2 more)
 
 ### Community 1422 - "Option"
 Cohesion: 0.23
@@ -6830,8 +6847,8 @@ Cohesion: 0.27
 Nodes (9): JobObservationState, NotifierEntry, Arc, AtomicU64, Default, Notify, ReceiptCandidates, Self (+1 more)
 
 ### Community 1438 - "MemoryReceipts"
-Cohesion: 0.24
-Nodes (10): MemoryReceipts, JobReceiptStore, Mutex, Option, ReceiptRegistryState, Result, RetainedJobReceipt, String (+2 more)
+Cohesion: 0.27
+Nodes (9): MemoryReceipts, JobReceiptStore, Mutex, ReceiptRegistryState, Result, RetainedJobReceipt, String, Vec (+1 more)
 
 ### Community 1439 - "PathBuf"
 Cohesion: 0.22
@@ -6873,9 +6890,9 @@ Nodes (10): Value, run_skill_resource_input_schema(), skill_activate_input_schem
 Cohesion: 0.33
 Nodes (10): apply_patch_edit_summary_schema(), apply_patch_file_summary_schema(), apply_patch_match_diagnostic_schema(), apply_patch_match_rejection_diagnostic_schema(), apply_patch_recovery_schema(), edit_candidate_range_schema(), output_schema_for_tool(), read_files_recovery_call_schema() (+2 more)
 
-### Community 1449 - "chadex-runtime-core/src/runtime_contract.rs"
-Cohesion: 0.25
-Nodes (5): ContinuationCarrier, ContinuationKind, ContinuationSemantics, Self, Value
+### Community 1449 - "validate_project_op_path"
+Cohesion: 0.19
+Nodes (8): ContinuationCarrier, ContinuationKind, ContinuationSemantics, Result, Self, String, Value, validate_project_op_path()
 
 ### Community 1450 - ".dispatch_file_tool"
 Cohesion: 0.18
@@ -6885,9 +6902,9 @@ Nodes (9): AuthContext, Option, ProjectResolverError, ResolvedProject, Result, S
 Cohesion: 0.33
 Nodes (10): admin_auth(), context(), failed_tool_trace_ref_requires_full_mode_admin_and_operator_capability(), missing_job_request(), AuthContext, Option, ToolCallContext, ToolCallRequest (+2 more)
 
-### Community 1452 - "chadex-runtime-runner-registry/src/tests/structured_file_delete.rs"
-Cohesion: 0.23
-Nodes (18): assert_structured_delete_runner_idle(), enqueue_structured_file_delete_offline_runner_fails_closed(), enqueue_structured_file_delete_queues_when_capability_advertised(), enqueue_structured_file_delete_rejects_other_ops_before_registry(), enqueue_structured_file_delete_unknown_runner_fails_closed(), enqueue_structured_file_delete_validates_request_before_locking(), instance_replacement_drains_sync_requests_before_installing_new_lease(), instance_replacement_keeps_job_reconciliation_contract_unchanged() (+10 more)
+### Community 1452 - "register_instance_with_capabilities"
+Cohesion: 0.05
+Nodes (63): enqueue_apply_patch_requires_explicit_capability_and_queues_atomically(), patch_request(), register_patch_instance(), Result, RunnerRegistry, RunnerView, ShellFileOpRequest, String (+55 more)
 
 ### Community 1453 - "runtime-engine/tests/fixtures/process_argv_helper.rs"
 Cohesion: 0.33
@@ -6989,9 +7006,9 @@ Nodes (6): DetachedInitiatorIdentity, Option, RunnerAccessGroup, Self, String, R
 Cohesion: 0.24
 Nodes (6): DetachedIdempotencyIntent, JobRecoveryPhase, JobRecoveryReason, JobRecoveryState, Option, ShellProcessArgv
 
-### Community 1480 - "webcodex/src/tool_runtime/project_resolution.rs"
+### Community 1480 - "bounded_text"
 Cohesion: 0.27
-Nodes (8): AuthorizedProjectKnowledgeSource, ProjectKnowledgeSourceResolution, ProjectKnowledgeUnavailableReason, ProjectResolutionCache, ProjectResolutionCacheKey, ProjectResolverErrorKind, HashMap, ResolvedProject
+Nodes (14): bounded_text(), capture_window(), identity_hash(), list_windows(), map_error(), resolve_surface_window(), Display, PlatformWindow (+6 more)
 
 ### Community 1481 - "prune_expired"
 Cohesion: 0.33
@@ -7017,9 +7034,9 @@ Nodes (13): closeRuntimeInspector(), reduceRuntimeContextUserIntent(), resolveRu
 Cohesion: 0.31
 Nodes (6): ActivityRecord, ActivityScope, ActivityVisibility, Option, String, Vec
 
-### Community 1487 - "register_patch_instance"
-Cohesion: 0.24
-Nodes (8): enqueue_apply_patch_requires_explicit_capability_and_queues_atomically(), patch_request(), register_patch_instance(), Result, RunnerRegistry, RunnerView, ShellFileOpRequest, String
+### Community 1487 - "ChadexAppDelegate"
+Cohesion: 0.23
+Nodes (7): NSApplication, NSApplicationDelegate, NSObject, ChadexAppDelegate, Bool, AppLifecycleTests, XCTestCase
 
 ### Community 1488 - "chadex-runtime-core/src/skill_store.rs"
 Cohesion: 0.42
@@ -7029,9 +7046,9 @@ Nodes (8): Option, String, Vec, RunnerSkillVersion, SkillStoreActivateResponse, 
 Cohesion: 0.28
 Nodes (8): apply_project_inventory_snapshot(), current_runner_capabilities(), current_runner_registration(), RunnerCapabilities, RunnerProjectSummary, RunnerRegisterRequest, RunnerRegistry, Vec
 
-### Community 1490 - "validation_summary"
-Cohesion: 0.19
-Nodes (16): Vec, scope_identity_is_opaque_hash_and_does_not_leak_command(), validation_delta_fail_a_to_fail_a_reports_still_failing(), validation_delta_fail_a_to_fail_b_reports_newly_failed_and_resolved(), validation_delta_fail_to_pass_reports_resolved_failure(), validation_delta_multi_failure_partial_resolution(), validation_delta_pass_to_fail_reports_newly_failed(), validation_delta_passed_count_decrease_is_negative_not_zero() (+8 more)
+### Community 1490 - ".update"
+Cohesion: 0.36
+Nodes (5): DetachedJobStore, F, PathBuf, Self, run_accepted_payload()
 
 ### Community 1491 - "RegisteredStream"
 Cohesion: 0.29
@@ -7169,9 +7186,9 @@ Nodes (14): cargo_diagnostic_schema(), cargo_test_summary_schema(), failed_test_
 Cohesion: 0.29
 Nodes (6): AuthContext, Option, ToolCall, ToolProtocolCapabilities, ToolResult, ToolRuntime
 
-### Community 1525 - "ChadexAppDelegate"
-Cohesion: 0.13
-Nodes (13): NSApplication, NSApplicationDelegate, NSObject, ChadexAppDelegate, Coordinator, Bool, Context, NSObjectProtocol (+5 more)
+### Community 1525 - "SidebarSplitViewAlignmentView"
+Cohesion: 0.11
+Nodes (15): NSSplitView, NSView, NSViewRepresentable, Coordinator, Context, NSObjectProtocol, NSView, NSWindow (+7 more)
 
 ### Community 1526 - ".try_from_registration"
 Cohesion: 0.32
@@ -7297,9 +7314,9 @@ Nodes (3): ProjectConfig, PathBuf, String
 Cohesion: 0.40
 Nodes (4): RunnerFeature, RunnerFeatureSet, RunnerView, RunnerSemanticView
 
-### Community 1557 - "bounded_text"
-Cohesion: 0.27
-Nodes (14): bounded_text(), capture_window(), identity_hash(), list_windows(), map_error(), resolve_surface_window(), Display, PlatformWindow (+6 more)
+### Community 1557 - ".idempotent"
+Cohesion: 0.24
+Nodes (11): AdminProjectLifecycleService, digest_json_or_empty(), idempotency_locks(), Arc, Database, F, IdempotencyLocks, Self (+3 more)
 
 ### Community 1558 - "ToolCallStart"
 Cohesion: 0.33
@@ -7317,9 +7334,9 @@ Nodes (4): main(), Box, Error, Result
 Cohesion: 0.40
 Nodes (3): GracefulTermination, Self, SpawnOptions
 
-### Community 1562 - "chadex-runtime-runner-registry/src/tests/apply_text_edit_line_scope.rs"
-Cohesion: 0.31
-Nodes (11): enqueue_scoped_apply_text_edits_preserves_scope_and_global_occurrence_payload(), enqueue_scoped_apply_text_edits_requires_explicit_line_scope_capability(), generic_file_enqueue_preserves_unscoped_edit_without_line_scope_capability(), generic_file_enqueue_rejects_scoped_edit_without_line_scope_capability(), generic_file_enqueue_scoped_edit_uses_capability_fenced_path(), generic_file_enqueue_treats_null_optional_fences_as_absent(), line_scope_request(), register_line_scope_instance() (+3 more)
+### Community 1562 - "runtime-engine/src/tool_runtime/tests/work_result.rs"
+Cohesion: 0.36
+Nodes (10): counts(), current_validation(), review(), Value, validation(), work_result_projection_handles_clean_non_git_and_unknown_validation_without_invention(), work_result_projection_is_sparse_bounded_and_honest(), work_result_projection_marks_bounded_history_partial_without_inventing_absence() (+2 more)
 
 ### Community 1563 - "chadex-runtime-tool-contracts/src/registry/input_schemas/cleanup.rs"
 Cohesion: 0.70
@@ -7350,8 +7367,8 @@ Cohesion: 0.40
 Nodes (9): exact_project_read_admission_rejects_changed_project_placement(), exact_project_read_admission_rejects_runner_replacement_before_enqueue(), exact_project_read_batch_admits_all_requests_in_order(), exact_project_read_batch_capacity_failure_is_atomic(), exact_project_read_revalidates_placement_before_dequeue(), read_request(), register_read_runner(), RunnerRegistry (+1 more)
 
 ### Community 1570 - "schema_type"
-Cohesion: 0.16
-Nodes (18): bounded_failure_message_schema(), content_schema(), effect_receipt_schema(), failure_kind_schema(), output_schema_for_tool(), Option, Value, stats_schema() (+10 more)
+Cohesion: 0.33
+Nodes (9): bounded_failure_message_schema(), content_schema(), effect_receipt_schema(), failure_kind_schema(), output_schema_for_tool(), Option, Value, stats_schema() (+1 more)
 
 ### Community 1571 - "CodingAgentRunSnapshot"
 Cohesion: 0.25
@@ -7450,12 +7467,12 @@ Cohesion: 0.29
 Nodes (6): Boundary and result, Dogfood and latency attribution, Instrumentation architecture, Next phase priorities, Overhead and validation, Phase 15 — Execution Attribution
 
 ### Community 1603 - "wrapped_output_schema"
-Cohesion: 0.09
-Nodes (28): execute_tasks_output_schema(), output_schema_for_tool(), Option, Value, task_output_schema(), task_recovery_output_schema(), task_state_schema(), output_schema_for_tool() (+20 more)
+Cohesion: 0.12
+Nodes (21): execute_tasks_output_schema(), output_schema_for_tool(), Option, Value, task_output_schema(), task_recovery_output_schema(), task_state_schema(), output_schema_for_tool() (+13 more)
 
-### Community 1604 - "chadex-runtime-runner-registry/src/tests/apply_text_edit_local_guard.rs"
-Cohesion: 0.33
-Nodes (9): current_runner_capability_admits_sha_less_local_edit(), local_edit_request(), local_guard_capability_is_additive_and_missing_defaults_false(), older_runner_still_accepts_local_edit_with_existing_wire_sha_guard(), register_local_guard_instance(), Option, RunnerRegistry, ShellFileOpRequest (+1 more)
+### Community 1604 - "AxObservationDeadline"
+Cohesion: 0.29
+Nodes (6): AxObservationDeadline, computer_ax_observation_call_timeout_never_exceeds_remaining_budget(), computer_ax_observation_deadline_expired_fails_closed(), Duration, Instant, Self
 
 ### Community 1605 - "Phase 17 Stage 4 — Public RC1 Readiness"
 Cohesion: 0.22
@@ -7481,9 +7498,9 @@ Nodes (4): Chadex 0.2.2, Fixes, Upgrade note, Validation
 Cohesion: 0.20
 Nodes (9): Components, Local configuration, Measurement surfaces, Operational rules, Optional E2E sanity invocation, Phase 19A Long-Haul Benchmark Harness, Primary baseline: deterministic Chadex control plane, Primary smoke invocation (+1 more)
 
-### Community 1611 - "register_occurrence_instance"
-Cohesion: 0.24
-Nodes (8): enqueue_apply_text_edits_occurrence_requires_capability_and_queues_atomically(), occurrence_request(), register_occurrence_instance(), Result, RunnerRegistry, RunnerView, ShellFileOpRequest, String
+### Community 1611 - "SpawnedChildGuard"
+Cohesion: 0.21
+Nodes (6): BusyGuard, Child, Drop, Into, Self, SpawnedChildGuard
 
 ### Community 1722 - "keywords"
 Cohesion: 0.18
@@ -7578,12 +7595,12 @@ Cohesion: 0.50
 Nodes (4): OpenAiFileIdRef, From, OpenAiHostFileRef, Self
 
 ### Community 1749 - "normalize_exact_commit_id"
-Cohesion: 0.26
-Nodes (14): checked_git_pipeline_to_file(), committed_git_isolated_view_setup(), committed_git_scope_command(), CommittedGitScope, normalize_exact_commit_id(), parse_committed_git_scope(), parse_scope_value(), parse_u64_scope() (+6 more)
+Cohesion: 0.31
+Nodes (11): committed_git_isolated_view_setup(), committed_git_scope_command(), CommittedGitScope, normalize_exact_commit_id(), parse_committed_git_scope(), parse_scope_value(), parse_u64_scope(), Option (+3 more)
 
-### Community 1750 - "AxObservationDeadline"
-Cohesion: 0.29
-Nodes (6): AxObservationDeadline, computer_ax_observation_call_timeout_never_exceeds_remaining_budget(), computer_ax_observation_deadline_expired_fails_closed(), Duration, Instant, Self
+### Community 1750 - "WorkOnProjectBriefProjection"
+Cohesion: 0.17
+Nodes (12): is_default_work_on_project_resolution(), ProjectResolutionMetadata, ManagedWorktreeProjection, PermissionDecision, WorkOnProjectContinuationProjection, WorkOnProjectInstructionsProjection, WorkOnProjectProjectProjection, WorkOnProjectSemanticNavigationProjection (+4 more)
 
 ### Community 1751 - "UpdateManager"
 Cohesion: 0.03
@@ -7605,9 +7622,9 @@ Nodes (8): Correlation and privacy, Diagnostic semantics, Edge cases covered, Ph
 Cohesion: 0.33
 Nodes (5): drain_sync_receiver(), Duration, ExitStatus, Receiver, WaitOutcome
 
-### Community 1764 - "AttemptSummary"
-Cohesion: 0.18
-Nodes (11): AttemptSummary, AttemptActivity, AttemptBoundary, AttemptChanges, AttemptEventRange, AttemptExploration, AttemptGuidance, AttemptInstruction (+3 more)
+### Community 1764 - "update_sha256_with_json"
+Cohesion: 0.27
+Nodes (8): Error, Result, Sha256, T, Write, Sha256Writer, streaming_json_sha256_matches_buffered_serialization(), update_sha256_with_json()
 
 ### Community 1766 - "phase19a_pilot_workload.py"
 Cohesion: 0.61
@@ -7637,10 +7654,6 @@ Nodes (9): BridgeError, ErrorCode, Display, Error, Formatter, Option, Result, Se
 Cohesion: 0.22
 Nodes (8): 0.2.0, 0.2.1, 0.2.2, 0.2.3, 0.3.0, 0.3.1, 0.3.2, Changelog
 
-### Community 1774 - "append_runner_stream"
-Cohesion: 0.38
-Nodes (7): append_runner_stream(), ShellJobStreamSnapshot, runner_inventory_trim_keeps_utf8_boundary(), runner_retained_line_count(), runner_stream_truncation_keeps_utf8_boundary(), trim_runner_stream_to(), job_reconciliation_utf8_log_tail_is_bounded_with_absolute_cursor()
-
 ### Community 1775 - "Chadex 0.3.0"
 Cohesion: 0.29
 Nodes (6): Chadex 0.3.0, Distribution, Long-running work, Release-candidate smoke, Updater / compatibility, Validation evidence
@@ -7653,9 +7666,9 @@ Nodes (9): SuspendedLaunchTests, launch_owned(), LaunchFailure, Any, Path, Popen
 Cohesion: 0.15
 Nodes (11): W2 cleanup 與停止點, W2 進度與交接, 分支與驗證對象, 子代理紀錄, 實際修改檔案（相對 W1）, 已完成的修正, 驗證結果, Evidence boundaries (+3 more)
 
-### Community 1778 - "TraceWrite"
-Cohesion: 0.31
-Nodes (8): enqueue_trace_write(), Receiver, Sender, SyncSender, trace_writer(), trace_writer_loop(), TraceWrite, TraceWriter
+### Community 1778 - "String"
+Cohesion: 0.13
+Nodes (15): current_active_trace_id(), current_full_trace_ref(), enqueue_trace_write(), IndexedTracePayload, Into, Sender, String, SyncSender (+7 more)
 
 ### Community 1780 - "webcodex-runner/src/webcodex_runner/validation/validation_tree_helper.rs"
 Cohesion: 0.43
@@ -7665,25 +7678,25 @@ Nodes (5): main(), Path, String, spawn_descendant(), wait_until_file()
 Cohesion: 0.27
 Nodes (15): parse_framed_git_diff_hunks_stdout(), parse_git_diff_hunks_wire_block(), parse_hunk_indices(), parse_required_i32(), is_git_object_hex(), is_lower_hex(), parse_fixed_decimal(), parse_optional_bool() (+7 more)
 
-### Community 1782 - "Vec"
-Cohesion: 0.11
-Nodes (28): align_and_restore_bom(), align_valid_utf8_tail(), BoundedPipeTail, collect_profile_prepare_output(), ContinuousPipeDrain, IncrementalUtf8Validator, join_profile_prepare_reader_until(), leading_bom() (+20 more)
+### Community 1782 - "runtime-engine/src/tool_runtime/tests/startup_catalog.rs"
+Cohesion: 0.25
+Nodes (9): plugin(), reference_catalog(), StartupPluginEntry, StartupSkillEntry, Value, skill(), startup_catalog_combined_budget_and_utf8_description_remain_bounded(), startup_catalog_plugin_projection_preserves_provider_total_and_optional_fields() (+1 more)
 
 ### Community 1783 - "runtime-engine/src/tool_runtime/computer_tools.rs"
 Cohesion: 0.38
 Nodes (14): computer_observe_suggested_recovery(), computer_pointer_effect_delivery_failure(), computer_pointer_effect_not_started(), computer_pointer_effect_outcome_unknown(), computer_pointer_effect_spent_not_started(), computer_pointer_runner_error(), computer_reconcile_recovery(), computer_suggested_recovery() (+6 more)
 
-### Community 1784 - "WindowsInstallerSmokeTests"
-Cohesion: 0.24
-Nodes (5): digest(), make_candidate(), Path, Portable regressions for the W5 installed-release wrapper., WindowsInstallerSmokeTests
+### Community 1784 - "Path"
+Cohesion: 0.17
+Nodes (7): digest(), InstalledCdpPolicyTests, make_candidate(), policy_registry(), Path, Portable regressions for the W5 installed-release wrapper., WindowsInstallerSmokeTests
 
 ### Community 1785 - "write_profile"
 Cohesion: 0.60
 Nodes (3): Phase16CVarianceTests, Path, write_profile()
 
-### Community 1789 - ".start"
-Cohesion: 0.40
-Nodes (5): Receiver, SyncSender, trace_writer(), trace_writer_loop(), TraceWriter
+### Community 1787 - "AttemptSummary"
+Cohesion: 0.18
+Nodes (11): AttemptSummary, AttemptActivity, AttemptBoundary, AttemptChanges, AttemptEventRange, AttemptExploration, AttemptGuidance, AttemptInstruction (+3 more)
 
 ### Community 1791 - "CountingSerialize"
 Cohesion: 0.33
@@ -7697,9 +7710,9 @@ Nodes (8): RegisteredStream, Connection, Endpoint, Receiver, RecvStream, RunnerW
 Cohesion: 0.13
 Nodes (10): CI completion follow-up, W4 進度與交接, 來源, 已完成, 限制與下一步, 驗證, Ownership and scope, Reproduce and validate (+2 more)
 
-### Community 1794 - ".list_project_files"
-Cohesion: 0.36
-Nodes (7): has_leading_runner_result_retention_truncation_marker(), page_file_list_entries(), parse_file_list_entries(), Value, Vec, parse_and_page_file_list_entries_is_sorted_gap_free_and_unicode_safe(), parse_file_list_entries_prepends_subpath_for_relative_paths()
+### Community 1794 - "cargo_output_schema"
+Cohesion: 0.33
+Nodes (9): cargo_test_count_assertion_schema(), nullable_schema(), cargo_diagnostic_schema(), cargo_output_schema(), cargo_test_diagnostics_schema(), failed_test_detail_schema(), output_schema_for_tool(), Option (+1 more)
 
 ### Community 1795 - "Windows Track W3 — Desktop Product"
 Cohesion: 0.29
@@ -7708,6 +7721,10 @@ Nodes (7): Architecture and authority, Automated acceptance, Development and exe
 ### Community 1796 - ".import_conversation_files"
 Cohesion: 0.50
 Nodes (8): import_upload_failure_is_definite(), ImportConversationFilesInput, AuthContext, Option, SessionTransport, ToolCall, ToolResult, ToolRuntime
+
+### Community 1797 - "runtime-engine/src/runtime_http/tests/model_ergonomics_tests.rs"
+Cohesion: 0.31
+Nodes (8): api_batch_call_records_one_generic_outer_invocation(), api_model_ergonomics_failure_uses_structured_kinds_without_private_text(), api_model_ergonomics_success_is_exact_and_queryable(), api_pre_result_invalid_arguments_still_counts_without_fabricated_bytes(), api_work_on_project_preferences_persist_as_privacy_bounded_action_audit_facts(), Database, Value, single_model_ergonomics()
 
 ### Community 1798 - "benchmark_phase10_quality_replay.py"
 Cohesion: 0.40
@@ -7721,6 +7738,10 @@ Nodes (8): DesktopState, connectionStatus(), localStatus(), MAX_SNAPSHOT_AGE_MS,
 Cohesion: 0.29
 Nodes (10): App(), activate(), chooseProject(), inspect(), run(), runtime(), saveCredential(), basename() (+2 more)
 
+### Community 1802 - "model_facing_recovery_event"
+Cohesion: 0.38
+Nodes (9): model_facing_recovery_event(), checkpoint_event(), context_recovery_event_preserves_all_available_optional_evidence(), context_recovery_event_preserves_present_empty_evidence_and_unknown_status(), minimal_context_recovery_event_projects_only_known_identity_and_status(), minimal_event(), SessionEvent, sparse_context_recovery_events_retain_more_under_the_same_hard_budget() (+1 more)
+
 ### Community 1803 - "Code Ferret"
 Cohesion: 0.40
 Nodes (5): Appearance and motion, Architecture, Code Ferret, Runtime mapping, Validation boundaries
@@ -7730,12 +7751,20 @@ Cohesion: 0.36
 Nodes (11): binary_paths(), cargo_target(), _copy_atomic(), _debug_candidates(), _local_binary_paths(), main(), prepare(), PrepareFailure (+3 more)
 
 ### Community 1805 - "agent_token_summary"
-Cohesion: 0.50
-Nodes (4): agent_token_summary(), ApiKeyRecord, Value, agent_token_summary_never_includes_hash_or_plaintext()
+Cohesion: 0.25
+Nodes (7): agent_token_summary(), ApiKeyRecord, Value, agent_token_summary_never_includes_hash_or_plaintext(), effective_status(), Response, StatusCode
 
 ### Community 1808 - "chadex_core/activity.rs"
 Cohesion: 0.42
 Nodes (9): redact_bearer_credentials(), redact_prefixed_token(), String, RuntimeActivityEntry, sanitize_message(), sanitizer_redacts_runtime_credentials(), sanitizer_removes_entire_bearer_token_in_mixed_case_and_json(), sanitizer_truncates_on_utf8_boundary() (+1 more)
+
+### Community 1809 - "register_read_runner"
+Cohesion: 0.40
+Nodes (9): exact_project_read_admission_rejects_changed_project_placement(), exact_project_read_admission_rejects_runner_replacement_before_enqueue(), exact_project_read_batch_admits_all_requests_in_order(), exact_project_read_batch_capacity_failure_is_atomic(), exact_project_read_revalidates_placement_before_dequeue(), read_request(), register_read_runner(), RunnerRegistry (+1 more)
+
+### Community 1810 - "cargo_output_schema"
+Cohesion: 0.33
+Nodes (9): cargo_test_count_assertion_schema(), nullable_schema(), cargo_diagnostic_schema(), cargo_output_schema(), cargo_test_diagnostics_schema(), failed_test_detail_schema(), output_schema_for_tool(), Option (+1 more)
 
 ### Community 1811 - "bin/smoke.rs"
 Cohesion: 0.39
@@ -7753,6 +7782,30 @@ Nodes (6): core, mount(), apiMock(), deferred(), desktop(), snapshot()
 Cohesion: 0.36
 Nodes (10): counts(), current_validation(), review(), Value, validation(), work_result_projection_handles_clean_non_git_and_unknown_validation_without_invention(), work_result_projection_is_sparse_bounded_and_honest(), work_result_projection_marks_bounded_history_partial_without_inventing_absence() (+2 more)
 
+### Community 1815 - "webcodex/src/runtime_http/tests/model_ergonomics_tests.rs"
+Cohesion: 0.31
+Nodes (8): api_batch_call_records_one_generic_outer_invocation(), api_model_ergonomics_failure_uses_structured_kinds_without_private_text(), api_model_ergonomics_success_is_exact_and_queryable(), api_pre_result_invalid_arguments_still_counts_without_fabricated_bytes(), api_work_on_project_preferences_persist_as_privacy_bounded_action_audit_facts(), Database, Value, single_model_ergonomics()
+
+### Community 1817 - "builtin_coding_workflow_projection"
+Cohesion: 0.33
+Nodes (8): builtin_coding_workflow_projection(), builtin_coding_workflow_defaults_are_required_and_bounded(), builtin_coding_workflow_defaults_cover_unnamed_tasks_without_granting_authority(), builtin_coding_workflow_review_does_not_implicitly_authorize_edits(), builtin_coding_workflow_routes_persistent_shell_to_ssh_state_not_local_command_count(), Value, workflow_schema(), builtin_coding_workflow_keeps_budget_headroom()
+
+### Community 1818 - "preflight_plugin_schema_node"
+Cohesion: 0.39
+Nodes (7): bounded_schema_usize(), parse_plugin_schema_type(), PluginSchemaType, preflight_plugin_schema_node(), preflight_plugin_schema_profile(), SchemaProfileFailure, SchemaProfileFailureKind
+
+### Community 1819 - "serve_asset"
+Cohesion: 0.56
+Nodes (9): admin_app_js(), admin_html(), admin_styles_css(), Depot, Response, runtime_app_js(), runtime_html(), runtime_styles_css() (+1 more)
+
+### Community 1820 - "import_conversation_files_to_project"
+Cohesion: 0.22
+Nodes (8): import_conversation_files_to_project(), ImportConversationFilesRequest, Depot, OpenAiFileIdRef, Option, Response, String, Vec
+
+### Community 1821 - "webcodex/src/runtime_http/project_files.rs"
+Cohesion: 0.47
+Nodes (8): ApplyUnifiedDiffRequest, DiscardUntrackedRequest, GitRestorePathsRequest, ListProjectFilesRequest, ProjectIdRequest, Option, String, Vec
+
 ### Community 1822 - "prepare-ferret.mjs"
 Cohesion: 0.36
 Nodes (6): canonicalFerretPlugin(), loadCanonicalFerret(), quoted(), required(), resourceRoot, swiftRoot
@@ -7765,13 +7818,9 @@ Nodes (7): description, identifier, core:default, main, permissions, $schema, wi
 Cohesion: 0.50
 Nodes (5): DesktopPaths, production_paths_are_rooted_in_resources(), Path, PathBuf, Self
 
-### Community 1825 - "build_script_command"
-Cohesion: 0.47
-Nodes (6): build_script_command(), fixed_script_prefix_args(), javascript_plan_uses_mjs_file_and_native_literal_argv(), powershell_plan_uses_ps1_file_and_never_command_text_mode(), sh_and_bash_plans_pass_a_script_file_without_command_text_mode(), typescript_plan_uses_mts_native_argv_and_runner_owned_prefix()
-
-### Community 1826 - ".list_project_files"
-Cohesion: 0.36
-Nodes (7): has_leading_runner_result_retention_truncation_marker(), page_file_list_entries(), parse_file_list_entries(), Value, Vec, parse_and_page_file_list_entries_is_sorted_gap_free_and_unicode_safe(), parse_file_list_entries_prepends_subpath_for_relative_paths()
+### Community 1826 - "build_register_request"
+Cohesion: 0.39
+Nodes (7): build_register_request(), generated_runner_instance_id_is_non_empty_uuid_like(), computer_register_request_announces_platform_capabilities_and_generation(), current_runner_registration_advertises_v2_and_complete_generation_baseline(), mcp_gateway_register_request_projects_bounded_provider_inventory_without_local_launch_details(), phase_e2_register_request_reports_effective_job_concurrency_limit(), register_request_carries_sanitized_shell_profiles_summary()
 
 ### Community 1827 - "emit"
 Cohesion: 0.38
@@ -7786,8 +7835,8 @@ Cohesion: 0.40
 Nodes (5): apply_regular_tunnel_next_action(), regular_tunnel_exposure(), regular_tunnel_local_handoff_waits_for_external_chatgpt_evidence(), ExposureReadiness, RegularTunnelState
 
 ### Community 1830 - "webcodex/src/tool_runtime/tests/startup_catalog.rs"
-Cohesion: 0.25
-Nodes (9): plugin(), reference_catalog(), StartupPluginEntry, StartupSkillEntry, Value, skill(), startup_catalog_combined_budget_and_utf8_description_remain_bounded(), startup_catalog_plugin_projection_preserves_provider_total_and_optional_fields() (+1 more)
+Cohesion: 0.23
+Nodes (10): bounded_extension_description(), plugin(), reference_catalog(), StartupPluginEntry, StartupSkillEntry, Value, skill(), startup_catalog_combined_budget_and_utf8_description_remain_bounded() (+2 more)
 
 ### Community 1831 - "MockHttpServer"
 Cohesion: 0.24
@@ -7801,25 +7850,45 @@ Nodes (4): Bounds and sensitive data, Chadex W3 desktop helper bridge, Environme
 Cohesion: 0.40
 Nodes (4): Native gate, Runtime E2E, Scope boundary, W2 Windows validation evidence — run 36987012302
 
+### Community 1835 - "webcodex/src/runtime_http/jobs.rs"
+Cohesion: 0.50
+Nodes (7): JobStopRequest, JobTailRequest, ListJobsRequest, Option, String, RunShellRequest, StartProjectShellJobRequest
+
+### Community 1836 - "webcodex/src/runtime_http/projects.rs"
+Cohesion: 0.43
+Nodes (7): CreateProjectRequest, RegisterProjectRequest, ResolveOrRegisterProjectRequest, Option, String, Value, UnregisterProjectRequest
+
 ### Community 1841 - "runner_config"
 Cohesion: 0.40
 Nodes (5): default_websocket_connect_timeout_secs(), PluginConfig, RunnerConfig, ShellConfig, runner_config()
 
-### Community 1842 - "RuntimeConsoleOverview"
-Cohesion: 0.40
-Nodes (5): RuntimeConsoleProject, RuntimeConsoleRecentSessions, RuntimeConsoleRunnerSummary, RuntimeConsoleWorkflowAggregate, RuntimeConsoleOverview
+### Community 1842 - "runner_config_check"
+Cohesion: 0.36
+Nodes (7): Depot, Response, String, runner_config_check(), runner_config_reload(), RunnerConfigCheckRequest, RunnerConfigReloadRequest
+
+### Community 1843 - ".new_with_tunnel_config"
+Cohesion: 0.52
+Nodes (3): PathBuf, Self, TunnelConfig
+
+### Community 1844 - "webcodex-tool-contracts/src/registry/output_schemas/memory.rs"
+Cohesion: 0.43
+Nodes (6): descriptor_schema(), memory_scope_descriptor_schema(), output_schema_for_tool(), provenance_schema(), Option, Value
 
 ### Community 1845 - "ooxml_extension_for_mime"
 Cohesion: 0.25
 Nodes (8): has_safe_octet_stream_artifact_extension(), octet_stream_safe_extension_error(), ooxml_extension_for_mime(), Option, String, safe_octet_stream_artifact_extensions_csv(), default_extension_for_import_mime(), mime_allowed_for_import()
 
+### Community 1846 - "DetachedOutputState"
+Cohesion: 0.47
+Nodes (6): append_output_tail(), detached_retained_line_count(), DetachedOutputState, Default, output_tail_is_bounded_while_total_bytes_and_line_cursors_continue(), validate_output_state()
+
 ### Community 1848 - "windows_installed_probe.mjs"
 Cohesion: 0.44
 Nodes (6): check(), connect(), probe(), safeErrors, sleep(), waitForUi()
 
-### Community 1849 - "shell_escape_simple"
-Cohesion: 0.31
-Nodes (7): String, shell_escape_simple(), git_diff_hunks_command(), git_diff_hunks_committed_command(), git_diff_hunks_fingerprint_command(), git_diff_hunks_page_command(), git_diff_hunks_command_is_read_only_and_scoped_to_paths()
+### Community 1849 - "spawn_output_reader"
+Cohesion: 0.33
+Nodes (6): OutputEvent, JoinHandle, Send, SyncSender, Vec, spawn_output_reader()
 
 ### Community 1850 - "wait_until"
 Cohesion: 0.67
@@ -7829,9 +7898,13 @@ Nodes (3): Duration, Fn, wait_until()
 Cohesion: 0.67
 Nodes (3): Duration, Fn, wait_until()
 
-### Community 1853 - "create_temporary_script"
-Cohesion: 0.22
-Nodes (9): create_temporary_script(), Error, PathBuf, ShellScriptPayload, TempPath, script_setup_error(), javascript_temp_file_uses_mjs_and_exact_script_bytes(), phase_f_powershell_temp_file_uses_utf8_bom_without_script_preamble() (+1 more)
+### Community 1852 - "DesktopState"
+Cohesion: 0.40
+Nodes (5): DashboardProps, FirstRunProps, ProjectsPanel(), projectReadinessLabel(), DesktopState
+
+### Community 1853 - "provider_stdin_writer"
+Cohesion: 0.33
+Nodes (6): provider_stdin_writer(), ChildStdin, Receiver, Sender, WriteAck, WriteRequest
 
 ### Community 1855 - "Windows Track W5 — Installer and Release Readiness"
 Cohesion: 0.40
@@ -7841,20 +7914,40 @@ Nodes (4): Automated installed acceptance, Build contract, Publication gate and 
 Cohesion: 0.50
 Nodes (4): OpenAiFileIdRef, From, OpenAiHostFileRef, Self
 
+### Community 1857 - "is_file_request_kind"
+Cohesion: 0.40
+Nodes (5): is_file_request_kind(), is_artifact_request_kind(), is_checkpoint_request_kind(), is_basic_file_request_kind(), is_structured_edit_request_kind()
+
+### Community 1858 - "runner_config"
+Cohesion: 0.40
+Nodes (5): default_websocket_connect_timeout_secs(), PluginConfig, RunnerConfig, ShellConfig, runner_config()
+
+### Community 1861 - "effective_status"
+Cohesion: 0.50
+Nodes (4): echo_runtime_ok(), effective_status(), Response, StatusCode
+
+### Community 1863 - "wait_until"
+Cohesion: 0.67
+Nodes (3): Duration, Fn, wait_until()
+
+### Community 1864 - "wait_until"
+Cohesion: 0.67
+Nodes (3): Duration, Fn, wait_until()
+
 ## Knowledge Gaps
 - **2207 isolated node(s):** `PackageDescription`, `OSLog`, `ServiceManagement`, `all`, `warningsAndErrors` (+2202 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **86 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **84 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Request` connect `Request` to `ActionAuditRecord`, `runtime-engine/src/auth/middleware.rs`, `serve_with_signal`, `runtime-engine/src/runner_http/mod.rs`, `runtime_bridge.rs`, `webcodex/src/runner_http/mod.rs`, `webcodex/src/auth/scopes.rs`, `webcodex/src/oauth_http/managed_authorize.rs`, `runtime-engine/src/oauth_http/managed_authorize.rs`, `handle_authorization_code_grant`, `webcodex/src/auth/tests.rs`, `webcodex/src/oauth_http/shared_key_bridge.rs`, `runtime-engine/src/admin_http.rs`, `webcodex/src/server_shutdown/tests.rs`, `webcodex/src/runtime_console_http/communication.rs`, `require_runtime`, `webcodex-runner/src/webcodex_runner/transport/websocket_connect.rs`, `webcodex/src/runner_ws.rs`, `validate_http_protocol`, `prepared`, `serve_with_signal`, `require_runtime`, `webcodex/src/auth/middleware.rs`, `handle_authorization_code_grant`, `runtime-engine/src/auth/scopes.rs`, `chadex-runtime-runner/src/webcodex_runner/transport/websocket_connect.rs`, `validate_http_protocol`, `runtime-engine/src/server_shutdown/tests.rs`, `runtime-engine/src/client_window.rs`, `webcodex/src/client_window.rs`, `webcodex/src/admin_http.rs`, `ToolRequestLifecycle`, `runtime-engine/src/runner_ws.rs`, `verification.rs`, `runtime-engine/src/mcp.rs`, `webcodex/src/action_audit_sessions.rs`, `webcodex/src/mcp.rs`, `runtime-engine/src/oauth_http/shared_key_bridge.rs`, `runtime-engine/src/auth/tests.rs`, `runtime-engine/src/action_audit_sessions.rs`?**
-  _High betweenness centrality (0.113) - this node is a cross-community bridge._
-- **Why does `test_runtime()` connect `test_runtime` to `validation_summary_for_session`, `runtime-engine/src/tool_runtime/tests/lsp.rs`, `register_runner_project_at_path`, `runtime-engine/src/tool_runtime/tests/files.rs`, `bootstrap_auth_context`, `runtime-engine/src/tool_runtime/tests/observe_jobs.rs`, `auth_context`, `runtime-engine/src/tool_runtime/tests/work_on_project.rs`, `runtime-engine/src/tool_runtime/tests/targeted_inventory.rs`, `runtime-engine/src/tool_runtime/tests/script.rs`, `runtime-engine/src/tool_runtime/tests/hygiene.rs`, `runtime-engine/src/tool_runtime/tests/continuation_feedback.rs`, `shared_key_auth_context`, `runtime-engine/src/tool_runtime/tests/changes.rs`, `runtime-engine/src/tool_runtime/tests/process.rs`, `spec_named`, `lookup_tool_definition`, `runtime-engine/src/tool_runtime/tests/session_shells.rs`, `runtime-engine/src/tool_runtime/tests/chadex_task_executor.rs`, `runtime-engine/src/tool_runtime/tests/git.rs`, `runtime-engine/src/tool_runtime/tests/coding_task_semantic_navigation.rs`, `runtime-engine/src/tool_runtime/tests/coding_task.rs`, `runtime-engine/src/tool_runtime/tests/metadata.rs`?**
+- **Why does `Request` connect `Request` to `ActionAuditRecord`, `runtime-engine/src/auth/middleware.rs`, `serve_with_signal`, `runtime-engine/src/runner_http/mod.rs`, `audit_stats`, `runtime_bridge.rs`, `webcodex/src/runner_http/mod.rs`, `webcodex/src/auth/pat.rs`, `webcodex/src/oauth_http/managed_authorize.rs`, `runtime-engine/src/oauth_http/managed_authorize.rs`, `handle_authorization_code_grant`, `webcodex/src/auth/tests.rs`, `import_conversation_files_to_project`, `webcodex/src/oauth_http/shared_key_bridge.rs`, `runtime-engine/src/admin_http.rs`, `webcodex/src/server_shutdown/tests.rs`, `prepared`, `runner_config_check`, `require_runtime`, `get_registry`, `webcodex-runner/src/webcodex_runner/transport/websocket_connect.rs`, `webcodex/src/runner_ws.rs`, `validate_http_protocol`, `serve_with_signal`, `require_runtime`, `webcodex/src/auth/middleware.rs`, `handle_authorization_code_grant`, `ActionAuditRecord`, `runtime-engine/src/auth/scopes.rs`, `chadex-runtime-runner/src/webcodex_runner/transport/websocket_connect.rs`, `validate_http_protocol`, `runtime-engine/src/server_shutdown/tests.rs`, `runtime-engine/src/client_window.rs`, `webcodex/src/client_window.rs`, `get_registry`, `webcodex/src/admin_http.rs`, `runtime-engine/src/runner_ws.rs`, `verification.rs`, `runtime-engine/src/mcp.rs`, `webcodex/src/action_audit_sessions.rs`, `webcodex/src/mcp.rs`, `runtime-engine/src/oauth_http/shared_key_bridge.rs`, `runtime-engine/src/auth/tests.rs`, `runtime-engine/src/action_audit_sessions.rs`?**
+  _High betweenness centrality (0.115) - this node is a cross-community bridge._
+- **Why does `test_runtime()` connect `test_runtime` to `validation_summary_for_session`, `auth_context`, `register_runner_project_at_path`, `chadex-runtime-tool-contracts/src/metadata.rs`, `runtime-engine/src/tool_runtime/tests/files.rs`, `bootstrap_auth_context`, `runtime-engine/src/tool_runtime/tests/observe_jobs.rs`, `wait_for_patch_agent_request`, `runtime-engine/src/tool_runtime/tests/work_on_project.rs`, `runtime-engine/src/tool_runtime/tests/targeted_inventory.rs`, `runtime-engine/src/tool_runtime/tests/script.rs`, `runtime-engine/src/tool_runtime/tests/continuation_feedback.rs`, `shared_key_auth_context`, `registered_tool_specs`, `runtime-engine/src/tool_runtime/tests/reconnect.rs`, `lookup_tool_definition`, `runtime-engine/src/tool_runtime/tests/session_shells.rs`, `runtime-engine/src/tool_runtime/tests/handoff.rs`, `runtime-engine/src/tool_runtime/tests/chadex_task_executor.rs`, `runtime-engine/src/tool_runtime/tests/git.rs`, `runtime-engine/src/tool_runtime/tests/coding_task_semantic_navigation.rs`, `runtime-engine/src/tool_runtime/tests/coding_task.rs`, `runtime-engine/src/tool_runtime/tests/metadata.rs`?**
   _High betweenness centrality (0.073) - this node is a cross-community bridge._
-- **Why does `test_runtime()` connect `test_runtime` to `auth_context`, `webcodex/src/tool_runtime/tests/git.rs`, `webcodex/src/tool_runtime/tests/work_on_project.rs`, `registered_tool_specs`, `webcodex/src/tool_runtime/tests/metadata.rs`, `webcodex/src/tool_runtime/tests/jobs.rs`, `webcodex/src/tool_runtime/tests/files.rs`, `webcodex/src/tool_runtime/tests/support/runner.rs`, `webcodex/src/tool_runtime/tests/script.rs`, `webcodex-tool-contracts/src/metadata.rs`, `validation_summary_for_session`, `bootstrap_auth_context`, `webcodex/src/tool_runtime/tests/continuation_feedback.rs`, `webcodex/src/tool_runtime/tests/changes.rs`, `webcodex/src/tool_runtime/tests/process.rs`, `lookup_tool_definition`, `webcodex/src/tool_runtime/tests/session_shells.rs`, `webcodex/src/tool_runtime/tests/coding_task_semantic_navigation.rs`, `webcodex/src/tool_runtime/tests/lsp.rs`, `webcodex/src/tool_runtime/execution_workspace.rs`, `dispatch_with_local_agent`, `webcodex/src/tool_runtime/session_context.rs`, `webcodex/src/tool_runtime/tests/coding_task.rs`, `register_runner_project_at_path`, `webcodex/src/tool_runtime/tests/targeted_inventory.rs`, `webcodex/src/tool_runtime/tests/observe_jobs.rs`?**
-  _High betweenness centrality (0.072) - this node is a cross-community bridge._
+- **Why does `test_runtime()` connect `test_runtime` to `auth_context`, `webcodex/src/tool_runtime/tests/git.rs`, `webcodex/src/tool_runtime/tests/work_on_project.rs`, `spec_named`, `webcodex/src/tool_runtime/tests/metadata.rs`, `webcodex/src/tool_runtime/tests/jobs.rs`, `webcodex/src/tool_runtime/tests/files.rs`, `webcodex/src/tool_runtime/tests/chadex_task_executor.rs`, `tool_definitions`, `bootstrap_auth_context`, `webcodex/src/tool_runtime/tests/continuation_feedback.rs`, `webcodex/src/tool_runtime/tests/process.rs`, `webcodex/src/tool_runtime/tests/session_shells.rs`, `webcodex/src/tool_runtime/tests/coding_task_semantic_navigation.rs`, `webcodex/src/tool_runtime/tests/lsp.rs`, `dispatch_with_local_agent`, `webcodex/src/tool_runtime/tests/coding_task.rs`, `register_runner_project_at_path`, `webcodex/src/tool_runtime/tests/targeted_inventory.rs`, `webcodex/src/tool_runtime/git/show_changes.rs`, `webcodex/src/tool_runtime/tests/observe_jobs.rs`, `webcodex/src/tool_runtime/tests/hygiene.rs`?**
+  _High betweenness centrality (0.073) - this node is a cross-community bridge._
 - **Are the 494 inferred relationships involving `test_runtime()` (e.g. with `apply_text_edits_empty_batch_proves_preflight_no_effect_without_fake_indices()` and `apply_text_edits_same_path_different_guards_still_fail_closed()`) actually correct?**
   _`test_runtime()` has 494 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 485 inferred relationships involving `test_runtime()` (e.g. with `apply_text_edits_empty_batch_proves_preflight_no_effect_without_fake_indices()` and `apply_text_edits_server_preflight_reports_exact_failed_edit()`) actually correct?**
