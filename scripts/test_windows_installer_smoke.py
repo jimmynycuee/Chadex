@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 from pathlib import Path
 import sys
@@ -55,6 +56,35 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
 
 
 class WindowsInstallerSmokeTests(unittest.TestCase):
+    def test_installed_probe_rejects_crashed_app_after_successful_probe(self) -> None:
+        for exit_code in (0, 0xC0000005):
+            with self.subTest(exit_code=exit_code):
+                app = MagicMock()
+                app.poll.return_value = exit_code
+                app.wait.return_value = exit_code
+                node = MagicMock()
+                node.poll.return_value = 0
+                node.wait.return_value = 0
+                node.stdout = io.BytesIO(b"{}")
+                node.stderr = io.BytesIO(b"")
+                with patch.object(smoke, "_regular_file"), \
+                        patch.object(smoke, "_port", return_value=9222), \
+                        patch.object(smoke.suspended, "launch_owned", return_value=app), \
+                        patch.object(smoke.subprocess, "Popen", return_value=node), \
+                        patch.object(smoke, "_remember_tree", return_value={}), \
+                        patch.object(smoke, "_wait_owned_gone", return_value=[]), \
+                        patch.object(smoke, "validate_probe_result", return_value={"ui_state_ready": True}):
+                    kwargs = dict(powershell="powershell.exe", node="node", groups=[],
+                                  report=smoke.SmokeReport("win32"))
+                    args = (Path("install"), Path("project"), Path("."), Path("data"), "0.3.2", "initial")
+                    if exit_code == 0:
+                        self.assertEqual(smoke.launch_and_probe(*args, **kwargs), {"ui_state_ready": True})
+                    else:
+                        with self.assertRaises(smoke.SmokeFailure) as failure:
+                            smoke.launch_and_probe(*args, **kwargs)
+                        self.assertEqual(failure.exception.code, "installed_app_exit_nonzero")
+                app.wait.assert_called_once_with(timeout=10)
+
     def test_candidate_accepts_manifest_only_resources_and_checks_both_installer_hashes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

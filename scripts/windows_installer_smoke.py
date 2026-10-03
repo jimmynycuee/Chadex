@@ -73,7 +73,7 @@ SAFE_CODES = frozenset({
     "installed_helper_identity_unowned", "installed_helper_identity_changed",
     "installed_runtime_not_ready", "installed_ui_not_rendered",
     "installed_preferences_not_restored", "installed_smoke_ipc_exposed",
-    "installed_processes_remain", "process_inventory_failed", "process_cleanup_failed",
+    "installed_processes_remain", "installed_app_exit_nonzero", "process_inventory_failed", "process_cleanup_failed",
     "node_cleanup_failed", "owned_processes_remain", "forced_cleanup_required",
     "appdata_missing", "appdata_snapshot_invalid", "appdata_changed",
     "preferences_missing", "preferences_changed", "project_marker_changed",
@@ -739,6 +739,11 @@ def launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: P
         )
         remaining = _wait_owned_gone(powershell, owned, timeout=25)
         require(not remaining, "installed_processes_remain")
+        try:
+            app_return_code = process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            raise SmokeFailure("installed_processes_remain") from None
+        require(app_return_code == 0, "installed_app_exit_nonzero")
         return flags
     finally:
         if node_process is not None and node_process.poll() is None:
