@@ -250,8 +250,33 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  windows-release-source:
+    name: Windows W5 source integrity
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.12.0
+      - name: Install pinned Rust
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          rustup toolchain install 1.98.1 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Rust installation failed." }
+          rustup default 1.98.1
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Rust selection failed." }
+      - name: Check Tauri resolution and Windows build-script source integrity
+        shell: pwsh
+        run: .\scripts\windows_release_source_check.ps1
+
   windows-release:
     name: Windows W5 installer candidate
+    needs: windows-release-source
     runs-on: windows-latest
     timeout-minutes: 120
     env:

@@ -23,6 +23,7 @@ function Assert-ReleaseSource {
     if ($LASTEXITCODE -ne 0 -or $current -ne $source) { throw "Source HEAD changed during the build." }
     $status = @(& git -C $repo status --porcelain=v1 --untracked-files=all)
     if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) {
+        foreach ($line in $status) { Write-Host "Release source status: $line" }
         throw "Release inputs must remain clean, including non-ignored untracked files."
     }
 }
@@ -55,7 +56,9 @@ $staging = Join-Path ([IO.Path]::GetTempPath()) ("chadex-release-" + [guid]::New
 Push-Location $repo
 try {
     Invoke-NativeChecked "cargo" @("build", "--release", "--locked", "--manifest-path", "rust-helper/Cargo.toml", "--bin", "chadex-helper")
+    Assert-ReleaseSource
     Invoke-NativeChecked "cargo" @("build", "--release", "--locked", "--manifest-path", "chadex-runtime/Cargo.toml", "--bins")
+    Assert-ReleaseSource
     Invoke-NativeChecked "python" @("scripts/prepare_windows_release.py", "--repo-root", $repo, "--target-dir", $target, "--output", $staging)
     # Debug staging is never a fallback: replace it only with this validated release set.
     $resources = Join-Path $repo "apps/windows/src-tauri/resources"
@@ -69,8 +72,10 @@ try {
     Push-Location (Join-Path $repo "apps/windows")
     try {
         Invoke-NativeChecked "npm.cmd" @("ci")
+        Assert-ReleaseSource
         # The explicit feature set excludes desktop-smoke. CLI supplies custom-protocol.
         Invoke-NativeChecked "npm.cmd" @("run", "tauri", "--", "build", "--ci", "--bundles", "nsis", "--config", "src-tauri/tauri.release.conf.json", "--", "--locked")
+        Assert-ReleaseSource
         if ($BuildUpgradeFixture) {
             # Synthetic older installer metadata around the SAME production binaries.
             # This tests installer migration, not historical application compatibility.
