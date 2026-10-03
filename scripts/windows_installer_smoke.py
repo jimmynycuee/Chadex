@@ -93,8 +93,13 @@ SAFE_PROBE_ERRORS = frozenset({
     "installed_ui_not_rendered", "installed_project_inspection_failed",
     "installed_preferences_not_restored", "installed_runtime_not_ready",
     "installed_selection_invalid", "production_smoke_ipc_exposed",
-    "installed_credential_read_failed", "installed_ui_state_not_ready",
-})
+    "installed_credential_read_failed", "installed_ui_state_not_ready", "installed_ipc_not_ready",
+}) | frozenset(
+    f"installed_rpc_{step}:{reason}"
+    for step in ("desktop_state", "inspectProject", "activateProject", "save_preferences", "configureLocalSetup")
+    for reason in ("type_error", "command_not_found", "permission_denied", "project_invalid_path",
+                   "project_unavailable", "runtime_start_failed", "runtime_not_found", "helper_unavailable", "other")
+)
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 

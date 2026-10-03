@@ -406,6 +406,15 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             w2.descendants({1: {"ParentProcessId": 0},
                             2: {"ParentProcessId": 1, "Created": ""}}, {1})
 
+    def test_rpc_projection_accepts_only_finite_step_and_reason(self) -> None:
+        report = smoke.SmokeReport("win32")
+        stage = report.value["stages"][0]
+        stage["probe_failure"] = "installed_rpc_inspectProject:project_unavailable"
+        self.assertEqual(report.public_value()["stages"][0]["probe_failure"], stage["probe_failure"])
+        for raw in ("installed_rpc_inspectProject:C:/private/token", "installed_rpc_secret:other"):
+            stage["probe_failure"] = raw
+            self.assertNotIn("probe_failure", report.public_value()["stages"][0])
+
     def test_report_projection_drops_paths_commands_credentials_and_forced_runs_fail(self) -> None:
         report = smoke.SmokeReport("win32")
         for stage in report.value["stages"]:

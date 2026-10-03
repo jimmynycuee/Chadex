@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 
 export const sleep = ms => new Promise(done => setTimeout(done, ms));
 export function check(value, code) { if (!value) throw new Error(code); }
+export const rpcSteps = ['desktop_state', 'inspectProject', 'activateProject', 'save_preferences', 'configureLocalSetup'];
+export const rpcReasons = ['type_error', 'command_not_found', 'permission_denied', 'project_invalid_path', 'project_unavailable', 'runtime_start_failed', 'runtime_not_found', 'helper_unavailable', 'other'];
 const safeErrors = new Set([
   'installed_webview_missing', 'cdp_not_loopback', 'cdp_connect_timeout',
   'cdp_connect_failed', 'cdp_request_failed', 'cdp_closed', 'cdp_evaluate_timeout',
@@ -12,7 +14,8 @@ const safeErrors = new Set([
   'installed_ui_not_rendered', 'installed_project_inspection_failed',
   'installed_preferences_not_restored', 'installed_runtime_not_ready',
   'installed_selection_invalid', 'production_smoke_ipc_exposed',
-  'installed_credential_read_failed', 'installed_ui_state_not_ready',
+  'installed_credential_read_failed', 'installed_ui_state_not_ready', 'installed_ipc_not_ready',
+  ...rpcSteps.flatMap(step => rpcReasons.map(reason => `installed_rpc_${step}:${reason}`)),
 ]);
 
 export async function waitForUi(client, project, timeout = 30000) {
@@ -30,6 +33,39 @@ export async function waitForUi(client, project, timeout = 30000) {
     await sleep(200);
   } while (Date.now() <= deadline);
   throw new Error('installed_ui_state_not_ready');
+}
+
+export async function waitForIpc(client, timeout = 90000) {
+  const deadline = Date.now() + timeout;
+  do {
+    if (await client.evaluate("typeof window.__TAURI_INTERNALS__?.invoke === 'function'") === true) return;
+    if (Date.now() >= deadline) break;
+    await sleep(200);
+  } while (Date.now() <= deadline);
+  throw new Error('installed_ipc_not_ready');
+}
+
+// Classify inside the page; raw backend errors can contain private paths.
+export async function invokeInstalled(client, name, args = {}) {
+  const step = name === 'runtime_action' ? args.method : name;
+  check(rpcSteps.includes(step), 'installed_rpc_failed');
+  const result = await client.evaluate(`(async () => {
+    try { return { ok: true, value: await window.__TAURI_INTERNALS__.invoke(${JSON.stringify(name)},${JSON.stringify(args)}) }; }
+    catch (error) {
+      const text = String(error);
+      let reason = 'other';
+      if (error instanceof TypeError) reason = 'type_error';
+      else if (text.includes('not found') && text.includes(${JSON.stringify(name)})) reason = 'command_not_found';
+      else if (text.includes('not allowed') || text.includes('permission denied')) reason = 'permission_denied';
+      else reason = ${JSON.stringify(rpcReasons.slice(3, -1))}.find(code => text.includes(code)) ?? 'other';
+      return { ok: false, reason };
+    }
+  })()`);
+  if (result?.ok !== true) {
+    const reason = rpcReasons.includes(result?.reason) ? result.reason : 'other';
+    throw new Error(`installed_rpc_${step}:${reason}`);
+  }
+  return result.value;
 }
 
 export async function connect(port) {
@@ -84,7 +120,8 @@ export async function probe(port, project, mode, version, connector = connect) {
   check(['initial', 'restore'].includes(mode), 'probe_mode_invalid');
   const client = await connector(port);
   try {
-    const invoke = (name, args = {}) => client.evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(name)},${JSON.stringify(args)})`);
+    await waitForIpc(client);
+    const invoke = (name, args = {}) => invokeInstalled(client, name, args);
     let state;
     const deadline = Date.now() + 90000;
     do {

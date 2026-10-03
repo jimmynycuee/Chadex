@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { probe, waitForUi } from './windows_installed_probe.mjs';
+import { probe, waitForUi, waitForIpc, invokeInstalled } from './windows_installed_probe.mjs';
 
 function desktop({ smoke = false, restore = false, rendered = true, version = '0.3.2', credentialError = null } = {}) {
   const calls = [];
@@ -88,4 +88,31 @@ test('credential storage read failure is not an empty credential store', async (
 
 test('backend readiness cannot replace the rendered frontend state', async () => {
   await assert.rejects(waitForUi({ evaluate: async () => false }, 'C:/專案 A', 0), /installed_ui_state_not_ready/);
+});
+
+
+test('IPC availability is observed without issuing a backend command', async () => {
+  const expressions = [];
+  await waitForIpc({ evaluate: async expression => { expressions.push(expression); return true; } }, 0);
+  assert.equal(expressions.length, 1);
+  assert.equal(expressions[0].includes('invoke('), false);
+  await assert.rejects(waitForIpc({ evaluate: async () => false }, 0), /installed_ipc_not_ready/);
+});
+
+test('RPC failure identifies the step while discarding raw backend text', async () => {
+  for (const [message, kind] of [['project_unavailable: C:/private/key', 'project_unavailable'], ['private unknown token', 'other'], ['Command runtime_action not found', 'command_not_found']]) {
+    const context = vm.createContext({ window: { __TAURI_INTERNALS__: { invoke: async () => { throw message; } } } });
+    const client = { evaluate: expression => vm.runInContext(expression, context) };
+    await assert.rejects(invokeInstalled(client, 'runtime_action', { method: 'inspectProject' }), error => {
+      assert.equal(error.message, `installed_rpc_inspectProject:${kind}`);
+      return true;
+    });
+  }
+});
+
+test('RPC diagnostic does not retry a rejected state-changing command', async () => {
+  let calls = 0;
+  const context = vm.createContext({ window: { __TAURI_INTERNALS__: { invoke: async () => { calls++; throw 'private failure'; } } } });
+  await assert.rejects(invokeInstalled({ evaluate: expression => vm.runInContext(expression, context) }, 'save_preferences'), /installed_rpc_save_preferences:other/);
+  assert.equal(calls, 1);
 });
