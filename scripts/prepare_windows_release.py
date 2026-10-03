@@ -12,6 +12,7 @@ import shutil
 import stat
 import struct
 import tempfile
+import tomllib
 from typing import Any
 
 
@@ -101,6 +102,28 @@ def _release_directory(target_dir: Path) -> Path:
     if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
         raise ReleasePreparationError("release_directory_invalid")
     return release
+
+
+def check_build_inputs(repo: Path) -> str:
+    version = _read_versions(repo)
+    windows = repo / "apps/windows"
+    try:
+        package = json.loads((windows / "package.json").read_text(encoding="utf-8"))
+        npm_lock = json.loads((windows / "package-lock.json").read_text(encoding="utf-8"))
+        cargo_lock = tomllib.loads((windows / "src-tauri/Cargo.lock").read_text(encoding="utf-8"))
+        api = package["dependencies"]["@tauri-apps/api"]
+        root_api = npm_lock["packages"][""]["dependencies"]["@tauri-apps/api"]
+        locked_api = npm_lock["packages"]["node_modules/@tauri-apps/api"]["version"]
+        rust = [item["version"] for item in cargo_lock["package"] if item["name"] == "tauri"]
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError):
+        raise ReleasePreparationError("tauri_dependency_metadata_invalid") from None
+    if not isinstance(api, str) or not re.fullmatch(r"\d+\.\d+\.\d+", api) or \
+            api != root_api or api != locked_api or len(rust) != 1 or \
+            not isinstance(rust[0], str) or not re.fullmatch(r"\d+\.\d+\.\d+", rust[0]):
+        raise ReleasePreparationError("tauri_dependency_metadata_invalid")
+    if api.split(".")[:2] != rust[0].split(".")[:2]:
+        raise ReleasePreparationError("tauri_api_minor_mismatch")
+    return version
 
 
 def _inspect_pe(path: Path) -> bool:
@@ -291,10 +314,18 @@ def prepare(repo: Path, target_dir: Path, output: Path) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, required=True)
-    parser.add_argument("--target-dir", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--target-dir", type=Path)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--check-inputs", action="store_true")
     args = parser.parse_args(argv)
     try:
+        if args.check_inputs:
+            version = check_build_inputs(args.repo_root)
+            print(json.dumps({"status": "passed", "version": version, "build_inputs": "valid"}, sort_keys=True))
+            return 0
+        if args.target_dir is None or args.output is None:
+            parser.error("staging requires --target-dir and --output")
+        check_build_inputs(args.repo_root)
         manifest = prepare(args.repo_root, args.target_dir, args.output)
     except ReleasePreparationError as error:
         print(json.dumps({"status": "failed", "error": error.code}, sort_keys=True))

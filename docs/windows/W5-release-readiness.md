@@ -12,6 +12,8 @@ This stage prepares an **unsigned x64 installer candidate** and its automated li
 
 Tauri CLI builds the production application with embedded frontend assets and `custom-protocol`, without `desktop-smoke`. The candidate records the exact source SHA, desktop/installer hashes, architecture and features. Actual Authenticode checks must observe unsigned executables before labeling this artifact unsigned. `createUpdaterArtifacts` is false: there is no updater feed, signing key or automatic update implementation.
 
+JavaScript `@tauri-apps/api` and the locked Rust `tauri` crate use 2.12.1; CLI stays fixed at 2.8.4. Input preflight checks npm lock agreement and the API/crate minor versions before compiling, following [Tauri's dependency synchronization requirement](https://v2.tauri.app/develop/updating-dependencies/). The first W5 CI exposed the previous 2.8.0/2.12.1 mismatch; the check remains enabled.
+
 On Windows, after installing the pinned Rust/Node toolchain:
 
 ```powershell

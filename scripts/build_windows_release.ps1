@@ -37,6 +37,7 @@ if ($output.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringCompari
 $source = (& git -C $repo rev-parse HEAD)
 if ($LASTEXITCODE -ne 0) { throw "Git source identity unavailable." }
 Assert-ReleaseSource
+Invoke-NativeChecked "python" @((Join-Path $repo "scripts/prepare_windows_release.py"), "--repo-root", $repo, "--check-inputs")
 $hostTriple = (& rustc -vV | Select-String '^host: ').ToString()
 if ($LASTEXITCODE -ne 0 -or $hostTriple -ne 'host: x86_64-pc-windows-msvc') {
     throw "Only the native x86_64-pc-windows-msvc toolchain is supported."

@@ -62,7 +62,13 @@ class PrepareWindowsReleaseTests(unittest.TestCase):
         (self.repo / "apps/windows/src-tauri/tauri.conf.json").write_text(
             json.dumps({"version": "0.3.2"}), encoding="utf-8")
         (self.repo / "apps/windows/package.json").write_text(
-            json.dumps({"version": "0.3.2"}), encoding="utf-8")
+            json.dumps({"version": "0.3.2", "dependencies": {"@tauri-apps/api": "2.12.1"}}), encoding="utf-8")
+        (self.repo / "apps/windows/package-lock.json").write_text(json.dumps({"packages": {
+            "": {"dependencies": {"@tauri-apps/api": "2.12.1"}},
+            "node_modules/@tauri-apps/api": {"version": "2.12.1"},
+        }}), encoding="utf-8")
+        (self.repo / "apps/windows/src-tauri/Cargo.lock").write_text(
+            'version = 4\n[[package]]\nname = "tauri"\nversion = "2.12.1"\n', encoding="utf-8")
         (self.repo / "apps/windows/src-tauri/Cargo.toml").write_text(
             '[package]\nname = "chadex-windows"\nversion = "0.3.2"\n', encoding="utf-8")
         (self.repo / "attribution").mkdir()
@@ -79,6 +85,36 @@ class PrepareWindowsReleaseTests(unittest.TestCase):
 
     def prepare(self) -> dict[str, object]:
         return release.prepare(self.repo, self.target, self.output)
+
+    def test_build_inputs_reject_api_rust_minor_mismatch(self) -> None:
+        package_path = self.repo / "apps/windows/package.json"
+        package = json.loads(package_path.read_text())
+        package["dependencies"]["@tauri-apps/api"] = "2.8.0"
+        package_path.write_text(json.dumps(package))
+        lock_path = self.repo / "apps/windows/package-lock.json"
+        lock = json.loads(lock_path.read_text())
+        lock["packages"][""]["dependencies"]["@tauri-apps/api"] = "2.8.0"
+        lock["packages"]["node_modules/@tauri-apps/api"]["version"] = "2.8.0"
+        lock_path.write_text(json.dumps(lock))
+        with self.assertRaises(release.ReleasePreparationError) as failure:
+            release.check_build_inputs(self.repo)
+        self.assertEqual(failure.exception.code, "tauri_api_minor_mismatch")
+        self.assertFalse(self.output.exists())
+
+    def test_build_inputs_reject_npm_lock_disagreement(self) -> None:
+        lock_path = self.repo / "apps/windows/package-lock.json"
+        lock = json.loads(lock_path.read_text())
+        lock["packages"]["node_modules/@tauri-apps/api"]["version"] = "2.8.0"
+        lock_path.write_text(json.dumps(lock))
+        with self.assertRaises(release.ReleasePreparationError) as failure:
+            release.check_build_inputs(self.repo)
+        self.assertEqual(failure.exception.code, "tauri_dependency_metadata_invalid")
+
+    def test_input_preflight_needs_no_compiled_resources(self) -> None:
+        import shutil
+        shutil.rmtree(self.release_dir)
+        self.assertEqual(release.main(["--repo-root", str(self.repo), "--check-inputs"]), 0)
+        self.assertFalse(self.output.exists())
 
     def test_uses_only_release_executables_and_records_hashes_and_licenses(self) -> None:
         debug_dir = self.target / "debug"
