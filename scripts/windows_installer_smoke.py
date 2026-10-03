@@ -56,6 +56,7 @@ SAFE_CODES = frozenset({
     "runner_temp_missing",
     "runner_temp_unavailable", "known_data_paths_unavailable",
     "preexisting_appdata", "preexisting_uninstall_entry", "registry_unavailable",
+    "preexisting_cdp_policy", "cdp_policy_failed", "cdp_policy_cleanup_failed",
     "registry_access_failed", "registry_read_failed", "candidate_dir_invalid",
     "candidate_manifest_missing", "candidate_manifest_invalid",
     "candidate_filename_unsafe", "candidate_hash_invalid", "candidate_hash_mismatch",
@@ -419,6 +420,65 @@ def child_environment(base: Mapping[str, str], port: int) -> dict[str, str]:
     return env
 
 
+@contextmanager
+def installed_cdp_policy(port: int) -> Iterator[None]:
+    """Own one app-specific policy only on the disposable native CI host.
+
+    Elevated WebView2 150 ignores env/HKCU overrides. HKLM is honored without
+    adding debug configuration or test IPC to the production executable.
+    """
+    require(sys.platform == "win32", "windows_native_required")
+    require(os.environ.get("GITHUB_ACTIONS", "").casefold() == "true", "github_actions_required")
+    require(os.environ.get("RUNNER_ENVIRONMENT", "").casefold() == "github-hosted",
+            "github_hosted_runner_required")
+    require(type(port) is int and 0 < port < 65536, "cdp_policy_failed")
+    registry = _winreg_module()
+    path = r"Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+    access = registry.KEY_READ | registry.KEY_SET_VALUE | registry.KEY_WOW64_64KEY
+    value = f"--remote-debugging-port={port} --remote-debugging-address=127.0.0.1"
+    written = False
+    try:
+        try:
+            key = registry.OpenKey(registry.HKEY_LOCAL_MACHINE, path, 0, access)
+        except FileNotFoundError:
+            key = registry.CreateKeyEx(registry.HKEY_LOCAL_MACHINE, path, 0, access)
+    except OSError:
+        raise SmokeFailure("cdp_policy_failed") from None
+    with key:
+        try:
+            try:
+                for name in ("Chadex.exe", "app.chadex.windows", "*"):
+                    try:
+                        registry.QueryValueEx(key, name)
+                    except FileNotFoundError:
+                        continue
+                    raise SmokeFailure("preexisting_cdp_policy")
+                registry.SetValueEx(key, "Chadex.exe", 0, registry.REG_SZ, value)
+                written = True
+                require(registry.QueryValueEx(key, "Chadex.exe") == (value, registry.REG_SZ),
+                        "cdp_policy_failed")
+            except OSError:
+                raise SmokeFailure("cdp_policy_failed") from None
+            yield
+        finally:
+            # Setup failure after a write must clean it up as well.
+            if written:
+                try:
+                    require(registry.QueryValueEx(key, "Chadex.exe") == (value, registry.REG_SZ),
+                            "cdp_policy_cleanup_failed")
+                    registry.DeleteValue(key, "Chadex.exe")
+                    try:
+                        registry.QueryValueEx(key, "Chadex.exe")
+                    except FileNotFoundError:
+                        pass
+                    else:
+                        raise SmokeFailure("cdp_policy_cleanup_failed")
+                    # Never delete policy keys or other applications' values.
+                    # An empty container has no override and is disposable CI state.
+                except OSError:
+                    raise SmokeFailure("cdp_policy_cleanup_failed") from None
+
+
 def validate_default_paths(paths: Any, install_dir: Path, local_data: Path) -> None:
     require(isinstance(paths, dict), "installed_probe_invalid")
     helper = paths.get("helper")
@@ -658,15 +718,14 @@ def run_uninstaller(install_dir: Path, root: Path, *, powershell: str,
     return original_hash
 
 
-def launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: Path,
+def _launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: Path,
                      version: str, mode: str, *, powershell: str, node: str,
                      groups: list[dict[int, dict[str, Any]]],
-                     report: "SmokeReport") -> dict[str, bool]:
+                     report: "SmokeReport", port: int) -> dict[str, bool]:
     app = install_dir / "Chadex.exe"
     _regular_file(app, "installed_app_missing")
     probe = Path(__file__).resolve().with_name("windows_installed_probe.mjs")
     _regular_file(probe, "probe_script_missing")
-    port = _port()
     owned = _new_owned_group(groups)
     try:
         process = suspended.launch_owned(
@@ -765,6 +824,23 @@ def launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: P
             reader.join(timeout=1)
 
 
+def launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: Path,
+                     version: str, mode: str, *, powershell: str, node: str,
+                     groups: list[dict[int, dict[str, Any]]],
+                     report: "SmokeReport") -> dict[str, bool]:
+    port = _port()
+    with installed_cdp_policy(port):
+        first_group = len(groups)
+        try:
+            flags = _launch_and_probe(install_dir, project, root, local_data, version, mode,
+                                      powershell=powershell, node=node, groups=groups,
+                                      report=report, port=port)
+        finally:
+            _cleanup_process_groups(powershell, groups[first_group:], report)
+    flags["cdp_policy_removed"] = True
+    return flags
+
+
 class SmokeReport:
     def __init__(self, platform: str) -> None:
         self.value: dict[str, Any] = {
@@ -824,6 +900,7 @@ class SmokeReport:
                 "data_preserved", "registry_owner_match", "registry_version_match",
                 "registry_install_dir_match", "registry_entry_removed", "project_marker_preserved",
                 "fixture_appdata_cleaned", "uninstaller_stub_removed",
+                "cdp_policy_removed",
             ):
                 if type(item.get(flag)) is bool:
                     row[flag] = item[flag]

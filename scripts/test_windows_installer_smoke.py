@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from contextlib import nullcontext
 import io
 import json
 from pathlib import Path
@@ -14,6 +15,137 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import windows_installer_smoke as smoke
 import windows_runtime_e2e as w2
+
+
+def policy_registry(values: dict[str, tuple[str, int]]) -> MagicMock:
+    registry = MagicMock()
+    registry.KEY_READ, registry.KEY_SET_VALUE, registry.KEY_WOW64_64KEY = 1, 2, 256
+    registry.REG_SZ = 1
+    key = MagicMock()
+    registry.OpenKey.return_value = key
+    registry.CreateKeyEx.return_value = key
+    def query(_key: object, name: str) -> tuple[str, int]:
+        if name not in values:
+            raise FileNotFoundError(name)
+        return values[name]
+    registry.QueryValueEx.side_effect = query
+    registry.SetValueEx.side_effect = lambda _key, name, _reserved, kind, value: values.__setitem__(name, (value, kind))
+    registry.DeleteValue.side_effect = lambda _key, name: values.pop(name)
+    return registry
+
+
+class InstalledCdpPolicyTests(unittest.TestCase):
+    def fixture(self, registry: MagicMock):
+        return (patch.object(smoke.sys, 'platform', 'win32'),
+                patch.dict(smoke.os.environ, {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted'}),
+                patch.object(smoke, '_winreg_module', return_value=registry))
+
+    def test_owned_value_removed_on_success_and_app_failure_preserving_other_policy(self) -> None:
+        for fails in (False, True):
+            values = {'Other.exe': ('other policy', 1)}
+            registry = policy_registry(values)
+            if fails:
+                registry.OpenKey.side_effect = FileNotFoundError()
+            a, b, c = self.fixture(registry)
+            with a, b, c:
+                def run():
+                    with smoke.installed_cdp_policy(9222):
+                        self.assertIn('--remote-debugging-address=127.0.0.1', values['Chadex.exe'][0])
+                        if fails:
+                            raise smoke.SmokeFailure('installed_probe_failed')
+                if fails:
+                    with self.assertRaises(smoke.SmokeFailure) as failure:
+                        run()
+                    self.assertEqual(failure.exception.code, 'installed_probe_failed')
+                else:
+                    run()
+            self.assertEqual(values, {'Other.exe': ('other policy', 1)})
+            registry.SetValueEx.assert_called_once()
+            registry.DeleteValue.assert_called_once()
+            registry.DeleteKey.assert_not_called()
+
+    def test_existing_app_identifier_or_wildcard_is_not_overwritten(self) -> None:
+        for name in ('Chadex.exe', 'app.chadex.windows', '*'):
+            values = {name: ('preexisting', 1)}
+            registry = policy_registry(values)
+            a, b, c = self.fixture(registry)
+            with a, b, c, self.assertRaises(smoke.SmokeFailure) as failure:
+                with smoke.installed_cdp_policy(9222):
+                    self.fail('existing policy entered application lifecycle')
+            self.assertEqual(failure.exception.code, 'preexisting_cdp_policy')
+            self.assertEqual(values, {name: ('preexisting', 1)})
+            registry.SetValueEx.assert_not_called()
+            registry.DeleteValue.assert_not_called()
+
+    def test_non_hosted_runner_cannot_touch_machine_policy(self) -> None:
+        registry = policy_registry({})
+        a, b, c = self.fixture(registry)
+        with a, b, c, patch.dict(smoke.os.environ, {'RUNNER_ENVIRONMENT': 'self-hosted'}):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                with smoke.installed_cdp_policy(9222):
+                    self.fail('non-hosted runner entered lifecycle')
+        self.assertEqual(failure.exception.code, 'github_hosted_runner_required')
+        registry.OpenKey.assert_not_called()
+
+    def test_changed_value_is_preserved_and_cleanup_cannot_pass(self) -> None:
+        values = {}
+        registry = policy_registry(values)
+        a, b, c = self.fixture(registry)
+        with a, b, c, self.assertRaises(smoke.SmokeFailure) as failure:
+            with smoke.installed_cdp_policy(9222):
+                values['Chadex.exe'] = ('concurrent replacement', 1)
+        self.assertEqual(failure.exception.code, 'cdp_policy_cleanup_failed')
+        self.assertEqual(values['Chadex.exe'], ('concurrent replacement', 1))
+        registry.DeleteValue.assert_not_called()
+
+    def test_failed_readback_never_launches_and_owned_value_is_removed(self) -> None:
+        values = {}
+        registry = policy_registry(values)
+        original = registry.QueryValueEx.side_effect
+        failed_readback = False
+        def query(key, name):
+            nonlocal failed_readback
+            if name == 'Chadex.exe' and name in values and not failed_readback:
+                failed_readback = True
+                return ('invalid readback', 1)
+            return original(key, name)
+        registry.QueryValueEx.side_effect = query
+        a, b, c = self.fixture(registry)
+        with a, b, c, self.assertRaises(smoke.SmokeFailure) as failure:
+            with smoke.installed_cdp_policy(9222):
+                self.fail('failed policy readback entered lifecycle')
+        self.assertEqual(failure.exception.code, 'cdp_policy_failed')
+        self.assertEqual(values, {})
+
+    def test_app_groups_are_cleaned_before_policy_removal_on_success_and_failure(self) -> None:
+        for fails in (False, True):
+            values = {}
+            registry = policy_registry(values)
+            groups = [{10: {'Created': 'old installation identity'}}]
+            owned = {20: {'Created': 'new application identity'}}
+            def run_app(*args, **kwargs):
+                groups.append(owned)
+                if fails:
+                    raise smoke.SmokeFailure('installed_probe_failed')
+                return {'rendered': True}
+            def cleanup(_powershell, cleanup_groups, _report):
+                self.assertIn('Chadex.exe', values)
+                self.assertEqual(cleanup_groups, [owned])
+            a, b, c = self.fixture(registry)
+            with a, b, c, patch.object(smoke, '_port', return_value=9222), \
+                    patch.object(smoke, '_launch_and_probe', side_effect=run_app), \
+                    patch.object(smoke, '_cleanup_process_groups', side_effect=cleanup) as clean:
+                args = (Path('install'), Path('project'), Path('.'), Path('data'), '0.3.2', 'initial')
+                kwargs = dict(powershell='powershell.exe', node='node', groups=groups,
+                              report=smoke.SmokeReport('win32'))
+                if fails:
+                    with self.assertRaises(smoke.SmokeFailure) as failure:
+                        smoke.launch_and_probe(*args, **kwargs)
+                    self.assertEqual(failure.exception.code, 'installed_probe_failed')
+                else:
+                    self.assertTrue(smoke.launch_and_probe(*args, **kwargs)['cdp_policy_removed'])
+            clean.assert_called_once()
+            self.assertEqual(values, {})
 
 
 def digest(data: bytes) -> str:
@@ -69,6 +201,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                 node.stderr = io.BytesIO(b"")
                 with patch.object(smoke, "_regular_file"), \
                         patch.object(smoke, "_port", return_value=9222), \
+                        patch.object(smoke, "installed_cdp_policy", side_effect=lambda _port: nullcontext()), \
                         patch.object(smoke.suspended, "launch_owned", return_value=app), \
                         patch.object(smoke.subprocess, "Popen", return_value=node), \
                         patch.object(smoke, "_remember_tree", return_value={}), \
@@ -78,7 +211,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                                   report=smoke.SmokeReport("win32"))
                     args = (Path("install"), Path("project"), Path("."), Path("data"), "0.3.2", "initial")
                     if exit_code == 0:
-                        self.assertEqual(smoke.launch_and_probe(*args, **kwargs), {"ui_state_ready": True})
+                        self.assertEqual(smoke.launch_and_probe(*args, **kwargs), {"ui_state_ready": True, "cdp_policy_removed": True})
                     else:
                         with self.assertRaises(smoke.SmokeFailure) as failure:
                             smoke.launch_and_probe(*args, **kwargs)
