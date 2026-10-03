@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "track": "W5",
+  "baseline_sha": "c3eedfc537bf7aae55cb2e264f3d15b9c4cbf09b",
+  "baseline_ci": {
+    "run_id": 37045486251,
+    "attempt": 1,
+    "conclusion": "success",
+    "jobs": 4
+  },
+  "stage": "installer engineering",
+  "distribution": "unsigned x64 NSIS candidate",
+  "publication": "not authorized",
+  "full_product_acceptance": "pending",
+  "manual_checks": {
+    "native_picker": "not validated",
+    "explorer_open": "not validated",
+    "tray": "not validated",
+    "launch_at_login": "not validated",
+    "notifications": "not validated",
+    "credentialed_tunnel": "not validated",
+    "physical_windows_11": "not validated",
+    "windows_arm64": "not validated",
+    "authenticode_signing": "not validated",
+    "missing_webview2": "not validated",
+    "interactive_installer": "not validated",
+    "credential_manager_uninstall_policy": "not validated",
+    "historical_source_upgrade": "not validated",
+    "automatic_updater": "not validated",
+    "default_uninstaller_self_copy": "not validated"
+  },
+  "automated_installer_evidence": "Exact source SHA, CI run and sanitized result are recorded in the final handoff and downloaded candidate manifest."
+}

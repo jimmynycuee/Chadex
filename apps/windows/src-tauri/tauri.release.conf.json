@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": false,
+    "licenseFile": "../../../LICENSE",
+    "resources": {
+      "resources/helper/": "helper/",
+      "resources/chadex-runtime/": "chadex-runtime/",
+      "resources/licenses/": "licenses/",
+      "resources/release-resources.json": "release-resources.json"
+    },
+    "windows": {
+      "allowDowngrades": false,
+      "webviewInstallMode": {"type": "downloadBootstrapper", "silent": true},
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["TradChinese", "English"],
+        "displayLanguageSelector": false,
+        "compression": "lzma"
+      }
+    }
+  }
+}

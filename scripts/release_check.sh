@@ -97,6 +97,9 @@ echo "==> Production runtime wrapper check"
 
 echo "==> Release tooling tests"
 PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_sync_graphify_obsidian.py
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_prepare_windows_release.py
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_windows_installer_smoke.py
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_windows_suspended_launch.py
 PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_benchmark_chatgpt_completion.py
 PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_benchmark_terminal_ab.py
 

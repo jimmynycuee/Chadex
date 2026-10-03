@@ -250,6 +250,75 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  windows-release:
+    name: Windows W5 installer candidate
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.12.0
+
+      - name: Install pinned Rust
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          rustup toolchain install 1.98.1 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Rust installation failed." }
+          rustup default 1.98.1
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Rust selection failed." }
+
+      - name: Validate release tooling
+        shell: pwsh
+        run: |
+          python -B scripts/test_prepare_windows_release.py
+          if ($LASTEXITCODE -ne 0) { throw "Release staging regression failed." }
+          python -B scripts/test_windows_installer_smoke.py
+          if ($LASTEXITCODE -ne 0) { throw "Installer harness regression failed." }
+          python -B scripts/test_windows_suspended_launch.py
+          if ($LASTEXITCODE -ne 0) { throw "Suspended ownership regression failed." }
+          node --test scripts/windows_installed_probe.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Installed probe regression failed." }
+
+      - name: Build unsigned release candidate and synthetic upgrade fixture
+        shell: pwsh
+        run: |
+          .\scripts\build_windows_release.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP "windows-w5-candidate") -BuildUpgradeFixture
+
+      - name: Install, upgrade, relaunch, reinstall and uninstall production candidate
+        shell: pwsh
+        run: |
+          python -B scripts/windows_installer_smoke.py --candidate-dir (Join-Path $env:RUNNER_TEMP "windows-w5-candidate") --output (Join-Path $env:RUNNER_TEMP "windows-w5-installer.json")
+          if ($LASTEXITCODE -ne 0) { throw "Installed production acceptance failed." }
+
+      - name: Upload sanitized W5 installer report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-w5-installer-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/windows-w5-installer.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload tested unsigned installer candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-w5-unsigned-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/windows-w5-candidate/*unsigned-setup.exe
+            ${{ runner.temp }}/windows-w5-candidate/*.sha256
+            ${{ runner.temp }}/windows-w5-candidate/candidate.json
+            ${{ runner.temp }}/windows-w5-candidate/release-resources.json
+          if-no-files-found: error
+          retention-days: 14
+
   arm64-package:
     name: ARM64 package gate
     runs-on: macos-15

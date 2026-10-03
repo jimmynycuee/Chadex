@@ -70,4 +70,5 @@ xcuserdata/
 /apps/windows/src-tauri/target/
 /apps/windows/src-tauri/resources/
 /apps/windows/src-tauri/gen/
+/apps/windows/src-tauri/w5-fixture.generated.json
 /apps/windows/bridge/target/
