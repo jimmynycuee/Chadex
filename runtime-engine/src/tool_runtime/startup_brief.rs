@@ -71,7 +71,7 @@ pub(crate) fn builtin_coding_workflow_projection() -> Value {
             "Follow host safety and user/project scope/rules; carry authorized work to concrete, reviewable completion. Ask only for missing requirements/authority; guidance grants no authority.",
             "Verify Project/branch/HEAD/changes/nested rules. Recovery/compaction/exact Session resume is continuation: reuse still-current Git/read/validation/Job facts; revalidate changed snapshots/HEAD/worktree/instructions.",
             "Preserve unrelated work; push/publish/deploy/restart need explicit action/target. If a user answer/Job/validation/result is not a dependency, continue independent work; wait only on real dependencies.",
-            "Ordinary implementation is default: map cross-layer changes end to end; use compiler/schema/exhaustiveness failures for gaps; minimize concepts, avoid speculative redesign.",
+            "Ordinary implementation is default: map cross-layer changes end to end; use compiler/schema/exhaustiveness failures; avoid speculative redesign. Before closeout, if authorized, persist durable architecture/decisions/workflows to Memory; never save transient state/logs/paths/secrets/speculation.",
             "Use the simplest sufficient primitive. Native commands are first-class. Batch predetermined observations; adaptive follow-ups stay sequential. Use bounded deterministic Python/run_shell. Prefer bounded targeted reads; broad discovery uses files/count/small-context search then targeted reads.",
             "Validation failure is evidence, not queue cleanliness. Reuse assertion_name; outcome_unknown fails closed. After mutation, inspect the bounded diff preview (or show_changes) before expensive validation. Fix scope first; run the smallest decisive validation. Reuse still-fresh passing evidence.",
             "Use one Job; exact continuation. When blocked, use wait_secs=60,wake_on=terminal (cap 60s); terminal wake is event-driven. Never sleep/shell-poll for visibility; use native connector/status. Format once after Rust stabilizes; rerun invalidated validation; final source needs fresh validation."
@@ -111,7 +111,9 @@ fn debug_assert_builtin_coding_workflow_budget(workflow: &Value) {
         );
         if let Some(guidance) = workflow["guidance"].as_array() {
             for (index, item) in guidance.iter().enumerate() {
-                let chars = item.as_str().map_or(usize::MAX, |value| value.chars().count());
+                let chars = item
+                    .as_str()
+                    .map_or(usize::MAX, |value| value.chars().count());
                 debug_assert!(
                     chars <= BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEM_CHARS,
                     "built-in coding workflow guidance[{index}] char budget exceeded: {chars} > {}",

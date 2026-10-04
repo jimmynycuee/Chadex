@@ -4,9 +4,8 @@ use crate::runner_http::ShellJobStartMetadata;
 use crate::runner_protocol::{RunnerCapabilities, RunnerJobUpdateRequest, ShellJobOpRequest};
 use crate::tool_runtime::startup_brief::{
     builtin_coding_workflow_projection, startup_brief_size, validate_schema_instance_for_test,
-    BUILTIN_CODING_WORKFLOW_SOFT_MAX_BYTES,
-    BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEM_CHARS,
-    BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEMS, STANDARD_STARTUP_HARD_MAX_BYTES,
+    BUILTIN_CODING_WORKFLOW_SOFT_MAX_BYTES, BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEMS,
+    BUILTIN_CODING_WORKFLOW_SOFT_MAX_GUIDANCE_ITEM_CHARS, STANDARD_STARTUP_HARD_MAX_BYTES,
 };
 use crate::tool_runtime::{
     registry, SessionMode, StartupDetail, ToolCall, ToolResult, ToolRuntime,
@@ -149,7 +148,7 @@ fn builtin_coding_workflow_keeps_budget_headroom() {
 fn assert_builtin_workflow(output: &Value) {
     let workflow = &output["workflow"];
     assert_eq!(workflow["contract"], "webcodex.coding_workflow");
-    assert_eq!(workflow["version"], 14);
+    assert_eq!(workflow["version"], 15);
     assert_eq!(workflow["authority"], "model_guidance_only");
     assert!(workflow["role_selection"]
         .as_str()
@@ -220,6 +219,9 @@ fn assert_builtin_workflow(output: &Value) {
         "Ordinary implementation is default",
         "map cross-layer changes end to end",
         "compiler/schema/exhaustiveness failures",
+        "Before closeout",
+        "persist durable architecture/decisions/workflows to Memory",
+        "never save transient state/logs/paths/secrets/speculation",
         "simplest sufficient primitive",
         "Native commands are first-class",
         "bounded deterministic Python/run_shell",

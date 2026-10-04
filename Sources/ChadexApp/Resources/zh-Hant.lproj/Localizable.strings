@@ -14,11 +14,8 @@
 "sidebar.projects" = "專案";
 "sidebar.activity" = "活動紀錄";
 "sidebar.guide" = "使用指南";
-"sidebar.overview" = "總覽";
-"sidebar.computer" = "電腦控制";
-"sidebar.instructions" = "專案指令";
-"sidebar.skills" = "Skills";
-"sidebar.memory" = "專案記憶";
+"sidebar.agentSettings" = "Agent 設定";
+"sidebar.computerUse" = "Computer Use";
 
 "project.add" = "加入專案";
 "project.addHint" = "選擇要登錄到 Chadex 的本機資料夾。";
@@ -26,12 +23,16 @@
 "project.copyPath" = "複製專案路徑";
 "project.openInFinder" = "在 Finder 中顯示";
 "project.actions" = "專案操作";
+"project.memoryInspector" = "Memory Inspector…";
 "project.remove" = "移除專案…";
 "project.removeTitle" = "要從 Chadex 移除這個專案嗎？";
 "project.removeMessage" = "「%@」只會從 Chadex 移除；Mac 上的資料夾與所有檔案都不會被刪除。";
 "project.switching" = "正在切換到 %@…";
 "project.emptyTitle" = "尚未選擇專案";
 "project.emptyMessage" = "加入一個本機資料夾，準備讓 ChatGPT 存取。";
+
+"agentSettings.subtitle" = "設定 Agent 如何處理目前選取的專案。Project Instructions 定義規則；Skills 提供可重複使用的工作流程。";
+"agentSettings.currentProject" = "目前專案：%@";
 
 "computer.title" = "COMPUTER CONTROL";
 "computer.mode" = "Computer control 模式";

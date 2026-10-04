@@ -1352,6 +1352,20 @@ impl ToolRuntime {
             .as_ref()
             .and_then(|resolution| resolution.as_ref().ok());
         result_projection.bind_resolved_project(resolved_project);
+        // A coding-task bootstrap should automatically receive the bounded
+        // durable Memory summaries that were explicitly marked for bootstrap.
+        // Keep this on the same context-material path as caller-requested
+        // sidecars so project fencing, Memory scopes, surface capability, and
+        // byte budgets remain authoritative. Other tools stay opt-in.
+        let mut context_request = context_request;
+        if matches!(&call, ToolCall::WorkOnProject { .. })
+            && material_capabilities.memory_surface
+            && !context_request
+                .iter()
+                .any(|key| key.trim() == "memory.bootstrap")
+        {
+            context_request.push("memory.bootstrap".to_string());
+        }
         // Preserve the canonical project for activity attribution before the
         // session recorder consumes the resolved value below. Short aliases
         // must not turn a real Runner execution into a client-less row.
@@ -1365,7 +1379,7 @@ impl ToolRuntime {
         ) {
             self.window_activity.update(&trace_id, None, Some(project));
         }
-        let context_projection_project = if context_request.is_empty() {
+        let mut context_projection_project = if context_request.is_empty() {
             None
         } else {
             resolved_project.cloned()
@@ -1761,6 +1775,28 @@ impl ToolRuntime {
                 );
             }
         }
+        // Path-form work_on_project may register/resolve its canonical Project
+        // only during the coding bootstrap, after the generic pre-dispatch
+        // resolver ran. Recover that exact returned Project before projecting
+        // automatic Memory or any caller-requested project context; never guess
+        // from the original path.
+        if context_projection_project.is_none()
+            && !context_request.is_empty()
+            && result.success
+            && tool_name == "work_on_project"
+        {
+            if let Some(resolved_project_id) = result
+                .output
+                .get("resolved_project")
+                .and_then(Value::as_str)
+            {
+                context_projection_project = self
+                    .resolve_project_input_for_auth(resolved_project_id, auth)
+                    .await
+                    .ok();
+            }
+        }
+
         self.add_requested_context_projection(
             &mut result,
             &context_request,

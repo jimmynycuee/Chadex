@@ -14,11 +14,8 @@
 "sidebar.projects" = "Projects";
 "sidebar.activity" = "Activity";
 "sidebar.guide" = "Guide";
-"sidebar.overview" = "Overview";
-"sidebar.computer" = "Computer";
-"sidebar.instructions" = "Instructions";
-"sidebar.skills" = "Skills";
-"sidebar.memory" = "Memory";
+"sidebar.agentSettings" = "Agent Settings";
+"sidebar.computerUse" = "Computer Use";
 
 "project.add" = "Add Project";
 "project.addHint" = "Choose a local folder to register with Chadex.";
@@ -26,12 +23,16 @@
 "project.copyPath" = "Copy project path";
 "project.openInFinder" = "Reveal in Finder";
 "project.actions" = "Project Actions";
+"project.memoryInspector" = "Memory Inspector…";
 "project.remove" = "Remove Project…";
 "project.removeTitle" = "Remove this project from Chadex?";
 "project.removeMessage" = "“%@” will be removed from Chadex. The folder and all files on your Mac will not be deleted.";
 "project.switching" = "Switching to %@…";
 "project.emptyTitle" = "No Project Selected";
 "project.emptyMessage" = "Add a local folder to prepare it for ChatGPT access.";
+
+"agentSettings.subtitle" = "Configure how the agent works with the currently selected project. Project Instructions define rules; Skills provide reusable workflows.";
+"agentSettings.currentProject" = "Current project: %@";
 
 "computer.title" = "COMPUTER CONTROL";
 "computer.mode" = "Computer control mode";

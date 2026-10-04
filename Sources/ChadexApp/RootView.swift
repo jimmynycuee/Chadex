@@ -2,7 +2,9 @@ import AppKit
 import SwiftUI
 
 private enum SidebarSelection: Hashable {
-    case project(UUID, ProjectWorkspaceDestination)
+    case project(UUID)
+    case agentSettings
+    case computerUse
     case activity
     case guide
 }
@@ -18,7 +20,7 @@ struct RootView: View {
     @State private var projectPendingRemoval: ProjectRecord?
     @State private var projectSwitchRequestInFlight = false
     @State private var pendingProjectSwitchID: UUID?
-    @State private var expandedProjectID: UUID?
+    @State private var memoryInspectorProject: ProjectRecord?
 
     var body: some View {
         NavigationSplitView {
@@ -48,24 +50,12 @@ struct RootView: View {
 
                 List(selection: $selection) {
                     ForEach(model.projects) { project in
-                        Button {
-                            expandedProjectID = expandedProjectID == project.id ? nil : project.id
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: expandedProjectID == project.id ? "chevron.down" : "chevron.right")
-                                    .chadexFont(.caption2, weight: .semibold)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 10)
-
-                                ProjectSidebarRow(
-                                    project: project,
-                                    isCurrent: model.selectedProject?.id == project.id,
-                                    phase: model.connectionPresentationPhase
-                                )
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+                        ProjectSidebarRow(
+                            project: project,
+                            isCurrent: model.selectedProject?.id == project.id,
+                            phase: model.connectionPresentationPhase
+                        )
+                        .tag(SidebarSelection.project(project.id))
                         .help(project.path)
                         .contextMenu {
                             Button(L10n.string("project.openInFinder")) {
@@ -79,30 +69,38 @@ struct RootView: View {
                                 NSPasteboard.general.setString(project.path, forType: .string)
                             }
 
+                            Button(L10n.string("project.memoryInspector")) {
+                                Task { await showMemoryInspector(for: project) }
+                            }
+
                             Divider()
 
                             Button(L10n.string("project.remove"), role: .destructive) {
                                 projectPendingRemoval = project
                             }
                         }
+                    }
 
-                        if expandedProjectID == project.id {
-                            ForEach(ProjectWorkspaceDestination.allCases) { destination in
-                                Label(
-                                    L10n.string(destination.titleKey),
-                                    systemImage: destination.systemImage
-                                )
-                                .chadexFont(.body)
-                                .padding(.leading, layout.spacing(20))
-                                .tag(SidebarSelection.project(project.id, destination))
-                            }
-                        }
+                    Section {
+                        SidebarNavigationRow(
+                            title: L10n.string("sidebar.agentSettings"),
+                            systemImage: "person.crop.circle"
+                        )
+                        .tag(SidebarSelection.agentSettings)
+
+                        SidebarNavigationRow(
+                            title: L10n.string("sidebar.computerUse"),
+                            systemImage: "desktopcomputer"
+                        )
+                        .tag(SidebarSelection.computerUse)
                     }
 
                     Section {
                         HStack(spacing: 8) {
-                            Label(L10n.string("sidebar.activity"), systemImage: "clock.arrow.circlepath")
-                                .chadexFont(.body)
+                            SidebarNavigationRow(
+                                title: L10n.string("sidebar.activity"),
+                                systemImage: "clock.arrow.circlepath"
+                            )
                             Spacer(minLength: 8)
                             if !model.activities.isEmpty {
                                 Text("\(model.activities.count)")
@@ -112,9 +110,11 @@ struct RootView: View {
                         }
                         .tag(SidebarSelection.activity)
 
-                        Label(L10n.string("sidebar.guide"), systemImage: "questionmark.circle")
-                            .chadexFont(.body)
-                            .tag(SidebarSelection.guide)
+                        SidebarNavigationRow(
+                            title: L10n.string("sidebar.guide"),
+                            systemImage: "questionmark.circle"
+                        )
+                        .tag(SidebarSelection.guide)
                     }
                 }
                 .listStyle(.sidebar)
@@ -214,6 +214,10 @@ struct RootView: View {
                             NSPasteboard.general.setString(project.path, forType: .string)
                         }
 
+                        Button(L10n.string("project.memoryInspector")) {
+                            Task { await showMemoryInspector(for: project) }
+                        }
+
                         Divider()
 
                         Button(L10n.string("project.remove"), role: .destructive) {
@@ -238,17 +242,11 @@ struct RootView: View {
                 didRouteFirstLaunch = true
             }
 
-            if expandedProjectID == nil, case .project(let id, _) = selection {
-                expandedProjectID = id
-            } else if expandedProjectID == nil {
-                expandedProjectID = model.selectedProject?.id
-            }
         }
         .onChange(of: selection) { _, value in
             persistSidebarDestination(value)
 
-            if case .project(let id, _) = value {
-                expandedProjectID = id
+            if case .project(let id) = value {
                 pendingProjectSwitchID = id
                 guard !projectSwitchRequestInFlight else { return }
                 projectSwitchRequestInFlight = true
@@ -260,8 +258,8 @@ struct RootView: View {
                             _ = await model.selectProject(requestedID)
                         }
                     }
-                    if case .project(_, let destination) = selection {
-                        selection = model.selectedProject.map { .project($0.id, destination) } ?? .activity
+                    if case .project = selection {
+                        selection = model.selectedProject.map { .project($0.id) } ?? .activity
                     }
                 }
             } else if projectSwitchRequestInFlight {
@@ -270,6 +268,10 @@ struct RootView: View {
         }
         .sheet(isPresented: $model.showingConnectionSettings) {
             ConnectionSettingsSheet()
+                .environmentObject(model)
+        }
+        .sheet(item: $memoryInspectorProject) { project in
+            ProjectMemoryInspectorSheet(project: project)
                 .environmentObject(model)
         }
         .alert(item: rootPresentedError) { error in
@@ -286,8 +288,14 @@ struct RootView: View {
                 primaryButton: .destructive(Text(L10n.string("project.remove"))) {
                     Task {
                         if await model.removeProject(project.id) {
-                            expandedProjectID = model.selectedProject?.id
-                            selection = model.selectedProject.map { .project($0.id, .overview) } ?? .activity
+                            switch selection {
+                            case .agentSettings, .computerUse:
+                                if model.selectedProject == nil {
+                                    selection = .activity
+                                }
+                            default:
+                                selection = model.selectedProject.map { .project($0.id) } ?? .activity
+                            }
                         }
                     }
                 },
@@ -301,8 +309,14 @@ struct RootView: View {
     }
 
     private var selectedSidebarProject: ProjectRecord? {
-        guard case .project(let id, _) = selection else { return nil }
-        return model.projects.first(where: { $0.id == id })
+        switch selection {
+        case .project(let id):
+            return model.projects.first(where: { $0.id == id })
+        case .agentSettings, .computerUse:
+            return model.selectedProject
+        case .activity, .guide, .none:
+            return nil
+        }
     }
 
     private var rootPresentedError: Binding<AppModel.PresentedError?> {
@@ -327,10 +341,13 @@ struct RootView: View {
             return .guide
         case "activity":
             return .activity
+        case "agent", "project.instructions", "project.skills":
+            return .agentSettings
+        case "computer", "project.computer":
+            return .computerUse
         default:
             if let project = model.selectedProject {
-                let destination = ProjectWorkspaceDestination(persistedValue: lastSidebarDestination) ?? .overview
-                return .project(project.id, destination)
+                return .project(project.id)
             }
             return .activity
         }
@@ -342,8 +359,12 @@ struct RootView: View {
             lastSidebarDestination = "guide"
         case .activity:
             lastSidebarDestination = "activity"
-        case .project(_, let destination):
-            lastSidebarDestination = destination.persistedValue
+        case .agentSettings:
+            lastSidebarDestination = "agent"
+        case .computerUse:
+            lastSidebarDestination = "computer"
+        case .project:
+            lastSidebarDestination = "project"
         case .none:
             break
         }
@@ -356,12 +377,16 @@ struct RootView: View {
             ActivityView()
         case .guide:
             GuideView()
-        case .project(let id, let destination):
+        case .agentSettings:
+            selectedProjectDetail(destination: .agentSettings)
+        case .computerUse:
+            selectedProjectDetail(destination: .computerUse)
+        case .project(let id):
             if let project = model.projects.first(where: { $0.id == id }) {
                 if model.selectedProject?.id == id {
                     ProjectDetailView(
                         project: project,
-                        destination: destination
+                        destination: .overview
                     ) {
                         selection = .activity
                     }
@@ -376,6 +401,27 @@ struct RootView: View {
         }
     }
 
+    @ViewBuilder
+    private func selectedProjectDetail(destination: ProjectWorkspaceDestination) -> some View {
+        if let project = model.selectedProject {
+            ProjectDetailView(project: project, destination: destination) {
+                selection = .activity
+            }
+        } else {
+            EmptyProjectView()
+        }
+    }
+
+    @MainActor
+    private func showMemoryInspector(for project: ProjectRecord) async {
+        if model.selectedProject?.id != project.id {
+            guard await model.selectProject(project.id) else { return }
+        }
+        guard model.selectedProject?.id == project.id else { return }
+        await model.refreshProjectMemory()
+        memoryInspectorProject = project
+    }
+
     private func projectSwitchingPlaceholder(_ project: ProjectRecord) -> some View {
         VStack(spacing: layout.spacing(12)) {
             ProgressView()
@@ -386,6 +432,60 @@ struct RootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle(project.name)
+    }
+}
+
+private struct SidebarNavigationRow: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 15)
+
+            Text(title)
+                .chadexFont(.body)
+                .lineLimit(1)
+        }
+        .chadexPadding(.vertical, 1)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct ProjectMemoryInspectorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.chadexLayout) private var layout
+    @EnvironmentObject private var model: AppModel
+
+    let project: ProjectRecord
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                ProjectMemoryView(project: project)
+                    .frame(maxWidth: layout.control(760), alignment: .topLeading)
+                    .chadexPadding(.horizontal, 20)
+                    .chadexPadding(.vertical, 18)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .navigationTitle("\(project.name) — \(L10n.string("memory.title"))")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.string("common.done")) { dismiss() }
+                }
+            }
+        }
+        .frame(
+            minWidth: layout.control(720),
+            minHeight: layout.control(560)
+        )
+        .task(id: project.id) {
+            guard model.selectedProject?.id == project.id else { return }
+            await model.refreshProjectMemory()
+        }
     }
 }
 
@@ -504,9 +604,9 @@ private struct ProjectSidebarRow: View {
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: "folder")
-                .chadexFont(.callout, weight: .medium)
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 16)
+                .frame(width: 15)
 
             Text(project.name)
                 .chadexFont(.body)
@@ -521,7 +621,7 @@ private struct ProjectSidebarRow: View {
                     .accessibilityHidden(true)
             }
         }
-        .chadexPadding(.vertical, 2)
+        .chadexPadding(.vertical, 1)
         .contentShape(Rectangle())
     }
 }

@@ -40,7 +40,7 @@ fn builtin_coding_workflow_defaults_are_required_and_bounded() {
 #[test]
 fn builtin_coding_workflow_defaults_cover_unnamed_tasks_without_granting_authority() {
     let workflow = builtin_coding_workflow_projection();
-    assert_eq!(workflow["version"], 14);
+    assert_eq!(workflow["version"], 15);
     assert_eq!(workflow["authority"], "model_guidance_only");
     let role_selection = workflow["role_selection"].as_str().unwrap();
     assert!(role_selection.contains("Ordinary implementation uses default guidance"));
@@ -67,6 +67,9 @@ fn builtin_coding_workflow_defaults_cover_unnamed_tasks_without_granting_authori
         "map cross-layer changes end to end",
         "compiler/schema/exhaustiveness failures",
         "avoid speculative redesign",
+        "Before closeout",
+        "persist durable architecture/decisions/workflows to Memory",
+        "never save transient state/logs/paths/secrets/speculation",
         "simplest sufficient primitive",
         "Native commands are first-class",
         "bounded deterministic Python/run_shell",

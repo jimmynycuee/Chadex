@@ -819,6 +819,111 @@ async fn context_material_registry_enforces_scope_and_surface_before_provider() 
 }
 
 #[tokio::test]
+async fn work_on_project_automatically_projects_authorized_bootstrap_memory() {
+    let (runtime, _tmp) = runtime_with_memory();
+    let root = tempfile::tempdir().unwrap();
+    init_git_repo(root.path());
+    commit_file(
+        root.path(),
+        "README.md",
+        "memory bootstrap fixture\n",
+        "initial",
+    );
+    let auth = shared_key_auth_context("memory-startup-reader");
+    let project_id = register_runner_project_at_path_with_auth(
+        &runtime,
+        "memory-startup",
+        "demo",
+        root.path(),
+        &auth,
+    )
+    .await;
+    let project = runtime
+        .resolve_project_input_for_auth(&project_id, Some(&auth))
+        .await
+        .unwrap();
+    let private_summary = "DURABLE_STARTUP_MEMORY_SUMMARY";
+    let private_body = "DURABLE_STARTUP_MEMORY_BODY";
+    assert!(
+        set(
+            &runtime,
+            &project,
+            "startup-bootstrap",
+            private_summary,
+            private_body,
+            "high",
+            true,
+            &["architecture"],
+            None,
+        )
+        .success
+    );
+
+    let task = tokio::spawn({
+        let runtime = runtime.clone();
+        let project_id = project_id.clone();
+        let auth = auth.clone();
+        async move {
+            runtime
+                .dispatch_with_auth_transport_options_and_metadata_with_recording_mode_and_context(
+                    super::super::ToolCall::WorkOnProject {
+                        project: project_id,
+                        client_id: None,
+                        path: None,
+                        mode: None,
+                        base_ref: None,
+                        instruction: "verify automatic bootstrap memory".to_string(),
+                        session_id: None,
+                        include_project_instructions: false,
+                        include_workflow_guidance: false,
+                        include_extension_catalog: false,
+                    },
+                    Some(&auth),
+                    super::super::sessions::SessionTransport::Mcp,
+                    Default::default(),
+                    None,
+                    true,
+                    Vec::new(),
+                    ContextMaterialCapabilities {
+                        memory_surface: true,
+                        ..Default::default()
+                    },
+                )
+                .await
+        }
+    });
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !task.is_finished() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "work_on_project automatic Memory fixture timed out"
+        );
+        if let Some(request) = probe_patch_agent_request(&runtime, "memory-startup").await {
+            complete_agent_request_by_running_locally(&runtime, "memory-startup", request).await;
+        } else {
+            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        }
+    }
+
+    let result = task.await.unwrap();
+    assert!(result.success, "{:?}", result.error);
+    let material = result.output["context_projection"]["materials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|material| material["key"] == "memory.bootstrap")
+        .expect("work_on_project should automatically project bootstrap Memory");
+    assert_eq!(material["status"], "available");
+    assert_eq!(material["projection"]["total_count"], 1);
+    assert!(material.to_string().contains(private_summary));
+    assert!(
+        !material.to_string().contains(private_body),
+        "automatic bootstrap must keep detailed Memory bodies lazy"
+    );
+}
+
+#[tokio::test]
 async fn memory_bootstrap_is_explicit_and_never_inferred_from_session_ack_recovery() {
     let (runtime, _tmp) = runtime_with_memory();
     let root = tempfile::tempdir().unwrap();

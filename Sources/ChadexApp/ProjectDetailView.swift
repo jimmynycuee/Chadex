@@ -22,19 +22,16 @@ struct ProjectDetailView: View {
             .chadexPadding(.vertical, ChadexMetrics.detailVerticalPadding)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .navigationTitle("\(project.name) — \(L10n.string(destination.titleKey))")
+        .navigationTitle(navigationTitle)
         .task(id: "\(project.id.uuidString):\(destination.rawValue)") {
             guard model.selectedProject?.id == project.id else { return }
 
             switch destination {
-            case .computer:
-                await model.refreshComputerSafety()
-            case .instructions:
+            case .agentSettings:
                 await model.refreshProjectInstructions()
-            case .skills:
                 await model.refreshSkills()
-            case .memory:
-                await model.refreshProjectMemory()
+            case .computerUse:
+                await model.refreshComputerSafety()
             case .overview:
                 break
             }
@@ -67,17 +64,51 @@ struct ProjectDetailView: View {
             Divider()
             recentActivity
 
-        case .computer:
+        case .agentSettings:
+            agentSettingsSection
+
+        case .computerUse:
             computerControlSection
+        }
+    }
 
-        case .instructions:
+    private var navigationTitle: String {
+        switch destination {
+        case .overview:
+            return project.name
+        case .agentSettings:
+            return L10n.string("sidebar.agentSettings")
+        case .computerUse:
+            return L10n.string("sidebar.computerUse")
+        }
+    }
+
+    private var agentSettingsSection: some View {
+        VStack(alignment: .leading, spacing: layout.spacing(20)) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(L10n.string("agentSettings.subtitle"))
+                    .chadexFont(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 7) {
+                    Image(systemName: "folder")
+                        .chadexFont(.caption, weight: .medium)
+                        .foregroundStyle(.secondary)
+                    Text(L10n.string("agentSettings.currentProject", project.name))
+                        .chadexFont(.caption, weight: .medium)
+                    Text(project.path)
+                        .chadexFont(.caption, design: .monospaced)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Divider()
             instructionsSection
-
-        case .skills:
+            Divider()
             SkillsCenterView(project: project)
-
-        case .memory:
-            ProjectMemoryView(project: project)
         }
     }
 
