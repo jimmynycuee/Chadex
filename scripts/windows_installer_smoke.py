@@ -1297,12 +1297,18 @@ def run_smoke(candidate_dir: Path, *, historical_baseline_dir: Path | None = Non
 
         with report.stage("default_uninstaller_self_copy") as stage:
             default_install_dir = root / "預設移除 Chadex"
+            before_default_uninstall = data_snapshot(app_data)
             run_installer(candidate["installer"], default_install_dir, root,
                           powershell=powershell, groups=groups, report=report)
             verify_registry_owner(candidate["version"], default_install_dir)
             run_default_uninstaller(default_install_dir, root, powershell=powershell,
                                     groups=groups, report=report)
+            require_unchanged_snapshot(app_data, before_default_uninstall)
+            require(preferences_hash(app_data) == initial_preferences_hash, "preferences_changed")
+            require(project_marker_hash(project) == marker_hash, "project_marker_changed")
             stage["registry_entry_removed"] = True
+            stage["data_preserved"] = True
+            stage["project_marker_preserved"] = True
             stage["default_uninstaller_self_copy_verified"] = True
 
         main_success = True
