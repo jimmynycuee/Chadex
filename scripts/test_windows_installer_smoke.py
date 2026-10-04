@@ -179,6 +179,7 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
         "schema": 1, "track": "W5", "version": "0.4.0", "source_sha": "a" * 40,
         "architecture": "x86_64", "profile": "release", "features": ["custom-protocol"],
         "desktop_smoke": False, "authenticode": "unsigned", "updater": "disabled",
+        "synthetic_upgrade_baseline": "0.3.3",
         "installer": installer_name, "sha256": digest(installer_data),
         "desktop_sha256": "b" * 64, "upgrade_fixture_sha256": digest(fixture_data),
         "synthetic_upgrade_fixture": True,
@@ -224,11 +225,19 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             candidate_dir, candidate_json = make_candidate(root)
             candidate = smoke.validate_candidate(candidate_dir)
             self.assertEqual(candidate["source_sha"], "a" * 40)
+            self.assertEqual(candidate["baseline_version"], "0.3.3")
             self.assertEqual(len(candidate["resources"]["resources"]), 7)
             self.assertEqual({path.name for path in candidate_dir.iterdir()}, {
                 candidate_json["installer"], "candidate.json", "release-resources.json",
                 "upgrade-fixture",
             })
+
+            candidate_json["synthetic_upgrade_baseline"] = candidate_json["version"]
+            (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.validate_candidate(candidate_dir)
+            self.assertEqual(failure.exception.code, "candidate_metadata_invalid")
+            candidate_json["synthetic_upgrade_baseline"] = "0.3.3"
 
             candidate_json["upgrade_fixture_sha256"] = "0" * 64
             (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))

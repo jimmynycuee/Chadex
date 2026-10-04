@@ -76,18 +76,20 @@ try {
         # The explicit feature set excludes desktop-smoke. CLI supplies custom-protocol.
         Invoke-NativeChecked "npm.cmd" @("run", "tauri", "--", "build", "--ci", "--bundles", "nsis", "--config", "src-tauri/tauri.release.conf.json", "--", "--locked")
         Assert-ReleaseSource
+        $upgradeBaselineVersion = $null
         if ($BuildUpgradeFixture) {
             # Synthetic older installer metadata around the SAME production binaries.
             # This tests installer migration, not historical application compatibility.
             if ($version -ne '0.4.0') { throw "Update the synthetic upgrade fixture for the candidate version." }
+            $upgradeBaselineVersion = '0.3.3'
             $fixtureConfig = Get-Content -Raw -LiteralPath "src-tauri/tauri.release.conf.json" | ConvertFrom-Json
-            $fixtureConfig | Add-Member -NotePropertyName version -NotePropertyValue '0.3.3'
+            $fixtureConfig | Add-Member -NotePropertyName version -NotePropertyValue $upgradeBaselineVersion
             $fixtureConfigPath = Join-Path $repo "apps/windows/src-tauri/w5-fixture.generated.json"
             try {
                 $fixtureConfig | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $fixtureConfigPath -Encoding utf8NoBOM
                 Invoke-NativeChecked "npm.cmd" @("run", "tauri", "--", "bundle", "--ci", "--bundles", "nsis", "--config", $fixtureConfigPath)
                 New-Item -ItemType Directory -Path (Join-Path $output "upgrade-fixture") -Force | Out-Null
-                $fixture = @(Get-ChildItem -LiteralPath (Join-Path $target "release/bundle/nsis") -Filter '*0.3.3*setup.exe')
+                $fixture = @(Get-ChildItem -LiteralPath (Join-Path $target "release/bundle/nsis") -Filter "*$upgradeBaselineVersion*setup.exe")
                 if ($fixture.Count -ne 1) { throw "Expected one synthetic baseline installer." }
                 Copy-Item -LiteralPath $fixture[0].FullName -Destination (Join-Path $output "upgrade-fixture/baseline-setup.exe")
             } finally { Remove-Item -LiteralPath $fixtureConfigPath -Force -ErrorAction SilentlyContinue }
@@ -113,6 +115,7 @@ try {
         schema = 1; track = "W5"; version = $version; source_sha = $source;
         architecture = "x86_64"; profile = "release"; features = @("custom-protocol");
         desktop_smoke = $false; authenticode = "unsigned"; updater = "disabled";
+        synthetic_upgrade_baseline = $upgradeBaselineVersion;
         installer = $name; sha256 = $hash; publication = "not authorized";
         desktop_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $desktop).Hash.ToLowerInvariant();
         full_product_acceptance = "pending"; synthetic_upgrade_fixture = [bool]$BuildUpgradeFixture

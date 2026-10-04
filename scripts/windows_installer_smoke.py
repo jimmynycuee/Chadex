@@ -26,7 +26,6 @@ import windows_runtime_e2e as w2
 import windows_suspended_launch as suspended
 
 
-BASELINE_VERSION = "0.3.2"
 RESOURCE_SCHEMA = "chadex.windows.release-resources.v1"
 EXPECTED_RESOURCES = frozenset({
     "helper/chadex-helper.exe",
@@ -260,7 +259,13 @@ def validate_candidate(candidate_dir: Path) -> dict[str, Any]:
     installer_name = manifest.get("installer")
     require(_safe_executable_basename(installer_name), "candidate_filename_unsafe")
     version = manifest.get("version")
-    require(isinstance(version, str) and re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", version),
+    version_pattern = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?"
+    require(isinstance(version, str) and re.fullmatch(version_pattern, version),
+            "candidate_metadata_invalid")
+    baseline_version = manifest.get("synthetic_upgrade_baseline")
+    require(isinstance(baseline_version, str)
+            and re.fullmatch(version_pattern, baseline_version)
+            and baseline_version != version,
             "candidate_metadata_invalid")
     require(type(manifest.get("schema")) is int and manifest.get("schema") == 1
             and manifest.get("track") == "W5"
@@ -296,6 +301,7 @@ def validate_candidate(candidate_dir: Path) -> dict[str, Any]:
     return {
         "manifest": manifest,
         "version": version,
+        "baseline_version": baseline_version,
         "source_sha": manifest["source_sha"],
         "installer": installer,
         "installer_hash": installer_hash,
@@ -1103,7 +1109,7 @@ def run_smoke(candidate_dir: Path, *, env: Mapping[str, str] | None = None,
                           powershell=powershell, groups=groups, report=report,
                           on_success=baseline_succeeded)
             require(installer_succeeded, "installer_exit_nonzero")
-            flags = verify_registry_owner(BASELINE_VERSION, install_dir)
+            flags = verify_registry_owner(candidate["baseline_version"], install_dir)
             next(item for item in report.value["stages"]
                  if item["name"] == "synthetic_baseline_install").update(flags)
 
