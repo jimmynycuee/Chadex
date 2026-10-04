@@ -42,6 +42,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var skillMutationInFlightIDs: Set<String> = []
     @Published private(set) var projectSkillWriteInFlight = false
     @Published private(set) var skillInstallInFlight = false
+    @Published private(set) var projectMemoryCatalog: ProjectMemoryCatalog?
+    @Published private(set) var projectMemoryRecords: [String: ProjectMemoryRecord] = [:]
+    @Published private(set) var projectMemoryLoading = false
+    @Published private(set) var projectMemoryError: String?
+    @Published private(set) var projectMemoryReadLoadingKeys: Set<String> = []
+    @Published private(set) var projectMemoryMutationInFlightKeys: Set<String> = []
 
     enum ActivityFilter: String, CaseIterable, Identifiable {
         case all
@@ -71,6 +77,8 @@ final class AppModel: ObservableObject {
     private var projectInstructionsLastRefreshUptime: TimeInterval?
     private var skillsRefreshProjectID: UUID?
     private var skillsLastRefreshUptime: TimeInterval?
+    private var projectMemoryRefreshProjectID: UUID?
+    private var projectMemoryLastRefreshUptime: TimeInterval?
     private var snapshotRequestGate = SnapshotRequestGate()
     private var activityRefreshGate = ActivityRefreshGate()
     private var snapshotFreshnessGate = SnapshotFreshnessGate()
@@ -79,6 +87,7 @@ final class AppModel: ObservableObject {
     private let foregroundRefreshMaxAge: TimeInterval = 1.5
     private let projectInstructionsRefreshMaxAge: TimeInterval = 5
     private let skillsRefreshMaxAge: TimeInterval = 5
+    private let projectMemoryRefreshMaxAge: TimeInterval = 5
 
     init(
         helper: HelperClient = HelperClient(),
@@ -351,6 +360,7 @@ final class AppModel: ObservableObject {
         if id == preferences.selectedProjectID {
             await refreshProjectInstructions()
             await refreshSkills()
+            await refreshProjectMemory()
             return true
         }
         guard let project = preferences.projects.first(where: { $0.id == id }) else { return false }
@@ -380,8 +390,10 @@ final class AppModel: ObservableObject {
             await refreshActivities()
             clearProjectInstructions()
             clearSkills()
+            clearProjectMemory()
             await refreshProjectInstructions()
             await refreshSkills()
+            await refreshProjectMemory()
             return true
         } catch {
             recordAppPhase(
@@ -405,8 +417,10 @@ final class AppModel: ObservableObject {
             await refreshActivities()
             clearProjectInstructions()
             clearSkills()
+            clearProjectMemory()
             await refreshProjectInstructions()
             await refreshSkills()
+            await refreshProjectMemory()
             return true
         } catch {
             present(error)
@@ -434,11 +448,17 @@ final class AppModel: ObservableObject {
             let skillObservationIsStale = skillsLastRefreshUptime
                 .map { now - $0 >= skillsRefreshMaxAge }
                 ?? true
+            let memoryObservationIsStale = projectMemoryLastRefreshUptime
+                .map { now - $0 >= projectMemoryRefreshMaxAge }
+                ?? true
             if force || instructionObservationIsStale {
                 await refreshProjectInstructions()
             }
             if force || skillObservationIsStale {
                 await refreshSkills()
+            }
+            if force || memoryObservationIsStale {
+                await refreshProjectMemory()
             }
         } catch {
             // Polling is background work. While the user is entering tunnel
@@ -703,6 +723,172 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func refreshProjectMemory() async {
+        guard let selectedProject else {
+            clearProjectMemory()
+            return
+        }
+        let requestedProjectID = selectedProject.id
+        guard projectMemoryRefreshProjectID != requestedProjectID else { return }
+        projectMemoryRefreshProjectID = requestedProjectID
+        projectMemoryLoading = true
+        defer {
+            if projectMemoryRefreshProjectID == requestedProjectID {
+                projectMemoryRefreshProjectID = nil
+                projectMemoryLoading = false
+            }
+            if self.selectedProject?.id == requestedProjectID {
+                projectMemoryLastRefreshUptime = ProcessInfo.processInfo.systemUptime
+            }
+        }
+        do {
+            let catalog: ProjectMemoryCatalog = try await helper.request(
+                method: "getProjectMemoryCatalog",
+                params: InspectProjectParams(path: selectedProject.path)
+            )
+            guard self.selectedProject?.id == requestedProjectID else { return }
+            projectMemoryCatalog = catalog
+            projectMemoryError = nil
+            let revisionsByKey = Dictionary(uniqueKeysWithValues: catalog.memories.map { ($0.memoryKey, $0.revision) })
+            projectMemoryRecords = projectMemoryRecords.filter { key, record in
+                revisionsByKey[key] == record.revision
+            }
+        } catch {
+            guard self.selectedProject?.id == requestedProjectID else { return }
+            projectMemoryCatalog = nil
+            projectMemoryRecords.removeAll()
+            projectMemoryError = helperErrorMessage(error)
+        }
+    }
+
+    func loadProjectMemory(_ descriptor: ProjectMemoryDescriptor) async {
+        guard let selectedProject else { return }
+        if let record = projectMemoryRecords[descriptor.memoryKey], record.revision == descriptor.revision {
+            return
+        }
+        guard !projectMemoryReadLoadingKeys.contains(descriptor.memoryKey) else { return }
+        let requestedProjectID = selectedProject.id
+        projectMemoryReadLoadingKeys.insert(descriptor.memoryKey)
+        defer { projectMemoryReadLoadingKeys.remove(descriptor.memoryKey) }
+        do {
+            let record: ProjectMemoryRecord = try await helper.request(
+                method: "getProjectMemory",
+                params: ProjectMemoryReadParams(
+                    path: selectedProject.path,
+                    memoryKey: descriptor.memoryKey,
+                    expectedRevision: descriptor.revision
+                )
+            )
+            guard self.selectedProject?.id == requestedProjectID else { return }
+            guard let current = projectMemoryCatalog?.memories.first(where: { $0.memoryKey == descriptor.memoryKey }),
+                  current.revision == record.revision else {
+                await refreshProjectMemory()
+                return
+            }
+            projectMemoryRecords[descriptor.memoryKey] = record
+            projectMemoryError = nil
+        } catch {
+            guard self.selectedProject?.id == requestedProjectID else { return }
+            projectMemoryRecords.removeValue(forKey: descriptor.memoryKey)
+            let message = isProjectMemoryConflict(error)
+                ? L10n.string("memory.conflict")
+                : helperErrorMessage(error)
+            await refreshProjectMemory()
+            guard self.selectedProject?.id == requestedProjectID else { return }
+            projectMemoryError = message
+        }
+    }
+
+    @discardableResult
+    func saveProjectMemory(
+        memoryKey: String,
+        summary: String,
+        body: String,
+        priority: String,
+        bootstrap: Bool,
+        tags: [String],
+        expectedRevision: String?
+    ) async -> Bool {
+        guard let selectedProject else { return false }
+        let key = memoryKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, !summary.isEmpty else { return false }
+        guard ["high", "normal", "low"].contains(priority) else { return false }
+        guard !projectMemoryMutationInFlightKeys.contains(key) else { return false }
+        projectMemoryMutationInFlightKeys.insert(key)
+        defer { projectMemoryMutationInFlightKeys.remove(key) }
+        do {
+            let _: ProjectMemorySetResult = try await helper.request(
+                method: "setProjectMemory",
+                params: ProjectMemorySetParams(
+                    path: selectedProject.path,
+                    memoryKey: key,
+                    summary: summary,
+                    body: body,
+                    priority: priority,
+                    bootstrap: bootstrap,
+                    tags: tags,
+                    expectedRevision: expectedRevision
+                )
+            )
+            projectMemoryRecords.removeValue(forKey: key)
+            projectMemoryError = nil
+            await refreshProjectMemory()
+            return true
+        } catch {
+            let message = isProjectMemoryConflict(error)
+                ? L10n.string("memory.conflict")
+                : helperErrorMessage(error)
+            await refreshProjectMemory()
+            projectMemoryError = message
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteProjectMemory(_ descriptor: ProjectMemoryDescriptor) async -> Bool {
+        guard let selectedProject else { return false }
+        let key = descriptor.memoryKey
+        guard !projectMemoryMutationInFlightKeys.contains(key) else { return false }
+        projectMemoryMutationInFlightKeys.insert(key)
+        defer { projectMemoryMutationInFlightKeys.remove(key) }
+        do {
+            let _: ProjectMemoryDeleteResult = try await helper.request(
+                method: "deleteProjectMemory",
+                params: ProjectMemoryDeleteParams(
+                    path: selectedProject.path,
+                    memoryKey: key,
+                    expectedRevision: descriptor.revision
+                )
+            )
+            projectMemoryRecords.removeValue(forKey: key)
+            projectMemoryError = nil
+            await refreshProjectMemory()
+            return true
+        } catch {
+            let message = isProjectMemoryConflict(error)
+                ? L10n.string("memory.conflict")
+                : helperErrorMessage(error)
+            await refreshProjectMemory()
+            projectMemoryError = message
+            return false
+        }
+    }
+
+    private func clearProjectMemory() {
+        projectMemoryCatalog = nil
+        projectMemoryRecords.removeAll()
+        projectMemoryError = nil
+        projectMemoryReadLoadingKeys.removeAll()
+        projectMemoryMutationInFlightKeys.removeAll()
+        projectMemoryLastRefreshUptime = nil
+    }
+
+    private func isProjectMemoryConflict(_ error: Error) -> Bool {
+        guard let payload = helperErrorPayload(error) else { return false }
+        return payload.code == "memory_changed" || payload.code == "memory_expected_revision_required"
+    }
+
     private func clearSkills() {
         skillCatalog = nil
         skillInventory = nil
@@ -713,14 +899,15 @@ final class AppModel: ObservableObject {
         skillsLastRefreshUptime = nil
     }
 
-    private func helperErrorMessage(_ error: Error) -> String {
+    private func helperErrorPayload(_ error: Error) -> HelperErrorPayload? {
         if let helperError = error as? HelperClientError, case .backend(let payload) = helperError {
-            return payload.message
+            return payload
         }
-        if let payload = error as? HelperErrorPayload {
-            return payload.message
-        }
-        return error.localizedDescription
+        return error as? HelperErrorPayload
+    }
+
+    private func helperErrorMessage(_ error: Error) -> String {
+        helperErrorPayload(error)?.message ?? error.localizedDescription
     }
 
     private static func yamlQuoted(_ value: String) -> String {

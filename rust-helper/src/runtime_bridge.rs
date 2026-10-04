@@ -566,6 +566,63 @@ impl Bridge {
             .map_err(ErrorPayload::from)
     }
 
+    async fn memory_catalog(&self, path: &str) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .memory_catalog(path)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
+    async fn memory_read(
+        &self,
+        path: &str,
+        memory_key: &str,
+        expected_revision: Option<&str>,
+    ) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .memory_read(path, memory_key, expected_revision)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
+    async fn memory_set(
+        &self,
+        path: &str,
+        memory_key: &str,
+        summary: &str,
+        body: &str,
+        priority: &str,
+        bootstrap: bool,
+        tags: &[String],
+        expected_revision: Option<&str>,
+    ) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .memory_set(
+                path,
+                memory_key,
+                summary,
+                body,
+                priority,
+                bootstrap,
+                tags,
+                expected_revision,
+            )
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
+    async fn memory_delete(
+        &self,
+        path: &str,
+        memory_key: &str,
+        expected_revision: &str,
+    ) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .memory_delete(path, memory_key, expected_revision)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
     async fn choose_target_project(&self, path: &str) -> Result<BackendSnapshot, ErrorPayload> {
         let project = self.inspect_project(path).await?;
         self.set_target_project(project);
@@ -1401,6 +1458,80 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
                 (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => Err(error),
             }
         }
+        "getProjectMemoryCatalog" => match param_str(&request.params, "path") {
+            Ok(path) => bridge.memory_catalog(path).await.map(ResponseResult::Json),
+            Err(error) => Err(error),
+        },
+        "getProjectMemory" => {
+            let path = param_str(&request.params, "path");
+            let memory_key = param_str(&request.params, "memory_key");
+            let expected_revision = request
+                .params
+                .get("expected_revision")
+                .and_then(Value::as_str);
+            match (path, memory_key) {
+                (Ok(path), Ok(memory_key)) => bridge
+                    .memory_read(path, memory_key, expected_revision)
+                    .await
+                    .map(ResponseResult::Json),
+                (Err(error), _) | (_, Err(error)) => Err(error),
+            }
+        }
+        "setProjectMemory" => {
+            let path = param_str(&request.params, "path");
+            let memory_key = param_str(&request.params, "memory_key");
+            let summary = param_str(&request.params, "summary");
+            let body = param_str(&request.params, "body");
+            let priority = param_str(&request.params, "priority");
+            let bootstrap = param_bool(&request.params, "bootstrap");
+            let tags = param_string_array(&request.params, "tags");
+            let expected_revision = request
+                .params
+                .get("expected_revision")
+                .and_then(Value::as_str);
+            match (path, memory_key, summary, body, priority, bootstrap, tags) {
+                (
+                    Ok(path),
+                    Ok(memory_key),
+                    Ok(summary),
+                    Ok(body),
+                    Ok(priority),
+                    Ok(bootstrap),
+                    Ok(tags),
+                ) => bridge
+                    .memory_set(
+                        path,
+                        memory_key,
+                        summary,
+                        body,
+                        priority,
+                        bootstrap,
+                        &tags,
+                        expected_revision,
+                    )
+                    .await
+                    .map(ResponseResult::Json),
+                (Err(error), _, _, _, _, _, _)
+                | (_, Err(error), _, _, _, _, _)
+                | (_, _, Err(error), _, _, _, _)
+                | (_, _, _, Err(error), _, _, _)
+                | (_, _, _, _, Err(error), _, _)
+                | (_, _, _, _, _, Err(error), _)
+                | (_, _, _, _, _, _, Err(error)) => Err(error),
+            }
+        }
+        "deleteProjectMemory" => {
+            let path = param_str(&request.params, "path");
+            let memory_key = param_str(&request.params, "memory_key");
+            let expected_revision = param_str(&request.params, "expected_revision");
+            match (path, memory_key, expected_revision) {
+                (Ok(path), Ok(memory_key), Ok(expected_revision)) => bridge
+                    .memory_delete(path, memory_key, expected_revision)
+                    .await
+                    .map(ResponseResult::Json),
+                (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => Err(error),
+            }
+        }
         "activateProject" => match param_str(&request.params, "path") {
             Ok(path) => bridge
                 .choose_target_project(path)
@@ -1610,6 +1741,38 @@ fn param_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, ErrorPayload> 
     })
 }
 
+fn param_bool(params: &Value, key: &str) -> Result<bool, ErrorPayload> {
+    params.get(key).and_then(Value::as_bool).ok_or_else(|| {
+        ErrorPayload::new(
+            "invalid_params",
+            format!("Missing required boolean parameter: {key}"),
+            "Update the app and helper together, then retry.",
+        )
+    })
+}
+
+fn param_string_array(params: &Value, key: &str) -> Result<Vec<String>, ErrorPayload> {
+    let values = params.get(key).and_then(Value::as_array).ok_or_else(|| {
+        ErrorPayload::new(
+            "invalid_params",
+            format!("Missing required array parameter: {key}"),
+            "Update the app and helper together, then retry.",
+        )
+    })?;
+    values
+        .iter()
+        .map(|value| {
+            value.as_str().map(str::to_owned).ok_or_else(|| {
+                ErrorPayload::new(
+                    "invalid_params",
+                    format!("Parameter must contain only strings: {key}"),
+                    "Update the app and helper together, then retry.",
+                )
+            })
+        })
+        .collect()
+}
+
 fn take_param_string(params: &mut Value, key: &str) -> Result<String, ErrorPayload> {
     let object = params.as_object_mut().ok_or_else(|| {
         ErrorPayload::new(
@@ -1775,6 +1938,22 @@ mod tests {
         assert!(!serde_json::to_string(&params)
             .unwrap()
             .contains("secret-value"));
+    }
+
+    #[test]
+    fn project_memory_parameter_helpers_require_exact_types() {
+        let params = json!({
+            "bootstrap": true,
+            "tags": ["architecture", "workflow"]
+        });
+        assert!(param_bool(&params, "bootstrap").unwrap());
+        assert_eq!(
+            param_string_array(&params, "tags").unwrap(),
+            vec!["architecture".to_string(), "workflow".to_string()]
+        );
+
+        assert!(param_bool(&json!({"bootstrap": "true"}), "bootstrap").is_err());
+        assert!(param_string_array(&json!({"tags": ["architecture", 1]}), "tags").is_err());
     }
 
     #[test]

@@ -268,6 +268,84 @@ struct SkillCenterItem: Equatable, Identifiable, Sendable {
     }
 }
 
+enum ProjectMemoryCategory: String, CaseIterable, Identifiable, Sendable {
+    case architecture
+    case decisions
+    case workflow
+    case other
+
+    var id: String { rawValue }
+}
+
+struct ProjectMemoryDescriptor: Codable, Equatable, Identifiable, Sendable {
+    var memoryId: String
+    var memoryKey: String
+    var summary: String
+    var priority: String
+    var bootstrap: Bool
+    var tags: [String]
+    var revision: String
+    var matchedFields: [String]?
+
+    var id: String { memoryId }
+    var category: ProjectMemoryCategory {
+        let normalized = Set(tags.map { $0.lowercased() })
+        if !normalized.isDisjoint(with: ["architecture", "architectural"]) { return .architecture }
+        if !normalized.isDisjoint(with: ["decision", "decisions", "adr"]) { return .decisions }
+        if !normalized.isDisjoint(with: ["workflow", "process", "procedure"]) { return .workflow }
+        return .other
+    }
+}
+
+struct ProjectMemoryCatalog: Codable, Equatable, Sendable {
+    var project: String
+    var catalogRevision: String
+    var totalCount: Int
+    var returnedCount: Int
+    var memories: [ProjectMemoryDescriptor]
+}
+
+struct ProjectMemoryProvenance: Codable, Equatable, Sendable {
+    var createdByKind: String
+    var updatedByKind: String
+}
+
+struct ProjectMemoryRecord: Codable, Equatable, Identifiable, Sendable {
+    var project: String
+    var memoryId: String
+    var memoryKey: String
+    var summary: String
+    var body: String
+    var priority: String
+    var bootstrap: Bool
+    var tags: [String]
+    var revision: String
+    var createdAtUnixMs: Int64
+    var updatedAtUnixMs: Int64
+    var provenance: ProjectMemoryProvenance
+
+    var id: String { memoryId }
+}
+
+struct ProjectMemorySetResult: Codable, Equatable, Sendable {
+    var project: String
+    var memoryId: String
+    var memoryKey: String
+    var oldRevision: String?
+    var revision: String
+    var created: Bool
+    var stateChanged: Bool
+}
+
+struct ProjectMemoryDeleteResult: Codable, Equatable, Sendable {
+    var project: String
+    var memoryId: String?
+    var memoryKey: String
+    var revision: String?
+    var deleted: Bool
+    var stateChanged: Bool
+}
+
 struct ActivityEntry: Codable, Identifiable, Equatable, Sendable {
     var sequence: UInt64
     var timestampMs: UInt64
@@ -661,6 +739,29 @@ struct DeactivateSkillParams: Codable, Sendable {
     var path: String
     var skillKey: String
     var stateRevision: String
+}
+
+struct ProjectMemoryReadParams: Codable, Sendable {
+    var path: String
+    var memoryKey: String
+    var expectedRevision: String?
+}
+
+struct ProjectMemorySetParams: Codable, Sendable {
+    var path: String
+    var memoryKey: String
+    var summary: String
+    var body: String
+    var priority: String
+    var bootstrap: Bool
+    var tags: [String]
+    var expectedRevision: String?
+}
+
+struct ProjectMemoryDeleteParams: Codable, Sendable {
+    var path: String
+    var memoryKey: String
+    var expectedRevision: String
 }
 
 struct CredentialParams: Codable, Sendable {

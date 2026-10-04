@@ -36,6 +36,9 @@ struct ProjectDetailView: View {
                 SkillsCenterView(project: project)
 
                 Divider()
+                ProjectMemoryView(project: project)
+
+                Divider()
                 recentActivity
             }
             .frame(maxWidth: layout.control(ChadexMetrics.detailMaxWidth), alignment: .leading)
@@ -48,6 +51,7 @@ struct ProjectDetailView: View {
             guard model.selectedProject?.id == project.id else { return }
             await model.refreshProjectInstructions()
             await model.refreshSkills()
+            await model.refreshProjectMemory()
         }
         .sheet(isPresented: $showingAgentsDraft) {
             AgentsDraftSheet(project: project, draft: $agentsDraft)

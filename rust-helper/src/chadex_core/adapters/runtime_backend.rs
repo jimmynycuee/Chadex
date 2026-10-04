@@ -677,6 +677,163 @@ impl RuntimeBackendAdapter {
         .await
     }
 
+    pub(crate) async fn memory_catalog(&self, project_path: &str) -> ChadexResult<Value> {
+        let mut offset = 0usize;
+        let mut catalog_revision: Option<String> = None;
+        let mut total_count = 0usize;
+        let mut resolved_project: Option<String> = None;
+        let mut memories = Vec::new();
+        loop {
+            let mut arguments = json!({
+                "offset": offset,
+                "limit": 64
+            });
+            if let Some(revision) = catalog_revision.as_deref() {
+                arguments["expected_catalog_revision"] = Value::String(revision.to_string());
+            }
+            let output = self
+                .call_project_operator_tool(
+                    project_path,
+                    "memory_search",
+                    arguments,
+                    "memory_catalog_unavailable",
+                    "Chadex could not refresh Project Memory",
+                )
+                .await?;
+            let revision = output
+                .get("catalog_revision")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    ChadexError::new(
+                        "memory_catalog_invalid",
+                        "The local runtime returned an invalid Project Memory catalog",
+                        "Refresh Project Memory after the runtime is ready.",
+                    )
+                })?;
+            if catalog_revision
+                .as_deref()
+                .is_some_and(|current| current != revision)
+            {
+                return Err(ChadexError::new(
+                    "memory_catalog_changed",
+                    "Project Memory changed while Chadex was reading it",
+                    "Refresh Project Memory again to load one consistent catalog revision.",
+                ));
+            }
+            if catalog_revision.is_none() {
+                catalog_revision = Some(revision.to_string());
+                resolved_project = output
+                    .get("project")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                total_count = output
+                    .get("total_count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0) as usize;
+            }
+            memories.extend(
+                output
+                    .get("memories")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+            let next = output
+                .get("next_offset")
+                .and_then(Value::as_u64)
+                .map(|value| value as usize);
+            match next {
+                Some(next) if next > offset && memories.len() <= 256 => offset = next,
+                Some(_) => {
+                    return Err(ChadexError::new(
+                        "memory_catalog_invalid",
+                        "The local runtime returned an invalid Project Memory page",
+                        "Refresh Project Memory after the runtime is ready.",
+                    ))
+                }
+                None => break,
+            }
+        }
+        Ok(json!({
+            "project": resolved_project.unwrap_or_default(),
+            "catalog_revision": catalog_revision.unwrap_or_default(),
+            "total_count": total_count,
+            "returned_count": memories.len(),
+            "memories": memories
+        }))
+    }
+
+    pub(crate) async fn memory_read(
+        &self,
+        project_path: &str,
+        memory_key: &str,
+        expected_revision: Option<&str>,
+    ) -> ChadexResult<Value> {
+        let mut arguments = json!({"memory_key": memory_key});
+        if let Some(revision) = expected_revision {
+            arguments["expected_revision"] = Value::String(revision.to_string());
+        }
+        self.call_project_operator_tool(
+            project_path,
+            "memory_read",
+            arguments,
+            "memory_read_unavailable",
+            "Chadex could not read this Project Memory",
+        )
+        .await
+    }
+
+    pub(crate) async fn memory_set(
+        &self,
+        project_path: &str,
+        memory_key: &str,
+        summary: &str,
+        body: &str,
+        priority: &str,
+        bootstrap: bool,
+        tags: &[String],
+        expected_revision: Option<&str>,
+    ) -> ChadexResult<Value> {
+        let mut arguments = json!({
+            "memory_key": memory_key,
+            "summary": summary,
+            "body": body,
+            "priority": priority,
+            "bootstrap": bootstrap,
+            "tags": tags
+        });
+        if let Some(revision) = expected_revision {
+            arguments["expected_revision"] = Value::String(revision.to_string());
+        }
+        self.call_project_operator_tool(
+            project_path,
+            "memory_set",
+            arguments,
+            "memory_set_failed",
+            "Chadex could not save this Project Memory",
+        )
+        .await
+    }
+
+    pub(crate) async fn memory_delete(
+        &self,
+        project_path: &str,
+        memory_key: &str,
+        expected_revision: &str,
+    ) -> ChadexResult<Value> {
+        self.call_project_operator_tool(
+            project_path,
+            "memory_delete",
+            json!({
+                "memory_key": memory_key,
+                "expected_revision": expected_revision
+            }),
+            "memory_delete_failed",
+            "Chadex could not delete this Project Memory",
+        )
+        .await
+    }
+
     async fn call_project_operator_tool(
         &self,
         project_path: &str,
@@ -698,8 +855,8 @@ impl RuntimeBackendAdapter {
         let object = arguments.as_object_mut().ok_or_else(|| {
             ChadexError::new(
                 fallback_code,
-                "The desktop Skill request is invalid",
-                "Refresh Skills and retry.",
+                "The desktop runtime request is invalid",
+                "Refresh the selected project data and retry.",
             )
         })?;
         object.insert(
@@ -718,12 +875,18 @@ impl RuntimeBackendAdapter {
         )
         .await
         .map_err(map_desktop_error)?
-        .ok_or_else(|| ChadexError::new(fallback_code, message, "Refresh Skills and retry."))?;
+        .ok_or_else(|| {
+            ChadexError::new(
+                fallback_code,
+                message,
+                "Refresh the selected project data and retry.",
+            )
+        })?;
         if !result.success {
             return Err(ChadexError::new(
                 operator_error_code(&result).unwrap_or(fallback_code),
                 message,
-                "Refresh Skills and retry from the latest observed state.",
+                "Refresh the selected project data and retry from the latest observed state.",
             ));
         }
         Ok(result.output)

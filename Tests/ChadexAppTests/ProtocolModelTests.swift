@@ -116,6 +116,55 @@ final class ProtocolModelTests: XCTestCase {
         XCTAssertFalse(catalogJSON.contains(Data("PRIVATE_DEFINITION_BODY".utf8)))
     }
 
+    func testProjectMemoryCatalogAndLazyRecordDecode() throws {
+        let catalogJSON = #"""
+        {
+          "project": "agent:test:demo",
+          "catalog_revision": "wc_memcat_example",
+          "total_count": 1,
+          "returned_count": 1,
+          "memories": [{
+            "memory_id": "wc_mem_example123456",
+            "memory_key": "architecture.runtime-routing",
+            "summary": "Keep runtime routing project-scoped.",
+            "priority": "high",
+            "bootstrap": true,
+            "tags": ["architecture", "runtime"],
+            "revision": "wc_memrev_example"
+          }]
+        }
+        """#.data(using: .utf8)!
+        let recordJSON = #"""
+        {
+          "project": "agent:test:demo",
+          "memory_id": "wc_mem_example123456",
+          "memory_key": "architecture.runtime-routing",
+          "summary": "Keep runtime routing project-scoped.",
+          "body": "PRIVATE_MEMORY_BODY",
+          "priority": "high",
+          "bootstrap": true,
+          "tags": ["architecture", "runtime"],
+          "revision": "wc_memrev_example",
+          "created_at_unix_ms": 1700000000000,
+          "updated_at_unix_ms": 1700000001000,
+          "provenance": {
+            "created_by_kind": "dev",
+            "updated_by_kind": "shared-key"
+          }
+        }
+        """#.data(using: .utf8)!
+
+        let catalog = try JSONDecoder.chadex.decode(ProjectMemoryCatalog.self, from: catalogJSON)
+        let record = try JSONDecoder.chadex.decode(ProjectMemoryRecord.self, from: recordJSON)
+        XCTAssertEqual(catalog.memories.count, 1)
+        XCTAssertEqual(catalog.memories[0].category, .architecture)
+        XCTAssertEqual(catalog.memories[0].priority, "high")
+        XCTAssertTrue(catalog.memories[0].bootstrap)
+        XCTAssertEqual(record.body, "PRIVATE_MEMORY_BODY")
+        XCTAssertEqual(record.provenance.updatedByKind, "shared-key")
+        XCTAssertFalse(catalogJSON.contains(Data("PRIVATE_MEMORY_BODY".utf8)))
+    }
+
     func testPerformanceTraceAcceptsLegacyAndCorrelatedRecords() throws {
         var record: [String: Any] = [
             "sequence": 1, "started_at_ms": 1000, "methods": ["tools/call"],

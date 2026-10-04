@@ -207,6 +207,57 @@ impl ChadexRuntimeCore {
             .await
     }
 
+    pub async fn memory_catalog(&self, project_path: &str) -> ChadexResult<Value> {
+        self.backend.memory_catalog(project_path).await
+    }
+
+    pub async fn memory_read(
+        &self,
+        project_path: &str,
+        memory_key: &str,
+        expected_revision: Option<&str>,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .memory_read(project_path, memory_key, expected_revision)
+            .await
+    }
+
+    pub async fn memory_set(
+        &self,
+        project_path: &str,
+        memory_key: &str,
+        summary: &str,
+        body: &str,
+        priority: &str,
+        bootstrap: bool,
+        tags: &[String],
+        expected_revision: Option<&str>,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .memory_set(
+                project_path,
+                memory_key,
+                summary,
+                body,
+                priority,
+                bootstrap,
+                tags,
+                expected_revision,
+            )
+            .await
+    }
+
+    pub async fn memory_delete(
+        &self,
+        project_path: &str,
+        memory_key: &str,
+        expected_revision: &str,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .memory_delete(project_path, memory_key, expected_revision)
+            .await
+    }
+
     pub async fn stop_local_runtime(&self) -> ChadexResult<RuntimeSnapshot> {
         self.backend.stop_local_runtime().await
     }
