@@ -537,6 +537,7 @@ fn adaptive_runtime_direct_declarations_are_visible_ranked_and_unique() {
         "import_conversation_files_to_project",
         "project_artifact",
         "computer_observe",
+        "computer_control",
         "plugin_tool",
         "session_handoff_summary",
         "present_goal_plan",
@@ -578,10 +579,22 @@ fn adaptive_runtime_direct_declarations_are_visible_ranked_and_unique() {
         ToolIdempotency::PureRead
     );
     assert!(!computer_observe.supports_gpt_actions());
-    assert!(
-        !is_adaptive_runtime_direct_tool("computer_control"),
-        "CM2 must not promote effectful Computer control into the startup surface"
+
+    let computer_control =
+        lookup_tool_definition("computer_control").expect("computer_control definition");
+    assert_eq!(computer_control.adaptive_runtime_direct_rank(), Some(58));
+    assert!(is_adaptive_runtime_direct_tool("computer_control"));
+    assert_eq!(computer_control.metadata.effect, ToolEffect::Execute);
+    assert_eq!(computer_control.metadata.risk, ToolRisk::ComputerControl);
+    assert_eq!(
+        computer_control.metadata.approval,
+        ToolApprovalPolicy::Standard
     );
+    assert_eq!(
+        computer_control.metadata.idempotency,
+        ToolIdempotency::NonIdempotent
+    );
+    assert!(!computer_control.supports_gpt_actions());
 
     for name in [
         "rotate_agent_continuation_endpoint",

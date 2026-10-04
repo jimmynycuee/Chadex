@@ -34,24 +34,28 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
         .with_gpt_action_unsupported(),
         57,
     ),
-    require_any_scopes(
-        permission_risk(
-            model_spec(
-                def(
-                    "computer_control",
-                    super::ToolAuditPolicy::typed_semantic(
-                        super::ToolAuditSemanticResultPolicy::ComputerControl,
+    adaptive_runtime_direct(
+        require_any_scopes(
+            permission_risk(
+                model_spec(
+                    def(
+                        "computer_control",
+                        super::ToolAuditPolicy::typed_semantic(
+                            super::ToolAuditSemanticResultPolicy::ComputerControl,
+                        ),
+                        ModelVisible, TOOL_CATEGORY_COMPUTER, None, TOOL_PROVIDER_CONTROL,
+                        super::ToolSemanticContract { effect: super::ToolEffect::Execute, risk: ComputerControlRisk, approval: super::ToolApprovalPolicy::Standard, idempotency: super::ToolIdempotency::NonIdempotent },
+                        None, false, NoPath, true, false, super::ToolSessionEvidencePolicy::NONE,
                     ),
-                    ModelVisible, TOOL_CATEGORY_COMPUTER, None, TOOL_PROVIDER_CONTROL,
-                    super::ToolSemanticContract { effect: super::ToolEffect::Execute, risk: ComputerControlRisk, approval: super::ToolApprovalPolicy::Standard, idempotency: super::ToolIdempotency::NonIdempotent },
-                    None, false, NoPath, true, false, super::ToolSessionEvidencePolicy::NONE,
-                ),
-                "Effectful Computer control gateway with a closed action vocabulary: launch_application, activate_window, press, focus, scroll_to_element, key, input_text, pointer_move, pointer_click, and write_clipboard. Each action keeps its exact scopes, permission/session semantics, Runner capability fence, native validation, execution certainty, and observation-first recovery. The outer ToolDefinition is a worst-case effect annotation only; action-sensitive canonical governance resolves exact authority before any effect. No arbitrary argv/path/script input, implicit focus/activation, shell fallback, or blind retry after an uncertain effect.",
-                computer_control_input_schema,
+                    "Effectful Computer control surface for the Observe -> Act -> Verify loop. Prefer fresh semantic Accessibility identities from computer_observe(action=find_elements/element_state) for focus, input_text, press, and scroll_to_element; use pointer coordinates only as a fallback from a fresh display snapshot_generation. Each action keeps its exact scopes, permission/session semantics, Runner capability fence, native validation, execution certainty, stale-handle rejection, and observation-first recovery. After every effect, re-observe the relevant window/element/application state before continuing. If execution_state is outcome_unknown, reconcile with the suggested computer_observe call before any retry. No arbitrary argv/path/script input, implicit focus/activation, shell fallback, or blind retry after an uncertain effect.",
+                    computer_control_input_schema,
+                )
+                .with_gpt_action_unsupported(),
+                PERMISSION_RISK_WRITE,
             ),
-            PERMISSION_RISK_WRITE,
+            COMPUTER_CONTROL_GATEWAY_SCOPES,
         ),
-        COMPUTER_CONTROL_GATEWAY_SCOPES,
+        58,
     ),
     require_all_scopes(
         model_spec(

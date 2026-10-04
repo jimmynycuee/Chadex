@@ -464,6 +464,9 @@ const ADAPTIVE_RUNTIME_INITIAL_DIRECT_TOOLS: &[&str] = &[
     // Read-only Computer vision needs a first-class MCP content channel so window/display
     // screenshots can arrive as native ImageContent instead of opaque gateway text/base64.
     "computer_observe",
+    // CM3 pairs the read-only observation surface with one closed, action-sensitive
+    // effect surface; specialized governance still resolves exact per-action authority.
+    "computer_control",
     "plugin_tool",
     "session_handoff_summary",
     // Descriptor-time Host/App bindings cannot be reconstructed by call_runtime_tool:

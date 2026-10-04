@@ -90,7 +90,10 @@ async fn mcp_2026_computer_app_is_minimal_handshake_and_snapshot_only() {
         tools.iter().any(|tool| tool["name"] == "computer_observe"),
         "read-only Computer observation must be directly model-visible for native vision content"
     );
-    assert!(!tools.iter().any(|tool| tool["name"] == "computer_control"));
+    assert!(
+        tools.iter().any(|tool| tool["name"] == "computer_control"),
+        "CM3 must expose the closed effectful Computer control surface beside observe"
+    );
     for retired in [
         "computer_snapshot",
         "computer_snapshot_display",
@@ -105,6 +108,11 @@ async fn mcp_2026_computer_app_is_minimal_handshake_and_snapshot_only() {
         .unwrap()
         .iter()
         .any(|tool| tool["name"] == "computer_observe"));
+    assert!(compact["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|tool| tool["name"] == "computer_control"));
 
     let resources = handle_mcp_request(
         &runtime,
@@ -266,7 +274,7 @@ async fn mcp_2026_computer_app_is_minimal_handshake_and_snapshot_only() {
         .iter()
         .any(|tool| { tool["name"] == crate::mcp::tools::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME }));
     assert!(names.iter().any(|tool| tool["name"] == "computer_observe"));
-    assert!(!names.iter().any(|tool| tool["name"] == "computer_control"));
+    assert!(names.iter().any(|tool| tool["name"] == "computer_control"));
 
     let no_ui_resources = handle_mcp_request(
         &runtime,

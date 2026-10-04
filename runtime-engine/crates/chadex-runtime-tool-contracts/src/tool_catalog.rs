@@ -452,6 +452,13 @@ pub const TOOL_RECOMMENDED_FLOWS: &[ToolRecommendedFlow] = &[
         tools: &["computer_observe"],
     },
     ToolRecommendedFlow {
+        name: "computer_control",
+        summary: "Computer control: Observe -> identify a fresh semantic target -> act once -> re-observe -> verify. Prefer Accessibility element identities; use pointer coordinates only from a fresh display snapshot generation.",
+        manifest_purpose:
+            "Call computer_observe first, prefer find_elements/element_state before focus/input_text/press/scroll_to_element, then invoke exactly one computer_control action and re-observe the affected state. Treat outcome_unknown as non-retryable until the suggested computer_observe reconciliation completes; stale application/surface/element/display/snapshot identities must be refreshed before another effect.",
+        tools: &["computer_observe", "computer_control"],
+    },
+    ToolRecommendedFlow {
         name: "computer_application_launch",
         summary: "Computer application launch: computer_observe(action=applications), computer_control(action=launch_application), then computer_observe(action=windows) and computer_control(action=activate_window) only if activation is needed.",
         manifest_purpose:

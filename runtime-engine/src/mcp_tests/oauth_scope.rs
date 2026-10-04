@@ -865,7 +865,8 @@ async fn oauth2_memory_tools_require_canonical_project_and_memory_scopes() {
 }
 
 #[tokio::test]
-async fn oauth2_tools_list_exposes_read_only_computer_observe_but_keeps_effects_long_tail() {
+async fn oauth2_tools_list_exposes_computer_observe_and_control_but_keeps_project_write_long_tail()
+{
     let baseline = "runtime:read project:read project:write job:run computer:read computer:control";
     for extra_scopes in [
         "",
@@ -885,12 +886,14 @@ async fn oauth2_tools_list_exposes_read_only_computer_observe_but_keeps_effects_
             names.contains("computer_observe"),
             "computer_observe must remain a direct read-only vision surface: {scopes}"
         );
-        for long_tail in ["computer_control", "computer_save_snapshot"] {
-            assert!(
-                !names.contains(long_tail),
-                "OAuth scopes must not promote effectful/Project-writing long-tail {long_tail} into direct tools/list: {scopes}"
-            );
-        }
+        assert!(
+            names.contains("computer_control"),
+            "CM3 computer_control must be directly model-visible: {scopes}"
+        );
+        assert!(
+            !names.contains("computer_save_snapshot"),
+            "Project-writing computer_save_snapshot must remain long-tail: {scopes}"
+        );
         for retired in [
             "computer_launch_application",
             "computer_list_displays",
@@ -1002,17 +1005,17 @@ async fn oauth2_pointer_tool_call_still_requires_display_scope_even_if_invoked_d
         &service,
         &token,
         "tools/call",
-        adaptive_gateway_params(
-            "computer_control",
-            json!({
+        json!({
+            "name": "computer_control",
+            "arguments": {
                 "action": "pointer_move",
                 "client_id": "missing-runner",
                 "display_id": "display_AAAAAAAAAAAAAAAA",
                 "snapshot_generation": 1,
                 "x": 0,
                 "y": 0
-            }),
-        ),
+            }
+        }),
     )
     .await;
     assert_mcp_oauth_scope_rejected(

@@ -27,6 +27,70 @@ async fn wait_for_mcp_agent_request(
     }
 }
 
+async fn run_direct_mcp_computer_step(
+    runtime: &ToolRuntime,
+    auth: &crate::auth::AuthContext,
+    client_id: &str,
+    runner_instance_id: &str,
+    rpc_id: i64,
+    tool_name: &str,
+    arguments: Value,
+    expected_kind: &str,
+    expected_stdin: Value,
+    runner_stdout: Value,
+) -> Value {
+    let runtime_for_call = runtime.clone();
+    let auth_for_call = auth.clone();
+    let tool_name = tool_name.to_string();
+    let tool_label = tool_name.clone();
+    let call = tokio::spawn(async move {
+        handle_mcp_request(
+            &runtime_for_call,
+            rpc(
+                "tools/call",
+                Some(json!(rpc_id)),
+                json!({"name": tool_name, "arguments": arguments}),
+            ),
+            Some(&auth_for_call),
+        )
+        .await
+    });
+
+    let request = wait_for_mcp_agent_request(
+        &runtime.runner_registry,
+        client_id,
+        runner_instance_id,
+        expected_kind,
+    )
+    .await;
+    assert_eq!(request.kind, expected_kind);
+    let stdin: Value = serde_json::from_str(request.stdin.as_deref().unwrap()).unwrap();
+    assert_eq!(stdin, expected_stdin, "{expected_kind} payload");
+    runtime
+        .runner_registry
+        .complete(RunnerResultRequest {
+            client_id: client_id.to_string(),
+            runner_instance_id: runner_instance_id.to_string(),
+            request_id: request.request_id,
+            exit_code: Some(0),
+            stdout: Some(runner_stdout.to_string()),
+            stderr: Some(String::new()),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            duration_ms: Some(1),
+            error: None,
+        })
+        .await
+        .unwrap();
+
+    let outcome = call.await.unwrap();
+    let McpOutcome::Ok(value) = outcome else {
+        panic!("expected direct {tool_label} result, got {outcome:?}");
+    };
+    assert_eq!(value["result"]["isError"], false, "{value:?}");
+    value["result"].clone()
+}
+
 // The compact switch is read per tools/list request, so `WEBCODEX_MCP_COMPACT_SCHEMAS`
 // must stay stable (and serialized against other env-mutating tests) for the whole
 // async body below. Adaptive Runtime is fixed; only schema projection varies.
@@ -1583,6 +1647,410 @@ async fn computer_observe_direct_snapshot_call_reaches_runner_and_returns_native
     assert!(value["result"]["structuredContent"]["output"]
         .get("content_base64")
         .is_none());
+}
+
+#[tokio::test]
+async fn computer_direct_observe_act_verify_semantic_workflow_is_end_to_end() {
+    let runtime = test_runtime();
+    let client_id = "mcp-computer-workflow";
+    let runner_instance_id = "inst-mcp-computer-workflow";
+    let application_id = "application_iavN7wEjRWeJq83v";
+    let surface_id = "surface_iavN7wEjRWeJq83v";
+    let field_id = "element_name_field";
+    let button_id = "element_submit_button";
+    let status_id = "element_status_text";
+    let auth = crate::auth::AuthContext {
+        kind: crate::auth::AuthKind::AgentToken,
+        username: Some("local-owner".to_string()),
+        role: Some("agent".to_string()),
+        token_kind: Some("agent".to_string()),
+        allowed_client_id: Some(client_id.to_string()),
+        scopes: vec![
+            crate::auth::SCOPE_COMPUTER_READ.to_string(),
+            crate::auth::SCOPE_COMPUTER_CONTROL.to_string(),
+            crate::auth::SCOPE_COMPUTER_LAUNCH.to_string(),
+        ],
+        ..crate::auth::AuthContext::new(crate::auth::AuthKind::AgentToken)
+    };
+    runtime
+        .runner_registry
+        .register_with_auth(
+            crate::test_support::current_runner_registration(RunnerRegisterRequest {
+                client_id: client_id.to_string(),
+                runner_instance_id: runner_instance_id.to_string(),
+                runner_protocol_generation: crate::runner_protocol::RUNNER_PROTOCOL_GENERATION_V2,
+                display_name: Some("Workflow Runner".to_string()),
+                owner: Some("local-owner".to_string()),
+                hostname: None,
+                host_context: None,
+                capabilities: crate::test_support::current_runner_capabilities(
+                    RunnerCapabilities {
+                        computer_observe: true,
+                        computer_application_discovery: true,
+                        computer_application_launch: true,
+                        computer_accessibility_observe: true,
+                        computer_element_state: true,
+                        computer_control: true,
+                        computer_text_input: true,
+                        ..Default::default()
+                    },
+                ),
+                policy: None,
+                process_started_at: None,
+                build: None,
+                job_concurrency_limit: None,
+                job_inventory: None,
+                coding_agent_providers: None,
+                coding_agent_inventory: None,
+            }),
+            Some(&crate::test_support::runner_access(&auth)),
+        )
+        .await
+        .unwrap();
+
+    let applications = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        801,
+        "computer_observe",
+        json!({"action":"applications","client_id":client_id,"limit":1}),
+        "computer_list_applications",
+        json!({"limit":1}),
+        json!({
+            "applications":[{"application_id":application_id,"display_name":"Example Editor"}],
+            "count":1,
+            "truncated":false
+        }),
+    )
+    .await;
+    assert_eq!(
+        applications["structuredContent"]["output"]["applications"][0]["application_id"],
+        application_id
+    );
+
+    let launched = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        802,
+        "computer_control",
+        json!({"action":"launch_application","client_id":client_id,"application_id":application_id}),
+        "computer_launch_application",
+        json!({"application_id":application_id}),
+        json!({"platform":"macos","application_id":application_id,"success":true}),
+    )
+    .await;
+    assert_eq!(
+        launched["structuredContent"]["output"]["application_id"],
+        application_id
+    );
+    assert_eq!(launched["structuredContent"]["output"]["success"], true);
+
+    let windows = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        803,
+        "computer_observe",
+        json!({"action":"windows","client_id":client_id,"limit":1}),
+        "computer_list_windows",
+        json!({"limit":1}),
+        json!({
+            "windows":[{
+                "surface_id":surface_id,
+                "application":"Example Editor",
+                "title":"Example Editor",
+                "width":900,
+                "height":600,
+                "focused":true,
+                "active":true
+            }],
+            "count":1,
+            "truncated":false
+        }),
+    )
+    .await;
+    assert_eq!(
+        windows["structuredContent"]["output"]["windows"][0]["surface_id"],
+        surface_id
+    );
+
+    let base_tree = |generation: u32, include_status: bool| {
+        let mut nodes = vec![
+            json!({
+                "element_id":"element_root",
+                "parent_element_id":null,
+                "depth":0,
+                "role":"AXWindow",
+                "subrole":null,
+                "title":"Example Editor",
+                "description":null,
+                "value":null,
+                "placeholder":null,
+                "enabled":true,
+                "focused":false,
+                "child_count": if include_status {3} else {2}
+            }),
+            json!({
+                "element_id":field_id,
+                "parent_element_id":"element_root",
+                "depth":1,
+                "role":"AXTextField",
+                "subrole":null,
+                "title":"Name",
+                "description":null,
+                "value":null,
+                "placeholder":"Name",
+                "enabled":true,
+                "focused":true,
+                "child_count":0
+            }),
+            json!({
+                "element_id":button_id,
+                "parent_element_id":"element_root",
+                "depth":1,
+                "role":"AXButton",
+                "subrole":null,
+                "title":"Submit",
+                "description":null,
+                "value":null,
+                "placeholder":null,
+                "enabled":true,
+                "focused":false,
+                "child_count":0
+            }),
+        ];
+        if include_status {
+            nodes.push(json!({
+                "element_id":status_id,
+                "parent_element_id":"element_root",
+                "depth":1,
+                "role":"AXStaticText",
+                "subrole":null,
+                "title":"Submitted",
+                "description":null,
+                "value":null,
+                "placeholder":null,
+                "enabled":true,
+                "focused":false,
+                "child_count":0
+            }));
+        }
+        json!({
+            "platform":"macos",
+            "surface_id":surface_id,
+            "node_count":nodes.len(),
+            "nodes":nodes,
+            "truncated":false,
+            "max_depth":8,
+            "max_nodes":256,
+            "observation_generation":generation
+        })
+    };
+
+    let field = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        804,
+        "computer_observe",
+        json!({
+            "action":"find_elements",
+            "client_id":client_id,
+            "surface_id":surface_id,
+            "role":"AXTextField",
+            "label":"Name",
+            "enabled":true,
+            "limit":1
+        }),
+        "computer_accessibility_tree",
+        json!({"surface_id":surface_id,"max_depth":8,"max_nodes":256}),
+        base_tree(1, false),
+    )
+    .await;
+    assert_eq!(
+        field["structuredContent"]["output"]["elements"][0]["element_id"],
+        field_id
+    );
+
+    run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        805,
+        "computer_control",
+        json!({"action":"focus","client_id":client_id,"surface_id":surface_id,"element_id":field_id}),
+        "computer_control",
+        json!({"surface_id":surface_id,"element_id":field_id,"action":"focus"}),
+        json!({
+            "platform":"macos",
+            "surface_id":surface_id,
+            "element_id":field_id,
+            "action":"focus",
+            "success":true
+        }),
+    )
+    .await;
+
+    let focused = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        806,
+        "computer_observe",
+        json!({"action":"element_state","client_id":client_id,"surface_id":surface_id,"element_id":field_id}),
+        "computer_element_state",
+        json!({"surface_id":surface_id,"element_id":field_id}),
+        json!({
+            "platform":"macos",
+            "surface_id":surface_id,
+            "element_id":field_id,
+            "observation_generation":2,
+            "enabled":true,
+            "focused":true,
+            "protected":false,
+            "value_empty":true,
+            "can_press":false,
+            "can_focus":true,
+            "can_input_text":true
+        }),
+    )
+    .await;
+    assert_eq!(
+        focused["structuredContent"]["output"]["can_input_text"],
+        true
+    );
+
+    run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        807,
+        "computer_control",
+        json!({"action":"input_text","client_id":client_id,"surface_id":surface_id,"element_id":field_id,"text":"Jimmy"}),
+        "computer_input_text",
+        json!({"surface_id":surface_id,"element_id":field_id,"text":"Jimmy"}),
+        json!({
+            "platform":"macos",
+            "surface_id":surface_id,
+            "element_id":field_id,
+            "text_bytes":5,
+            "success":true
+        }),
+    )
+    .await;
+
+    let typed = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        808,
+        "computer_observe",
+        json!({"action":"element_state","client_id":client_id,"surface_id":surface_id,"element_id":field_id}),
+        "computer_element_state",
+        json!({"surface_id":surface_id,"element_id":field_id}),
+        json!({
+            "platform":"macos",
+            "surface_id":surface_id,
+            "element_id":field_id,
+            "observation_generation":3,
+            "enabled":true,
+            "focused":true,
+            "protected":false,
+            "value_empty":false,
+            "can_press":false,
+            "can_focus":true,
+            "can_input_text":false
+        }),
+    )
+    .await;
+    assert_eq!(typed["structuredContent"]["output"]["value_empty"], false);
+
+    let button = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        809,
+        "computer_observe",
+        json!({
+            "action":"find_elements",
+            "client_id":client_id,
+            "surface_id":surface_id,
+            "role":"AXButton",
+            "label":"Submit",
+            "enabled":true,
+            "limit":1
+        }),
+        "computer_accessibility_tree",
+        json!({"surface_id":surface_id,"max_depth":8,"max_nodes":256}),
+        base_tree(4, false),
+    )
+    .await;
+    assert_eq!(
+        button["structuredContent"]["output"]["elements"][0]["element_id"],
+        button_id
+    );
+
+    run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        810,
+        "computer_control",
+        json!({"action":"press","client_id":client_id,"surface_id":surface_id,"element_id":button_id}),
+        "computer_control",
+        json!({"surface_id":surface_id,"element_id":button_id,"action":"press"}),
+        json!({
+            "platform":"macos",
+            "surface_id":surface_id,
+            "element_id":button_id,
+            "action":"press",
+            "success":true
+        }),
+    )
+    .await;
+
+    let verified = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        811,
+        "computer_observe",
+        json!({
+            "action":"find_elements",
+            "client_id":client_id,
+            "surface_id":surface_id,
+            "role":"AXStaticText",
+            "label":"Submitted",
+            "enabled":true,
+            "limit":1
+        }),
+        "computer_accessibility_tree",
+        json!({"surface_id":surface_id,"max_depth":8,"max_nodes":256}),
+        base_tree(5, true),
+    )
+    .await;
+    assert_eq!(verified["structuredContent"]["output"]["count"], 1);
+    assert_eq!(
+        verified["structuredContent"]["output"]["elements"][0]["element_id"],
+        status_id
+    );
+    assert_eq!(
+        verified["structuredContent"]["output"]["elements"][0]["title"],
+        "Submitted"
+    );
 }
 
 #[test]
