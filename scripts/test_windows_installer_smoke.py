@@ -457,6 +457,72 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertEqual(launch.call_args.kwargs["executable"], exe)
         self.assertEqual(launch.call_args.kwargs["owned"], {})
 
+    def test_default_cleanup_never_retries_an_uncertain_uninstall(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            install = root / "default install"
+            install.mkdir()
+            report = smoke.SmokeReport("win32")
+            with patch.object(smoke, "run_default_uninstaller") as run, \
+                    patch.object(smoke, "verify_registry_removed") as registry:
+                with self.assertRaises(smoke.SmokeFailure) as failure:
+                    smoke._cleanup_default_install(
+                        install, install_attempted=True, install_succeeded=True,
+                        uninstall_attempted=True, uninstall_succeeded=False, root=root,
+                        powershell="powershell.exe", groups=[], report=report,
+                    )
+            self.assertEqual(failure.exception.code, "fixture_cleanup_failed")
+            run.assert_not_called()
+            registry.assert_not_called()
+
+            install.rmdir()
+            with patch.object(smoke, "run_default_uninstaller") as run, \
+                    patch.object(smoke, "verify_registry_removed") as registry:
+                attempted, succeeded = smoke._cleanup_default_install(
+                    install, install_attempted=True, install_succeeded=True,
+                    uninstall_attempted=True, uninstall_succeeded=False, root=root,
+                    powershell="powershell.exe", groups=[], report=report,
+                )
+            self.assertTrue(attempted)
+            self.assertFalse(succeeded)
+            run.assert_not_called()
+            registry.assert_called_once_with()
+
+    def test_default_cleanup_attempts_uninstaller_once_only_after_known_install_success(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            install = root / "default install"
+            install.mkdir()
+            report = smoke.SmokeReport("win32")
+
+            def remove_install(*_args: object, **_kwargs: object) -> None:
+                install.rmdir()
+
+            with patch.object(smoke, "run_default_uninstaller", side_effect=remove_install) as run, \
+                    patch.object(smoke, "verify_registry_removed") as registry:
+                attempted, succeeded = smoke._cleanup_default_install(
+                    install, install_attempted=True, install_succeeded=True,
+                    uninstall_attempted=False, uninstall_succeeded=False, root=root,
+                    powershell="powershell.exe", groups=[], report=report,
+                )
+            self.assertTrue(attempted)
+            self.assertTrue(succeeded)
+            run.assert_called_once()
+            registry.assert_called_once_with()
+
+            partial = root / "partial install"
+            partial.mkdir()
+            with patch.object(smoke, "run_default_uninstaller") as run, \
+                    patch.object(smoke, "verify_registry_removed"):
+                with self.assertRaises(smoke.SmokeFailure) as failure:
+                    smoke._cleanup_default_install(
+                        partial, install_attempted=True, install_succeeded=False,
+                        uninstall_attempted=False, uninstall_succeeded=False, root=root,
+                        powershell="powershell.exe", groups=[], report=report,
+                    )
+            self.assertEqual(failure.exception.code, "fixture_cleanup_failed")
+            run.assert_not_called()
+
     def test_data_snapshot_and_w4_process_identity_remain_strict(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             data = Path(directory) / "data"

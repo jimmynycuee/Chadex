@@ -801,6 +801,37 @@ def run_default_uninstaller(install_dir: Path, root: Path, *, powershell: str,
     verify_registry_removed()
 
 
+def _cleanup_default_install(install_dir: Path | None, *, install_attempted: bool,
+                             install_succeeded: bool, uninstall_attempted: bool,
+                             uninstall_succeeded: bool, root: Path | None,
+                             powershell: str | None, groups: list[dict[int, dict[str, Any]]],
+                             report: "SmokeReport") -> tuple[bool, bool]:
+    """Fail-closed cleanup for the isolated default-NSIS uninstall fixture.
+
+    A mutating uninstaller is attempted at most once.  If an installer/uninstaller
+    already returned an error, cleanup only observes the desired absent state; it
+    never blindly retries an uncertain mutation or recursively deletes its tree.
+    """
+    if not install_attempted:
+        return uninstall_attempted, uninstall_succeeded
+    require(install_dir is not None and root is not None and powershell is not None,
+            "fixture_cleanup_failed")
+
+    if install_succeeded and not uninstall_attempted:
+        uninstall_attempted = True
+        run_default_uninstaller(
+            install_dir, root, powershell=powershell, groups=groups, report=report,
+        )
+        uninstall_succeeded = True
+
+    # A failed/uncertain prior mutation is never replayed.  It is safe to remove the
+    # parent temp root only when the application path and uninstall registration are
+    # already gone by observation.
+    require(not _lexists(install_dir), "fixture_cleanup_failed")
+    verify_registry_removed()
+    return uninstall_attempted, uninstall_succeeded
+
+
 def _launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: Path,
                      version: str, mode: str, *, powershell: str, node: str,
                      groups: list[dict[int, dict[str, Any]]],
@@ -1140,6 +1171,12 @@ def run_smoke(candidate_dir: Path, *, historical_baseline_dir: Path | None = Non
     uninstaller_succeeded = False
     uninstaller_hash: str | None = None
     uninstall_verified = False
+    default_install_dir: Path | None = None
+    default_installer_attempted = False
+    default_installer_succeeded = False
+    default_uninstaller_attempted = False
+    default_uninstaller_succeeded = False
+    default_cleanup_verified = False
     main_success = False
     failure: SmokeFailure | None = None
 
@@ -1298,11 +1335,22 @@ def run_smoke(candidate_dir: Path, *, historical_baseline_dir: Path | None = Non
         with report.stage("default_uninstaller_self_copy") as stage:
             default_install_dir = root / "預設移除 Chadex"
             before_default_uninstall = data_snapshot(app_data)
+            default_installer_attempted = True
+
+            def default_install_succeeded() -> None:
+                nonlocal default_installer_succeeded
+                default_installer_succeeded = True
+
             run_installer(candidate["installer"], default_install_dir, root,
-                          powershell=powershell, groups=groups, report=report)
+                          powershell=powershell, groups=groups, report=report,
+                          on_success=default_install_succeeded)
+            require(default_installer_succeeded, "installer_exit_nonzero")
             verify_registry_owner(candidate["version"], default_install_dir)
+            default_uninstaller_attempted = True
             run_default_uninstaller(default_install_dir, root, powershell=powershell,
                                     groups=groups, report=report)
+            default_uninstaller_succeeded = True
+            default_cleanup_verified = True
             require_unchanged_snapshot(app_data, before_default_uninstall)
             require(preferences_hash(app_data) == initial_preferences_hash, "preferences_changed")
             require(project_marker_hash(project) == marker_hash, "project_marker_changed")
@@ -1320,6 +1368,17 @@ def run_smoke(candidate_dir: Path, *, historical_baseline_dir: Path | None = Non
     try:
         with report.stage("fixture_cleanup") as cleanup_stage:
             _cleanup_process_groups(powershell, groups, report)
+
+            if default_installer_attempted and not default_cleanup_verified:
+                default_uninstaller_attempted, default_uninstaller_succeeded = _cleanup_default_install(
+                    default_install_dir,
+                    install_attempted=default_installer_attempted,
+                    install_succeeded=default_installer_succeeded,
+                    uninstall_attempted=default_uninstaller_attempted,
+                    uninstall_succeeded=default_uninstaller_succeeded,
+                    root=root, powershell=powershell, groups=groups, report=report,
+                )
+                default_cleanup_verified = True
 
             if installer_succeeded and not uninstaller_succeeded and not uninstaller_attempted:
                 require(root is not None and install_dir is not None and candidate is not None,
@@ -1341,6 +1400,9 @@ def run_smoke(candidate_dir: Path, *, historical_baseline_dir: Path | None = Non
             if uninstall_verified:
                 require(root is not None and runner_temp is not None and install_dir is not None
                         and uninstaller_hash is not None, "fixture_cleanup_failed")
+                if default_installer_attempted:
+                    require(default_cleanup_verified and default_install_dir is not None
+                            and not _lexists(default_install_dir), "fixture_cleanup_failed")
                 _remove_uninstaller_stub(install_dir, uninstaller_hash)
                 cleanup_stage["uninstaller_stub_removed"] = True
                 _remove_temp_root(root, runner_temp)
