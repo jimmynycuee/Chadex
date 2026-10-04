@@ -21,6 +21,7 @@ use crate::chadex_core::runtime_compat::state::{
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sha2::Digest;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -250,6 +251,479 @@ impl RuntimeBackendAdapter {
                 operator_error_code(&result).unwrap_or("project_instruction_write_failed"),
                 "Chadex did not create AGENTS.md",
                 "Refresh Project Instructions. Existing files are never overwritten by this action.",
+            ));
+        }
+        Ok(result.output)
+    }
+
+    pub(crate) async fn skill_catalog(&self, project_path: &str) -> ChadexResult<Value> {
+        let target = self.exact_runtime_probe_target(project_path).await?;
+        let token = read_probe_token(&target.user_token_file)
+            .await
+            .ok_or_else(|| {
+                ChadexError::new(
+                    "skill_catalog_unavailable",
+                    "The local runtime credential is unavailable",
+                    "Restore the local runtime, then refresh Skills.",
+                )
+            })?;
+        let cancellation =
+            CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
+        let mut offset = 0usize;
+        let mut catalog_revision: Option<String> = None;
+        let mut all_skills = Vec::new();
+        let mut total_count = 0usize;
+        let mut invalid_count = 0usize;
+        let mut diagnostics = Vec::new();
+        let mut discovery_truncated = false;
+        loop {
+            let mut args = json!({
+                "project": target.runtime_project_id,
+                "offset": offset,
+                "limit": 64
+            });
+            if let Some(revision) = catalog_revision.as_deref() {
+                args["expected_catalog_revision"] = Value::String(revision.to_string());
+            }
+            let result = call_local_runtime_tool(
+                &self.probe_client,
+                &target.server_url,
+                token.as_str(),
+                "skill_list",
+                args,
+                &cancellation,
+            )
+            .await
+            .map_err(map_desktop_error)?
+            .ok_or_else(|| {
+                ChadexError::new(
+                    "skill_catalog_unavailable",
+                    "The local runtime did not return the Skill catalog",
+                    "Restore the local runtime, then refresh Skills.",
+                )
+            })?;
+            if !result.success {
+                return Err(ChadexError::new(
+                    operator_error_code(&result).unwrap_or("skill_catalog_unavailable"),
+                    "Chadex could not refresh the Skill catalog",
+                    "Restore the local runtime, then refresh Skills.",
+                ));
+            }
+            let output = result.output;
+            let revision = output
+                .get("catalog_revision")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    ChadexError::new(
+                        "skill_catalog_invalid",
+                        "The local runtime returned an invalid Skill catalog",
+                        "Refresh Skills after the runtime is ready.",
+                    )
+                })?;
+            if catalog_revision
+                .as_deref()
+                .is_some_and(|current| current != revision)
+            {
+                return Err(ChadexError::new(
+                    "skill_catalog_changed",
+                    "The Skill catalog changed while Chadex was reading it",
+                    "Refresh Skills again to load one consistent catalog revision.",
+                ));
+            }
+            if catalog_revision.is_none() {
+                catalog_revision = Some(revision.to_string());
+                total_count = output
+                    .get("total_count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0) as usize;
+                invalid_count = output
+                    .get("invalid_count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0) as usize;
+                diagnostics = output
+                    .get("diagnostics")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                discovery_truncated = output
+                    .get("discovery_truncated")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+            }
+            all_skills.extend(
+                output
+                    .get("skills")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+            let next = output
+                .get("next_offset")
+                .and_then(Value::as_u64)
+                .map(|value| value as usize);
+            match next {
+                Some(next) if next > offset && all_skills.len() <= 256 => offset = next,
+                Some(_) => {
+                    return Err(ChadexError::new(
+                        "skill_catalog_invalid",
+                        "The local runtime returned an invalid Skill catalog page",
+                        "Refresh Skills after the runtime is ready.",
+                    ))
+                }
+                None => break,
+            }
+        }
+        Ok(json!({
+            "project": target.runtime_project_id,
+            "catalog_revision": catalog_revision.unwrap_or_default(),
+            "total_count": total_count,
+            "returned_count": all_skills.len(),
+            "skills": all_skills,
+            "invalid_count": invalid_count,
+            "diagnostics": diagnostics,
+            "discovery_truncated": discovery_truncated
+        }))
+    }
+
+    pub(crate) async fn skill_inventory(&self, project_path: &str) -> ChadexResult<Value> {
+        self.call_project_operator_tool(
+            project_path,
+            "skill_inventory",
+            json!({}),
+            "skill_inventory_unavailable",
+            "Chadex could not read installed Skills",
+        )
+        .await
+    }
+
+    pub(crate) async fn skill_definition(
+        &self,
+        project_path: &str,
+        skill_id: &str,
+        definition_revision: &str,
+        package_revision: Option<&str>,
+    ) -> ChadexResult<Value> {
+        let target = self.exact_runtime_probe_target(project_path).await?;
+        let token = read_probe_token(&target.user_token_file)
+            .await
+            .ok_or_else(|| {
+                ChadexError::new(
+                    "skill_definition_unavailable",
+                    "The local runtime credential is unavailable",
+                    "Restore the local runtime, then open the Skill again.",
+                )
+            })?;
+        let cancellation =
+            CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
+        let mut start_line = 1usize;
+        let mut text = String::new();
+        let mut page_count = 0usize;
+        loop {
+            let mut args = json!({
+                "project": target.runtime_project_id,
+                "skill_id": skill_id,
+                "path": "SKILL.md",
+                "start_line": start_line,
+                "limit": 400,
+                "expected_definition_revision": definition_revision
+            });
+            if let Some(revision) = package_revision {
+                args["expected_package_revision"] = Value::String(revision.to_string());
+            }
+            let result = call_local_runtime_tool(
+                &self.probe_client,
+                &target.server_url,
+                token.as_str(),
+                "skill_read_file",
+                args,
+                &cancellation,
+            )
+            .await
+            .map_err(map_desktop_error)?
+            .ok_or_else(|| {
+                ChadexError::new(
+                    "skill_definition_unavailable",
+                    "The local runtime did not return the Skill definition",
+                    "Refresh Skills, then open the Skill again.",
+                )
+            })?;
+            if !result.success {
+                return Err(ChadexError::new(
+                    operator_error_code(&result).unwrap_or("skill_definition_unavailable"),
+                    "Chadex could not load the Skill definition",
+                    "Refresh Skills, then open the Skill again so revisions can be revalidated.",
+                ));
+            }
+            let output = result.output;
+            if output.get("definition_revision").and_then(Value::as_str)
+                != Some(definition_revision)
+            {
+                return Err(ChadexError::new(
+                    "skill_definition_changed",
+                    "The Skill definition changed while Chadex was reading it",
+                    "Refresh Skills, then open the updated definition.",
+                ));
+            }
+            if let Some(page) = output.get("text").and_then(Value::as_str) {
+                if !text.is_empty() && !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text.push_str(page);
+            }
+            page_count += 1;
+            let has_more = output
+                .get("has_more")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if !has_more {
+                return Ok(json!({
+                    "skill_id": skill_id,
+                    "definition_revision": definition_revision,
+                    "package_revision": package_revision,
+                    "text": text,
+                    "has_more": false
+                }));
+            }
+            let next = output
+                .get("next_start_line")
+                .and_then(Value::as_u64)
+                .map(|value| value as usize);
+            match next {
+                Some(next) if next > start_line && page_count < 16 => start_line = next,
+                _ => {
+                    return Err(ChadexError::new(
+                        "skill_definition_too_large",
+                        "The Skill definition exceeds the desktop preview limit",
+                        "Open the Skill file in the project for the complete definition.",
+                    ))
+                }
+            }
+        }
+    }
+
+    pub(crate) async fn create_project_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        content: &str,
+    ) -> ChadexResult<Value> {
+        if !valid_desktop_skill_key(skill_key) {
+            return Err(ChadexError::new(
+                "skill_key_invalid",
+                "The Skill package key is invalid",
+                "Use only letters, numbers, dot, underscore, or hyphen.",
+            ));
+        }
+        self.call_project_operator_tool(
+            project_path,
+            "write_project_file",
+            json!({
+                "path": format!(".agents/skills/{skill_key}/SKILL.md"),
+                "content": content,
+                "overwrite": false
+            }),
+            "skill_create_failed",
+            "Chadex did not create the project Skill",
+        )
+        .await
+    }
+
+    pub(crate) async fn install_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        artifact_path: &str,
+    ) -> ChadexResult<Value> {
+        if !valid_desktop_skill_key(skill_key) {
+            return Err(ChadexError::new(
+                "skill_key_invalid",
+                "The Skill package key is invalid",
+                "Use only letters, numbers, dot, underscore, or hyphen.",
+            ));
+        }
+        let root = tokio::fs::canonicalize(project_path).await.map_err(|_| {
+            ChadexError::new(
+                "skill_artifact_invalid",
+                "The project path is unavailable",
+                "Refresh the project and choose the ZIP again.",
+            )
+        })?;
+        let artifact = tokio::fs::canonicalize(root.join(artifact_path))
+            .await
+            .map_err(|_| {
+                ChadexError::new(
+                    "skill_artifact_invalid",
+                    "The Skill ZIP could not be opened",
+                    "Choose a ZIP file inside the selected project.",
+                )
+            })?;
+        if !artifact.starts_with(&root) || !artifact.is_file() {
+            return Err(ChadexError::new(
+                "skill_artifact_invalid",
+                "The Skill ZIP must be a regular file inside the selected project",
+                "Copy the ZIP into the project and choose it again.",
+            ));
+        }
+        let bytes = tokio::fs::read(&artifact).await.map_err(|_| {
+            ChadexError::new(
+                "skill_artifact_invalid",
+                "The Skill ZIP could not be read",
+                "Check the file and retry.",
+            )
+        })?;
+        let artifact_sha256 = format!("{:x}", sha2::Sha256::digest(&bytes));
+        let install_key =
+            desktop_skill_idempotency_key("install", &[skill_key, artifact_path, &artifact_sha256]);
+        let installed = self
+            .call_project_operator_tool(
+                project_path,
+                "skill_install",
+                json!({
+                    "skill_key": skill_key,
+                    "artifact_path": artifact_path,
+                    "expected_artifact_sha256": artifact_sha256,
+                    "idempotency_key": install_key,
+                    "activate": false
+                }),
+                "skill_install_failed",
+                "Chadex could not install the Skill",
+            )
+            .await?;
+        let package_revision = installed
+            .get("package_revision")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                ChadexError::new(
+                    "skill_install_invalid",
+                    "The runtime returned an invalid Skill install result",
+                    "Refresh Skills and inspect the installed versions.",
+                )
+            })?;
+        let state_revision = installed
+            .get("state_revision")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                ChadexError::new(
+                    "skill_install_invalid",
+                    "The runtime returned an invalid Skill install state",
+                    "Refresh Skills and inspect the installed versions.",
+                )
+            })?;
+        let activation_key = desktop_skill_idempotency_key(
+            "activate",
+            &[skill_key, package_revision, state_revision],
+        );
+        let activated = self
+            .call_project_operator_tool(
+                project_path,
+                "skill_activate",
+                json!({
+                    "skill_key": skill_key,
+                    "package_revision": package_revision,
+                    "expected_state_revision": state_revision,
+                    "idempotency_key": activation_key
+                }),
+                "skill_activate_failed",
+                "The Skill was installed but could not be enabled",
+            )
+            .await?;
+        Ok(json!({"install": installed, "activation": activated}))
+    }
+
+    pub(crate) async fn activate_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        package_revision: &str,
+        state_revision: &str,
+    ) -> ChadexResult<Value> {
+        let key = desktop_skill_idempotency_key(
+            "activate",
+            &[skill_key, package_revision, state_revision],
+        );
+        self.call_project_operator_tool(
+            project_path,
+            "skill_activate",
+            json!({
+                "skill_key": skill_key,
+                "package_revision": package_revision,
+                "expected_state_revision": state_revision,
+                "idempotency_key": key
+            }),
+            "skill_activate_failed",
+            "Chadex could not enable the Skill",
+        )
+        .await
+    }
+
+    pub(crate) async fn deactivate_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        state_revision: &str,
+    ) -> ChadexResult<Value> {
+        let key = desktop_skill_idempotency_key("deactivate", &[skill_key, state_revision]);
+        self.call_project_operator_tool(
+            project_path,
+            "skill_deactivate",
+            json!({
+                "skill_key": skill_key,
+                "expected_state_revision": state_revision,
+                "idempotency_key": key
+            }),
+            "skill_deactivate_failed",
+            "Chadex could not disable the Skill",
+        )
+        .await
+    }
+
+    async fn call_project_operator_tool(
+        &self,
+        project_path: &str,
+        tool_name: &str,
+        mut arguments: Value,
+        fallback_code: &'static str,
+        message: &'static str,
+    ) -> ChadexResult<Value> {
+        let target = self.exact_runtime_probe_target(project_path).await?;
+        let token = read_probe_token(&target.user_token_file)
+            .await
+            .ok_or_else(|| {
+                ChadexError::new(
+                    fallback_code,
+                    "The local runtime credential is unavailable",
+                    "Restore the local runtime and retry.",
+                )
+            })?;
+        let object = arguments.as_object_mut().ok_or_else(|| {
+            ChadexError::new(
+                fallback_code,
+                "The desktop Skill request is invalid",
+                "Refresh Skills and retry.",
+            )
+        })?;
+        object.insert(
+            "project".to_string(),
+            Value::String(target.runtime_project_id),
+        );
+        let cancellation =
+            CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
+        let result = call_local_runtime_tool(
+            &self.probe_client,
+            &target.server_url,
+            token.as_str(),
+            tool_name,
+            arguments,
+            &cancellation,
+        )
+        .await
+        .map_err(map_desktop_error)?
+        .ok_or_else(|| ChadexError::new(fallback_code, message, "Refresh Skills and retry."))?;
+        if !result.success {
+            return Err(ChadexError::new(
+                operator_error_code(&result).unwrap_or(fallback_code),
+                message,
+                "Refresh Skills and retry from the latest observed state.",
             ));
         }
         Ok(result.output)
@@ -1080,6 +1554,28 @@ fn exact_runtime_project_is_ready(value: &Value, target: &ChadexRuntimeProbeTarg
         && project.get("path").and_then(Value::as_str) == Some(target.project_path.as_str())
         && project.get("connected").and_then(Value::as_bool) == Some(true)
         && project.get("agent_status").and_then(Value::as_str) == Some("online")
+}
+
+fn valid_desktop_skill_key(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 96
+        && value != "."
+        && value != ".."
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+fn desktop_skill_idempotency_key(operation: &str, fields: &[&str]) -> String {
+    use sha2::Digest;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(b"chadex-desktop-skill-mutation-v1\0");
+    hasher.update(operation.as_bytes());
+    for field in fields {
+        hasher.update(b"\0");
+        hasher.update(field.as_bytes());
+    }
+    format!("chadex-{operation}-{:x}", hasher.finalize())
 }
 
 fn map_desktop_error(error: DesktopError) -> ChadexError {

@@ -150,6 +150,68 @@ fn skill_by_name<'a>(result: &'a ToolResult, name: &str) -> &'a Value {
 }
 
 #[tokio::test]
+async fn fresh_session_discovers_project_skill_created_after_prior_catalog_observation() {
+    let root = tempfile::tempdir().unwrap();
+    let runtime = ToolRuntime::new_for_tests();
+    let project =
+        register_runner_project_at_path(&runtime, "skill-fresh-session", "demo", root.path()).await;
+
+    let first_session = runtime.sessions.start_session(Some(project.clone()), None);
+    let (before, before_kinds) = call_kernel_with_local_agent(
+        &runtime,
+        "skill-fresh-session",
+        "skill_list",
+        json!({
+            "project": project.clone(),
+            "session_id": first_session.session_id
+        }),
+        true,
+    )
+    .await;
+    assert!(before.success, "{:?}", before.error);
+    assert_eq!(before.output["total_count"], 0);
+    assert!(before_kinds
+        .iter()
+        .any(|kind| kind == "file_skill_list_packages"));
+
+    write_skill(
+        root.path(),
+        "fresh-procedure",
+        "fresh-procedure",
+        "Freshly created reusable procedure",
+        "FRESH_PRIVATE_SKILL_BODY\n",
+    );
+
+    let fresh_session = runtime.sessions.start_session(Some(project.clone()), None);
+    assert_ne!(fresh_session.session_id, first_session.session_id);
+    let (after, after_kinds) = call_kernel_with_local_agent(
+        &runtime,
+        "skill-fresh-session",
+        "skill_list",
+        json!({
+            "project": project,
+            "session_id": fresh_session.session_id
+        }),
+        true,
+    )
+    .await;
+    assert!(after.success, "{:?}", after.error);
+    assert_eq!(after.output["total_count"], 1);
+    assert_eq!(after.output["skills"][0]["name"], "fresh-procedure");
+    assert_eq!(after.output["skills"][0]["trust"], "project_content");
+    assert!(after_kinds
+        .iter()
+        .any(|kind| kind == "file_skill_list_packages"));
+    assert!(
+        !after
+            .output
+            .to_string()
+            .contains("FRESH_PRIVATE_SKILL_BODY"),
+        "fresh Session catalog observation must expose metadata without the definition body"
+    );
+}
+
+#[tokio::test]
 async fn skill_load_is_exact_case_insensitive_and_fails_closed_on_ambiguity() {
     let root = tempfile::tempdir().unwrap();
     write_skill(
@@ -163,7 +225,7 @@ async fn skill_load_is_exact_case_insensitive_and_fails_closed_on_ambiguity() {
     let project =
         register_runner_project_at_path(&runtime, "skill-load-project", "demo", root.path()).await;
 
-    let (loaded, _) = call_kernel_with_local_agent(
+    let (loaded, loaded_kinds) = call_kernel_with_local_agent(
         &runtime,
         "skill-load-project",
         "skill_load",
@@ -172,6 +234,18 @@ async fn skill_load_is_exact_case_insensitive_and_fails_closed_on_ambiguity() {
     )
     .await;
     assert!(loaded.success, "{:?}", loaded.error);
+    let list_position = loaded_kinds
+        .iter()
+        .position(|kind| kind == "file_skill_list_packages")
+        .expect("matching must discover metadata first");
+    let read_position = loaded_kinds
+        .iter()
+        .position(|kind| kind == "file_skill_read_file")
+        .expect("selected Skill definition is read after matching");
+    assert!(
+        list_position < read_position,
+        "matching must precede SKILL.md definition loading"
+    );
     assert_eq!(loaded.output["name"], "time-tracking");
     assert_eq!(loaded.output["path"], "SKILL.md");
     assert!(loaded.output["text"]

@@ -88,6 +88,18 @@ pub fn skill_load_input_schema() -> Value {
     })
 }
 
+pub fn skill_inventory_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "project": {"type": "string", "minLength": 1},
+            "session_id": {"type": "string"}
+        },
+        "required": ["project"],
+        "additionalProperties": false
+    })
+}
+
 pub fn skill_versions_input_schema() -> Value {
     json!({
         "type": "object",
@@ -139,6 +151,21 @@ fn skill_state_mutation_schema() -> Value {
 
 pub fn skill_activate_input_schema() -> Value {
     skill_state_mutation_schema()
+}
+
+pub fn skill_deactivate_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "project": {"type": "string", "minLength": 1},
+            "skill_key": {"type": "string", "minLength": 1, "maxLength": MAX_OPERATOR_SKILL_KEY_CHARS, "pattern": "^[A-Za-z0-9._-]+$"},
+            "expected_state_revision": {"type": "string", "pattern": "^wc_skillstate_[A-Za-z0-9_-]{43}$"},
+            "idempotency_key": {"type": "string", "minLength": 1, "maxLength": MAX_SKILL_STORE_IDEMPOTENCY_KEY_CHARS},
+            "session_id": {"type": "string"}
+        },
+        "required": ["project", "skill_key", "expected_state_revision", "idempotency_key"],
+        "additionalProperties": false
+    })
 }
 
 pub fn skill_remove_revision_input_schema() -> Value {

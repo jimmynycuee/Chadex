@@ -490,6 +490,82 @@ impl Bridge {
             .map_err(ErrorPayload::from)
     }
 
+    async fn skill_catalog(&self, path: &str) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .skill_catalog(path)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
+    async fn skill_inventory(&self, path: &str) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .skill_inventory(path)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
+    async fn skill_definition(
+        &self,
+        path: &str,
+        skill_id: &str,
+        definition_revision: &str,
+        package_revision: Option<&str>,
+    ) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .skill_definition(path, skill_id, definition_revision, package_revision)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
+    async fn create_project_skill(
+        &self,
+        path: &str,
+        skill_key: &str,
+        content: &str,
+    ) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .create_project_skill(path, skill_key, content)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
+    async fn install_skill(
+        &self,
+        path: &str,
+        skill_key: &str,
+        artifact_path: &str,
+    ) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .install_skill(path, skill_key, artifact_path)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
+    async fn activate_skill(
+        &self,
+        path: &str,
+        skill_key: &str,
+        package_revision: &str,
+        state_revision: &str,
+    ) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .activate_skill(path, skill_key, package_revision, state_revision)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
+    async fn deactivate_skill(
+        &self,
+        path: &str,
+        skill_key: &str,
+        state_revision: &str,
+    ) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .deactivate_skill(path, skill_key, state_revision)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
     async fn choose_target_project(&self, path: &str) -> Result<BackendSnapshot, ErrorPayload> {
         let project = self.inspect_project(path).await?;
         self.set_target_project(project);
@@ -1247,6 +1323,82 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
                     .await
                     .map(ResponseResult::Json),
                 (Err(error), _) | (_, Err(error)) => Err(error),
+            }
+        }
+        "getSkillCatalog" => match param_str(&request.params, "path") {
+            Ok(path) => bridge.skill_catalog(path).await.map(ResponseResult::Json),
+            Err(error) => Err(error),
+        },
+        "getSkillInventory" => match param_str(&request.params, "path") {
+            Ok(path) => bridge.skill_inventory(path).await.map(ResponseResult::Json),
+            Err(error) => Err(error),
+        },
+        "getSkillDefinition" => {
+            let path = param_str(&request.params, "path");
+            let skill_id = param_str(&request.params, "skill_id");
+            let definition_revision = param_str(&request.params, "definition_revision");
+            let package_revision = request
+                .params
+                .get("package_revision")
+                .and_then(Value::as_str);
+            match (path, skill_id, definition_revision) {
+                (Ok(path), Ok(skill_id), Ok(definition_revision)) => bridge
+                    .skill_definition(path, skill_id, definition_revision, package_revision)
+                    .await
+                    .map(ResponseResult::Json),
+                (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => Err(error),
+            }
+        }
+        "createProjectSkill" => {
+            let path = param_str(&request.params, "path").map(str::to_owned);
+            let skill_key = param_str(&request.params, "skill_key").map(str::to_owned);
+            let content = take_param_string(&mut request.params, "content");
+            match (path, skill_key, content) {
+                (Ok(path), Ok(skill_key), Ok(content)) => bridge
+                    .create_project_skill(&path, &skill_key, &content)
+                    .await
+                    .map(ResponseResult::Json),
+                (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => Err(error),
+            }
+        }
+        "installSkill" => {
+            let path = param_str(&request.params, "path");
+            let skill_key = param_str(&request.params, "skill_key");
+            let artifact_path = param_str(&request.params, "artifact_path");
+            match (path, skill_key, artifact_path) {
+                (Ok(path), Ok(skill_key), Ok(artifact_path)) => bridge
+                    .install_skill(path, skill_key, artifact_path)
+                    .await
+                    .map(ResponseResult::Json),
+                (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => Err(error),
+            }
+        }
+        "activateSkill" => {
+            let path = param_str(&request.params, "path");
+            let skill_key = param_str(&request.params, "skill_key");
+            let package_revision = param_str(&request.params, "package_revision");
+            let state_revision = param_str(&request.params, "state_revision");
+            match (path, skill_key, package_revision, state_revision) {
+                (Ok(path), Ok(skill_key), Ok(package_revision), Ok(state_revision)) => bridge
+                    .activate_skill(path, skill_key, package_revision, state_revision)
+                    .await
+                    .map(ResponseResult::Json),
+                (Err(error), _, _, _)
+                | (_, Err(error), _, _)
+                | (_, _, Err(error), _)
+                | (_, _, _, Err(error)) => Err(error),
+            }
+        }
+        "deactivateSkill" => {
+            let path = param_str(&request.params, "path");
+            let skill_key = param_str(&request.params, "skill_key");
+            let state_revision = param_str(&request.params, "state_revision");
+            match (path, skill_key, state_revision) {
+                (Ok(path), Ok(skill_key), Ok(state_revision)) => bridge
+                    .deactivate_skill(path, skill_key, state_revision)
+                    .await
+                    .map(ResponseResult::Json),
+                (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => Err(error),
             }
         }
         "activateProject" => match param_str(&request.params, "path") {

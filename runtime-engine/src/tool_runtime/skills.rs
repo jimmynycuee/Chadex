@@ -28,8 +28,9 @@ pub(crate) use webcodex_core::skill_metadata::{
 };
 use webcodex_core::skill_store::{
     valid_lower_sha256, valid_package_revision, valid_skill_key, valid_state_revision,
-    SkillStoreActivateResponse, SkillStoreInstallResponse, SkillStoreRemoveResponse,
-    SkillStoreVersionsResponse, MAX_OPERATOR_REVISIONS_PER_SKILL, MAX_SKILL_STORE_FILE_COUNT,
+    SkillStoreActivateResponse, SkillStoreDeactivateResponse, SkillStoreInstallResponse,
+    SkillStoreInventoryResponse, SkillStoreRemoveResponse, SkillStoreVersionsResponse,
+    MAX_OPERATOR_REVISIONS_PER_SKILL, MAX_OPERATOR_SKILLS, MAX_SKILL_STORE_FILE_COUNT,
     MAX_SKILL_STORE_TOTAL_BYTES, MAX_SKILL_STORE_VERSIONS_LIMIT, SKILL_STORE_RESPONSE_FORMAT,
 };
 
@@ -1406,6 +1407,65 @@ impl ToolRuntime {
         ToolResult::ok(output)
     }
 
+    pub(crate) async fn skill_inventory(
+        &self,
+        project: &ResolvedProject,
+        auth: Option<&AuthContext>,
+    ) -> ToolResult {
+        let response = match self
+            .runner_skill_request(project, auth, RunnerSkillRequest::Inventory, false, None)
+            .await
+        {
+            Ok(Some(response)) => response,
+            Ok(None) => {
+                return skill_error(
+                    "skill_store_capability_unavailable",
+                    &project.resolved_id,
+                    None,
+                )
+            }
+            Err(kind) => return skill_error_dynamic(&kind, &project.resolved_id, None, false),
+        };
+        if response.exit_code != Some(0) || response.error.is_some() {
+            let kind = stable_skill_store_error(response.error.as_deref());
+            return skill_error_dynamic(&kind, &project.resolved_id, None, false);
+        }
+        let parsed: SkillStoreInventoryResponse =
+            match serde_json::from_str(response.stdout.as_deref().unwrap_or_default()) {
+                Ok(parsed) => parsed,
+                Err(_) => {
+                    return skill_error("skill_store_response_invalid", &project.resolved_id, None)
+                }
+            };
+        if parsed.format != SKILL_STORE_RESPONSE_FORMAT
+            || parsed.total_count != parsed.skills.len()
+            || parsed.total_count > MAX_OPERATOR_SKILLS
+            || parsed.skills.iter().any(|skill| {
+                !valid_skill_id(&skill.skill_id)
+                    || !valid_skill_key(&skill.skill_key)
+                    || !valid_state_revision(&skill.state_revision)
+                    || skill
+                        .active_package_revision
+                        .as_deref()
+                        .is_some_and(|value| !valid_package_revision(value))
+                    || !valid_package_revision(&skill.preferred_package_revision)
+                    || !is_lower_sha256(&skill.definition_revision)
+                    || skill.name.chars().count() > MAX_SKILL_NAME_CHARS
+                    || skill.description.chars().count() > MAX_SKILL_DESCRIPTION_CHARS
+                    || skill.total_versions == 0
+                    || skill.total_versions > MAX_OPERATOR_REVISIONS_PER_SKILL
+            })
+        {
+            return skill_error("skill_store_response_invalid", &project.resolved_id, None);
+        }
+        ToolResult::ok(json!({
+            "project": project.resolved_id,
+            "total_count": parsed.total_count,
+            "skills": parsed.skills,
+            "state_changed": false,
+        }))
+    }
+
     pub(crate) async fn skill_versions(
         &self,
         project: &ResolvedProject,
@@ -1690,6 +1750,94 @@ impl ToolRuntime {
             || parsed.active_package_revision != package_revision
             || !valid_skill_id(&parsed.skill_id)
             || !valid_state_revision(&parsed.state_revision)
+        {
+            return skill_error("skill_store_response_invalid", &project.resolved_id, None);
+        }
+        ToolResult::ok(json!({
+            "project": project.resolved_id,
+            "skill_id": parsed.skill_id,
+            "skill_key": parsed.skill_key,
+            "previous_active_package_revision": parsed.previous_active_package_revision,
+            "active_package_revision": parsed.active_package_revision,
+            "state_revision": parsed.state_revision,
+            "changed": parsed.changed,
+            "replayed": parsed.replayed,
+            "outcome_unknown": false,
+            "state_changed": parsed.changed,
+        }))
+    }
+
+    pub(crate) async fn skill_deactivate(
+        &self,
+        project: &ResolvedProject,
+        skill_key: String,
+        expected_state_revision: String,
+        idempotency_key: String,
+        auth: Option<&AuthContext>,
+    ) -> ToolResult {
+        if !valid_skill_key(&skill_key) || !valid_state_revision(&expected_state_revision) {
+            return skill_error(
+                "skill_deactivate_invalid_arguments",
+                &project.resolved_id,
+                None,
+            );
+        }
+        let response = match self
+            .runner_skill_request(
+                project,
+                auth,
+                RunnerSkillRequest::Deactivate {
+                    skill_key: skill_key.clone(),
+                    expected_state_revision,
+                    idempotency_key,
+                },
+                false,
+                None,
+            )
+            .await
+        {
+            Ok(Some(response)) => response,
+            Ok(None) => {
+                return skill_error(
+                    "skill_store_capability_unavailable",
+                    &project.resolved_id,
+                    None,
+                )
+            }
+            Err(kind) => {
+                return skill_error_dynamic(
+                    &kind,
+                    &project.resolved_id,
+                    Some(json!({"skill_key": skill_key})),
+                    kind == "skill_store_outcome_unknown",
+                )
+            }
+        };
+        if response.exit_code != Some(0) || response.error.is_some() {
+            let kind = stable_skill_store_error(response.error.as_deref());
+            return skill_error_dynamic(
+                &kind,
+                &project.resolved_id,
+                Some(json!({"skill_key": skill_key})),
+                uncertain_skill_store_error(&kind),
+            );
+        }
+        let parsed: SkillStoreDeactivateResponse =
+            match serde_json::from_str(response.stdout.as_deref().unwrap_or_default()) {
+                Ok(parsed) => parsed,
+                Err(_) => {
+                    return skill_error("skill_store_response_invalid", &project.resolved_id, None)
+                }
+            };
+        if parsed.format != SKILL_STORE_RESPONSE_FORMAT
+            || parsed.skill_key != skill_key
+            || parsed.active_package_revision.is_some()
+            || !valid_skill_id(&parsed.skill_id)
+            || !valid_state_revision(&parsed.state_revision)
+            || parsed
+                .previous_active_package_revision
+                .as_deref()
+                .is_some_and(|value| !valid_package_revision(value))
         {
             return skill_error("skill_store_response_invalid", &project.resolved_id, None);
         }

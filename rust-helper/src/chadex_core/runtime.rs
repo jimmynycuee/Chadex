@@ -2,8 +2,8 @@ use super::activity::RuntimeActivityEntry;
 use super::backend::RuntimeBackendApi;
 use super::tunnel::RuntimeTunnelTarget;
 use super::ChadexResult;
-use serde_json::Value;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,6 +135,76 @@ impl ChadexRuntimeCore {
         content: &str,
     ) -> ChadexResult<Value> {
         self.backend.create_agents_file(project_path, content).await
+    }
+
+    pub async fn skill_catalog(&self, project_path: &str) -> ChadexResult<Value> {
+        self.backend.skill_catalog(project_path).await
+    }
+
+    pub async fn skill_inventory(&self, project_path: &str) -> ChadexResult<Value> {
+        self.backend.skill_inventory(project_path).await
+    }
+
+    pub async fn skill_definition(
+        &self,
+        project_path: &str,
+        skill_id: &str,
+        definition_revision: &str,
+        package_revision: Option<&str>,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .skill_definition(
+                project_path,
+                skill_id,
+                definition_revision,
+                package_revision,
+            )
+            .await
+    }
+
+    pub async fn create_project_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        content: &str,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .create_project_skill(project_path, skill_key, content)
+            .await
+    }
+
+    pub async fn install_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        artifact_path: &str,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .install_skill(project_path, skill_key, artifact_path)
+            .await
+    }
+
+    pub async fn activate_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        package_revision: &str,
+        state_revision: &str,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .activate_skill(project_path, skill_key, package_revision, state_revision)
+            .await
+    }
+
+    pub async fn deactivate_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        state_revision: &str,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .deactivate_skill(project_path, skill_key, state_revision)
+            .await
     }
 
     pub async fn stop_local_runtime(&self) -> ChadexResult<RuntimeSnapshot> {

@@ -222,6 +222,32 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
     )
     .with_operator_extension_family(ToolOperatorExtensionFamily::SkillRuntime),
     def(
+        "skill_inventory",
+        super::ToolAuditPolicy::typed_fields(&[
+            super::ToolAuditResultField::value("project"),
+            super::ToolAuditResultField::value("total_count"),
+            super::ToolAuditResultField::value("error_kind"),
+            super::ToolAuditResultField::value("state_changed"),
+        ]),
+        ModelHidden,
+        TOOL_CATEGORY_RUNTIME,
+        Some(SkillManagement),
+        TOOL_PROVIDER_RUNNER,
+        super::ToolSemanticContract {
+            effect: super::ToolEffect::Observe,
+            risk: Read,
+            approval: super::ToolApprovalPolicy::None,
+            idempotency: super::ToolIdempotency::PureRead,
+        },
+        Some(ADMIN),
+        true,
+        NoPath,
+        false,
+        false,
+        super::ToolSessionEvidencePolicy::NONE,
+    )
+    .with_operator_extension_family(ToolOperatorExtensionFamily::SkillManagement),
+    def(
         "skill_versions",
         super::ToolAuditPolicy::typed_fields(&[
             super::ToolAuditResultField::value("project"),
@@ -293,6 +319,39 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
     .with_operator_extension_family(ToolOperatorExtensionFamily::SkillManagement),
     def(
         "skill_activate",
+        super::ToolAuditPolicy::typed_fields(&[
+            super::ToolAuditResultField::value("project"),
+            super::ToolAuditResultField::value("skill_id"),
+            super::ToolAuditResultField::value("skill_key"),
+            super::ToolAuditResultField::value("previous_active_package_revision"),
+            super::ToolAuditResultField::value("active_package_revision"),
+            super::ToolAuditResultField::value("state_revision"),
+            super::ToolAuditResultField::value("changed"),
+            super::ToolAuditResultField::value("replayed"),
+            super::ToolAuditResultField::value("outcome_unknown"),
+            super::ToolAuditResultField::value("error_kind"),
+            super::ToolAuditResultField::value("state_changed"),
+        ]),
+        ModelHidden,
+        TOOL_CATEGORY_RUNTIME,
+        Some(SkillManagement),
+        TOOL_PROVIDER_RUNNER,
+        super::ToolSemanticContract {
+            effect: super::ToolEffect::Mutate,
+            risk: SkillManage,
+            approval: super::ToolApprovalPolicy::Standard,
+            idempotency: super::ToolIdempotency::NonIdempotent,
+        },
+        Some(ADMIN),
+        true,
+        NoPath,
+        false,
+        false,
+        super::ToolSessionEvidencePolicy::NONE,
+    )
+    .with_operator_extension_family(ToolOperatorExtensionFamily::SkillManagement),
+    def(
+        "skill_deactivate",
         super::ToolAuditPolicy::typed_fields(&[
             super::ToolAuditResultField::value("project"),
             super::ToolAuditResultField::value("skill_id"),

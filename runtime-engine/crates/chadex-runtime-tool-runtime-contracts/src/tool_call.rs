@@ -1614,6 +1614,12 @@ pub enum ToolCall {
         session_id: Option<String>,
     },
 
+    SkillInventory {
+        project: String,
+        #[serde(default)]
+        session_id: Option<String>,
+    },
+
     SkillVersions {
         project: String,
         skill_key: String,
@@ -1643,6 +1649,15 @@ pub enum ToolCall {
         project: String,
         skill_key: String,
         package_revision: String,
+        expected_state_revision: String,
+        idempotency_key: String,
+        #[serde(default)]
+        session_id: Option<String>,
+    },
+
+    SkillDeactivate {
+        project: String,
+        skill_key: String,
         expected_state_revision: String,
         idempotency_key: String,
         #[serde(default)]
@@ -3335,9 +3350,11 @@ impl ToolCall {
             Self::RunSkillResource { .. } => "run_skill_resource",
             Self::SkillList { .. } => "skill_list",
             Self::SkillReadFile { .. } => "skill_read_file",
+            Self::SkillInventory { .. } => "skill_inventory",
             Self::SkillVersions { .. } => "skill_versions",
             Self::SkillInstall { .. } => "skill_install",
             Self::SkillActivate { .. } => "skill_activate",
+            Self::SkillDeactivate { .. } => "skill_deactivate",
             Self::SkillRemoveRevision { .. } => "skill_remove_revision",
             Self::CreateGoal { .. } => "create_goal",
             Self::GetGoal { .. } => "get_goal",
@@ -3469,9 +3486,11 @@ impl ToolCall {
             | Self::RunSkillResource { session_id, .. }
             | Self::SkillList { session_id, .. }
             | Self::SkillReadFile { session_id, .. }
+            | Self::SkillInventory { session_id, .. }
             | Self::SkillVersions { session_id, .. }
             | Self::SkillInstall { session_id, .. }
             | Self::SkillActivate { session_id, .. }
+            | Self::SkillDeactivate { session_id, .. }
             | Self::SkillRemoveRevision { session_id, .. }
             | Self::MemorySearch { session_id, .. }
             | Self::MemoryRead { session_id, .. }
@@ -3615,9 +3634,11 @@ impl ToolCall {
             | Self::RunSkillResource { project, .. }
             | Self::SkillList { project, .. }
             | Self::SkillReadFile { project, .. }
+            | Self::SkillInventory { project, .. }
             | Self::SkillVersions { project, .. }
             | Self::SkillInstall { project, .. }
             | Self::SkillActivate { project, .. }
+            | Self::SkillDeactivate { project, .. }
             | Self::SkillRemoveRevision { project, .. }
             | Self::MemorySearch { project, .. }
             | Self::MemoryRead { project, .. }

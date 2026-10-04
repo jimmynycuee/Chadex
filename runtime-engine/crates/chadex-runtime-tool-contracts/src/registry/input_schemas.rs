@@ -143,8 +143,9 @@ pub use sessions::{
 };
 pub(crate) use skills::{run_skill_resource_input_schema, skill_load_input_schema};
 pub(super) use skills::{
-    skill_activate_input_schema, skill_install_input_schema, skill_list_input_schema,
-    skill_read_file_input_schema, skill_remove_revision_input_schema, skill_versions_input_schema,
+    skill_activate_input_schema, skill_deactivate_input_schema, skill_install_input_schema,
+    skill_inventory_input_schema, skill_list_input_schema, skill_read_file_input_schema,
+    skill_remove_revision_input_schema, skill_versions_input_schema,
 };
 pub use ssh_resources::ssh_resource_input_schema;
 pub use text_edits::write_project_file_input_schema;

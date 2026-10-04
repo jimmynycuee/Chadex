@@ -33,6 +33,9 @@ struct ProjectDetailView: View {
                 instructionsSection
 
                 Divider()
+                SkillsCenterView(project: project)
+
+                Divider()
                 recentActivity
             }
             .frame(maxWidth: layout.control(ChadexMetrics.detailMaxWidth), alignment: .leading)
@@ -44,6 +47,7 @@ struct ProjectDetailView: View {
         .task(id: project.id) {
             guard model.selectedProject?.id == project.id else { return }
             await model.refreshProjectInstructions()
+            await model.refreshSkills()
         }
         .sheet(isPresented: $showingAgentsDraft) {
             AgentsDraftSheet(project: project, draft: $agentsDraft)

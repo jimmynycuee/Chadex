@@ -178,6 +178,96 @@ struct ProjectFileWriteResult: Codable, Equatable, Sendable {
     var executionState: String?
 }
 
+struct SkillDescriptor: Codable, Equatable, Identifiable, Sendable {
+    var skillId: String
+    var name: String
+    var description: String
+    var definitionRevision: String
+    var packageRevision: String?
+    var sourceScope: String
+    var trust: String
+    var nameConflict: Bool
+
+    var id: String { skillId }
+    var isProjectSkill: Bool { sourceScope == "project" }
+    var isManagedSkill: Bool { trust == "operator_installed_guidance" }
+    var isConfiguredSkill: Bool { trust == "operator_configured_guidance" }
+}
+
+struct SkillCatalogInspection: Codable, Equatable, Sendable {
+    var project: String
+    var catalogRevision: String
+    var totalCount: Int
+    var returnedCount: Int
+    var skills: [SkillDescriptor]
+    var invalidCount: Int
+    var diagnostics: [JSONValue]
+    var discoveryTruncated: Bool
+
+    var revisionsBySkillID: [String: String] {
+        Dictionary(uniqueKeysWithValues: skills.map {
+            ($0.skillId, $0.definitionRevision + "|" + ($0.packageRevision ?? "live"))
+        })
+    }
+}
+
+struct ManagedSkillInventoryEntry: Codable, Equatable, Identifiable, Sendable {
+    var skillId: String
+    var skillKey: String
+    var stateRevision: String
+    var activePackageRevision: String?
+    var preferredPackageRevision: String
+    var definitionRevision: String
+    var name: String
+    var description: String
+    var totalVersions: Int
+
+    var id: String { skillId }
+    var isActive: Bool { activePackageRevision != nil }
+    var revisionIdentity: String {
+        definitionRevision + "|" + preferredPackageRevision + "|" + (activePackageRevision ?? "inactive")
+    }
+}
+
+struct SkillInventoryInspection: Codable, Equatable, Sendable {
+    var project: String
+    var totalCount: Int
+    var skills: [ManagedSkillInventoryEntry]
+}
+
+struct SkillDefinitionPreview: Codable, Equatable, Sendable {
+    var skillId: String
+    var definitionRevision: String
+    var packageRevision: String?
+    var text: String
+    var hasMore: Bool
+}
+
+struct SkillOperationResult: Codable, Equatable, Sendable {}
+
+struct SkillCenterItem: Equatable, Identifiable, Sendable {
+    var skillId: String
+    var name: String
+    var description: String
+    var definitionRevision: String
+    var packageRevision: String?
+    var sourceScope: String
+    var trust: String
+    var nameConflict: Bool
+    var managed: ManagedSkillInventoryEntry?
+
+    var id: String { skillId }
+    var isManaged: Bool { managed != nil }
+    var isActive: Bool { managed?.isActive ?? true }
+    var canLoadDefinition: Bool { isActive }
+
+    var sourceLabelKey: String {
+        if isManaged { return "skills.source.installed" }
+        if trust == "operator_configured_guidance" { return "skills.source.configured" }
+        return "skills.source.project"
+    }
+}
+
 struct ActivityEntry: Codable, Identifiable, Equatable, Sendable {
     var sequence: UInt64
     var timestampMs: UInt64
@@ -539,6 +629,38 @@ struct ActivateProjectParams: Codable, Sendable {
 struct CreateProjectAgentsFileParams: Codable, Sendable {
     var path: String
     var content: String
+}
+
+struct SkillDefinitionParams: Codable, Sendable {
+    var path: String
+    var skillId: String
+    var definitionRevision: String
+    var packageRevision: String?
+}
+
+struct CreateProjectSkillParams: Codable, Sendable {
+    var path: String
+    var skillKey: String
+    var content: String
+}
+
+struct InstallSkillParams: Codable, Sendable {
+    var path: String
+    var skillKey: String
+    var artifactPath: String
+}
+
+struct ActivateSkillParams: Codable, Sendable {
+    var path: String
+    var skillKey: String
+    var packageRevision: String
+    var stateRevision: String
+}
+
+struct DeactivateSkillParams: Codable, Sendable {
+    var path: String
+    var skillKey: String
+    var stateRevision: String
 }
 
 struct CredentialParams: Codable, Sendable {

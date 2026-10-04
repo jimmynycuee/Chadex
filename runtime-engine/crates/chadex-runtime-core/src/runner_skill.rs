@@ -148,6 +148,7 @@ pub enum RunnerSkillRequest {
         offset: usize,
         limit: usize,
     },
+    Inventory,
     Install {
         skill_key: String,
         source_project_id: String,
@@ -166,6 +167,11 @@ pub enum RunnerSkillRequest {
         expected_state_revision: String,
         idempotency_key: String,
     },
+    Deactivate {
+        skill_key: String,
+        expected_state_revision: String,
+        idempotency_key: String,
+    },
     RemoveRevision {
         skill_key: String,
         package_revision: String,
@@ -179,8 +185,10 @@ impl RunnerSkillRequest {
         matches!(
             self,
             Self::Versions { .. }
+                | Self::Inventory
                 | Self::Install { .. }
                 | Self::Activate { .. }
+                | Self::Deactivate { .. }
                 | Self::RemoveRevision { .. }
         )
     }
@@ -188,7 +196,10 @@ impl RunnerSkillRequest {
     pub fn is_mutation(&self) -> bool {
         matches!(
             self,
-            Self::Install { .. } | Self::Activate { .. } | Self::RemoveRevision { .. }
+            Self::Install { .. }
+                | Self::Activate { .. }
+                | Self::Deactivate { .. }
+                | Self::RemoveRevision { .. }
         )
     }
 
@@ -248,8 +259,10 @@ impl RunnerSkillRequest {
                     Err("invalid Runner Skill versions request")
                 }
             }
+            Self::Inventory => Ok(()),
             Self::Install { skill_key, .. }
             | Self::Activate { skill_key, .. }
+            | Self::Deactivate { skill_key, .. }
             | Self::RemoveRevision { skill_key, .. } => {
                 if valid_skill_key(skill_key) {
                     Ok(())
@@ -455,6 +468,7 @@ mod tests {
                 offset: 0,
                 limit: 20,
             },
+            RunnerSkillRequest::Inventory,
             RunnerSkillRequest::Install {
                 skill_key: "managed".to_string(),
                 source_project_id: "agent:runner:demo".to_string(),
@@ -470,6 +484,11 @@ mod tests {
                 package_revision: package_revision.clone(),
                 expected_state_revision: state_revision.clone(),
                 idempotency_key: "activate-key".to_string(),
+            },
+            RunnerSkillRequest::Deactivate {
+                skill_key: "managed".to_string(),
+                expected_state_revision: state_revision.clone(),
+                idempotency_key: "deactivate-key".to_string(),
             },
             RunnerSkillRequest::RemoveRevision {
                 skill_key: "managed".to_string(),
@@ -496,9 +515,9 @@ mod tests {
             assert_eq!(decoded, request);
             assert_eq!(
                 decoded.requires_management_capability(),
-                (3..=6).contains(&index)
+                (3..=8).contains(&index)
             );
-            assert_eq!(decoded.is_mutation(), (4..=6).contains(&index));
+            assert_eq!(decoded.is_mutation(), (5..=8).contains(&index));
         }
     }
 

@@ -44,6 +44,27 @@ pub struct RunnerSkillVersion {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunnerSkillInventoryEntry {
+    pub skill_id: String,
+    pub skill_key: String,
+    pub state_revision: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_package_revision: Option<String>,
+    pub preferred_package_revision: String,
+    pub definition_revision: String,
+    pub name: String,
+    pub description: String,
+    pub total_versions: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillStoreInventoryResponse {
+    pub format: String,
+    pub total_count: usize,
+    pub skills: Vec<RunnerSkillInventoryEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillStoreVersionsResponse {
     pub format: String,
     pub skill_id: String,
@@ -84,6 +105,20 @@ pub struct SkillStoreActivateResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_active_package_revision: Option<String>,
     pub active_package_revision: String,
+    pub state_revision: String,
+    pub changed: bool,
+    pub replayed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillStoreDeactivateResponse {
+    pub format: String,
+    pub skill_id: String,
+    pub skill_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_active_package_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_package_revision: Option<String>,
     pub state_revision: String,
     pub changed: bool,
     pub replayed: bool,

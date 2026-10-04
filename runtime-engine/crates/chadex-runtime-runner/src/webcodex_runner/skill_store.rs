@@ -18,7 +18,8 @@ use webcodex_core::skill_metadata::{
 };
 use webcodex_core::skill_store::{
     valid_lower_sha256, valid_package_revision, valid_skill_key, valid_state_revision,
-    RunnerSkillVersion, SkillStoreActivateResponse, SkillStoreInstallResponse,
+    RunnerSkillInventoryEntry, RunnerSkillVersion, SkillStoreActivateResponse,
+    SkillStoreDeactivateResponse, SkillStoreInstallResponse, SkillStoreInventoryResponse,
     SkillStoreRemoveResponse, SkillStoreVersionsResponse, MAX_OPERATOR_REVISIONS_PER_SKILL,
     MAX_OPERATOR_SKILLS, MAX_SKILL_STORE_ARCHIVE_BYTES, MAX_SKILL_STORE_FILE_BYTES,
     MAX_SKILL_STORE_FILE_COUNT, MAX_SKILL_STORE_IDEMPOTENCY_KEY_CHARS, MAX_SKILL_STORE_PATH_CHARS,
@@ -532,6 +533,51 @@ impl SkillStore {
         )
     }
 
+    pub(super) fn inventory(&self) -> Result<SkillStoreInventoryResponse, String> {
+        let _lock = self.lock()?;
+        let mut skills = Vec::new();
+        for skill_key in self.list_skill_keys()? {
+            let versions = self.list_version_metadata(&skill_key)?;
+            if versions.is_empty() {
+                continue;
+            }
+            let state = self.read_state(&skill_key)?;
+            let preferred = if let Some(active) = state.active_package_revision.as_deref() {
+                versions
+                    .iter()
+                    .find(|version| version.package_revision == active)
+                    .ok_or_else(|| "skill_store_dangling_active_revision".to_string())?
+            } else {
+                versions
+                    .iter()
+                    .max_by(|left, right| {
+                        left.installed_at_unix_ms
+                            .cmp(&right.installed_at_unix_ms)
+                            .then_with(|| left.package_revision.cmp(&right.package_revision))
+                    })
+                    .expect("non-empty managed Skill versions")
+            };
+            self.verify_definition_immutable(&skill_key, preferred)?;
+            skills.push(RunnerSkillInventoryEntry {
+                skill_id: self.skill_id(&skill_key),
+                skill_key: skill_key.clone(),
+                state_revision: self.state_revision(&skill_key, &state, &versions),
+                active_package_revision: state.active_package_revision,
+                preferred_package_revision: preferred.package_revision.clone(),
+                definition_revision: preferred.definition_revision.clone(),
+                name: preferred.name.clone(),
+                description: preferred.description.clone(),
+                total_versions: versions.len(),
+            });
+        }
+        skills.sort_by(|left, right| left.skill_key.cmp(&right.skill_key));
+        Ok(SkillStoreInventoryResponse {
+            format: SKILL_STORE_RESPONSE_FORMAT.to_string(),
+            total_count: skills.len(),
+            skills,
+        })
+    }
+
     pub(super) fn list_active(&self) -> Result<ManagedSkillCatalogSnapshot, String> {
         let _lock = self.lock()?;
         let mut skills = Vec::new();
@@ -993,6 +1039,68 @@ impl SkillStore {
             skill_key: skill_key.to_string(),
             previous_active_package_revision: previous,
             active_package_revision: package_revision.to_string(),
+            state_revision: self.state_revision(skill_key, &state, &versions),
+            changed,
+            replayed: matches!(&replay, ReplayState::Claimed | ReplayState::Prepared),
+        };
+        self.complete_replay(&lock, idempotency_key, &response)?;
+        Ok(response)
+    }
+
+    pub(super) fn deactivate(
+        &self,
+        skill_key: &str,
+        expected_state_revision: &str,
+        idempotency_key: &str,
+    ) -> Result<SkillStoreDeactivateResponse, String> {
+        validate_management_common(skill_key, idempotency_key)?;
+        if !valid_state_revision(expected_state_revision) {
+            return Err("skill_store_invalid_request".to_string());
+        }
+        let intent_hash = hash_simple_intent("deactivate", &[skill_key, expected_state_revision]);
+        let lock = self.lock()?;
+        let replay = self.begin_replay(&lock, idempotency_key, "deactivate", &intent_hash)?;
+        if let ReplayState::Completed(value) = replay {
+            let mut response: SkillStoreDeactivateResponse = serde_json::from_value(value)
+                .map_err(|_| "skill_store_replay_invalid".to_string())?;
+            response.replayed = true;
+            return Ok(response);
+        }
+        let versions = self.list_version_metadata(skill_key)?;
+        if versions.is_empty() {
+            return Err("skill_not_found".to_string());
+        }
+        let mut state = self.read_state(skill_key)?;
+        if matches!(&replay, ReplayState::Prepared) && state.active_package_revision.is_none() {
+            let response = SkillStoreDeactivateResponse {
+                format: SKILL_STORE_RESPONSE_FORMAT.to_string(),
+                skill_id: self.skill_id(skill_key),
+                skill_key: skill_key.to_string(),
+                previous_active_package_revision: None,
+                active_package_revision: None,
+                state_revision: self.state_revision(skill_key, &state, &versions),
+                changed: false,
+                replayed: true,
+            };
+            self.complete_replay(&lock, idempotency_key, &response)?;
+            return Ok(response);
+        }
+        let current_revision = self.state_revision(skill_key, &state, &versions);
+        if current_revision != expected_state_revision {
+            return Err("skill_state_changed".to_string());
+        }
+        let previous = state.active_package_revision.take();
+        let changed = previous.is_some();
+        if changed {
+            self.prepare_replay(&lock, idempotency_key)?;
+            self.write_state(skill_key, &state)?;
+        }
+        let response = SkillStoreDeactivateResponse {
+            format: SKILL_STORE_RESPONSE_FORMAT.to_string(),
+            skill_id: self.skill_id(skill_key),
+            skill_key: skill_key.to_string(),
+            previous_active_package_revision: previous,
+            active_package_revision: None,
             state_revision: self.state_revision(skill_key, &state, &versions),
             changed,
             replayed: matches!(&replay, ReplayState::Claimed | ReplayState::Prepared),
@@ -1533,7 +1641,7 @@ fn validate_replay_record_for_gc(record: &ReplayRecord) -> Result<(), String> {
     if record.schema_version != STORE_SCHEMA_VERSION
         || !matches!(
             record.operation.as_str(),
-            "install" | "activate" | "remove_revision"
+            "install" | "activate" | "deactivate" | "remove_revision"
         )
         || !valid_lower_sha256(&record.intent_hash)
     {
@@ -3314,6 +3422,78 @@ mod tests {
             .unwrap();
         assert!(removed_replay.replayed);
         assert_eq!(store.versions("demo", 0, 64).unwrap().total_count, 1);
+    }
+
+    #[test]
+    fn inventory_keeps_inactive_skill_visible_and_deactivate_replays() {
+        let source = tempfile::tempdir().unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = SkillStore::for_test(store_root.path().join("store"), "runner-a");
+        let policy = RunnerPolicy {
+            allow_cwd_anywhere: true,
+            ..RunnerPolicy::default()
+        };
+        let definition = b"---\nname: demo\ndescription: managed demo\n---\nReusable guidance.\n";
+        let archive = zip_bytes(&[("SKILL.md", definition, None)]);
+        fs::write(source.path().join("demo.zip"), &archive).unwrap();
+        let source_root = source.path().to_string_lossy().to_string();
+        let installed = store
+            .install(
+                &policy,
+                "demo",
+                "project-a",
+                &source_root,
+                "demo.zip",
+                &sha256_hex(&archive),
+                "install-demo",
+                true,
+                None,
+            )
+            .unwrap();
+
+        let before = store.inventory().unwrap();
+        assert_eq!(before.total_count, 1);
+        assert_eq!(before.skills[0].skill_id, installed.skill_id);
+        assert_eq!(
+            before.skills[0].active_package_revision.as_deref(),
+            Some(installed.package_revision.as_str())
+        );
+        let state_revision = before.skills[0].state_revision.clone();
+
+        let disabled = store
+            .deactivate("demo", &state_revision, "disable-demo")
+            .unwrap();
+        assert!(disabled.changed);
+        assert!(disabled.active_package_revision.is_none());
+        assert!(store.list_active().unwrap().skills.is_empty());
+
+        let inactive = store.inventory().unwrap();
+        assert_eq!(
+            inactive.total_count, 1,
+            "disabled Skill remains discoverable for management"
+        );
+        assert!(inactive.skills[0].active_package_revision.is_none());
+        assert_eq!(
+            inactive.skills[0].preferred_package_revision,
+            installed.package_revision
+        );
+
+        let replay = store
+            .deactivate("demo", &state_revision, "disable-demo")
+            .unwrap();
+        assert!(replay.replayed);
+        assert!(replay.active_package_revision.is_none());
+
+        let enabled = store
+            .activate(
+                "demo",
+                &inactive.skills[0].preferred_package_revision,
+                &inactive.skills[0].state_revision,
+                "enable-demo",
+            )
+            .unwrap();
+        assert!(enabled.changed);
+        assert_eq!(store.list_active().unwrap().skills.len(), 1);
     }
 
     #[cfg(unix)]

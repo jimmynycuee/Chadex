@@ -762,9 +762,11 @@ fn operator_extension_families_are_definition_owned_and_registry_derived() {
         (
             SkillManagement,
             &[
+                "skill_inventory",
                 "skill_versions",
                 "skill_install",
                 "skill_activate",
+                "skill_deactivate",
                 "skill_remove_revision",
             ],
         ),

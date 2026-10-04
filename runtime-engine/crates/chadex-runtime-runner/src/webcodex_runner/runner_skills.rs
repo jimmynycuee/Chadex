@@ -77,6 +77,9 @@ pub(crate) fn handle_runner_skill_request(
         } => store
             .versions(&skill_key, offset, limit)
             .and_then(|response| serialize_bounded(response, "skill_store_response_invalid")),
+        RunnerSkillRequest::Inventory => store
+            .inventory()
+            .and_then(|response| serialize_bounded(response, "skill_store_response_invalid")),
         RunnerSkillRequest::Install {
             skill_key,
             source_project_id,
@@ -111,6 +114,13 @@ pub(crate) fn handle_runner_skill_request(
                 &expected_state_revision,
                 &idempotency_key,
             )
+            .and_then(|response| serialize_bounded(response, "skill_store_response_invalid")),
+        RunnerSkillRequest::Deactivate {
+            skill_key,
+            expected_state_revision,
+            idempotency_key,
+        } => store
+            .deactivate(&skill_key, &expected_state_revision, &idempotency_key)
             .and_then(|response| serialize_bounded(response, "skill_store_response_invalid")),
         RunnerSkillRequest::RemoveRevision {
             skill_key,

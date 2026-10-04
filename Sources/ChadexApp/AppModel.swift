@@ -33,6 +33,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var projectInstructionsError: String?
     @Published private(set) var projectInstructionChangedPaths: [String] = []
     @Published private(set) var projectAgentsWriteInFlight = false
+    @Published private(set) var skillCatalog: SkillCatalogInspection?
+    @Published private(set) var skillInventory: SkillInventoryInspection?
+    @Published private(set) var skillDefinitions: [String: SkillDefinitionPreview] = [:]
+    @Published private(set) var skillsLoading = false
+    @Published private(set) var skillsError: String?
+    @Published private(set) var skillDefinitionLoadingIDs: Set<String> = []
+    @Published private(set) var skillMutationInFlightIDs: Set<String> = []
+    @Published private(set) var projectSkillWriteInFlight = false
+    @Published private(set) var skillInstallInFlight = false
 
     enum ActivityFilter: String, CaseIterable, Identifiable {
         case all
@@ -60,6 +69,8 @@ final class AppModel: ObservableObject {
     private var refreshInFlight = false
     private var projectInstructionsRefreshProjectID: UUID?
     private var projectInstructionsLastRefreshUptime: TimeInterval?
+    private var skillsRefreshProjectID: UUID?
+    private var skillsLastRefreshUptime: TimeInterval?
     private var snapshotRequestGate = SnapshotRequestGate()
     private var activityRefreshGate = ActivityRefreshGate()
     private var snapshotFreshnessGate = SnapshotFreshnessGate()
@@ -67,6 +78,7 @@ final class AppModel: ObservableObject {
     private var appPhaseTimings: [AppPhaseTimingSample] = []
     private let foregroundRefreshMaxAge: TimeInterval = 1.5
     private let projectInstructionsRefreshMaxAge: TimeInterval = 5
+    private let skillsRefreshMaxAge: TimeInterval = 5
 
     init(
         helper: HelperClient = HelperClient(),
@@ -109,6 +121,50 @@ final class AppModel: ObservableObject {
     ## Validation
     - List the checks that should pass before work is considered complete.
     """
+
+    static let skillDraftTemplate = """
+    ## Workflow
+    1. Describe the reusable procedure this Skill should follow.
+    2. Add concrete checks, commands, or decision rules.
+
+    ## Boundaries
+    - This Skill does not override Project Instructions or Chadex permissions.
+    """
+
+    var skillCenterItems: [SkillCenterItem] {
+        let managedByID = Dictionary(uniqueKeysWithValues: (skillInventory?.skills ?? []).map { ($0.skillId, $0) })
+        var items = (skillCatalog?.skills ?? []).map { descriptor in
+            SkillCenterItem(
+                skillId: descriptor.skillId,
+                name: descriptor.name,
+                description: descriptor.description,
+                definitionRevision: descriptor.definitionRevision,
+                packageRevision: descriptor.packageRevision,
+                sourceScope: descriptor.sourceScope,
+                trust: descriptor.trust,
+                nameConflict: descriptor.nameConflict,
+                managed: managedByID[descriptor.skillId]
+            )
+        }
+        let catalogIDs = Set(items.map(\.skillId))
+        for managed in managedByID.values where !catalogIDs.contains(managed.skillId) {
+            items.append(SkillCenterItem(
+                skillId: managed.skillId,
+                name: managed.name,
+                description: managed.description,
+                definitionRevision: managed.definitionRevision,
+                packageRevision: managed.preferredPackageRevision,
+                sourceScope: "runner",
+                trust: "operator_installed_guidance",
+                nameConflict: false,
+                managed: managed
+            ))
+        }
+        return items.sorted {
+            let ordered = $0.name.localizedCaseInsensitiveCompare($1.name)
+            return ordered == .orderedSame ? $0.skillId < $1.skillId : ordered == .orderedAscending
+        }
+    }
 
     var filteredActivities: [ActivityEntry] {
         activities.filter { entry in
@@ -294,6 +350,7 @@ final class AppModel: ObservableObject {
         defer { projectSwitchGate.finish(id) }
         if id == preferences.selectedProjectID {
             await refreshProjectInstructions()
+            await refreshSkills()
             return true
         }
         guard let project = preferences.projects.first(where: { $0.id == id }) else { return false }
@@ -322,7 +379,9 @@ final class AppModel: ObservableObject {
             try persist()
             await refreshActivities()
             clearProjectInstructions()
+            clearSkills()
             await refreshProjectInstructions()
+            await refreshSkills()
             return true
         } catch {
             recordAppPhase(
@@ -345,7 +404,9 @@ final class AppModel: ObservableObject {
             _ = try await requestSnapshot(method: "activateProject", params: ActivateProjectParams(path: selectedProject.path))
             await refreshActivities()
             clearProjectInstructions()
+            clearSkills()
             await refreshProjectInstructions()
+            await refreshSkills()
             return true
         } catch {
             present(error)
@@ -370,8 +431,14 @@ final class AppModel: ObservableObject {
             let instructionObservationIsStale = projectInstructionsLastRefreshUptime
                 .map { now - $0 >= projectInstructionsRefreshMaxAge }
                 ?? true
+            let skillObservationIsStale = skillsLastRefreshUptime
+                .map { now - $0 >= skillsRefreshMaxAge }
+                ?? true
             if force || instructionObservationIsStale {
                 await refreshProjectInstructions()
+            }
+            if force || skillObservationIsStale {
+                await refreshSkills()
             }
         } catch {
             // Polling is background work. While the user is entering tunnel
@@ -448,6 +515,219 @@ final class AppModel: ObservableObject {
             projectInstructionsError = writeError
             return false
         }
+    }
+
+    func refreshSkills() async {
+        guard let selectedProject else {
+            clearSkills()
+            return
+        }
+        let requestedProjectID = selectedProject.id
+        guard skillsRefreshProjectID != requestedProjectID else { return }
+        skillsRefreshProjectID = requestedProjectID
+        skillsLoading = true
+        defer {
+            if skillsRefreshProjectID == requestedProjectID {
+                skillsRefreshProjectID = nil
+                skillsLoading = false
+            }
+            if self.selectedProject?.id == requestedProjectID {
+                skillsLastRefreshUptime = ProcessInfo.processInfo.systemUptime
+            }
+        }
+        do {
+            let catalog: SkillCatalogInspection = try await helper.request(
+                method: "getSkillCatalog",
+                params: InspectProjectParams(path: selectedProject.path)
+            )
+            guard self.selectedProject?.id == requestedProjectID else { return }
+
+            var inventory: SkillInventoryInspection?
+            var inventoryWarning: String?
+            do {
+                inventory = try await helper.request(
+                    method: "getSkillInventory",
+                    params: InspectProjectParams(path: selectedProject.path)
+                )
+            } catch {
+                inventoryWarning = helperErrorMessage(error)
+            }
+            guard self.selectedProject?.id == requestedProjectID else { return }
+
+            skillCatalog = catalog
+            skillInventory = inventory
+            skillsError = inventoryWarning
+
+            let currentByID = Dictionary(uniqueKeysWithValues: skillCenterItems.map { ($0.skillId, $0) })
+            skillDefinitions = skillDefinitions.filter { skillID, preview in
+                guard let item = currentByID[skillID], item.isActive else { return false }
+                return preview.definitionRevision == item.definitionRevision
+                    && preview.packageRevision == item.packageRevision
+            }
+        } catch {
+            guard self.selectedProject?.id == requestedProjectID else { return }
+            skillCatalog = nil
+            skillInventory = nil
+            skillDefinitions.removeAll()
+            skillsError = helperErrorMessage(error)
+        }
+    }
+
+    func loadSkillDefinition(_ item: SkillCenterItem) async {
+        guard item.canLoadDefinition, let selectedProject else { return }
+        if let preview = skillDefinitions[item.skillId],
+           preview.definitionRevision == item.definitionRevision,
+           preview.packageRevision == item.packageRevision {
+            return
+        }
+        guard !skillDefinitionLoadingIDs.contains(item.skillId) else { return }
+        let requestedProjectID = selectedProject.id
+        skillDefinitionLoadingIDs.insert(item.skillId)
+        defer { skillDefinitionLoadingIDs.remove(item.skillId) }
+        do {
+            let preview: SkillDefinitionPreview = try await helper.request(
+                method: "getSkillDefinition",
+                params: SkillDefinitionParams(
+                    path: selectedProject.path,
+                    skillId: item.skillId,
+                    definitionRevision: item.definitionRevision,
+                    packageRevision: item.packageRevision
+                )
+            )
+            guard self.selectedProject?.id == requestedProjectID else { return }
+            guard let current = skillCenterItems.first(where: { $0.skillId == item.skillId }),
+                  current.isActive,
+                  current.definitionRevision == preview.definitionRevision,
+                  current.packageRevision == preview.packageRevision else {
+                await refreshSkills()
+                return
+            }
+            skillDefinitions[item.skillId] = preview
+            skillsError = nil
+        } catch {
+            guard self.selectedProject?.id == requestedProjectID else { return }
+            skillsError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
+            await refreshSkills()
+        }
+    }
+
+    @discardableResult
+    func createProjectSkill(skillKey: String, description: String, instructions: String) async -> Bool {
+        guard !projectSkillWriteInFlight, let selectedProject else { return false }
+        let key = skillKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, !summary.isEmpty, !body.isEmpty else { return false }
+        projectSkillWriteInFlight = true
+        defer { projectSkillWriteInFlight = false }
+        let content = """
+        ---
+        name: \(key)
+        description: \(Self.yamlQuoted(summary))
+        ---
+
+        \(body)
+        """
+        do {
+            let _: SkillOperationResult = try await helper.request(
+                method: "createProjectSkill",
+                params: CreateProjectSkillParams(path: selectedProject.path, skillKey: key, content: content)
+            )
+            skillsError = nil
+            await refreshSkills()
+            return true
+        } catch {
+            let writeError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
+            await refreshSkills()
+            skillsError = writeError
+            return false
+        }
+    }
+
+    @discardableResult
+    func installSkill(skillKey: String, artifactPath: String) async -> Bool {
+        guard !skillInstallInFlight, let selectedProject else { return false }
+        let key = skillKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artifact = artifactPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, !artifact.isEmpty else { return false }
+        skillInstallInFlight = true
+        defer { skillInstallInFlight = false }
+        do {
+            let _: SkillOperationResult = try await helper.request(
+                method: "installSkill",
+                params: InstallSkillParams(path: selectedProject.path, skillKey: key, artifactPath: artifact)
+            )
+            skillsError = nil
+            await refreshSkills()
+            return true
+        } catch {
+            let installError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
+            await refreshSkills()
+            skillsError = installError
+            return false
+        }
+    }
+
+    func setManagedSkillEnabled(_ item: SkillCenterItem, enabled: Bool) async {
+        guard let selectedProject, let managed = item.managed else { return }
+        guard !skillMutationInFlightIDs.contains(item.skillId) else { return }
+        skillMutationInFlightIDs.insert(item.skillId)
+        defer { skillMutationInFlightIDs.remove(item.skillId) }
+        do {
+            if enabled {
+                let _: SkillOperationResult = try await helper.request(
+                    method: "activateSkill",
+                    params: ActivateSkillParams(
+                        path: selectedProject.path,
+                        skillKey: managed.skillKey,
+                        packageRevision: managed.preferredPackageRevision,
+                        stateRevision: managed.stateRevision
+                    )
+                )
+            } else {
+                let _: SkillOperationResult = try await helper.request(
+                    method: "deactivateSkill",
+                    params: DeactivateSkillParams(
+                        path: selectedProject.path,
+                        skillKey: managed.skillKey,
+                        stateRevision: managed.stateRevision
+                    )
+                )
+                skillDefinitions.removeValue(forKey: item.skillId)
+            }
+            skillsError = nil
+            await refreshSkills()
+        } catch {
+            skillsError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
+            await refreshSkills()
+        }
+    }
+
+    private func clearSkills() {
+        skillCatalog = nil
+        skillInventory = nil
+        skillDefinitions.removeAll()
+        skillsError = nil
+        skillDefinitionLoadingIDs.removeAll()
+        skillMutationInFlightIDs.removeAll()
+        skillsLastRefreshUptime = nil
+    }
+
+    private func helperErrorMessage(_ error: Error) -> String {
+        if let helperError = error as? HelperClientError, case .backend(let payload) = helperError {
+            return payload.message
+        }
+        if let payload = error as? HelperErrorPayload {
+            return payload.message
+        }
+        return error.localizedDescription
+    }
+
+    private static func yamlQuoted(_ value: String) -> String {
+        "\"" + value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n") + "\""
     }
 
     private func clearProjectInstructions() {

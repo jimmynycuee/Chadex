@@ -2212,6 +2212,15 @@ impl ToolRuntime {
                 .await
             }
 
+            ToolCall::SkillInventory { .. } => {
+                let project = match project_resolution {
+                    Some(Ok(project)) => project,
+                    Some(Err(error)) => return error.into_tool_result(),
+                    None => return ToolResult::err("skill_inventory requires a resolved Project"),
+                };
+                self.skill_inventory(&project, auth).await
+            }
+
             ToolCall::SkillVersions {
                 skill_key,
                 offset,
@@ -2270,6 +2279,27 @@ impl ToolRuntime {
                     &project,
                     skill_key,
                     package_revision,
+                    expected_state_revision,
+                    idempotency_key,
+                    auth,
+                )
+                .await
+            }
+
+            ToolCall::SkillDeactivate {
+                skill_key,
+                expected_state_revision,
+                idempotency_key,
+                ..
+            } => {
+                let project = match project_resolution {
+                    Some(Ok(project)) => project,
+                    Some(Err(error)) => return error.into_tool_result(),
+                    None => return ToolResult::err("skill_deactivate requires a resolved Project"),
+                };
+                self.skill_deactivate(
+                    &project,
+                    skill_key,
                     expected_state_revision,
                     idempotency_key,
                     auth,

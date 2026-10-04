@@ -910,6 +910,7 @@ enum SkillRequestAudit {
     Versions,
     Install,
     Activate,
+    Deactivate,
     RemoveRevision,
 }
 
@@ -959,6 +960,22 @@ fn typed_skill_request_audit(kind: SkillRequestAudit, arguments: &Value) -> Valu
                     "project",
                     "skill_key",
                     "package_revision",
+                    "expected_state_revision",
+                    "session_id",
+                ],
+            );
+            out.insert(
+                "idempotency_key_present".to_string(),
+                Value::Bool(obj.get("idempotency_key").and_then(Value::as_str).is_some()),
+            );
+        }
+        SkillRequestAudit::Deactivate => {
+            copy_keys(
+                obj,
+                &mut out,
+                &[
+                    "project",
+                    "skill_key",
                     "expected_state_revision",
                     "session_id",
                 ],
@@ -4447,6 +4464,9 @@ impl ToolCall {
                 "expected_definition_revision": expected_definition_revision,
                 "expected_package_revision": expected_package_revision,
             }),
+            Self::SkillInventory { project, .. } => serde_json::json!({
+                "project": project,
+            }),
             Self::SkillVersions {
                 project,
                 skill_key,
@@ -4498,6 +4518,22 @@ impl ToolCall {
                     "project": project,
                     "skill_key": skill_key,
                     "package_revision": package_revision,
+                    "expected_state_revision": expected_state_revision,
+                    "idempotency_key": idempotency_key,
+                    "session_id": session_id,
+                }),
+            ),
+            Self::SkillDeactivate {
+                project,
+                skill_key,
+                expected_state_revision,
+                idempotency_key,
+                session_id,
+            } => typed_skill_request_audit(
+                SkillRequestAudit::Deactivate,
+                &serde_json::json!({
+                    "project": project,
+                    "skill_key": skill_key,
                     "expected_state_revision": expected_state_revision,
                     "idempotency_key": idempotency_key,
                     "session_id": session_id,

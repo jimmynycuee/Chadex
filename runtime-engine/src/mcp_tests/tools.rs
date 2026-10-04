@@ -359,32 +359,40 @@ fn skill_runtime_tools_are_stateless_protocol_extensions_and_schema_static() {
         .collect::<Vec<_>>();
     assert_eq!(
         skill_names,
-        vec!["skill_load", "skill_list", "skill_read_file"]
+        vec!["skill_list", "skill_read_file"]
     );
 
-    let run_skill_resource = before["tools"]
+    assert!(before["tools"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|tool| tool["name"] == "run_skill_resource")
-        .expect("run_skill_resource must be exposed");
-    assert!(run_skill_resource["inputSchema"]["properties"]
+        .all(|tool| tool["name"] != "run_skill_resource"));
+    assert_eq!(
+        crate::model_surface::adaptive_runtime_gateway_target_route("run_skill_resource"),
+        crate::model_surface::AdaptiveRuntimeGatewayTargetRoute::Gateway,
+        "run_skill_resource remains reachable through the canonical Adaptive Runtime gateway"
+    );
+    let run_skill_resource = registered_tool_specs()
+        .into_iter()
+        .find(|spec| spec.name == "run_skill_resource")
+        .expect("run_skill_resource must retain its canonical ToolSpec");
+    assert!(run_skill_resource.input_schema["properties"]
         .get("stdin")
         .is_none());
-    assert!(run_skill_resource["inputSchema"]["properties"]
+    assert!(run_skill_resource.input_schema["properties"]
         .get("executable")
         .is_none());
     assert_eq!(
-        run_skill_resource["inputSchema"]["properties"]["path"]["pattern"],
+        run_skill_resource.input_schema["properties"]["path"]["pattern"],
         "^scripts/"
     );
-    assert!(run_skill_resource["inputSchema"]["required"]
+    assert!(run_skill_resource.input_schema["required"]
         .as_array()
         .unwrap()
         .iter()
         .any(|value| value == "expected_definition_revision"));
     assert_eq!(
-        run_skill_resource["outputSchema"]["properties"]["output"]["properties"]["skill_trust"]
+        run_skill_resource.output_schema["properties"]["output"]["properties"]["skill_trust"]
             ["enum"],
         json!([
             "operator_configured_guidance",
@@ -458,7 +466,7 @@ fn skill_management_tools_require_admin_and_remain_fixed_schema() {
         .collect::<Vec<_>>();
     assert_eq!(
         shared_names,
-        vec!["skill_load", "skill_list", "skill_read_file"]
+        vec!["skill_list", "skill_read_file"]
     );
 
     let admin = crate::auth::AuthContext {
@@ -478,12 +486,13 @@ fn skill_management_tools_require_admin_and_remain_fixed_schema() {
     assert_eq!(
         names,
         vec![
-            "skill_load",
             "skill_list",
             "skill_read_file",
+            "skill_inventory",
             "skill_versions",
             "skill_install",
             "skill_activate",
+            "skill_deactivate",
             "skill_remove_revision",
         ]
     );
@@ -493,13 +502,20 @@ fn skill_management_tools_require_admin_and_remain_fixed_schema() {
             .map(|spec| spec.name)
             .collect::<Vec<_>>(),
         vec![
+            "skill_inventory",
             "skill_versions",
             "skill_install",
             "skill_activate",
+            "skill_deactivate",
             "skill_remove_revision",
         ]
     );
-    for name in ["skill_install", "skill_activate", "skill_remove_revision"] {
+    for name in [
+        "skill_install",
+        "skill_activate",
+        "skill_deactivate",
+        "skill_remove_revision",
+    ] {
         let description = first["tools"]
             .as_array()
             .unwrap()

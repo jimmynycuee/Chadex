@@ -69,6 +69,76 @@ impl RuntimeBackendApi {
         self.adapter.create_agents_file(project_path, content).await
     }
 
+    pub(crate) async fn skill_catalog(&self, project_path: &str) -> ChadexResult<Value> {
+        self.adapter.skill_catalog(project_path).await
+    }
+
+    pub(crate) async fn skill_inventory(&self, project_path: &str) -> ChadexResult<Value> {
+        self.adapter.skill_inventory(project_path).await
+    }
+
+    pub(crate) async fn skill_definition(
+        &self,
+        project_path: &str,
+        skill_id: &str,
+        definition_revision: &str,
+        package_revision: Option<&str>,
+    ) -> ChadexResult<Value> {
+        self.adapter
+            .skill_definition(
+                project_path,
+                skill_id,
+                definition_revision,
+                package_revision,
+            )
+            .await
+    }
+
+    pub(crate) async fn create_project_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        content: &str,
+    ) -> ChadexResult<Value> {
+        self.adapter
+            .create_project_skill(project_path, skill_key, content)
+            .await
+    }
+
+    pub(crate) async fn install_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        artifact_path: &str,
+    ) -> ChadexResult<Value> {
+        self.adapter
+            .install_skill(project_path, skill_key, artifact_path)
+            .await
+    }
+
+    pub(crate) async fn activate_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        package_revision: &str,
+        state_revision: &str,
+    ) -> ChadexResult<Value> {
+        self.adapter
+            .activate_skill(project_path, skill_key, package_revision, state_revision)
+            .await
+    }
+
+    pub(crate) async fn deactivate_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        state_revision: &str,
+    ) -> ChadexResult<Value> {
+        self.adapter
+            .deactivate_skill(project_path, skill_key, state_revision)
+            .await
+    }
+
     pub(crate) async fn stop_local_runtime(&self) -> ChadexResult<RuntimeSnapshot> {
         self.adapter.stop_local_runtime().await
     }

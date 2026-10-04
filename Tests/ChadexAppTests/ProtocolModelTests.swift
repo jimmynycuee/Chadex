@@ -44,6 +44,78 @@ final class ProtocolModelTests: XCTestCase {
         XCTAssertTrue(inspection.effectiveContent.contains("nested rule"))
     }
 
+    func testSkillCatalogInventoryAndLazyDefinitionDecode() throws {
+        let catalogJSON = #"""
+        {
+          "project": "agent:test:demo",
+          "catalog_revision": "wc_skillcat_example",
+          "total_count": 2,
+          "returned_count": 2,
+          "skills": [
+            {
+              "skill_id": "wc_skill_project",
+              "name": "project-flow",
+              "description": "Project guidance",
+              "definition_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "package_revision": null,
+              "source_scope": "project",
+              "trust": "project_content",
+              "name_conflict": false
+            },
+            {
+              "skill_id": "wc_skill_managed",
+              "name": "managed-flow",
+              "description": "Installed guidance",
+              "definition_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "package_revision": "wc_skillpkg_example",
+              "source_scope": "runner",
+              "trust": "operator_installed_guidance",
+              "name_conflict": false
+            }
+          ],
+          "invalid_count": 0,
+          "diagnostics": [],
+          "discovery_truncated": false
+        }
+        """#.data(using: .utf8)!
+        let inventoryJSON = #"""
+        {
+          "project": "agent:test:demo",
+          "total_count": 1,
+          "skills": [{
+            "skill_id": "wc_skill_managed",
+            "skill_key": "managed-flow",
+            "state_revision": "wc_skillstate_example",
+            "active_package_revision": null,
+            "preferred_package_revision": "wc_skillpkg_example",
+            "definition_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "name": "managed-flow",
+            "description": "Installed guidance",
+            "total_versions": 2
+          }]
+        }
+        """#.data(using: .utf8)!
+        let definitionJSON = #"""
+        {
+          "skill_id": "wc_skill_project",
+          "definition_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "package_revision": null,
+          "text": "PRIVATE_DEFINITION_BODY",
+          "has_more": false
+        }
+        """#.data(using: .utf8)!
+
+        let catalog = try JSONDecoder.chadex.decode(SkillCatalogInspection.self, from: catalogJSON)
+        let inventory = try JSONDecoder.chadex.decode(SkillInventoryInspection.self, from: inventoryJSON)
+        let definition = try JSONDecoder.chadex.decode(SkillDefinitionPreview.self, from: definitionJSON)
+        XCTAssertEqual(catalog.skills.count, 2)
+        XCTAssertEqual(catalog.skills[0].trust, "project_content")
+        XCTAssertFalse(inventory.skills[0].isActive)
+        XCTAssertEqual(inventory.skills[0].preferredPackageRevision, "wc_skillpkg_example")
+        XCTAssertEqual(definition.text, "PRIVATE_DEFINITION_BODY")
+        XCTAssertFalse(catalogJSON.contains(Data("PRIVATE_DEFINITION_BODY".utf8)))
+    }
+
     func testPerformanceTraceAcceptsLegacyAndCorrelatedRecords() throws {
         var record: [String: Any] = [
             "sequence": 1, "started_at_ms": 1000, "methods": ["tools/call"],

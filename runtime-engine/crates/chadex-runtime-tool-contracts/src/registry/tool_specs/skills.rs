@@ -1,7 +1,8 @@
 use super::super::input_schemas::{
-    run_skill_resource_input_schema, skill_activate_input_schema, skill_install_input_schema,
-    skill_list_input_schema, skill_load_input_schema, skill_read_file_input_schema,
-    skill_remove_revision_input_schema, skill_versions_input_schema,
+    run_skill_resource_input_schema, skill_activate_input_schema, skill_deactivate_input_schema,
+    skill_install_input_schema, skill_inventory_input_schema, skill_list_input_schema,
+    skill_load_input_schema, skill_read_file_input_schema, skill_remove_revision_input_schema,
+    skill_versions_input_schema,
 };
 use super::tool_spec;
 use crate::tool_spec::ToolSpec;
@@ -37,6 +38,11 @@ pub(super) fn tool_specs() -> Vec<ToolSpec> {
             skill_read_file_input_schema(),
         ),
         tool_spec(
+            "skill_inventory",
+            "List all operator-installed logical Skills on the exact Runner owning project, including inactive Skills. Returns bounded metadata, active state, preferred installed revision, and state CAS revisions only; SKILL.md bodies are never returned. Requires Skill-management authority.",
+            skill_inventory_input_schema(),
+        ),
+        tool_spec(
             "skill_versions",
             "List bounded immutable revisions and current active state for one operator-installed logical Skill on the exact Runner owning project. Requires Skill-management authority; returns metadata only.",
             skill_versions_input_schema(),
@@ -50,6 +56,11 @@ pub(super) fn tool_specs() -> Vec<ToolSpec> {
             "skill_activate",
             format!("Atomically switch one operator-installed logical Skill to an already installed immutable package revision using expected_state_revision CAS plus an idempotency key. Reactivating an older revision is rollback. {replay_retention}"),
             skill_activate_input_schema(),
+        ),
+        tool_spec(
+            "skill_deactivate",
+            format!("Atomically disable one operator-installed logical Skill by clearing its active package revision while retaining immutable installed revisions for later reactivation. Uses expected_state_revision CAS plus an idempotency key. {replay_retention}"),
+            skill_deactivate_input_schema(),
         ),
         tool_spec(
             "skill_remove_revision",

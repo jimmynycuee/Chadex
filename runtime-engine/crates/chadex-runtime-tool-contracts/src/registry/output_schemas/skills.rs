@@ -64,7 +64,7 @@ fn skill_versions_recovery_call_schema() -> Value {
 fn apply_skill_recovery_contract(name: &str, schema: &mut Value) {
     let mutation = matches!(
         name,
-        "skill_install" | "skill_activate" | "skill_remove_revision"
+        "skill_install" | "skill_activate" | "skill_deactivate" | "skill_remove_revision"
     );
     {
         let properties = schema["properties"]["output"]["properties"]
@@ -161,7 +161,12 @@ mod tests {
                 .any(|constraint| { constraint["not"]["required"] == json!(["recovery_tool"]) }));
         }
 
-        for tool in ["skill_install", "skill_activate", "skill_remove_revision"] {
+        for tool in [
+            "skill_install",
+            "skill_activate",
+            "skill_deactivate",
+            "skill_remove_revision",
+        ] {
             let schema = output_schema_for_tool(tool).expect("Skill mutation output schema");
             let properties = schema["properties"]["output"]["properties"]
                 .as_object()
@@ -360,6 +365,28 @@ pub(super) fn output_schema_for_tool(name: &str) -> Option<Value> {
                 schema_type("boolean", "Always false for Skill runtime failures."),
             ),
         ])),
+        "skill_inventory" => Some(wrapped_output_schema(vec![
+            ("project", schema_type("string", "Resolved Project id.")),
+            ("total_count", schema_type("integer", "Installed logical Skill count, including inactive entries.")),
+            ("skills", array_schema(json!({
+                "type":"object",
+                "properties": {
+                    "skill_id":{"type":"string"},
+                    "skill_key":{"type":"string"},
+                    "state_revision":{"type":"string"},
+                    "active_package_revision":{"anyOf":[{"type":"string"},{"type":"null"}]},
+                    "preferred_package_revision":{"type":"string"},
+                    "definition_revision":{"type":"string"},
+                    "name":{"type":"string"},
+                    "description":{"type":"string"},
+                    "total_versions":{"type":"integer"}
+                },
+                "required":["skill_id","skill_key","state_revision","active_package_revision","preferred_package_revision","definition_revision","name","description","total_versions"],
+                "additionalProperties": false
+            }), "Installed managed Skill metadata only; never definition bodies.")),
+            ("error_kind", schema_type("string", "Stable error code on failure.")),
+            ("state_changed", schema_type("boolean", "Always false for inventory observation.")),
+        ])),
         "skill_versions" => Some(wrapped_output_schema(vec![
             ("project", schema_type("string", "Resolved Project id.")),
             ("skill_id", schema_type("string", "Runner-scoped opaque Skill identity.")),
@@ -412,6 +439,21 @@ pub(super) fn output_schema_for_tool(name: &str) -> Option<Value> {
             ("skill_key", schema_type("string", "Logical operator Skill key.")),
             ("previous_active_package_revision", nullable_schema("string", "Previous active package revision.")),
             ("active_package_revision", schema_type("string", "Current active package revision.")),
+            ("state_revision", schema_type("string", "Current CAS state revision.")),
+            ("changed", schema_type("boolean", "Whether active state changed.")),
+            ("replayed", schema_type("boolean", "Whether same-key reconciliation supplied this result.")),
+            ("outcome_unknown", schema_type("boolean", "Whether dispatch outcome must be reconciled with the same key.")),
+            ("recovery_kind", schema_type("string", "reconcile when uncertain state requires observation.")),
+            ("retry_same_idempotency_key", schema_type("boolean", "When true, any retry must reuse the same logical idempotency key.")),
+            ("error_kind", schema_type("string", "Stable error code on failure.")),
+            ("state_changed", nullable_schema("boolean", "Observed mutation flag when outcome is known; null when the mutation outcome is unknown.")),
+        ])),
+        "skill_deactivate" => Some(wrapped_output_schema(vec![
+            ("project", schema_type("string", "Resolved Project id.")),
+            ("skill_id", schema_type("string", "Runner-scoped opaque Skill identity.")),
+            ("skill_key", schema_type("string", "Logical operator Skill key.")),
+            ("previous_active_package_revision", nullable_schema("string", "Package revision active before deactivation.")),
+            ("active_package_revision", nullable_schema("string", "Null after successful deactivation.")),
             ("state_revision", schema_type("string", "Current CAS state revision.")),
             ("changed", schema_type("boolean", "Whether active state changed.")),
             ("replayed", schema_type("boolean", "Whether same-key reconciliation supplied this result.")),
