@@ -329,6 +329,10 @@ pub const RUNNER_CAPABILITY_COMPUTER_SNAPSHOT_REGION: &str = "computer_snapshot_
 /// Native read-only semantic accessibility inspection. Missing on older Runners
 /// is false and is never inferred from screenshot/window observation.
 pub const RUNNER_CAPABILITY_COMPUTER_ACCESSIBILITY_OBSERVE: &str = "computer_accessibility_observe";
+/// Non-prompting current OS permission/readiness probe for Computer observation
+/// and control. Missing on older Runners is false and never follows from static
+/// implementation capabilities.
+pub const RUNNER_CAPABILITY_COMPUTER_PERMISSION_READINESS: &str = "computer_permission_readiness";
 /// Native read-only normalized state for one exact observed Accessibility element.
 /// Missing on older Runners is false and is never inferred from tree observation.
 pub const RUNNER_CAPABILITY_COMPUTER_ELEMENT_STATE: &str = "computer_element_state";
@@ -481,6 +485,7 @@ pub const RUNNER_CAPABILITY_NAMES: &[&str] = &[
     RUNNER_CAPABILITY_COMPUTER_CLIPBOARD_WRITE,
     RUNNER_CAPABILITY_COMPUTER_SNAPSHOT_REGION,
     RUNNER_CAPABILITY_COMPUTER_ACCESSIBILITY_OBSERVE,
+    RUNNER_CAPABILITY_COMPUTER_PERMISSION_READINESS,
     RUNNER_CAPABILITY_COMPUTER_ELEMENT_STATE,
     RUNNER_CAPABILITY_JOB_STATE_RECONCILIATION,
     RUNNER_CAPABILITY_CODING_AGENT_RUNS,
@@ -713,6 +718,10 @@ pub struct RunnerCapabilities {
     #[serde(default, skip_serializing_if = "is_false")]
     pub computer_accessibility_observe: bool,
     /// The Runner can revalidate one exact element and return normalized read-only
+    /// The Runner can report current non-prompting OS permission readiness for
+    /// the process that actually executes native Computer operations.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub computer_permission_readiness: bool,
     /// affordances without exposing its true value. Missing on older Runners is false.
     #[serde(default, skip_serializing_if = "is_false")]
     pub computer_element_state: bool,
@@ -987,6 +996,7 @@ impl Default for RunnerCapabilities {
             computer_clipboard_read: false,
             computer_clipboard_write: false,
             computer_accessibility_observe: false,
+            computer_permission_readiness: false,
             computer_element_state: false,
             computer_control: false,
             computer_scroll_to_element: false,
@@ -2693,6 +2703,7 @@ mod envelope_tests {
                 computer_snapshot_region: false,
                 computer_accessibility_observe: false,
                 computer_element_state: false,
+                computer_permission_readiness: false,
                 computer_control: false,
                 computer_scroll_to_element: false,
                 computer_key_input: false,
@@ -2935,6 +2946,20 @@ mod envelope_tests {
             serde_json::from_str(r#"{"computer_accessibility_observe":true}"#).unwrap();
         assert!(capabilities.computer_accessibility_observe);
         assert!(!capabilities.computer_observe);
+    }
+
+    #[test]
+    fn computer_permission_readiness_capability_deserializes_only_when_present() {
+        let capabilities: RunnerCapabilities =
+            serde_json::from_str(r#"{"computer_accessibility_observe":true}"#).unwrap();
+        assert!(capabilities.computer_accessibility_observe);
+        assert!(!capabilities.computer_permission_readiness);
+
+        let capabilities: RunnerCapabilities =
+            serde_json::from_str(r#"{"computer_permission_readiness":true}"#).unwrap();
+        assert!(capabilities.computer_permission_readiness);
+        assert!(!capabilities.computer_accessibility_observe);
+        assert!(!capabilities.computer_control);
     }
 
     #[test]
@@ -3942,6 +3967,7 @@ mod envelope_tests {
                 "computer_clipboard_write",
                 "computer_snapshot_region",
                 "computer_accessibility_observe",
+                "computer_permission_readiness",
                 "computer_element_state",
                 "job_state_reconciliation",
                 "coding_agent_runs",

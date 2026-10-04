@@ -1571,6 +1571,146 @@ fn stale_computer_identities_expose_bounded_reobserve_targets() {
     }
 }
 #[test]
+fn computer_permission_denied_exposes_bounded_readiness_recovery() {
+    let generic = computer_error_with_client(
+        "permission_denied",
+        "native Computer permission is missing",
+        Some("msi"),
+    );
+    assert_eq!(generic.output["recovery_kind"], "user_action");
+    assert_computer_suggested_call(
+        &generic,
+        "computer_observe",
+        json!({"action": "readiness", "client_id": "msi"}),
+    );
+
+    let pointer_context = PointerRequestContext {
+        client_id: "msi".to_string(),
+        display_id: DISPLAY_ID.to_string(),
+        snapshot_generation: 1,
+        x: 10,
+        y: 20,
+    };
+    let pointer = computer_pointer_effect_not_started(
+        "permission_denied",
+        "pointer permission is missing",
+        &pointer_context,
+    );
+    assert_eq!(pointer.output["recovery_kind"], "user_action");
+    assert_computer_suggested_call(
+        &pointer,
+        "computer_observe",
+        json!({"action": "readiness", "client_id": "msi"}),
+    );
+
+    let clipboard_context = ClipboardWriteContext {
+        client_id: "msi".to_string(),
+        text_bytes: Some(5),
+    };
+    let clipboard = computer_clipboard_write_not_started(
+        "permission_denied",
+        "clipboard permission is missing",
+        &clipboard_context,
+    );
+    assert_eq!(clipboard.output["recovery_kind"], "user_action");
+    assert_computer_suggested_call(
+        &clipboard,
+        "computer_observe",
+        json!({"action": "readiness", "client_id": "msi"}),
+    );
+
+    let launch = computer_application_effect_not_started(
+        "permission_denied",
+        "launch permission is missing",
+        "msi",
+        APPLICATION_ID,
+    );
+    assert_eq!(launch.output["recovery_kind"], "user_action");
+    assert_computer_suggested_call(
+        &launch,
+        "computer_observe",
+        json!({"action": "readiness", "client_id": "msi"}),
+    );
+
+    let text_input = computer_text_input_runner_error(
+        "permission_denied: text input permission is missing",
+        Some(false),
+        "msi",
+    );
+    assert_eq!(text_input.output["recovery_kind"], "user_action");
+    assert_computer_suggested_call(
+        &text_input,
+        "computer_observe",
+        json!({"action": "readiness", "client_id": "msi"}),
+    );
+}
+
+#[test]
+fn computer_permission_readiness_validator_is_exact_and_self_consistent() {
+    let ready = validate_permission_readiness(json!({
+        "platform": "macos",
+        "permission_subject": "chadex-runtime-runner",
+        "screen_capture": true,
+        "accessibility": true,
+        "event_posting": true,
+        "observe_ready": true,
+        "control_ready": true,
+        "missing_permissions": []
+    }));
+    assert!(ready.success);
+
+    let partial = validate_permission_readiness(json!({
+        "platform": "macos",
+        "permission_subject": "chadex-runtime-runner",
+        "screen_capture": false,
+        "accessibility": true,
+        "event_posting": false,
+        "observe_ready": false,
+        "control_ready": false,
+        "missing_permissions": ["screen_recording", "event_posting"]
+    }));
+    assert!(partial.success);
+
+    for malformed in [
+        json!({
+            "platform": "macos",
+            "permission_subject": "chadex-runtime-runner",
+            "screen_capture": false,
+            "accessibility": true,
+            "event_posting": false,
+            "observe_ready": true,
+            "control_ready": false,
+            "missing_permissions": ["screen_recording", "event_posting"]
+        }),
+        json!({
+            "platform": "macos",
+            "permission_subject": "chadex-runtime-runner",
+            "screen_capture": false,
+            "accessibility": true,
+            "event_posting": false,
+            "observe_ready": false,
+            "control_ready": false,
+            "missing_permissions": ["event_posting", "screen_recording"]
+        }),
+        json!({
+            "platform": "macos",
+            "permission_subject": "chadex-runtime-runner",
+            "screen_capture": true,
+            "accessibility": true,
+            "event_posting": true,
+            "observe_ready": true,
+            "control_ready": true,
+            "missing_permissions": [],
+            "native_tcc_record": "must_not_leak"
+        }),
+    ] {
+        let result = validate_permission_readiness(malformed);
+        assert!(!result.success);
+        assert_eq!(result.output["error_kind"], "invalid_runner_response");
+    }
+}
+
+#[test]
 fn computer_window_list_validator_rejects_more_than_requested_limit() {
     let result = validate_window_list(
         json!({
@@ -1721,6 +1861,7 @@ fn computer_clipboard_public_validator_is_strict_and_read_is_not_an_effect() {
     }
 
     let context = ClipboardWriteContext {
+        client_id: "special".to_string(),
         text_bytes: Some(5),
     };
     let written = validate_computer_write_clipboard(
@@ -1751,6 +1892,7 @@ fn computer_clipboard_public_validator_is_strict_and_read_is_not_an_effect() {
 #[test]
 fn computer_clipboard_write_lifecycle_preserves_not_started_and_unknown() {
     let context = ClipboardWriteContext {
+        client_id: "special".to_string(),
         text_bytes: Some(5),
     };
     let not_started =

@@ -120,6 +120,10 @@ pub(crate) fn handle_computer_operation(operation: &RunnerComputerOperation) -> 
                 })
                 .and_then(|application_id| computer_runtime().launch_application(application_id))
         }
+        RunnerComputerOperationKind::PermissionReadiness => {
+            ensure_exact_payload_fields(&payload, &[])
+                .and_then(|()| computer_runtime().permission_readiness())
+        }
         RunnerComputerOperationKind::AccessibilityStatus => {
             computer_runtime().accessibility_status()
         }

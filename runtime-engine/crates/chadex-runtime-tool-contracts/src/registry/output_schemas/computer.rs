@@ -47,9 +47,10 @@ fn target_schema() -> Value {
                     "computer_clipboard_read": {"type": "boolean"},
                     "computer_clipboard_write": {"type": "boolean"},
                     "computer_snapshot_region": {"type": "boolean"},
-                    "computer_accessibility_observe": {"type": "boolean"}
+                    "computer_accessibility_observe": {"type": "boolean"},
+                    "computer_permission_readiness": {"type": "boolean"}
                 },
-                "required": ["computer_observe", "computer_application_discovery", "computer_application_launch", "computer_display_observe", "computer_pointer_control", "computer_clipboard_read", "computer_clipboard_write", "computer_snapshot_region", "computer_accessibility_observe"]
+                "required": ["computer_observe", "computer_application_discovery", "computer_application_launch", "computer_display_observe", "computer_pointer_control", "computer_clipboard_read", "computer_clipboard_write", "computer_snapshot_region", "computer_accessibility_observe", "computer_permission_readiness"]
             }
         },
         "required": ["client_id", "display_name", "connected", "capabilities"]
@@ -184,6 +185,7 @@ fn raw_output_schema_for_tool(name: &str) -> Option<Value> {
             "computer_list_displays",
             "computer_list_applications",
             "computer_accessibility_status",
+            "computer_permission_readiness",
             "computer_accessibility_tree",
             "computer_find_elements",
             "computer_element_state",
@@ -257,6 +259,25 @@ fn raw_output_schema_for_tool(name: &str) -> Option<Value> {
                 json!({"type": "string", "pattern": "^application_[A-Za-z0-9_-]{16}$", "maxLength": 128}),
             ),
             ("success", json!({"type": "boolean", "const": true})),
+        ])),
+        "computer_permission_readiness" => Some(wrapped_output_schema(vec![
+            (
+                "platform",
+                json!({"type": "string", "enum": ["macos", "windows"]}),
+            ),
+            (
+                "permission_subject",
+                json!({"type": "string", "enum": ["chadex-runtime-runner"]}),
+            ),
+            ("screen_capture", json!({"type": "boolean"})),
+            ("accessibility", json!({"type": "boolean"})),
+            ("event_posting", json!({"type": "boolean"})),
+            ("observe_ready", json!({"type": "boolean"})),
+            ("control_ready", json!({"type": "boolean"})),
+            (
+                "missing_permissions",
+                json!({"type": "array", "maxItems": 3, "uniqueItems": true, "items": {"type": "string", "enum": ["screen_recording", "accessibility", "event_posting"]}}),
+            ),
         ])),
         "computer_accessibility_status" => Some(wrapped_output_schema(vec![
             (

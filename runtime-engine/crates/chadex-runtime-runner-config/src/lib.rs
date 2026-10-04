@@ -334,6 +334,8 @@ pub fn generated_runner_config_toml(opts: &RunnerInitOptions) -> Result<String, 
             // Semantic accessibility inspection is also a runtime/platform
             // capability and remains distinct from screenshot observation.
             computer_accessibility_observe: false,
+            // Current OS permission readiness is a live Runner probe, never static config.
+            computer_permission_readiness: false,
             // The running binary advertises normalized element-state support
             // only after installing the native handler.
             computer_element_state: false,

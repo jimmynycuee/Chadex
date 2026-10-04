@@ -44,6 +44,7 @@ use objc2_core_graphics::{
     CGDisplayVendorNumber, CGError, CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID,
     CGEventTapLocation, CGEventType, CGGetActiveDisplayList, CGImage, CGImageAlphaInfo,
     CGImageByteOrderInfo, CGKeyCode, CGMouseButton, CGPreflightPostEventAccess,
+    CGPreflightScreenCaptureAccess,
 };
 #[cfg(target_os = "macos")]
 use objc2_foundation::{
@@ -67,6 +68,37 @@ mod capture;
 mod clipboard;
 mod display;
 mod input;
+
+/// Non-prompting OS permission snapshot for the Runner process that executes
+/// Computer Use. Keep implementation capability separate from current TCC
+/// readiness so callers can explain exactly what is missing before an effect.
+pub(crate) fn permission_readiness() -> Result<Value, String> {
+    let screen_capture = CGPreflightScreenCaptureAccess();
+    let accessibility = unsafe { AXIsProcessTrusted() };
+    let event_posting = CGPreflightPostEventAccess();
+    let observe_ready = screen_capture && accessibility;
+    let control_ready = observe_ready && event_posting;
+    let mut missing_permissions = Vec::new();
+    if !screen_capture {
+        missing_permissions.push("screen_recording");
+    }
+    if !accessibility {
+        missing_permissions.push("accessibility");
+    }
+    if !event_posting {
+        missing_permissions.push("event_posting");
+    }
+    Ok(json!({
+        "platform": "macos",
+        "permission_subject": "chadex-runtime-runner",
+        "screen_capture": screen_capture,
+        "accessibility": accessibility,
+        "event_posting": event_posting,
+        "observe_ready": observe_ready,
+        "control_ready": control_ready,
+        "missing_permissions": missing_permissions,
+    }))
+}
 
 pub(crate) use accessibility::{
     accessibility_status, accessibility_tree, activate_window, control, element_state,

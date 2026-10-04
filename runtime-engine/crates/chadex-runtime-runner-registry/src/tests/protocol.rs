@@ -503,6 +503,7 @@ async fn runner_supports_recognizes_all_protocol_capability_names() {
                 computer_clipboard_write: true,
                 computer_snapshot_region: true,
                 computer_accessibility_observe: true,
+                computer_permission_readiness: true,
                 computer_element_state: true,
                 computer_control: true,
                 computer_scroll_to_element: true,

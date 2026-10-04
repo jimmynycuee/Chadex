@@ -70,6 +70,7 @@ fn computer_request_kinds_remain_closed() {
         "computer_pointer_click",
         "computer_snapshot",
         "computer_snapshot_region",
+        "computer_permission_readiness",
         "computer_accessibility_status",
         "computer_accessibility_tree",
         "computer_element_state",
@@ -84,6 +85,50 @@ fn computer_request_kinds_remain_closed() {
     for kind in ["computer_unknown", "computer_snapshot_extra", "shell"] {
         assert!(!is_computer_request_kind(kind), "{kind}");
     }
+}
+
+#[cfg(any(target_os = "macos", windows))]
+#[test]
+fn computer_permission_readiness_is_non_prompting_and_self_consistent() {
+    let result = handle_computer_request(&request("computer_permission_readiness", r#"{}"#));
+    assert_eq!(result.exit_code, Some(0), "{:?}", result.error);
+    let output: Value = serde_json::from_str(result.stdout.as_deref().expect("readiness stdout"))
+        .expect("readiness JSON");
+    assert_eq!(output["permission_subject"], "chadex-runtime-runner");
+    let screen_capture = output["screen_capture"].as_bool().expect("screen_capture");
+    let accessibility = output["accessibility"].as_bool().expect("accessibility");
+    let event_posting = output["event_posting"].as_bool().expect("event_posting");
+    assert_eq!(output["observe_ready"], screen_capture && accessibility);
+    assert_eq!(
+        output["control_ready"],
+        screen_capture && accessibility && event_posting
+    );
+    let expected_missing = [
+        (!screen_capture).then_some("screen_recording"),
+        (!accessibility).then_some("accessibility"),
+        (!event_posting).then_some("event_posting"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    assert_eq!(
+        output["missing_permissions"]
+            .as_array()
+            .expect("missing_permissions")
+            .iter()
+            .map(|value| value.as_str().expect("missing permission atom"))
+            .collect::<Vec<_>>(),
+        expected_missing
+    );
+
+    let rejected = handle_computer_request(&request(
+        "computer_permission_readiness",
+        r#"{"prompt":true}"#,
+    ));
+    assert!(rejected
+        .error
+        .as_deref()
+        .is_some_and(|error| error.starts_with("invalid_request:")));
 }
 
 #[test]

@@ -479,6 +479,9 @@ pub enum ComputerObserveToolCall {
         #[serde(default)]
         limit: Option<usize>,
     },
+    Readiness {
+        client_id: String,
+    },
     AccessibilityStatus {
         client_id: String,
     },
@@ -541,6 +544,7 @@ impl ComputerObserveToolCall {
             Self::Windows { .. } => "windows",
             Self::Displays { .. } => "displays",
             Self::Applications { .. } => "applications",
+            Self::Readiness { .. } => "readiness",
             Self::AccessibilityStatus { .. } => "accessibility_status",
             Self::AccessibilityTree { .. } => "accessibility_tree",
             Self::FindElements { .. } => "find_elements",

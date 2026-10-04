@@ -49,6 +49,17 @@ pub fn computer_launch_application_input_schema() -> Value {
     })
 }
 
+pub fn computer_permission_readiness_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "client_id": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Exact Runner client_id whose current Computer OS permission readiness is queried without prompting."}
+        },
+        "required": ["client_id"]
+    })
+}
+
 pub fn computer_accessibility_status_input_schema() -> Value {
     json!({
         "type": "object",
@@ -371,6 +382,7 @@ pub fn computer_observe_input_schema() -> Value {
         computer_action_schema(computer_list_windows_input_schema(), "windows"),
         computer_action_schema(computer_list_displays_input_schema(), "displays"),
         computer_action_schema(computer_list_applications_input_schema(), "applications"),
+        computer_action_schema(computer_permission_readiness_input_schema(), "readiness"),
         computer_action_schema(
             computer_accessibility_status_input_schema(),
             "accessibility_status",

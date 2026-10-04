@@ -419,6 +419,7 @@ mod tests {
                         computer_clipboard_write: false,
                         computer_snapshot_region: false,
                         computer_accessibility_observe: false,
+                        computer_permission_readiness: false,
                         computer_element_state: false,
                         computer_control: false,
                         computer_scroll_to_element: false,

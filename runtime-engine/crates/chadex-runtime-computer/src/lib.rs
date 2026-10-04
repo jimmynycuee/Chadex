@@ -1203,6 +1203,10 @@ impl ComputerRuntime {
         result
     }
 
+    pub fn permission_readiness(&self) -> Result<Value, String> {
+        platform::permission_readiness()
+    }
+
     pub fn accessibility_status(&self) -> Result<Value, String> {
         platform::accessibility_status()
     }

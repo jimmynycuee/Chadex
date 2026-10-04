@@ -2088,6 +2088,9 @@ fn runner_register_capabilities(cfg: &RunnerConfig) -> RunnerCapabilities {
     // macOS AX and Windows UI Automation share the same model-facing tree;
     // observation authority never implies computer-control authority.
     capabilities.computer_accessibility_observe = cfg!(any(target_os = "macos", windows));
+    // The non-prompting permission probe is independently advertised so a new
+    // Server never sends its wire kind to an older Computer-capable Runner.
+    capabilities.computer_permission_readiness = cfg!(any(target_os = "macos", windows));
     // Normalized element-state observation is a separate rolling-upgrade wire
     // capability implemented by the same native read-only backends.
     capabilities.computer_element_state = cfg!(any(target_os = "macos", windows));

@@ -156,6 +156,7 @@ fn computer_observe_policy(call: &ComputerObserveToolCall) -> SpecializedOperati
         Targets
         | Windows { .. }
         | Applications { .. }
+        | Readiness { .. }
         | AccessibilityStatus { .. }
         | AccessibilityTree { .. }
         | FindElements { .. }
@@ -358,6 +359,18 @@ impl ToolRuntime {
                     &client_id,
                     "computer_launch_application",
                     json!({"application_id": application_id}),
+                    auth,
+                    None,
+                    None,
+                    None,
+                )
+                .await
+            }
+            ToolCall::ComputerObserve(ComputerObserveToolCall::Readiness { client_id }) => {
+                self.dispatch_computer_request(
+                    &client_id,
+                    "computer_permission_readiness",
+                    json!({}),
                     auth,
                     None,
                     None,
@@ -1209,9 +1222,12 @@ impl ToolRuntime {
             let computer_snapshot_region = client.supports(RunnerFeature::ComputerSnapshotRegion);
             let computer_accessibility_observe =
                 client.supports(RunnerFeature::ComputerAccessibilityObserve);
+            let computer_permission_readiness =
+                client.supports(RunnerFeature::ComputerPermissionReadiness);
             let view = client.view;
             if !computer_observe
                 && !computer_accessibility_observe
+                && !computer_permission_readiness
                 && !computer_application_discovery
                 && !computer_application_launch
                 && !computer_display_observe
@@ -1239,6 +1255,7 @@ impl ToolRuntime {
                     "computer_clipboard_write": computer_clipboard_write,
                     "computer_snapshot_region": computer_snapshot_region,
                     "computer_accessibility_observe": computer_accessibility_observe,
+                    "computer_permission_readiness": computer_permission_readiness,
                 },
             }));
         }
@@ -1292,6 +1309,7 @@ impl ToolRuntime {
         });
         let is_clipboard_write = kind == "computer_write_clipboard";
         let clipboard_write_context = is_clipboard_write.then(|| ClipboardWriteContext {
+            client_id: client_id.to_string(),
             text_bytes: payload.get("text").and_then(Value::as_str).map(str::len),
         });
         if client_id.is_empty() || client_id.len() > 128 {
@@ -1335,6 +1353,7 @@ impl ToolRuntime {
                 RunnerFeature::ComputerObserve,
                 RunnerFeature::ComputerSnapshotRegion,
             ],
+            "computer_permission_readiness" => &[RunnerFeature::ComputerPermissionReadiness],
             "computer_accessibility_status" | "computer_accessibility_tree" => {
                 &[RunnerFeature::ComputerAccessibilityObserve]
             }
@@ -1781,6 +1800,7 @@ impl ToolRuntime {
                     )
                 }
             }
+            "computer_permission_readiness" => validate_permission_readiness(output),
             "computer_accessibility_status" => validate_accessibility_status(output),
             "computer_accessibility_tree" => {
                 let (max_depth, max_nodes) = accessibility_bounds.unwrap_or((0, 0));
@@ -2133,7 +2153,14 @@ fn computer_error_with_client(kind: &str, message: &str, client_id: Option<&str>
             }
         },
         "invalid_request" => result.with_recovery(RecoveryKind::FixInput),
-        "permission_denied" => result.with_recovery(RecoveryKind::UserAction),
+        "permission_denied" => match client_id {
+            Some(client_id) => computer_observe_suggested_recovery(
+                result.with_recovery(RecoveryKind::UserAction),
+                "readiness",
+                json!({"client_id": client_id}),
+            ),
+            None => result.with_recovery(RecoveryKind::UserAction),
+        },
         _ => result,
     }
 }
@@ -2193,7 +2220,11 @@ fn computer_pointer_effect_not_started(
             computer_reconcile_recovery(result, RecoveryKind::Reobserve, "computer_observe")
         }
         "invalid_request" => result.with_recovery(RecoveryKind::FixInput),
-        "permission_denied" => result.with_recovery(RecoveryKind::UserAction),
+        "permission_denied" => computer_observe_suggested_recovery(
+            result.with_recovery(RecoveryKind::UserAction),
+            "readiness",
+            json!({"client_id": context.client_id}),
+        ),
         _ => result,
     }
 }
@@ -2286,6 +2317,7 @@ fn computer_pointer_runner_error(
 
 #[derive(Clone, Debug)]
 struct ClipboardWriteContext {
+    client_id: String,
     text_bytes: Option<usize>,
 }
 
@@ -2312,7 +2344,11 @@ fn computer_clipboard_write_not_started(
     let result = ToolResult::err_with_output(message.to_string(), Value::Object(output));
     match error_kind {
         "invalid_request" => result.with_recovery(RecoveryKind::FixInput),
-        "permission_denied" => result.with_recovery(RecoveryKind::UserAction),
+        "permission_denied" => computer_observe_suggested_recovery(
+            result.with_recovery(RecoveryKind::UserAction),
+            "readiness",
+            json!({"client_id": context.client_id}),
+        ),
         _ => result,
     }
 }
@@ -2433,7 +2469,11 @@ fn computer_application_effect_not_started(
             json!({"client_id": client_id}),
         ),
         "invalid_request" => result.with_recovery(RecoveryKind::FixInput),
-        "permission_denied" => result.with_recovery(RecoveryKind::UserAction),
+        "permission_denied" => computer_observe_suggested_recovery(
+            result.with_recovery(RecoveryKind::UserAction),
+            "readiness",
+            json!({"client_id": client_id}),
+        ),
         _ => result,
     }
 }
@@ -2530,9 +2570,10 @@ fn computer_text_input_runner_error(
             "Runner computer text input ended without a recognized structured error",
             request_dispatched,
         ),
-        "permission_denied" => computer_error(
+        "permission_denied" => computer_error_with_client(
             error_kind,
             "Runner denied the bounded computer text input request",
+            Some(client_id),
         ),
         "stale_surface" => computer_error_with_client(
             error_kind,
@@ -3127,6 +3168,93 @@ fn validate_window_list(output: Value, limit: usize) -> ToolResult {
 
 fn is_native_accessibility_platform(value: Option<&str>) -> bool {
     matches!(value, Some("macos" | "windows"))
+}
+
+fn validate_permission_readiness(output: Value) -> ToolResult {
+    let Some(object) = output.as_object() else {
+        return computer_error(
+            "invalid_runner_response",
+            "Computer permission readiness is not an object",
+        );
+    };
+    let allowed = [
+        "platform",
+        "permission_subject",
+        "screen_capture",
+        "accessibility",
+        "event_posting",
+        "observe_ready",
+        "control_ready",
+        "missing_permissions",
+    ];
+    if object.len() != allowed.len() || object.keys().any(|key| !allowed.contains(&key.as_str())) {
+        return computer_error(
+            "invalid_runner_response",
+            "Computer permission readiness fields are malformed",
+        );
+    }
+    if !is_native_accessibility_platform(output.get("platform").and_then(Value::as_str))
+        || output.get("permission_subject").and_then(Value::as_str) != Some("chadex-runtime-runner")
+    {
+        return computer_error(
+            "invalid_runner_response",
+            "Computer permission readiness identity is malformed",
+        );
+    }
+    let Some(screen_capture) = output.get("screen_capture").and_then(Value::as_bool) else {
+        return computer_error(
+            "invalid_runner_response",
+            "Computer screen-capture readiness is missing",
+        );
+    };
+    let Some(accessibility) = output.get("accessibility").and_then(Value::as_bool) else {
+        return computer_error(
+            "invalid_runner_response",
+            "Computer Accessibility readiness is missing",
+        );
+    };
+    let Some(event_posting) = output.get("event_posting").and_then(Value::as_bool) else {
+        return computer_error(
+            "invalid_runner_response",
+            "Computer event-posting readiness is missing",
+        );
+    };
+    let observe_ready = screen_capture && accessibility;
+    let control_ready = observe_ready && event_posting;
+    if output.get("observe_ready").and_then(Value::as_bool) != Some(observe_ready)
+        || output.get("control_ready").and_then(Value::as_bool) != Some(control_ready)
+    {
+        return computer_error(
+            "invalid_runner_response",
+            "Computer permission readiness aggregate is inconsistent",
+        );
+    }
+    let Some(missing) = output.get("missing_permissions").and_then(Value::as_array) else {
+        return computer_error(
+            "invalid_runner_response",
+            "Computer missing-permissions list is missing",
+        );
+    };
+    let expected = [
+        (!screen_capture).then_some("screen_recording"),
+        (!accessibility).then_some("accessibility"),
+        (!event_posting).then_some("event_posting"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    if missing.len() != expected.len()
+        || missing
+            .iter()
+            .zip(expected.iter())
+            .any(|(actual, expected)| actual.as_str() != Some(*expected))
+    {
+        return computer_error(
+            "invalid_runner_response",
+            "Computer missing-permissions list is inconsistent",
+        );
+    }
+    ToolResult::ok(output)
 }
 
 fn validate_accessibility_status(output: Value) -> ToolResult {

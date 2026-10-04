@@ -111,6 +111,27 @@ mod clipboard;
 mod display;
 mod input;
 
+/// Windows has no macOS-style TCC grant for the native capture/UIA/SendInput
+/// paths used here. Still probe the native observation backends so readiness is
+/// a truthful runtime check rather than a compile-time capability alias.
+pub(crate) fn permission_readiness() -> Result<Value, String> {
+    capture::ensure_capture_permission()?;
+    let status = accessibility::accessibility_status()?;
+    if status.get("trusted").and_then(Value::as_bool) != Some(true) {
+        return Err("permission_denied: Windows UI Automation is not available".to_string());
+    }
+    Ok(json!({
+        "platform": "windows",
+        "permission_subject": "chadex-runtime-runner",
+        "screen_capture": true,
+        "accessibility": true,
+        "event_posting": true,
+        "observe_ready": true,
+        "control_ready": true,
+        "missing_permissions": [],
+    }))
+}
+
 pub(crate) use accessibility::{
     accessibility_status, accessibility_tree, activate_window, control, element_state,
     scroll_to_element, uia_semantic_text_input_role, win_hwnd,

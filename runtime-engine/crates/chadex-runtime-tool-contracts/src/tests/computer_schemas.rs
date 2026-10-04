@@ -57,6 +57,7 @@ fn computer_observe_schema_is_closed_read_only_action_union() {
         "windows",
         "displays",
         "applications",
+        "readiness",
         "accessibility_status",
         "accessibility_tree",
         "find_elements",
@@ -76,6 +77,14 @@ fn computer_observe_schema_is_closed_read_only_action_union() {
             .iter()
             .any(|field| field == "action"));
     }
+
+    let readiness = action_properties(&spec.input_schema, "readiness");
+    assert_schema_fields!(
+        readiness,
+        "readiness action",
+        present: ["action", "client_id"],
+        absent: ["surface_id", "display_id", "text", "application_id"]
+    );
 
     let find = action_properties(&spec.input_schema, "find_elements");
     assert_schema_fields!(
@@ -105,6 +114,7 @@ fn computer_observe_schema_is_closed_read_only_action_union() {
 
     for value in [
         json!({"action":"targets"}),
+        json!({"action":"readiness","client_id":"special"}),
         json!({"action":"windows","client_id":"special","limit":9999}),
         json!({"action":"snapshot_window","client_id":"special","surface_id":"surface_test","max_width":10000}),
         json!({"action":"snapshot_display","client_id":"special","display_id":"display_iavN7wEjRWeJq83v","max_height":u32::MAX}),

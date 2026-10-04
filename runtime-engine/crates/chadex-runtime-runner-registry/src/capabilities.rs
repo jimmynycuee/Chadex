@@ -59,6 +59,7 @@ pub enum RunnerFeature {
     ComputerClipboardWrite,
     ComputerSnapshotRegion,
     ComputerAccessibilityObserve,
+    ComputerPermissionReadiness,
     ComputerElementState,
     JobStateReconciliation,
     CodingAgentRuns,
@@ -124,6 +125,7 @@ const ALL_RUNNER_FEATURES: &[RunnerFeature] = &[
     RunnerFeature::ComputerClipboardWrite,
     RunnerFeature::ComputerSnapshotRegion,
     RunnerFeature::ComputerAccessibilityObserve,
+    RunnerFeature::ComputerPermissionReadiness,
     RunnerFeature::ComputerElementState,
     RunnerFeature::JobStateReconciliation,
     RunnerFeature::CodingAgentRuns,
@@ -223,6 +225,9 @@ impl RunnerFeature {
             Self::ComputerAccessibilityObserve => {
                 wire::RUNNER_CAPABILITY_COMPUTER_ACCESSIBILITY_OBSERVE
             }
+            Self::ComputerPermissionReadiness => {
+                wire::RUNNER_CAPABILITY_COMPUTER_PERMISSION_READINESS
+            }
             Self::ComputerElementState => wire::RUNNER_CAPABILITY_COMPUTER_ELEMENT_STATE,
             Self::JobStateReconciliation => wire::RUNNER_CAPABILITY_JOB_STATE_RECONCILIATION,
             Self::CodingAgentRuns => wire::RUNNER_CAPABILITY_CODING_AGENT_RUNS,
@@ -306,6 +311,9 @@ impl RunnerFeature {
             wire::RUNNER_CAPABILITY_COMPUTER_ACCESSIBILITY_OBSERVE => {
                 Self::ComputerAccessibilityObserve
             }
+            wire::RUNNER_CAPABILITY_COMPUTER_PERMISSION_READINESS => {
+                Self::ComputerPermissionReadiness
+            }
             wire::RUNNER_CAPABILITY_COMPUTER_ELEMENT_STATE => Self::ComputerElementState,
             wire::RUNNER_CAPABILITY_JOB_STATE_RECONCILIATION => Self::JobStateReconciliation,
             wire::RUNNER_CAPABILITY_CODING_AGENT_RUNS => Self::CodingAgentRuns,
@@ -374,6 +382,7 @@ impl RunnerFeature {
             | Self::ComputerClipboardWrite
             | Self::ComputerSnapshotRegion
             | Self::ComputerAccessibilityObserve
+            | Self::ComputerPermissionReadiness
             | Self::ComputerElementState
             | Self::JobStateReconciliation
             | Self::CodingAgentRuns
@@ -449,6 +458,7 @@ impl RunnerFeature {
             Self::ComputerClipboardWrite => capabilities.computer_clipboard_write,
             Self::ComputerSnapshotRegion => capabilities.computer_snapshot_region,
             Self::ComputerAccessibilityObserve => capabilities.computer_accessibility_observe,
+            Self::ComputerPermissionReadiness => capabilities.computer_permission_readiness,
             Self::ComputerElementState => capabilities.computer_element_state,
             Self::JobStateReconciliation => capabilities.job_state_reconciliation,
             Self::CodingAgentRuns => capabilities.coding_agent_runs,

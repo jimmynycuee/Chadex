@@ -27,7 +27,7 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
             super::ToolSemanticContract { effect: super::ToolEffect::Observe, risk: Read, approval: super::ToolApprovalPolicy::None, idempotency: super::ToolIdempotency::PureRead },
             Some(COMPUTER_READ), false, NoPath, false, false, super::ToolSessionEvidencePolicy::NONE,
         ),
-        "Guaranteed read-only Computer observation gateway. Use the closed action vocabulary for targets, windows, displays, applications, Accessibility status/tree/search/state, window/display snapshots, or clipboard text. Exact action scopes and Runner capabilities are enforced before dispatch; opaque ephemeral identities, stale-handle failure, traversal/image/clipboard bounds, and snapshot-generation semantics remain unchanged. No action can activate, launch, focus, type, move/click the pointer, write the clipboard, save a project artifact, use shell fallback, or retry an uncertain effect.",
+        "Guaranteed read-only Computer observation gateway. Use readiness to inspect current non-prompting OS permission state before desktop/control work, or use the closed action vocabulary for targets, windows, displays, applications, Accessibility status/tree/search/state, window/display snapshots, or clipboard text. Exact action scopes and Runner capabilities are enforced before dispatch; opaque ephemeral identities, stale-handle failure, traversal/image/clipboard bounds, and snapshot-generation semantics remain unchanged. No action can activate, launch, focus, type, move/click the pointer, write the clipboard, save a project artifact, use shell fallback, or retry an uncertain effect.",
         computer_observe_input_schema,
     ),
     require_any_scopes(
