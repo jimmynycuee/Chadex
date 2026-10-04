@@ -8,6 +8,8 @@ pub(super) use macos::*;
 #[cfg(windows)]
 pub(super) use windows::*;
 
+#[cfg(target_os = "macos")]
+use super::sensitive_window_contains_point;
 use super::{bounded_text, PlatformWindow, SurfaceRecord};
 use sha2::{Digest, Sha256};
 use xcap::Window;
@@ -94,6 +96,44 @@ pub(super) fn list_windows(limit: usize) -> Result<Vec<PlatformWindow>, String> 
         });
     }
     Ok(output)
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn ensure_pointer_target_not_sensitive(
+    target_x: f64,
+    target_y: f64,
+) -> Result<(), String> {
+    ensure_capture_permission()?;
+    for window in Window::all().map_err(map_error)? {
+        if window.is_minimized().unwrap_or(false) {
+            continue;
+        }
+        let width = window.width().map_err(map_error)?;
+        let height = window.height().map_err(map_error)?;
+        if width == 0 || height == 0 {
+            continue;
+        }
+        let application = window.app_name().map_err(map_error)?;
+        let title = window.title().map_err(map_error)?;
+        let origin_x = window.x().map_err(map_error)?;
+        let origin_y = window.y().map_err(map_error)?;
+        if sensitive_window_contains_point(
+            &application,
+            &title,
+            origin_x,
+            origin_y,
+            width,
+            height,
+            target_x,
+            target_y,
+        ) {
+            return Err(
+                "permission_denied: pointer target intersects a sensitive Computer surface"
+                    .to_string(),
+            );
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn capture_window(surface: &SurfaceRecord) -> Result<image::RgbaImage, String> {

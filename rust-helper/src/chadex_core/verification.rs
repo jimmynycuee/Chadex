@@ -1,3 +1,4 @@
+use super::computer_safety::{ComputerAuthorization, ComputerSafetyController};
 use super::performance::{duration_us, now_ms, McpPerformanceTrace, PerformanceTraceStore};
 use super::{ChadexError, ChadexResult};
 use axum::body::{to_bytes, Body};
@@ -8,7 +9,7 @@ use axum::Router;
 use futures_core::Stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -130,6 +131,7 @@ struct IngressState {
     admission: Arc<Semaphore>,
     tracker: Arc<VerificationTracker>,
     performance: Arc<PerformanceTraceStore>,
+    computer_safety: Arc<ComputerSafetyController>,
     armed: Arc<AtomicBool>,
     accepting: Arc<AtomicBool>,
 }
@@ -148,6 +150,21 @@ impl McpIngress {
         backend_url: String,
         tracker: Arc<VerificationTracker>,
         performance: Arc<PerformanceTraceStore>,
+    ) -> ChadexResult<Self> {
+        Self::start_with_safety(
+            backend_url,
+            tracker,
+            performance,
+            Arc::new(ComputerSafetyController::default()),
+        )
+        .await
+    }
+
+    pub async fn start_with_safety(
+        backend_url: String,
+        tracker: Arc<VerificationTracker>,
+        performance: Arc<PerformanceTraceStore>,
+        computer_safety: Arc<ComputerSafetyController>,
     ) -> ChadexResult<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|_| {
             ChadexError::new(
@@ -178,6 +195,7 @@ impl McpIngress {
             admission: Arc::clone(&admission),
             tracker,
             performance,
+            computer_safety: Arc::clone(&computer_safety),
             armed: Arc::clone(&armed),
             accepting: Arc::clone(&accepting),
         };
@@ -309,6 +327,30 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
         };
     let metadata = mcp_metadata(&body);
 
+    let computer_dispatch_permit = match inspect_computer_control(&body) {
+        ComputerControlInspection::None => None,
+        ComputerControlInspection::BatchRejected => {
+            state.computer_safety.record_batch_rejection();
+            return Ok(computer_safety_response(
+                Value::Null,
+                "computer_control_batch_rejected",
+                "Computer control cannot be authorized inside a JSON-RPC batch.",
+                false,
+            ));
+        }
+        ComputerControlInspection::Single { id, action } => {
+            match state.computer_safety.authorize(&action).await {
+                ComputerAuthorization::Allowed(permit) => Some(permit),
+                ComputerAuthorization::Denied {
+                    error_kind,
+                    message,
+                } => {
+                    return Ok(computer_safety_response(id, error_kind, message, false));
+                }
+            }
+        }
+    };
+
     let mut url = state.backend_url.clone();
     if let Some(query) = parts.uri.query() {
         url.push('?');
@@ -325,6 +367,17 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
         helper_ingress_started_unix_ns,
         ingress_pre_backend_us,
     );
+
+    if let Some(permit) = computer_dispatch_permit.as_ref() {
+        if !state.computer_safety.permit_is_current(permit) {
+            return Ok(computer_safety_response(
+                computer_control_request_id(&body),
+                "computer_control_stopped",
+                "Computer control was stopped before the action could be dispatched.",
+                false,
+            ));
+        }
+    }
     let mut pending = state.performance.begin_request(McpPerformanceTrace {
         sequence: 0,
         started_at_ms,
@@ -345,7 +398,26 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
     });
     let trace_sequence = pending.sequence();
     let backend_started = Instant::now();
-    let upstream = match builder.send().await {
+    let upstream_result = if let Some(permit) = computer_dispatch_permit.as_ref() {
+        let send = builder.send();
+        tokio::pin!(send);
+        tokio::select! {
+            result = &mut send => result,
+            _ = state.computer_safety.wait_until_invalid(permit) => {
+                state.computer_safety.record_interrupted(permit);
+                pending.complete("computer_control_stopped_during_dispatch");
+                return Ok(computer_safety_response(
+                    computer_control_request_id(&body),
+                    "computer_control_stopped_during_dispatch",
+                    "Computer control was stopped while dispatch was in progress. The effect may have occurred; re-observe the affected state before retrying.",
+                    true,
+                ));
+            }
+        }
+    } else {
+        builder.send().await
+    };
+    let upstream = match upstream_result {
         Ok(upstream) => upstream,
         Err(_) => {
             state.performance.push(McpPerformanceTrace {
@@ -369,6 +441,9 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
             return Err(proxy_error());
         }
     };
+    if let Some(permit) = computer_dispatch_permit.as_ref() {
+        state.computer_safety.record_dispatch(permit);
+    }
     let backend_headers_us = duration_us(backend_started.elapsed());
     let status = upstream.status();
     let headers = upstream.headers().clone();
@@ -588,6 +663,118 @@ fn is_hop_by_hop(name: &str) -> bool {
             | "transfer-encoding"
             | "upgrade"
     )
+}
+
+
+enum ComputerControlInspection {
+    None,
+    Single { id: Value, action: String },
+    BatchRejected,
+}
+
+fn inspect_computer_control(body: &[u8]) -> ComputerControlInspection {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return ComputerControlInspection::None;
+    };
+    match value {
+        Value::Array(items) => {
+            if items.iter().any(is_computer_control_request) {
+                ComputerControlInspection::BatchRejected
+            } else {
+                ComputerControlInspection::None
+            }
+        }
+        Value::Object(object) => computer_control_from_object(&object)
+            .map(|(id, action)| ComputerControlInspection::Single { id, action })
+            .unwrap_or(ComputerControlInspection::None),
+        _ => ComputerControlInspection::None,
+    }
+}
+
+fn is_computer_control_request(value: &Value) -> bool {
+    value
+        .as_object()
+        .and_then(computer_control_from_object)
+        .is_some()
+}
+
+fn computer_control_from_object(
+    object: &serde_json::Map<String, Value>,
+) -> Option<(Value, String)> {
+    if object.get("method").and_then(Value::as_str) != Some("tools/call") {
+        return None;
+    }
+    let params = object.get("params")?;
+    let name = params.get("name").and_then(Value::as_str)?;
+    let arguments = params.get("arguments")?;
+    let action = if name == "computer_control" {
+        arguments.get("action").and_then(Value::as_str)
+    } else if name == "call_runtime_tool"
+        && arguments.get("tool").and_then(Value::as_str) == Some("computer_control")
+    {
+        arguments
+            .get("arguments")
+            .and_then(|inner| inner.get("action"))
+            .and_then(Value::as_str)
+    } else {
+        return None;
+    };
+    Some((
+        object.get("id").cloned().unwrap_or(Value::Null),
+        action.unwrap_or("").to_string(),
+    ))
+}
+
+fn computer_control_request_id(body: &[u8]) -> Value {
+    let Ok(Value::Object(object)) = serde_json::from_slice::<Value>(body) else {
+        return Value::Null;
+    };
+    object.get("id").cloned().unwrap_or(Value::Null)
+}
+
+fn computer_safety_response(
+    id: Value,
+    error_kind: &str,
+    message: &str,
+    outcome_unknown: bool,
+) -> Response<Body> {
+    let output = if outcome_unknown {
+        json!({
+            "error_kind": error_kind,
+            "failure_kind": error_kind,
+            "message": message,
+            "execution_state": "outcome_unknown",
+            "dispatch_certainty": "unknown",
+            "recovery_kind": "reobserve",
+            "reconcile_with": "computer_observe"
+        })
+    } else {
+        json!({
+            "error_kind": error_kind,
+            "failure_kind": error_kind,
+            "message": message,
+            "execution_state": "not_started",
+            "dispatch_certainty": "not_started",
+            "recovery_kind": "user_action"
+        })
+    };
+    let body = json!({
+        "jsonrpc": "2.0",
+        "result": {
+            "content": [{"type": "text", "text": message}],
+            "structuredContent": {
+                "success": false,
+                "output": output
+            },
+            "isError": true
+        },
+        "id": id
+    });
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .expect("Computer safety response is valid")
 }
 
 #[derive(Default)]

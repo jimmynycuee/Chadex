@@ -1,6 +1,7 @@
 pub mod activity;
 pub(crate) mod adapters;
 pub(crate) mod backend;
+pub mod computer_safety;
 pub mod credentials;
 pub(crate) mod graphify;
 pub mod performance;

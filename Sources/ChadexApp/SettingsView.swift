@@ -769,6 +769,12 @@ struct MenuBarContent: View {
             Button(menuActionTitle) { model.primaryAction() }
                 .disabled(model.selectedProject == nil || model.connectionActionInFlight)
         }
+        if model.snapshot.tunnelReady {
+            Button(L10n.string("computer.stop"), role: .destructive) {
+                Task { await model.stopComputerControl() }
+            }
+            .disabled(model.computerSafety.stopped || model.computerSafetyMutationInFlight)
+        }
         Button(L10n.string("updates.checkMenu")) {
             openWindow(id: "main")
             Task { await updateManager.checkForUpdates(userInitiated: true) }

@@ -1,4 +1,5 @@
 use crate::chadex_core::activity::{sanitize_message, RuntimeActivityEntry};
+use crate::chadex_core::computer_safety::ComputerControlMode;
 use crate::chadex_core::graphify::GraphifyStatus;
 use crate::chadex_core::performance::{
     duration_us, now_ms, LifecyclePerformanceTrace, McpPerformanceTrace, PerformanceTraceStore,
@@ -1546,6 +1547,81 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
                 .map(ResponseResult::Snapshot),
             Err(error) => Err(error),
         },
+        "getComputerSafety" => serde_json::to_value(bridge.tunnel.computer_safety_snapshot())
+            .map(ResponseResult::Json)
+            .map_err(|_| {
+                ErrorPayload::new(
+                    "computer_safety_unavailable",
+                    "Chadex could not encode Computer control safety state",
+                    "Restart Chadex and retry.",
+                )
+            }),
+        "setComputerControlMode" => match param_str(&request.params, "mode") {
+            Ok(mode) => match ComputerControlMode::parse(mode) {
+                Some(mode) => serde_json::to_value(bridge.tunnel.set_computer_control_mode(mode))
+                    .map(ResponseResult::Json)
+                    .map_err(|_| {
+                        ErrorPayload::new(
+                            "computer_safety_unavailable",
+                            "Chadex could not encode Computer control safety state",
+                            "Restart Chadex and retry.",
+                        )
+                    }),
+                None => Err(ErrorPayload::new(
+                    "invalid_params",
+                    "Unsupported Computer control mode",
+                    "Use read_only, ask_before_control, or allow_session.",
+                )),
+            },
+            Err(error) => Err(error),
+        },
+        "approveComputerControl" => match param_str(&request.params, "approval_id") {
+            Ok(approval_id) if bridge.tunnel.approve_computer_control(approval_id) => {
+                serde_json::to_value(bridge.tunnel.computer_safety_snapshot())
+                    .map(ResponseResult::Json)
+                    .map_err(|_| {
+                        ErrorPayload::new(
+                            "computer_safety_unavailable",
+                            "Chadex could not encode Computer control safety state",
+                            "Restart Chadex and retry.",
+                        )
+                    })
+            }
+            Ok(_) => Err(ErrorPayload::new(
+                "computer_approval_stale",
+                "This Computer control approval is no longer pending",
+                "Refresh Computer control state before responding again.",
+            )),
+            Err(error) => Err(error),
+        },
+        "denyComputerControl" => match param_str(&request.params, "approval_id") {
+            Ok(approval_id) if bridge.tunnel.deny_computer_control(approval_id) => {
+                serde_json::to_value(bridge.tunnel.computer_safety_snapshot())
+                    .map(ResponseResult::Json)
+                    .map_err(|_| {
+                        ErrorPayload::new(
+                            "computer_safety_unavailable",
+                            "Chadex could not encode Computer control safety state",
+                            "Restart Chadex and retry.",
+                        )
+                    })
+            }
+            Ok(_) => Err(ErrorPayload::new(
+                "computer_approval_stale",
+                "This Computer control approval is no longer pending",
+                "Refresh Computer control state before responding again.",
+            )),
+            Err(error) => Err(error),
+        },
+        "stopComputerControl" => serde_json::to_value(bridge.tunnel.stop_computer_control())
+            .map(ResponseResult::Json)
+            .map_err(|_| {
+                ErrorPayload::new(
+                    "computer_safety_unavailable",
+                    "Chadex could not encode Computer control safety state",
+                    "Restart Chadex and retry.",
+                )
+            }),
         "configureLocalSetup" | "resumeService" => bridge
             .ensure_runtime_for_target()
             .await

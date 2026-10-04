@@ -14,6 +14,46 @@ enum ConnectionAction: Equatable, Sendable {
     case disconnecting
 }
 
+enum ComputerControlMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case readOnly = "read_only"
+    case askBeforeControl = "ask_before_control"
+    case allowSession = "allow_session"
+
+    var id: String { rawValue }
+}
+
+struct ComputerApproval: Codable, Equatable, Identifiable, Sendable {
+    var approvalId: String
+    var action: String
+    var createdAtMs: UInt64
+    var id: String { approvalId }
+}
+
+struct ComputerSafetyAuditEvent: Codable, Equatable, Identifiable, Sendable {
+    var sequence: UInt64
+    var timestampMs: UInt64
+    var event: String
+    var action: String?
+    var reason: String?
+    var id: UInt64 { sequence }
+}
+
+struct ComputerSafetyStatus: Codable, Equatable, Sendable {
+    var mode: ComputerControlMode
+    var stopped: Bool
+    var generation: UInt64
+    var pendingApprovals: [ComputerApproval]
+    var audit: [ComputerSafetyAuditEvent]
+
+    static let initial = ComputerSafetyStatus(
+        mode: .askBeforeControl,
+        stopped: false,
+        generation: 0,
+        pendingApprovals: [],
+        audit: []
+    )
+}
+
 extension ConnectionPhase: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -695,6 +735,14 @@ struct HelperResponse: Decodable, Sendable {
 }
 
 struct EmptyParams: Codable, Sendable {}
+
+struct ComputerControlModeParams: Codable, Sendable {
+    var mode: ComputerControlMode
+}
+
+struct ComputerApprovalParams: Codable, Sendable {
+    var approvalId: String
+}
 
 struct InspectProjectParams: Codable, Sendable {
     var path: String

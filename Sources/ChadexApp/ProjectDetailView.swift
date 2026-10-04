@@ -22,6 +22,9 @@ struct ProjectDetailView: View {
                     errorSection(error)
                 }
 
+                Divider()
+                computerControlSection
+
                 if let task = model.snapshot.taskProgress {
                     Divider()
                     TaskProgressView(task: task) {
@@ -145,6 +148,187 @@ struct ProjectDetailView: View {
                     )
                 }
             }
+        }
+    }
+
+
+    private var computerControlSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                SectionEyebrow(title: L10n.string("computer.title"))
+                Spacer(minLength: 12)
+                Label(
+                    computerControlStatusText,
+                    systemImage: model.computerSafety.stopped
+                        ? "hand.raised.fill"
+                        : (model.computerSafety.pendingApprovals.isEmpty ? "desktopcomputer" : "exclamationmark.circle.fill")
+                )
+                .chadexFont(.caption, weight: .medium)
+                .foregroundStyle(
+                    model.computerSafety.stopped || !model.computerSafety.pendingApprovals.isEmpty
+                        ? Color.orange
+                        : Color.secondary
+                )
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: layout.spacing(14)) {
+                    computerControlModePicker
+                    Spacer(minLength: 12)
+                    computerStopButton
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    computerControlModePicker
+                    computerStopButton
+                }
+            }
+
+            Text(computerControlModeDescription)
+                .chadexFont(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let approval = model.computerSafety.pendingApprovals.first {
+                Divider()
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L10n.string("computer.approvalTitle"))
+                            .chadexFont(.callout, weight: .semibold)
+                        Text(L10n.string("computer.approvalAction", computerActionLabel(approval.action)))
+                            .chadexFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 12)
+                    Button(L10n.string("computer.deny")) {
+                        Task { await model.denyComputerControl(approval) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(model.computerSafetyMutationInFlight)
+
+                    Button(L10n.string("computer.allowOnce")) {
+                        Task { await model.approveComputerControl(approval) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(model.computerSafetyMutationInFlight)
+                }
+                .accessibilityElement(children: .contain)
+
+                if model.computerSafety.pendingApprovals.count > 1 {
+                    Text(L10n.string(
+                        "computer.moreApprovals",
+                        model.computerSafety.pendingApprovals.count - 1
+                    ))
+                    .chadexFont(.caption)
+                    .foregroundStyle(.tertiary)
+                }
+            }
+
+            if let error = model.computerSafetyError {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .chadexFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(L10n.string("computer.safetyNote"))
+                .chadexFont(.caption)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var computerControlModePicker: some View {
+        Picker(
+            L10n.string("computer.mode"),
+            selection: Binding(
+                get: { model.computerSafety.mode },
+                set: { mode in
+                    Task { await model.setComputerControlMode(mode) }
+                }
+            )
+        ) {
+            Text(L10n.string("computer.mode.readOnly")).tag(ComputerControlMode.readOnly)
+            Text(L10n.string("computer.mode.ask")).tag(ComputerControlMode.askBeforeControl)
+            Text(L10n.string("computer.mode.allowSession")).tag(ComputerControlMode.allowSession)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: layout.control(520))
+        .disabled(model.computerSafetyMutationInFlight || !model.snapshot.tunnelReady)
+        .accessibilityLabel(L10n.string("computer.mode"))
+    }
+
+    @ViewBuilder
+    private var computerStopButton: some View {
+        if model.computerSafety.stopped {
+            Button {
+                Task { await model.setComputerControlMode(.askBeforeControl) }
+            } label: {
+                Label(L10n.string("computer.resumeAsk"), systemImage: "play.circle")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .disabled(model.computerSafetyMutationInFlight || !model.snapshot.tunnelReady)
+            .help(L10n.string("computer.resumeAskHelp"))
+        } else {
+            Button(role: .destructive) {
+                Task { await model.stopComputerControl() }
+            } label: {
+                Label(L10n.string("computer.stop"), systemImage: "stop.circle.fill")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .disabled(model.computerSafetyMutationInFlight || !model.snapshot.tunnelReady)
+            .help(L10n.string("computer.stopHelp"))
+        }
+    }
+
+    private var computerControlStatusText: String {
+        if model.computerSafety.stopped {
+            return L10n.string("computer.status.stopped")
+        }
+        if !model.computerSafety.pendingApprovals.isEmpty {
+            return L10n.string("computer.status.waiting")
+        }
+        switch model.computerSafety.mode {
+        case .readOnly:
+            return L10n.string("computer.status.readOnly")
+        case .askBeforeControl:
+            return L10n.string("computer.status.ask")
+        case .allowSession:
+            return L10n.string("computer.status.allowSession")
+        }
+    }
+
+    private var computerControlModeDescription: String {
+        if model.computerSafety.stopped {
+            return L10n.string("computer.description.stopped")
+        }
+        switch model.computerSafety.mode {
+        case .readOnly:
+            return L10n.string("computer.description.readOnly")
+        case .askBeforeControl:
+            return L10n.string("computer.description.ask")
+        case .allowSession:
+            return L10n.string("computer.description.allowSession")
+        }
+    }
+
+    private func computerActionLabel(_ action: String) -> String {
+        switch action {
+        case "launch_application": return L10n.string("computer.action.launch")
+        case "activate_window": return L10n.string("computer.action.activate")
+        case "press": return L10n.string("computer.action.press")
+        case "focus": return L10n.string("computer.action.focus")
+        case "scroll_to_element": return L10n.string("computer.action.scroll")
+        case "key": return L10n.string("computer.action.key")
+        case "input_text": return L10n.string("computer.action.inputText")
+        case "pointer_move": return L10n.string("computer.action.pointerMove")
+        case "pointer_click": return L10n.string("computer.action.pointerClick")
+        case "write_clipboard": return L10n.string("computer.action.clipboardWrite")
+        default: return L10n.string("computer.action.control")
         }
     }
 

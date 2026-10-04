@@ -1,5 +1,6 @@
 use super::*;
 use std::time::Duration;
+use crate::chadex_core::computer_safety::ComputerControlMode;
 
 fn state(backend_url: String) -> IngressState {
     let tracker = Arc::new(VerificationTracker::default());
@@ -14,6 +15,7 @@ fn state(backend_url: String) -> IngressState {
         admission: Arc::new(Semaphore::new(MAX_IN_FLIGHT)),
         tracker,
         performance: Arc::new(PerformanceTraceStore::default()),
+        computer_safety: Arc::new(ComputerSafetyController::default()),
         armed: Arc::new(AtomicBool::new(true)),
         accepting: Arc::new(AtomicBool::new(true)),
     }
@@ -25,6 +27,34 @@ fn request() -> Request<Body> {
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_files"}}"#,
         ))
         .unwrap()
+}
+
+fn computer_request(action: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .body(Body::from(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 41,
+                "method": "tools/call",
+                "params": {
+                    "name": "computer_control",
+                    "arguments": {
+                        "action": action,
+                        "client_id": "test-runner",
+                        "surface_id": "surface_test",
+                        "element_id": "element_test"
+                    }
+                }
+            })
+            .to_string(),
+        ))
+        .unwrap()
+}
+
+async fn response_json(response: Response<Body>) -> Value {
+    let bytes = to_bytes(response.into_body(), MAX_REQUEST_BYTES).await.unwrap();
+    serde_json::from_slice(&bytes).unwrap()
 }
 async fn backend(app: Router) -> (String, JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -94,6 +124,278 @@ async fn cancellation_before_headers_does_not_leave_a_live_trace() {
     assert!(traces[0].finished_at_ms.is_some());
     assert_eq!(state.admission.available_permits(), MAX_IN_FLIGHT);
     server.abort();
+}
+
+
+#[tokio::test]
+async fn computer_read_only_denies_before_backend_dispatch() {
+    let state = state("http://127.0.0.1:1/mcp".into());
+    state
+        .computer_safety
+        .set_mode(ComputerControlMode::ReadOnly);
+
+    let response = proxy_inner(state.clone(), computer_request("press"))
+        .await
+        .unwrap();
+    let body = response_json(response).await;
+    assert_eq!(body["id"], 41);
+    assert_eq!(body["result"]["isError"], true);
+    assert_eq!(
+        body["result"]["structuredContent"]["output"]["error_kind"],
+        "computer_control_read_only"
+    );
+    assert_eq!(
+        body["result"]["structuredContent"]["output"]["execution_state"],
+        "not_started"
+    );
+    assert!(state
+        .computer_safety
+        .snapshot()
+        .audit
+        .iter()
+        .any(|event| event.event == "control_denied"
+            && event.reason.as_deref() == Some("read_only")));
+}
+
+#[tokio::test]
+async fn computer_ask_mode_allows_only_after_explicit_approval() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let backend_entered = Arc::clone(&entered);
+    let (url, server) = backend(Router::new().route(
+        "/mcp",
+        any(move || {
+            let entered = Arc::clone(&backend_entered);
+            async move {
+                entered.notify_one();
+                (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, "application/json")],
+                    r#"{"jsonrpc":"2.0","id":41,"result":{"content":[],"isError":false}}"#,
+                )
+            }
+        }),
+    ))
+    .await;
+    let state = state(url);
+    let request_state = state.clone();
+    let inflight =
+        tokio::spawn(async move { proxy_inner(request_state, computer_request("press")).await.unwrap() });
+
+    let approval = loop {
+        if let Some(approval) = state
+            .computer_safety
+            .snapshot()
+            .pending_approvals
+            .first()
+            .cloned()
+        {
+            break approval;
+        }
+        tokio::task::yield_now().await;
+    };
+    assert_eq!(approval.action, "press");
+    assert!(state.computer_safety.approve(&approval.approval_id));
+    tokio::time::timeout(Duration::from_secs(2), entered.notified())
+        .await
+        .unwrap();
+
+    let body = response_json(inflight.await.unwrap()).await;
+    assert_eq!(body["result"]["isError"], false);
+    let audit = state.computer_safety.snapshot().audit;
+    assert!(audit.iter().any(|event| event.event == "approval_requested"));
+    assert!(audit.iter().any(|event| event.event == "approval_approved"));
+    assert!(audit.iter().any(|event| event.event == "control_dispatched"));
+    server.abort();
+}
+
+#[tokio::test]
+async fn computer_ask_mode_denial_never_reaches_backend() {
+    let state = state("http://127.0.0.1:1/mcp".into());
+    let request_state = state.clone();
+    let inflight =
+        tokio::spawn(async move { proxy_inner(request_state, computer_request("input_text")).await.unwrap() });
+    let approval = loop {
+        if let Some(approval) = state
+            .computer_safety
+            .snapshot()
+            .pending_approvals
+            .first()
+            .cloned()
+        {
+            break approval;
+        }
+        tokio::task::yield_now().await;
+    };
+    assert_eq!(approval.action, "input_text");
+    assert!(state.computer_safety.deny(&approval.approval_id));
+    let body = response_json(inflight.await.unwrap()).await;
+    assert_eq!(
+        body["result"]["structuredContent"]["output"]["error_kind"],
+        "computer_control_denied"
+    );
+    assert_eq!(
+        body["result"]["structuredContent"]["output"]["dispatch_certainty"],
+        "not_started"
+    );
+}
+
+
+#[tokio::test]
+async fn computer_stop_before_action_denies_without_dispatch() {
+    let state = state("http://127.0.0.1:1/mcp".into());
+    state
+        .computer_safety
+        .set_mode(ComputerControlMode::AllowSession);
+    state.computer_safety.stop();
+
+    let body = response_json(
+        proxy_inner(state.clone(), computer_request("key"))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let output = &body["result"]["structuredContent"]["output"];
+    assert_eq!(output["error_kind"], "computer_control_stopped");
+    assert_eq!(output["execution_state"], "not_started");
+    assert_eq!(output["dispatch_certainty"], "not_started");
+}
+
+#[test]
+fn computer_control_inspection_covers_direct_gateway_and_rejects_batches() {
+    let direct = serde_json::to_vec(&json!({
+        "jsonrpc":"2.0",
+        "id": 7,
+        "method":"tools/call",
+        "params":{"name":"computer_control","arguments":{"action":"press"}}
+    }))
+    .unwrap();
+    assert!(matches!(
+        inspect_computer_control(&direct),
+        ComputerControlInspection::Single { id, action }
+            if id == json!(7) && action == "press"
+    ));
+
+    let gateway = serde_json::to_vec(&json!({
+        "jsonrpc":"2.0",
+        "id": "gateway",
+        "method":"tools/call",
+        "params":{
+            "name":"call_runtime_tool",
+            "arguments":{
+                "tool":"computer_control",
+                "arguments":{"action":"write_clipboard","text":"MUST_NOT_BE_RETAINED"}
+            }
+        }
+    }))
+    .unwrap();
+    assert!(matches!(
+        inspect_computer_control(&gateway),
+        ComputerControlInspection::Single { id, action }
+            if id == json!("gateway") && action == "write_clipboard"
+    ));
+
+    let batch = serde_json::to_vec(&json!([
+        {"jsonrpc":"2.0","id":1,"method":"tools/list"},
+        {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"computer_control","arguments":{"action":"press"}}}
+    ]))
+    .unwrap();
+    assert!(matches!(
+        inspect_computer_control(&batch),
+        ComputerControlInspection::BatchRejected
+    ));
+}
+
+#[tokio::test]
+async fn computer_stop_during_backend_dispatch_returns_outcome_unknown_and_reobserve() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let backend_entered = Arc::clone(&entered);
+    let backend_release = Arc::clone(&release);
+    let (url, server) = backend(Router::new().route(
+        "/mcp",
+        any(move || {
+            let entered = Arc::clone(&backend_entered);
+            let release = Arc::clone(&backend_release);
+            async move {
+                entered.notify_one();
+                release.notified().await;
+                (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, "application/json")],
+                    r#"{"jsonrpc":"2.0","id":41,"result":{"content":[],"isError":false}}"#,
+                )
+            }
+        }),
+    ))
+    .await;
+    let state = state(url);
+    state
+        .computer_safety
+        .set_mode(ComputerControlMode::AllowSession);
+    let request_state = state.clone();
+    let inflight =
+        tokio::spawn(async move { proxy_inner(request_state, computer_request("pointer_click")).await.unwrap() });
+
+    tokio::time::timeout(Duration::from_secs(2), entered.notified())
+        .await
+        .unwrap();
+    state.computer_safety.stop();
+
+    let body = response_json(inflight.await.unwrap()).await;
+    let output = &body["result"]["structuredContent"]["output"];
+    assert_eq!(output["error_kind"], "computer_control_stopped_during_dispatch");
+    assert_eq!(output["execution_state"], "outcome_unknown");
+    assert_eq!(output["dispatch_certainty"], "unknown");
+    assert_eq!(output["recovery_kind"], "reobserve");
+    assert_eq!(output["reconcile_with"], "computer_observe");
+    assert!(state
+        .computer_safety
+        .snapshot()
+        .audit
+        .iter()
+        .any(|event| event.event == "control_dispatch_interrupted"));
+    let traces = state.performance.snapshot(1);
+    assert_eq!(traces.len(), 1);
+    assert_eq!(
+        traces[0].completion,
+        "computer_control_stopped_during_dispatch"
+    );
+    release.notify_waiters();
+    server.abort();
+}
+
+#[tokio::test]
+async fn computer_control_in_json_rpc_batch_fails_closed_before_backend() {
+    let state = state("http://127.0.0.1:1/mcp".into());
+    state
+        .computer_safety
+        .set_mode(ComputerControlMode::AllowSession);
+    let request = Request::builder()
+        .method("POST")
+        .body(Body::from(
+            json!([
+                {"jsonrpc":"2.0","id":1,"method":"tools/list"},
+                {
+                    "jsonrpc":"2.0",
+                    "id":2,
+                    "method":"tools/call",
+                    "params":{"name":"computer_control","arguments":{"action":"press"}}
+                }
+            ])
+            .to_string(),
+        ))
+        .unwrap();
+    let body = response_json(proxy_inner(state.clone(), request).await.unwrap()).await;
+    assert_eq!(
+        body["result"]["structuredContent"]["output"]["error_kind"],
+        "computer_control_batch_rejected"
+    );
+    assert!(state
+        .computer_safety
+        .snapshot()
+        .audit
+        .iter()
+        .any(|event| event.reason.as_deref() == Some("batch_not_supported")));
 }
 
 #[test]

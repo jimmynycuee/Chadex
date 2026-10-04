@@ -1,3 +1,4 @@
+use super::computer_safety::{ComputerControlMode, ComputerSafetyController, ComputerSafetySnapshot};
 use super::credentials::CredentialStore;
 use super::performance::PerformanceTraceStore;
 use super::verification::{McpIngress, VerificationTracker};
@@ -174,6 +175,7 @@ pub struct TunnelManager {
     tunnel_client_override: Option<PathBuf>,
     verification: Arc<VerificationTracker>,
     performance: Arc<PerformanceTraceStore>,
+    computer_safety: Arc<ComputerSafetyController>,
     inner: Mutex<TunnelInner>,
     lifecycle: Mutex<()>,
     published: RwLock<TunnelSnapshot>,
@@ -193,6 +195,7 @@ impl TunnelManager {
             tunnel_client_override: None,
             verification,
             performance,
+            computer_safety: Arc::new(ComputerSafetyController::default()),
             inner: Mutex::new(TunnelInner {
                 credentials: CredentialStore::default(),
                 child: None,
@@ -318,6 +321,7 @@ impl TunnelManager {
     ) -> ChadexResult<TunnelSnapshot> {
         let _lifecycle = self.lifecycle.lock().await;
         self.stop_requested.store(false, Ordering::SeqCst);
+        self.computer_safety.begin_session();
         let (tunnel_id, api_key) = {
             let inner = self.inner.lock().await;
             if inner.child.is_some() {
@@ -394,10 +398,11 @@ impl TunnelManager {
     ) -> ChadexResult<(Child, TunnelSession, McpIngress)> {
         let binary = self.resolve_tunnel_client_for_start().await?;
         let session = TunnelSession::create(&self.root, bootstrap_token.as_str())?;
-        let ingress = McpIngress::start(
+        let ingress = McpIngress::start_with_safety(
             backend_mcp_url.to_string(),
             Arc::clone(&self.verification),
             Arc::clone(&self.performance),
+            Arc::clone(&self.computer_safety),
         )
         .await?;
         let mcp_url = ingress.mcp_url().to_string();
@@ -541,6 +546,27 @@ impl TunnelManager {
         };
         ingress.resume();
         true
+    }
+
+
+    pub fn computer_safety_snapshot(&self) -> ComputerSafetySnapshot {
+        self.computer_safety.snapshot()
+    }
+
+    pub fn set_computer_control_mode(&self, mode: ComputerControlMode) -> ComputerSafetySnapshot {
+        self.computer_safety.set_mode(mode)
+    }
+
+    pub fn approve_computer_control(&self, approval_id: &str) -> bool {
+        self.computer_safety.approve(approval_id)
+    }
+
+    pub fn deny_computer_control(&self, approval_id: &str) -> bool {
+        self.computer_safety.deny(approval_id)
+    }
+
+    pub fn stop_computer_control(&self) -> ComputerSafetySnapshot {
+        self.computer_safety.stop()
     }
 
     pub async fn stop(&self) -> ChadexResult<TunnelSnapshot> {

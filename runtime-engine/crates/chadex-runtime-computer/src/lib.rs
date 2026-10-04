@@ -669,6 +669,71 @@ struct ApplicationRecord {
     native_identity: Vec<u8>,
 }
 
+fn sensitive_application_name(name: &str) -> bool {
+    let normalized = name.trim().to_ascii_lowercase();
+    matches!(
+        normalized.as_str(),
+        "passwords"
+            | "keychain access"
+            | "securityagent"
+            | "security agent"
+            | "authorizationhost"
+            | "authorization host"
+    )
+}
+
+fn sensitive_auth_title(title: &str) -> bool {
+    let normalized = title.trim().to_ascii_lowercase();
+    [
+        "authentication",
+        "authorization",
+        "authenticate",
+        "enter password",
+        "password required",
+        "requires a password",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
+fn sensitive_window_contains_point(
+    application: &str,
+    title: &str,
+    origin_x: i32,
+    origin_y: i32,
+    width: u32,
+    height: u32,
+    target_x: f64,
+    target_y: f64,
+) -> bool {
+    if !sensitive_application_name(application) && !sensitive_auth_title(title) {
+        return false;
+    }
+    let left = f64::from(origin_x);
+    let top = f64::from(origin_y);
+    let right = left + f64::from(width);
+    let bottom = top + f64::from(height);
+    target_x >= left && target_x < right && target_y >= top && target_y < bottom
+}
+
+fn ensure_application_not_sensitive(application: &ApplicationRecord) -> Result<(), String> {
+    if sensitive_application_name(&application.display_name) {
+        return Err(
+            "permission_denied: sensitive Computer application cannot be controlled".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn ensure_surface_not_sensitive(surface: &SurfaceRecord) -> Result<(), String> {
+    if sensitive_application_name(&surface.application) || sensitive_auth_title(&surface.title) {
+        return Err(
+            "permission_denied: sensitive Computer surface cannot be controlled".to_string(),
+        );
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PlatformDisplay {
     native_identity: Vec<u8>,
@@ -1154,6 +1219,9 @@ impl ComputerRuntime {
         // All native identity/mapping/shared-input checks occur before the effect boundary.
         let plan = platform::prepare_pointer(&display, x, y, action)?;
 
+        #[cfg(target_os = "macos")]
+        platform::ensure_pointer_target_not_sensitive(plan.target_x, plan.target_y)?;
+
         // Crossing this boundary consumes the snapshot generation before the first native
         // pointer effect, even if dispatch subsequently reports definite not_started or an uncertain outcome.
         let result = dispatch_after_spending_pointer_generation(
@@ -1198,6 +1266,7 @@ impl ComputerRuntime {
         let record = registry
             .get(application_id)
             .ok_or_else(|| "stale_application: unknown or stale application_id".to_string())?;
+        ensure_application_not_sensitive(record)?;
         let result = effect(record);
         drop(registry);
         result
@@ -1313,6 +1382,7 @@ impl ComputerRuntime {
             .get(surface_id)
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
+        ensure_surface_not_sensitive(&record)?;
         platform::activate_window(surface_id, &record)
     }
 
@@ -1339,6 +1409,7 @@ impl ComputerRuntime {
             .get(surface_id)
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
+        ensure_surface_not_sensitive(&record)?;
         let element = self
             .elements
             .lock()
@@ -1369,6 +1440,7 @@ impl ComputerRuntime {
             .get(surface_id)
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
+        ensure_surface_not_sensitive(&record)?;
         let element = self
             .elements
             .lock()
@@ -1399,6 +1471,7 @@ impl ComputerRuntime {
             .get(surface_id)
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
+        ensure_surface_not_sensitive(&record)?;
         platform::key_input(surface_id, &record, key, modifiers)
     }
 
@@ -1426,6 +1499,7 @@ impl ComputerRuntime {
             .get(surface_id)
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
+        ensure_surface_not_sensitive(&record)?;
         let element = self
             .elements
             .lock()
@@ -3095,6 +3169,103 @@ mod platform {
             "unsupported_platform: computer observation is unavailable on this platform"
                 .to_string(),
         )
+    }
+}
+
+#[cfg(test)]
+mod sensitive_surface_tests {
+    use super::*;
+
+    fn surface(application: &str, title: &str) -> SurfaceRecord {
+        SurfaceRecord {
+            native_id: 1,
+            pid: 1,
+            identity_hash: [0; 32],
+            application: application.to_string(),
+            title: title.to_string(),
+            width: 640,
+            height: 480,
+        }
+    }
+
+    #[test]
+    fn password_keychain_and_authentication_surfaces_fail_closed_without_echoing_titles() {
+        for (application, title) in [
+            ("Passwords", "Passwords"),
+            ("Keychain Access", "All Items"),
+            ("SecurityAgent", "Authentication"),
+            ("Example App", "Authorization Required"),
+            ("Example App", "Enter Password"),
+        ] {
+            let error = ensure_surface_not_sensitive(&surface(application, title)).unwrap_err();
+            assert_eq!(
+                error,
+                "permission_denied: sensitive Computer surface cannot be controlled"
+            );
+            assert!(!error.contains(application));
+            assert!(!error.contains(title));
+        }
+    }
+
+    #[test]
+    fn ordinary_application_and_surface_remain_controllable() {
+        let application = ApplicationRecord {
+            display_name: "TextEdit".to_string(),
+            native_identity: vec![1],
+        };
+        assert!(ensure_application_not_sensitive(&application).is_ok());
+        assert!(ensure_surface_not_sensitive(&surface("TextEdit", "Notes")).is_ok());
+    }
+
+    #[test]
+    fn pointer_coordinates_inside_sensitive_window_are_blocked_without_affecting_other_points() {
+        assert!(sensitive_window_contains_point(
+            "Passwords",
+            "Passwords",
+            100,
+            200,
+            500,
+            400,
+            250.0,
+            300.0,
+        ));
+        assert!(sensitive_window_contains_point(
+            "Example App",
+            "Authentication Required",
+            -300,
+            20,
+            250,
+            200,
+            -100.0,
+            100.0,
+        ));
+        assert!(!sensitive_window_contains_point(
+            "Passwords",
+            "Passwords",
+            100,
+            200,
+            500,
+            400,
+            700.0,
+            300.0,
+        ));
+        assert!(!sensitive_window_contains_point(
+            "TextEdit", "Notes", 100, 200, 500, 400, 250.0, 300.0,
+        ));
+    }
+
+    #[test]
+    fn passwords_application_launch_is_blocked_without_identity_leakage() {
+        let application = ApplicationRecord {
+            display_name: "Passwords".to_string(),
+            native_identity: vec![1, 2, 3],
+        };
+        let error = ensure_application_not_sensitive(&application).unwrap_err();
+        assert_eq!(
+            error,
+            "permission_denied: sensitive Computer application cannot be controlled"
+        );
+        assert!(!error.contains("Passwords"));
     }
 }
 

@@ -13,6 +13,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var mascotTraces: [McpPerformanceTraceEntry] = []
     @Published private(set) var performanceTraces: [McpPerformanceTraceEntry] = []
     @Published private(set) var lifecyclePerformanceTraces: [LifecyclePerformanceTraceEntry] = []
+    @Published private(set) var computerSafety: ComputerSafetyStatus = .initial
+    @Published private(set) var computerSafetyError: String?
+    @Published private(set) var computerSafetyMutationInFlight = false
     @Published var activitySearch = ""
     @Published var activityFilter: ActivityFilter = .all
     @Published var presentedError: PresentedError?
@@ -439,6 +442,7 @@ final class AppModel: ObservableObject {
             _ = try await requestSnapshot(method: "getStatus", params: MascotStatusParams(
                 includeMascotJobs: UserDefaults.standard.object(forKey: "ferret.visible") as? Bool != false
             ))
+            await refreshComputerSafety()
             await refreshActivities()
             await refreshMascotTraces()
             let now = ProcessInfo.processInfo.systemUptime
@@ -467,6 +471,79 @@ final class AppModel: ObservableObject {
             if !showingConnectionSettings {
                 present(error, quietlyIfAlreadyShown: true)
             }
+        }
+    }
+
+
+    func refreshComputerSafety() async {
+        do {
+            let status: ComputerSafetyStatus = try await helper.request(
+                method: "getComputerSafety",
+                params: EmptyParams()
+            )
+            computerSafety = status
+            computerSafetyError = nil
+        } catch {
+            computerSafetyError = error.localizedDescription
+        }
+    }
+
+    func setComputerControlMode(_ mode: ComputerControlMode) async {
+        guard !computerSafetyMutationInFlight else { return }
+        computerSafetyMutationInFlight = true
+        defer { computerSafetyMutationInFlight = false }
+        do {
+            let status: ComputerSafetyStatus = try await helper.request(
+                method: "setComputerControlMode",
+                params: ComputerControlModeParams(mode: mode)
+            )
+            computerSafety = status
+            computerSafetyError = nil
+        } catch {
+            computerSafetyError = error.localizedDescription
+            present(error)
+        }
+    }
+
+    func approveComputerControl(_ approval: ComputerApproval) async {
+        await resolveComputerApproval(approval, method: "approveComputerControl")
+    }
+
+    func denyComputerControl(_ approval: ComputerApproval) async {
+        await resolveComputerApproval(approval, method: "denyComputerControl")
+    }
+
+    func stopComputerControl() async {
+        guard !computerSafetyMutationInFlight else { return }
+        computerSafetyMutationInFlight = true
+        defer { computerSafetyMutationInFlight = false }
+        do {
+            let status: ComputerSafetyStatus = try await helper.request(
+                method: "stopComputerControl",
+                params: EmptyParams()
+            )
+            computerSafety = status
+            computerSafetyError = nil
+        } catch {
+            computerSafetyError = error.localizedDescription
+            present(error)
+        }
+    }
+
+    private func resolveComputerApproval(_ approval: ComputerApproval, method: String) async {
+        guard !computerSafetyMutationInFlight else { return }
+        computerSafetyMutationInFlight = true
+        defer { computerSafetyMutationInFlight = false }
+        do {
+            let status: ComputerSafetyStatus = try await helper.request(
+                method: method,
+                params: ComputerApprovalParams(approvalId: approval.approvalId)
+            )
+            computerSafety = status
+            computerSafetyError = nil
+        } catch {
+            computerSafetyError = error.localizedDescription
+            await refreshComputerSafety()
         }
     }
 
@@ -1389,6 +1466,9 @@ final class AppModel: ObservableObject {
     }
 
     private var pollInterval: TimeInterval {
+        if snapshot.tunnelReady && snapshot.chatGPTConnected {
+            return isAppActive ? 1 : 5
+        }
         if snapshot.tunnelReady && UserDefaults.standard.object(forKey: "ferret.visible") as? Bool != false {
             return isAppActive ? 1 : 5
         }

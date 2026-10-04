@@ -3,6 +3,37 @@ import XCTest
 @testable import ChadexApp
 
 final class ProtocolModelTests: XCTestCase {
+    func testComputerSafetyStatusDecodesModesApprovalsAndAuditWithoutSensitivePayloads() throws {
+        let json = #"""
+        {
+          "mode": "ask_before_control",
+          "stopped": false,
+          "generation": 12,
+          "pending_approvals": [{
+            "approval_id": "computer_approval_1",
+            "action": "input_text",
+            "created_at_ms": 1791100000000
+          }],
+          "audit": [{
+            "sequence": 9,
+            "timestamp_ms": 1791100000001,
+            "event": "approval_requested",
+            "action": "input_text",
+            "reason": null
+          }]
+        }
+        """#.data(using: .utf8)!
+
+        let status = try JSONDecoder.chadex.decode(ComputerSafetyStatus.self, from: json)
+        XCTAssertEqual(status.mode, .askBeforeControl)
+        XCTAssertFalse(status.stopped)
+        XCTAssertEqual(status.generation, 12)
+        XCTAssertEqual(status.pendingApprovals.first?.action, "input_text")
+        XCTAssertEqual(status.audit.first?.event, "approval_requested")
+        XCTAssertFalse(json.contains(Data("secret text".utf8)))
+        XCTAssertFalse(json.contains(Data("clipboard contents".utf8)))
+    }
+
     func testProjectInstructionsInspectionDecodesEffectiveHierarchy() throws {
         let json = #"""
         {

@@ -130,10 +130,8 @@ pub struct PendingMcpTrace {
 impl PendingMcpTrace {
     pub fn sequence(&self) -> u64 { self.sequence.unwrap_or(0) }
     pub fn hand_off(&mut self) { self.sequence = None; }
-}
 
-impl Drop for PendingMcpTrace {
-    fn drop(&mut self) {
+    pub fn complete(&mut self, completion: &str) {
         let Some(sequence) = self.sequence.take() else { return; };
         let mut inner = self.store.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(entry) = inner.entries.iter_mut().find(|entry| entry.sequence == sequence) {
@@ -141,9 +139,15 @@ impl Drop for PendingMcpTrace {
                 let finished = now_ms();
                 entry.finished_at_ms = Some(finished);
                 entry.total_us = finished.saturating_sub(entry.started_at_ms).saturating_mul(1000);
-                entry.completion = "client_dropped".to_string();
+                entry.completion = completion.to_string();
             }
         }
+    }
+}
+
+impl Drop for PendingMcpTrace {
+    fn drop(&mut self) {
+        self.complete("client_dropped");
     }
 }
 
