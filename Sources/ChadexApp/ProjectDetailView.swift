@@ -221,16 +221,33 @@ struct ProjectDetailView: View {
                 )
             }
 
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: layout.spacing(14)) {
-                    computerControlModePicker
-                    Spacer(minLength: 12)
-                    computerStopButton
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(L10n.string("computer.defaultPolicy"))
+                        .chadexFont(.caption, weight: .semibold)
+                        .foregroundStyle(.secondary)
+                    computerDefaultPolicyPicker
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    computerControlModePicker
-                    computerStopButton
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(L10n.string("computer.currentSession"))
+                        .chadexFont(.caption, weight: .semibold)
+                        .foregroundStyle(.secondary)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            computerAllowSessionButton
+                            computerStopButton
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            computerAllowSessionButton
+                            computerStopButton
+                        }
+                    }
+                    if !model.snapshot.tunnelReady {
+                        Text(L10n.string("computer.sessionUnavailable"))
+                            .chadexFont(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
 
@@ -289,11 +306,15 @@ struct ProjectDetailView: View {
         }
     }
 
-    private var computerControlModePicker: some View {
+    private var computerDefaultPolicyPicker: some View {
         Picker(
-            L10n.string("computer.mode"),
+            L10n.string("computer.defaultPolicy"),
             selection: Binding(
-                get: { model.computerSafety.mode },
+                get: {
+                    model.computerSafety.mode == .readOnly
+                        ? ComputerControlMode.readOnly
+                        : ComputerControlMode.askBeforeControl
+                },
                 set: { mode in
                     Task { await model.setComputerControlMode(mode) }
                 }
@@ -301,13 +322,36 @@ struct ProjectDetailView: View {
         ) {
             Text(L10n.string("computer.mode.readOnly")).tag(ComputerControlMode.readOnly)
             Text(L10n.string("computer.mode.ask")).tag(ComputerControlMode.askBeforeControl)
-            Text(L10n.string("computer.mode.allowSession")).tag(ComputerControlMode.allowSession)
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .frame(maxWidth: layout.control(520))
-        .disabled(model.computerSafetyMutationInFlight || !model.snapshot.tunnelReady)
-        .accessibilityLabel(L10n.string("computer.mode"))
+        .frame(maxWidth: layout.control(420))
+        .disabled(model.computerSafetyMutationInFlight)
+        .accessibilityLabel(L10n.string("computer.defaultPolicy"))
+    }
+
+    @ViewBuilder
+    private var computerAllowSessionButton: some View {
+        if model.computerSafety.mode == .allowSession && model.snapshot.tunnelReady {
+            Button {
+                Task { await model.setComputerControlMode(.askBeforeControl) }
+            } label: {
+                Label(L10n.string("computer.resumeAsk"), systemImage: "person.crop.circle.badge.checkmark")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .disabled(model.computerSafetyMutationInFlight)
+        } else {
+            Button {
+                Task { await model.setComputerControlMode(.allowSession) }
+            } label: {
+                Label(L10n.string("computer.mode.allowSession"), systemImage: "person.crop.circle.badge.checkmark")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .disabled(model.computerSafetyMutationInFlight || !model.snapshot.tunnelReady)
+            .help(L10n.string("computer.allowSessionHelp"))
+        }
     }
 
     @ViewBuilder
@@ -502,6 +546,14 @@ struct ProjectDetailView: View {
         .accessibilityElement(children: .contain)
     }
 
+    private var localAgentsFileExists: Bool {
+        FileManager.default.fileExists(
+            atPath: URL(fileURLWithPath: project.path)
+                .appendingPathComponent("AGENTS.md", isDirectory: false)
+                .path
+        )
+    }
+
     private var instructionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -526,10 +578,8 @@ struct ProjectDetailView: View {
                 .controlSize(.small)
                 .disabled(
                     model.projectAgentsWriteInFlight
-                        || model.projectInstructionsLoading
                         || model.isSwitchingProject
-                        || model.projectInstructions?.isAvailable != true
-                        || model.projectInstructions?.hasTargetAgentsFile == true
+                        || localAgentsFileExists
                 )
             }
 

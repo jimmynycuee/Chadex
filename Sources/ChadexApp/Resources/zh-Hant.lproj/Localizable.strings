@@ -35,6 +35,10 @@
 "agentSettings.currentProject" = "目前專案：%@";
 
 "computer.title" = "COMPUTER CONTROL";
+"computer.defaultPolicy" = "預設控制政策";
+"computer.currentSession" = "目前工作階段";
+"computer.sessionUnavailable" = "連線 ChatGPT 後才能使用僅限工作階段的控制；上方預設政策可在離線時調整。";
+"computer.allowSessionHelp" = "只在目前已連線的工作階段中允許 Computer Control 不逐次詢問。";
 "computer.mode" = "Computer control 模式";
 "computer.mode.readOnly" = "僅讀取";
 "computer.mode.ask" = "控制前詢問";

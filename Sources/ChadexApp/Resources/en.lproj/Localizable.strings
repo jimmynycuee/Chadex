@@ -35,6 +35,10 @@
 "agentSettings.currentProject" = "Current project: %@";
 
 "computer.title" = "COMPUTER CONTROL";
+"computer.defaultPolicy" = "Default policy";
+"computer.currentSession" = "Current session";
+"computer.sessionUnavailable" = "Connect ChatGPT to use session-only controls. The default policy above can be adjusted offline.";
+"computer.allowSessionHelp" = "Allow Computer control without per-action approval for the current connected session only.";
 "computer.mode" = "Computer control mode";
 "computer.mode.readOnly" = "Read-only";
 "computer.mode.ask" = "Ask before control";

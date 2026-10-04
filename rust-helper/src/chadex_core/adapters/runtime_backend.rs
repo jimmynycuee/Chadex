@@ -22,6 +22,8 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::Digest;
+use std::fs::OpenOptions;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -214,46 +216,7 @@ impl RuntimeBackendAdapter {
         project_path: &str,
         content: &str,
     ) -> ChadexResult<Value> {
-        let target = self.exact_runtime_probe_target(project_path).await?;
-        let token = read_probe_token(&target.user_token_file).await.ok_or_else(|| {
-            ChadexError::new(
-                "project_instruction_write_unavailable",
-                "The local runtime credential is unavailable",
-                "Restore the local runtime, then try creating AGENTS.md again.",
-            )
-        })?;
-        let cancellation =
-            CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
-        let result = call_local_runtime_tool(
-            &self.probe_client,
-            &target.server_url,
-            token.as_str(),
-            "write_project_file",
-            json!({
-                "project": target.runtime_project_id,
-                "path": "AGENTS.md",
-                "content": content,
-                "overwrite": false
-            }),
-            &cancellation,
-        )
-        .await
-        .map_err(map_desktop_error)?
-        .ok_or_else(|| {
-            ChadexError::new(
-                "project_instruction_write_unavailable",
-                "The local runtime did not return the AGENTS.md write result",
-                "Refresh Project Instructions and retry only if AGENTS.md is still missing.",
-            )
-        })?;
-        if !result.success {
-            return Err(ChadexError::new(
-                operator_error_code(&result).unwrap_or("project_instruction_write_failed"),
-                "Chadex did not create AGENTS.md",
-                "Refresh Project Instructions. Existing files are never overwritten by this action.",
-            ));
-        }
-        Ok(result.output)
+        create_local_agents_file(project_path, content)
     }
 
     pub(crate) async fn skill_catalog(&self, project_path: &str) -> ChadexResult<Value> {
@@ -1855,6 +1818,69 @@ fn project_readiness(value: ProjectReadiness) -> &'static str {
     }
 }
 
+fn create_local_agents_file(project_path: &str, content: &str) -> ChadexResult<Value> {
+    let root = Path::new(project_path).canonicalize().map_err(|_| {
+        ChadexError::new(
+            "project_instruction_write_unavailable",
+            "The project folder is unavailable",
+            "Choose an existing local project folder, then try creating AGENTS.md again.",
+        )
+    })?;
+    let metadata = std::fs::metadata(&root).map_err(|_| {
+        ChadexError::new(
+            "project_instruction_write_unavailable",
+            "The project folder could not be inspected",
+            "Check the project folder permissions and try again.",
+        )
+    })?;
+    if !metadata.is_dir() {
+        return Err(ChadexError::new(
+            "project_instruction_write_unavailable",
+            "The selected project path is not a folder",
+            "Choose a local project folder, then try creating AGENTS.md again.",
+        ));
+    }
+
+    let target = root.join("AGENTS.md");
+    let mut file = match OpenOptions::new().write(true).create_new(true).open(&target) {
+        Ok(file) => file,
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+            return Err(ChadexError::new(
+                "project_instruction_exists",
+                "AGENTS.md already exists in this project",
+                "Open the existing AGENTS.md instead. Chadex never overwrites it from Create.",
+            ));
+        }
+        Err(_) => {
+            return Err(ChadexError::new(
+                "project_instruction_write_failed",
+                "Chadex could not create AGENTS.md",
+                "Check the project folder permissions and try again.",
+            ));
+        }
+    };
+
+    if let Err(error) = file.write_all(content.as_bytes()).and_then(|_| file.sync_all()) {
+        drop(file);
+        let _ = std::fs::remove_file(&target);
+        return Err(ChadexError::new(
+            "project_instruction_write_failed",
+            format!("Chadex could not finish writing AGENTS.md: {error}"),
+            "Check available disk space and project folder permissions, then retry.",
+        ));
+    }
+
+    Ok(json!({
+        "path": "AGENTS.md",
+        "created": true,
+        "overwritten": false,
+        "bytes_written": content.len(),
+        "changed": true,
+        "state_changed": true,
+        "execution_state": "completed"
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1867,6 +1893,34 @@ mod tests {
         json!({"success": true, "output": {
             "count": jobs.len(), "matched_count": jobs.len(), "truncated": false, "jobs": jobs
         }})
+    }
+
+    #[test]
+    fn create_local_agents_file_works_without_runtime_and_refuses_overwrite() {
+        let root = tempfile::tempdir().unwrap();
+        let first = create_local_agents_file(
+            root.path().to_str().unwrap(),
+            "# Project rules\n\n- Validate before commit.\n",
+        )
+        .unwrap();
+
+        assert_eq!(first["created"], true);
+        assert_eq!(first["overwritten"], false);
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("AGENTS.md")).unwrap(),
+            "# Project rules\n\n- Validate before commit.\n"
+        );
+
+        let error = create_local_agents_file(
+            root.path().to_str().unwrap(),
+            "# Replacement must not win\n",
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "project_instruction_exists");
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("AGENTS.md")).unwrap(),
+            "# Project rules\n\n- Validate before commit.\n"
+        );
     }
 
     #[test]
