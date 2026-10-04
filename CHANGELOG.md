@@ -2,6 +2,15 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.4.0
+
+- Added a streamlined **Agent Settings** workspace that combines project instructions (`AGENTS.md`) and Skills while keeping their runtime contracts separate.
+- Added safety-gated **Computer Use** with read-only observation, semantic control actions, approval modes, emergency Stop, sensitive-field protection, stale-identity fencing, and outcome-unknown recovery.
+- Productized Project Memory as a background capability: authorized bootstrap summaries are loaded automatically for coding tasks, durable architecture/decision/workflow knowledge can be maintained across sessions, and manual inspection stays behind an advanced project action.
+- Made root `AGENTS.md` creation and the Read-only / Ask-before-control Computer policy configurable before ChatGPT connects; session-only Computer permissions remain gated by an active tunnel.
+- Hardened Computer acceptance and macOS TCC identity handling, and added Windows parity/live-check coverage. The public v0.4.0 workflow still publishes the macOS ARM64 DMG; Windows installer candidates remain CI validation artifacts.
+- See `docs/releases/0.4.0.md` for validation and distribution boundaries.
+
 ## 0.3.3
 
 - Enabled ChatGPT host-file imports for Chadex's desktop-owned loopback Server when accessed through the OpenAI Secure Tunnel with a normal user API token; non-loopback and untrusted credential paths remain rejected.

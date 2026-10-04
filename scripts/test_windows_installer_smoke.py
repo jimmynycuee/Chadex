@@ -156,8 +156,8 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
     candidate = root / "candidate"
     candidate.mkdir()
     installer_data = b"unsigned candidate installer"
-    fixture_data = b"same production binaries, synthetic 0.3.2 metadata"
-    installer_name = "Chadex-0.3.3-windows-x64-unsigned-setup.exe"
+    fixture_data = b"same production binaries, synthetic 0.3.3 metadata"
+    installer_name = "Chadex-0.4.0-windows-x64-unsigned-setup.exe"
     (candidate / installer_name).write_bytes(installer_data)
     fixture_dir = candidate / "upgrade-fixture"
     fixture_dir.mkdir()
@@ -168,7 +168,7 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
         resources.append({"relative_path": relative, "sha256": digest(content),
                           "size_bytes": len(content)})
     resource_manifest = {
-        "schema": smoke.RESOURCE_SCHEMA, "version": "0.3.3", "arch": "AMD64",
+        "schema": smoke.RESOURCE_SCHEMA, "version": "0.4.0", "arch": "AMD64",
         "profile": "release", "production_features": {
             "custom-protocol": True, "desktop-smoke": False,
         }, "unsigned": True, "resources": resources,
@@ -176,7 +176,7 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
     resource_bytes = (json.dumps(resource_manifest, sort_keys=True) + "\n").encode()
     (candidate / "release-resources.json").write_bytes(resource_bytes)
     metadata = {
-        "schema": 1, "track": "W5", "version": "0.3.3", "source_sha": "a" * 40,
+        "schema": 1, "track": "W5", "version": "0.4.0", "source_sha": "a" * 40,
         "architecture": "x86_64", "profile": "release", "features": ["custom-protocol"],
         "desktop_smoke": False, "authenticode": "unsigned", "updater": "disabled",
         "installer": installer_name, "sha256": digest(installer_data),
