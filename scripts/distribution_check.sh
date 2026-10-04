@@ -2,6 +2,7 @@
 set -eu
 
 APP=${1:-dist/Chadex.app}
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 EXPECT_ARCHS=${CHADEX_EXPECT_ARCHS:-arm64}
 REQUIRE_NOTARIZED=${CHADEX_REQUIRE_NOTARIZED:-0}
 
@@ -54,6 +55,13 @@ printf '%s\n' "$executables" | while IFS= read -r executable; do
     exit 1
   }
 done
+
+identity_report=$("$ROOT/scripts/check_computer_identity.sh" "$APP")
+printf '%s\n' "$identity_report" | /usr/bin/grep -q '^computer_tcc_identity=stable_signed$' || {
+  echo "error: Developer ID release does not provide stable signed Computer runner identity" >&2
+  exit 1
+}
+printf '%s\n' "$identity_report"
 
 test -f "$CONTENTS/Resources/Chadex-LICENSE.txt"
 test -f "$CONTENTS/Resources/WebCodex-LICENSE.txt"

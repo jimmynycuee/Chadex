@@ -1650,7 +1650,8 @@ async fn computer_observe_direct_snapshot_call_reaches_runner_and_returns_native
 }
 
 #[tokio::test]
-async fn computer_direct_observe_act_verify_semantic_workflow_is_end_to_end() {
+async fn computer_direct_launch_activate_inspect_input_scroll_press_snapshot_verify_is_end_to_end()
+{
     let runtime = test_runtime();
     let client_id = "mcp-computer-workflow";
     let runner_instance_id = "inst-mcp-computer-workflow";
@@ -1658,6 +1659,7 @@ async fn computer_direct_observe_act_verify_semantic_workflow_is_end_to_end() {
     let surface_id = "surface_iavN7wEjRWeJq83v";
     let field_id = "element_name_field";
     let button_id = "element_submit_button";
+    let scroll_id = "element_scroll_target";
     let status_id = "element_status_text";
     let auth = crate::auth::AuthContext {
         kind: crate::auth::AuthKind::AgentToken,
@@ -1691,6 +1693,8 @@ async fn computer_direct_observe_act_verify_semantic_workflow_is_end_to_end() {
                         computer_accessibility_observe: true,
                         computer_element_state: true,
                         computer_control: true,
+                        computer_scroll_to_element: true,
+                        computer_window_activate: true,
                         computer_text_input: true,
                         ..Default::default()
                     },
@@ -1779,6 +1783,21 @@ async fn computer_direct_observe_act_verify_semantic_workflow_is_end_to_end() {
         surface_id
     );
 
+    let activated = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        900,
+        "computer_control",
+        json!({"action":"activate_window","client_id":client_id,"surface_id":surface_id}),
+        "computer_activate_window",
+        json!({"surface_id":surface_id}),
+        json!({"platform":"macos","surface_id":surface_id,"success":true}),
+    )
+    .await;
+    assert_eq!(activated["structuredContent"]["output"]["success"], true);
+
     let base_tree = |generation: u32, include_status: bool| {
         let mut nodes = vec![
             json!({
@@ -1793,7 +1812,7 @@ async fn computer_direct_observe_act_verify_semantic_workflow_is_end_to_end() {
                 "placeholder":null,
                 "enabled":true,
                 "focused":false,
-                "child_count": if include_status {3} else {2}
+                "child_count": if include_status {4} else {3}
             }),
             json!({
                 "element_id":field_id,
@@ -1816,6 +1835,20 @@ async fn computer_direct_observe_act_verify_semantic_workflow_is_end_to_end() {
                 "role":"AXButton",
                 "subrole":null,
                 "title":"Submit",
+                "description":null,
+                "value":null,
+                "placeholder":null,
+                "enabled":true,
+                "focused":false,
+                "child_count":0
+            }),
+            json!({
+                "element_id":scroll_id,
+                "parent_element_id":"element_root",
+                "depth":1,
+                "role":"AXRow",
+                "subrole":null,
+                "title":"Scroll item 39",
                 "description":null,
                 "value":null,
                 "placeholder":null,
@@ -1975,6 +2008,51 @@ async fn computer_direct_observe_act_verify_semantic_workflow_is_end_to_end() {
     .await;
     assert_eq!(typed["structuredContent"]["output"]["value_empty"], false);
 
+    let scroll_target = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        901,
+        "computer_observe",
+        json!({
+            "action":"find_elements",
+            "client_id":client_id,
+            "surface_id":surface_id,
+            "role":"AXRow",
+            "label":"Scroll item 39",
+            "enabled":true,
+            "limit":1
+        }),
+        "computer_accessibility_tree",
+        json!({"surface_id":surface_id,"max_depth":8,"max_nodes":256}),
+        base_tree(4, false),
+    )
+    .await;
+    assert_eq!(
+        scroll_target["structuredContent"]["output"]["elements"][0]["element_id"],
+        scroll_id
+    );
+
+    run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        902,
+        "computer_control",
+        json!({"action":"scroll_to_element","client_id":client_id,"surface_id":surface_id,"element_id":scroll_id}),
+        "computer_scroll_to_element",
+        json!({"surface_id":surface_id,"element_id":scroll_id}),
+        json!({
+            "platform":"macos",
+            "surface_id":surface_id,
+            "element_id":scroll_id,
+            "success":true
+        }),
+    )
+    .await;
+
     let button = run_direct_mcp_computer_step(
         &runtime,
         &auth,
@@ -2021,6 +2099,49 @@ async fn computer_direct_observe_act_verify_semantic_workflow_is_end_to_end() {
     )
     .await;
 
+    let image_bytes = vec![0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46];
+    let image_base64 = general_purpose::STANDARD.encode(&image_bytes);
+    let snapshot = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        903,
+        "computer_observe",
+        json!({"action":"snapshot_window","client_id":client_id,"surface_id":surface_id}),
+        "computer_snapshot",
+        json!({"surface_id":surface_id}),
+        json!({
+            "surface": {
+                "surface_id": surface_id,
+                "application": "Example Editor",
+                "title": "Example Editor",
+                "width": 900,
+                "height": 600,
+                "focused": true,
+                "active": true
+            },
+            "width": 900,
+            "height": 600,
+            "mime_type": "image/jpeg",
+            "file_bytes": image_bytes.len(),
+            "content_base64": image_base64
+        }),
+    )
+    .await;
+    let snapshot_content = snapshot["content"].as_array().expect("snapshot content");
+    assert_eq!(snapshot_content.len(), 2);
+    assert_eq!(snapshot_content[1]["type"], "image");
+    assert_eq!(snapshot_content[1]["mimeType"], "image/jpeg");
+    assert_eq!(snapshot_content[1]["data"], image_base64);
+    assert_eq!(
+        snapshot["structuredContent"]["output"]["content_delivery"],
+        "mcp_image"
+    );
+    assert!(snapshot["structuredContent"]["output"]
+        .get("content_base64")
+        .is_none());
+
     let verified = run_direct_mcp_computer_step(
         &runtime,
         &auth,
@@ -2050,6 +2171,187 @@ async fn computer_direct_observe_act_verify_semantic_workflow_is_end_to_end() {
     assert_eq!(
         verified["structuredContent"]["output"]["elements"][0]["title"],
         "Submitted"
+    );
+}
+
+#[tokio::test]
+async fn computer_effect_runner_disconnect_is_outcome_unknown_and_never_replayed_after_restart() {
+    let runtime = test_runtime();
+    let client_id = "mcp-computer-disconnect";
+    let first_instance = "inst-mcp-computer-disconnect-a";
+    let second_instance = "inst-mcp-computer-disconnect-b";
+    let surface_id = "surface_disconnect_test";
+    let element_id = "element_disconnect_button";
+    let auth = crate::auth::AuthContext {
+        kind: crate::auth::AuthKind::AgentToken,
+        username: Some("local-owner".to_string()),
+        role: Some("agent".to_string()),
+        token_kind: Some("agent".to_string()),
+        allowed_client_id: Some(client_id.to_string()),
+        scopes: vec![
+            crate::auth::SCOPE_COMPUTER_READ.to_string(),
+            crate::auth::SCOPE_COMPUTER_CONTROL.to_string(),
+        ],
+        ..crate::auth::AuthContext::new(crate::auth::AuthKind::AgentToken)
+    };
+    let capabilities = || {
+        crate::test_support::current_runner_capabilities(RunnerCapabilities {
+            computer_observe: true,
+            computer_control: true,
+            computer_accessibility_observe: true,
+            ..Default::default()
+        })
+    };
+    runtime
+        .runner_registry
+        .register_with_auth(
+            crate::test_support::current_runner_registration(RunnerRegisterRequest {
+                client_id: client_id.to_string(),
+                runner_instance_id: first_instance.to_string(),
+                runner_protocol_generation: crate::runner_protocol::RUNNER_PROTOCOL_GENERATION_V2,
+                display_name: Some("Disconnect Runner".to_string()),
+                owner: Some("local-owner".to_string()),
+                hostname: None,
+                host_context: None,
+                capabilities: capabilities(),
+                policy: None,
+                process_started_at: Some(1_000),
+                build: None,
+                job_concurrency_limit: None,
+                job_inventory: None,
+                coding_agent_providers: None,
+                coding_agent_inventory: None,
+            }),
+            Some(&crate::test_support::runner_access(&auth)),
+        )
+        .await
+        .unwrap();
+
+    let inflight = tokio::spawn({
+        let runtime = runtime.clone();
+        let auth = auth.clone();
+        async move {
+            handle_mcp_request(
+                &runtime,
+                rpc(
+                    "tools/call",
+                    Some(json!(920)),
+                    json!({
+                        "name":"computer_control",
+                        "arguments":{
+                            "action":"press",
+                            "client_id":client_id,
+                            "surface_id":surface_id,
+                            "element_id":element_id
+                        }
+                    }),
+                ),
+                Some(&auth),
+            )
+            .await
+        }
+    });
+    let request = wait_for_mcp_agent_request(
+        &runtime.runner_registry,
+        client_id,
+        first_instance,
+        "Computer effect before disconnect",
+    )
+    .await;
+    assert_eq!(request.kind, "computer_control");
+    assert_eq!(
+        serde_json::from_str::<Value>(request.stdin.as_deref().unwrap()).unwrap(),
+        json!({"surface_id":surface_id,"element_id":element_id,"action":"press"})
+    );
+
+    runtime
+        .runner_registry
+        .reconcile_disconnect(client_id, first_instance)
+        .await;
+    let outcome = inflight.await.unwrap();
+    let McpOutcome::Ok(value) = outcome else {
+        panic!("expected structured Computer disconnect result, got {outcome:?}");
+    };
+    assert_eq!(value["result"]["isError"], true);
+    assert_eq!(
+        value["result"]["structuredContent"]["output"]["error_kind"],
+        "outcome_unknown"
+    );
+    assert_eq!(
+        value["result"]["structuredContent"]["output"]["execution_state"],
+        "outcome_unknown"
+    );
+    assert!(value["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("inspect current UI state before retrying"));
+
+    runtime
+        .runner_registry
+        .register_with_auth(
+            crate::test_support::current_runner_registration(RunnerRegisterRequest {
+                client_id: client_id.to_string(),
+                runner_instance_id: second_instance.to_string(),
+                runner_protocol_generation: crate::runner_protocol::RUNNER_PROTOCOL_GENERATION_V2,
+                display_name: Some("Reconnected Runner".to_string()),
+                owner: Some("local-owner".to_string()),
+                hostname: None,
+                host_context: None,
+                capabilities: capabilities(),
+                policy: None,
+                process_started_at: Some(2_000),
+                build: None,
+                job_concurrency_limit: None,
+                job_inventory: None,
+                coding_agent_providers: None,
+                coding_agent_inventory: None,
+            }),
+            Some(&crate::test_support::runner_access(&auth)),
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        runtime
+            .runner_registry
+            .poll(RunnerPollRequest {
+                client_id: client_id.to_string(),
+                runner_instance_id: second_instance.to_string(),
+            })
+            .await
+            .unwrap()
+            .is_none(),
+        "reconnect must not replay an uncertain Computer effect"
+    );
+
+    let observed = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        second_instance,
+        921,
+        "computer_observe",
+        json!({"action":"windows","client_id":client_id,"limit":1}),
+        "computer_list_windows",
+        json!({"limit":1}),
+        json!({
+            "windows":[{
+                "surface_id":surface_id,
+                "application":"Example Editor",
+                "title":"Example Editor",
+                "width":900,
+                "height":600,
+                "focused":true,
+                "active":true
+            }],
+            "count":1,
+            "truncated":false
+        }),
+    )
+    .await;
+    assert_eq!(
+        observed["structuredContent"]["output"]["windows"][0]["surface_id"],
+        surface_id
     );
 }
 

@@ -69,6 +69,17 @@ try {
         "-p", "chadex-runtime-runner-config"
     )
 
+    Write-Host "== Run Windows Computer contract and ChatGPT-facing acceptance tests =="
+    Invoke-NativeChecked -FilePath "cargo" -Arguments @(
+        "test", "--locked", "--manifest-path", "runtime-engine/Cargo.toml",
+        "-p", "chadex-runtime-tool-contracts", "computer"
+    )
+    Invoke-NativeChecked -FilePath "cargo" -Arguments @(
+        "test", "--locked", "--manifest-path", "runtime-engine/Cargo.toml",
+        "-p", "chadex-runtime-engine", "computer", "--lib"
+    )
+    Write-Host "Interactive private WinForms Computer fixtures remain explicit host-only ignored tests."
+
     Write-Host "== Run ignored Windows process lifecycle tests, including stress =="
     Invoke-NativeChecked -FilePath "cargo" -Arguments @(
         "test", "--locked", "--manifest-path", "runtime-engine/Cargo.toml",

@@ -12,6 +12,12 @@ VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/C
 detail=$(/usr/bin/codesign -dvvv "$APP" 2>&1)
 printf '%s\n' "$detail" | /usr/bin/grep -q '^Signature=adhoc$' || { echo "error: free release app must be ad-hoc signed" >&2; exit 1; }
 printf '%s\n' "$detail" | /usr/bin/grep -q 'flags=.*runtime' || { echo "error: app is missing Hardened Runtime" >&2; exit 1; }
+identity_report=$("$ROOT/scripts/check_computer_identity.sh" "$APP")
+printf '%s\n' "$identity_report" | /usr/bin/grep -q '^computer_tcc_identity=rebuild_sensitive$' || {
+  echo "error: free ad-hoc release must not claim stable Computer TCC identity" >&2
+  exit 1
+}
+printf '%s\n' "$identity_report"
 for executable in "$APP/Contents/MacOS/Chadex" "$APP/Contents/Helpers/chadex-helper" "$APP/Contents/Resources/chadex-runtime/chadex-runtime-cli" "$APP/Contents/Resources/chadex-runtime/chadex-runtime-server" "$APP/Contents/Resources/chadex-runtime/chadex-runtime-runner"; do
   test -x "$executable"
   test "$(/usr/bin/lipo -archs "$executable")" = "arm64"

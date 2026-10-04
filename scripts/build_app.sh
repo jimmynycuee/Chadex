@@ -282,16 +282,13 @@ else
   echo "Signing Chadex with a stable development code-signing identity"
 fi
 
-# Sign nested code explicitly from the inside out. Avoid --deep for signing;
-# --deep remains useful only as a final verification pass.
-for nested in \
-  "$CONTENTS/Helpers/chadex-helper" \
-  "$CONTENTS/Resources/chadex-runtime/chadex-runtime-cli" \
-  "$CONTENTS/Resources/chadex-runtime/chadex-runtime-server" \
-  "$CONTENTS/Resources/chadex-runtime/chadex-runtime-runner"
-do
-  sign_code "$nested"
-done
+# Sign nested code explicitly from the inside out. Stable identifiers matter
+# for macOS privacy/TCC identity when a real Apple signing identity is used.
+# Avoid --deep for signing; --deep remains useful only as a verification pass.
+sign_code "$CONTENTS/Helpers/chadex-helper" --identifier app.chadex.helper
+sign_code "$CONTENTS/Resources/chadex-runtime/chadex-runtime-cli" --identifier app.chadex.runtime.cli
+sign_code "$CONTENTS/Resources/chadex-runtime/chadex-runtime-server" --identifier app.chadex.runtime.server
+sign_code "$CONTENTS/Resources/chadex-runtime/chadex-runtime-runner" --identifier app.chadex.runtime.runner
 
 if [ -n "$APP_ENTITLEMENTS" ]; then
   sign_code "$APP" --entitlements "$APP_ENTITLEMENTS"
@@ -314,5 +311,7 @@ if [ "$CODESIGN_MODE" = "distribution" ]; then
     exit 1
   fi
 fi
+
+"$ROOT/scripts/check_computer_identity.sh" "$APP"
 
 echo "Built $APP"

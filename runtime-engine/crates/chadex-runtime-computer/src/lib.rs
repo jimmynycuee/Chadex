@@ -696,6 +696,7 @@ fn sensitive_auth_title(title: &str) -> bool {
     .any(|marker| normalized.contains(marker))
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn sensitive_window_contains_point(
     application: &str,
     title: &str,

@@ -13,6 +13,26 @@ esac
 export CARGO_BUILD_JOBS="$CARGO_JOBS"
 cd "$ROOT"
 
+PYTHON3=${CHADEX_PYTHON3:-}
+if [ -n "$PYTHON3" ]; then
+  if ! "$PYTHON3" -c 'import tomllib' >/dev/null 2>&1; then
+    echo "error: CHADEX_PYTHON3 must point to Python 3.11+ with tomllib" >&2
+    exit 2
+  fi
+else
+  for candidate in python3 /usr/local/bin/python3 /opt/homebrew/bin/python3; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import tomllib' >/dev/null 2>&1; then
+      PYTHON3=$(command -v "$candidate")
+      break
+    fi
+  done
+  if [ -z "$PYTHON3" ]; then
+    echo "error: release check requires Python 3.11+ with tomllib; set CHADEX_PYTHON3" >&2
+    exit 2
+  fi
+fi
+echo "==> Python release tooling: $PYTHON3"
+
 LOCK_KEY=$(printf '%s' "$ROOT" | cksum | awk '{print $1}')
 LOCK_DIR="${TMPDIR:-/tmp}/chadex-release-check.$LOCK_KEY.lock"
 LOCK_OWNER="$LOCK_DIR/pid"
@@ -65,7 +85,7 @@ echo "==> License / attribution consistency"
 test -f LICENSE
 test -f UPSTREAM.md
 test -f attribution/WebCodex-LICENSE.txt
-python3 - <<'PY'
+"$PYTHON3" - <<'PY'
 from pathlib import Path
 pairs = [
     (Path("runtime-engine/LICENSE"), Path("LICENSE")),
@@ -92,16 +112,21 @@ echo "==> Runtime release-critical tests"
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-runner-registry
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-engine tool_request_trace --lib
 
+echo "==> Computer Use acceptance"
+"$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-computer
+"$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-tool-contracts computer
+"$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-engine computer --lib
+
 echo "==> Production runtime wrapper check"
 "$CHADEX_CARGO" check --locked --manifest-path chadex-runtime/Cargo.toml --target-dir runtime-engine/target --bins
 
 echo "==> Release tooling tests"
-PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_sync_graphify_obsidian.py
-PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_prepare_windows_release.py
-PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_windows_installer_smoke.py
-PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_windows_suspended_launch.py
-PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_benchmark_chatgpt_completion.py
-PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_benchmark_terminal_ab.py
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON3" -B scripts/test_sync_graphify_obsidian.py
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON3" -B scripts/test_prepare_windows_release.py
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON3" -B scripts/test_windows_installer_smoke.py
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON3" -B scripts/test_windows_suspended_launch.py
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON3" -B scripts/test_benchmark_chatgpt_completion.py
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON3" -B scripts/test_benchmark_terminal_ab.py
 
 echo "==> Repository diff hygiene"
 git diff --check
