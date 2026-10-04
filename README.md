@@ -116,6 +116,7 @@ Release profile、簽署、DMG、GitHub Actions 與 distribution boundary 的完
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime、project isolation、execution lifecycle 與安全邊界
 - [`docs/BRIDGE_PROTOCOL.md`](docs/BRIDGE_PROTOCOL.md) — Swift ↔ Rust bridge protocol
 - [`docs/RELEASE.md`](docs/RELEASE.md) — release gate、簽署、DMG 與 GitHub 發佈流程
+- [`docs/releases/0.4.1.md`](docs/releases/0.4.1.md) — Windows W5 自動化 release-readiness 收斂、歷史版本升級與卸載驗證邊界
 - [`docs/releases/0.4.0.md`](docs/releases/0.4.0.md) — Agent Settings、Skills、Project Memory、Computer Use 與離線設定
 - [`docs/releases/0.3.3.md`](docs/releases/0.3.3.md) — ChatGPT 檔案匯入橋接、自動更新偵測與 Windows W5 source 狀態
 - [`docs/releases/0.3.2.md`](docs/releases/0.3.2.md) — 寵物狀態判斷、活動停留與實際驗證

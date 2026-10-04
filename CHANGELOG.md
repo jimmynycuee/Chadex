@@ -2,6 +2,15 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.4.1
+
+- Closed the automatable Windows W5 release-readiness gaps while keeping Windows distribution private to CI artifacts.
+- Added real historical-source `v0.4.0 → v0.4.1` installed-upgrade acceptance instead of relying only on the same-binary synthetic metadata fixture.
+- Added a separate native NSIS default self-copy uninstall stage while retaining strict process-identity, zero-residual and zero-forced-cleanup requirements.
+- Synchronized Chadex-owned product/runtime metadata to 0.4.1 and advanced the synthetic Windows migration baseline to 0.4.0.
+- Kept physical/private Windows interaction, signing, missing-WebView2, credential-uninstall policy and Windows updater/distribution decisions explicitly outside automated acceptance.
+- See `docs/releases/0.4.1.md` and the W5 handoff for exact validation evidence and boundaries.
+
 ## 0.4.0
 
 - Added a streamlined **Agent Settings** workspace that combines project instructions (`AGENTS.md`) and Skills while keeping their runtime contracts separate.
