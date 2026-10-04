@@ -536,6 +536,7 @@ fn adaptive_runtime_direct_declarations_are_visible_ranked_and_unique() {
         "finish_coding_task",
         "import_conversation_files_to_project",
         "project_artifact",
+        "computer_observe",
         "plugin_tool",
         "session_handoff_summary",
         "present_goal_plan",
@@ -564,6 +565,23 @@ fn adaptive_runtime_direct_declarations_are_visible_ranked_and_unique() {
         }
         assert_eq!(derived.len(), expected_core.len() + 3);
     }
+
+    let computer_observe =
+        lookup_tool_definition("computer_observe").expect("computer_observe definition");
+    assert_eq!(computer_observe.adaptive_runtime_direct_rank(), Some(57));
+    assert!(is_adaptive_runtime_direct_tool("computer_observe"));
+    assert_eq!(computer_observe.metadata.effect, ToolEffect::Observe);
+    assert_eq!(computer_observe.metadata.risk, ToolRisk::Read);
+    assert_eq!(computer_observe.metadata.approval, ToolApprovalPolicy::None);
+    assert_eq!(
+        computer_observe.metadata.idempotency,
+        ToolIdempotency::PureRead
+    );
+    assert!(!computer_observe.supports_gpt_actions());
+    assert!(
+        !is_adaptive_runtime_direct_tool("computer_control"),
+        "CM2 must not promote effectful Computer control into the startup surface"
+    );
 
     for name in [
         "rotate_agent_continuation_endpoint",

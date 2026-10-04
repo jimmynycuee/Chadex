@@ -1224,10 +1224,12 @@ impl ToolRuntime {
                 client.supports(RunnerFeature::ComputerAccessibilityObserve);
             let computer_permission_readiness =
                 client.supports(RunnerFeature::ComputerPermissionReadiness);
+            let computer_element_state = client.supports(RunnerFeature::ComputerElementState);
             let view = client.view;
             if !computer_observe
                 && !computer_accessibility_observe
                 && !computer_permission_readiness
+                && !computer_element_state
                 && !computer_application_discovery
                 && !computer_application_launch
                 && !computer_display_observe
@@ -1256,6 +1258,7 @@ impl ToolRuntime {
                     "computer_snapshot_region": computer_snapshot_region,
                     "computer_accessibility_observe": computer_accessibility_observe,
                     "computer_permission_readiness": computer_permission_readiness,
+                    "computer_element_state": computer_element_state,
                 },
             }));
         }

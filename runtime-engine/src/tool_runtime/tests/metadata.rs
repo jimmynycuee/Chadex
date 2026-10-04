@@ -135,6 +135,7 @@ async fn register_computer_target_for_auth(
     computer_observe: bool,
     computer_snapshot_region: bool,
     computer_accessibility_observe: bool,
+    computer_element_state: bool,
 ) {
     runtime
         .runner_registry
@@ -158,6 +159,7 @@ async fn register_computer_target_for_auth(
                         computer_observe,
                         computer_snapshot_region,
                         computer_accessibility_observe,
+                        computer_element_state,
                         ..Default::default()
                     },
                 ),
@@ -3033,6 +3035,18 @@ async fn computer_list_targets_is_minimal_capability_filtered_and_auth_scoped() 
         false,
         false,
         true,
+        false,
+    )
+    .await;
+    register_computer_target_for_auth(
+        &runtime,
+        "a-element-state",
+        "Alice Element State",
+        &shared_a,
+        false,
+        false,
+        false,
+        true,
     )
     .await;
     register_computer_target_for_auth(
@@ -3040,6 +3054,7 @@ async fn computer_list_targets_is_minimal_capability_filtered_and_auth_scoped() 
         "a-none",
         "Alice No Computer",
         &shared_a,
+        false,
         false,
         false,
         false,
@@ -3053,6 +3068,7 @@ async fn computer_list_targets_is_minimal_capability_filtered_and_auth_scoped() 
         false,
         true,
         false,
+        false,
     )
     .await;
     register_computer_target_for_auth(
@@ -3063,6 +3079,7 @@ async fn computer_list_targets_is_minimal_capability_filtered_and_auth_scoped() 
         true,
         true,
         false,
+        false,
     )
     .await;
     register_computer_target_for_auth(
@@ -3070,6 +3087,7 @@ async fn computer_list_targets_is_minimal_capability_filtered_and_auth_scoped() 
         "b-private",
         "Bob Private Desktop",
         &shared_b,
+        true,
         true,
         true,
         true,
@@ -3123,11 +3141,11 @@ async fn computer_list_targets_is_minimal_capability_filtered_and_auth_scoped() 
         )
         .await;
     assert!(result.success, "{:?}", result.error);
-    assert_eq!(result.output["count"], 8);
-    assert_eq!(result.output["total_count"], 8);
+    assert_eq!(result.output["count"], 9);
+    assert_eq!(result.output["total_count"], 9);
     assert_eq!(result.output["truncated"], false);
     let targets = result.output["targets"].as_array().unwrap();
-    assert_eq!(targets.len(), 8);
+    assert_eq!(targets.len(), 9);
     let target = |client_id: &str| {
         targets
             .iter()
@@ -3152,6 +3170,21 @@ async fn computer_list_targets_is_minimal_capability_filtered_and_auth_scoped() 
     );
     assert_eq!(
         accessibility["capabilities"]["computer_accessibility_observe"],
+        true
+    );
+    assert_eq!(
+        accessibility["capabilities"]["computer_element_state"],
+        false
+    );
+    let element_state = target("a-element-state");
+    assert_eq!(element_state["display_name"], "Alice Element State");
+    assert_eq!(element_state["capabilities"]["computer_observe"], false);
+    assert_eq!(
+        element_state["capabilities"]["computer_accessibility_observe"],
+        false
+    );
+    assert_eq!(
+        element_state["capabilities"]["computer_element_state"],
         true
     );
     let observe = target("a-observe");

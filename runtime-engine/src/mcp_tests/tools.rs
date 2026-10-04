@@ -1446,6 +1446,145 @@ fn computer_observe_snapshot_frames_native_image_without_structured_base64() {
         .is_none());
 }
 
+#[tokio::test]
+async fn computer_observe_direct_snapshot_call_reaches_runner_and_returns_native_image() {
+    let runtime = test_runtime();
+    let client_id = "mcp-computer-observe";
+    let runner_instance_id = "inst-mcp-computer-observe";
+    let auth = crate::auth::AuthContext {
+        kind: crate::auth::AuthKind::AgentToken,
+        username: Some("local-owner".to_string()),
+        role: Some("agent".to_string()),
+        token_kind: Some("agent".to_string()),
+        allowed_client_id: Some(client_id.to_string()),
+        scopes: vec![crate::auth::SCOPE_COMPUTER_READ.to_string()],
+        ..crate::auth::AuthContext::new(crate::auth::AuthKind::AgentToken)
+    };
+    runtime
+        .runner_registry
+        .register_with_auth(
+            crate::test_support::current_runner_registration(RunnerRegisterRequest {
+                client_id: client_id.to_string(),
+                runner_instance_id: runner_instance_id.to_string(),
+                runner_protocol_generation: crate::runner_protocol::RUNNER_PROTOCOL_GENERATION_V2,
+                display_name: Some("Vision Runner".to_string()),
+                owner: Some("local-owner".to_string()),
+                hostname: None,
+                host_context: None,
+                capabilities: RunnerCapabilities {
+                    computer_observe: true,
+                    ..Default::default()
+                },
+                policy: None,
+                process_started_at: None,
+                build: None,
+                job_concurrency_limit: None,
+                job_inventory: None,
+                coding_agent_providers: None,
+                coding_agent_inventory: None,
+            }),
+            Some(&crate::test_support::runner_access(&auth)),
+        )
+        .await
+        .unwrap();
+
+    let surface_id = "surface_test";
+    let call = tokio::spawn({
+        let runtime = runtime.clone();
+        let auth = auth.clone();
+        async move {
+            handle_mcp_request(
+                &runtime,
+                rpc(
+                    "tools/call",
+                    Some(json!(78)),
+                    json!({
+                        "name": "computer_observe",
+                        "arguments": {
+                            "action": "snapshot_window",
+                            "client_id": client_id,
+                            "surface_id": surface_id
+                        }
+                    }),
+                ),
+                Some(&auth),
+            )
+            .await
+        }
+    });
+
+    let request = wait_for_mcp_agent_request(
+        &runtime.runner_registry,
+        client_id,
+        runner_instance_id,
+        "direct Computer observe snapshot",
+    )
+    .await;
+    assert_eq!(request.kind, "computer_snapshot");
+    let payload: Value = serde_json::from_str(request.stdin.as_deref().unwrap()).unwrap();
+    assert_eq!(payload, json!({"surface_id": surface_id}));
+
+    let image_bytes = vec![0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46];
+    let image_base64 = general_purpose::STANDARD.encode(&image_bytes);
+    runtime
+        .runner_registry
+        .complete(RunnerResultRequest {
+            client_id: client_id.to_string(),
+            runner_instance_id: runner_instance_id.to_string(),
+            request_id: request.request_id,
+            exit_code: Some(0),
+            stdout: Some(
+                json!({
+                    "surface": {
+                        "surface_id": surface_id,
+                        "application": "Test App",
+                        "title": "Test Window",
+                        "width": 640,
+                        "height": 480,
+                        "focused": true,
+                        "active": true
+                    },
+                    "width": 640,
+                    "height": 480,
+                    "mime_type": "image/jpeg",
+                    "file_bytes": image_bytes.len(),
+                    "content_base64": image_base64
+                })
+                .to_string(),
+            ),
+            stderr: Some(String::new()),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            duration_ms: Some(1),
+            error: None,
+        })
+        .await
+        .unwrap();
+
+    let outcome = call.await.unwrap();
+    let McpOutcome::Ok(value) = outcome else {
+        panic!("expected direct Computer observe result, got {outcome:?}");
+    };
+    assert_eq!(value["result"]["isError"], false);
+    let content = value["result"]["content"].as_array().unwrap();
+    assert_eq!(content.len(), 2);
+    assert_eq!(content[0]["type"], "text");
+    assert_eq!(content[1]["type"], "image");
+    assert_eq!(content[1]["mimeType"], "image/jpeg");
+    assert_eq!(content[1]["data"], image_base64);
+    assert_eq!(
+        value["result"]["structuredContent"]["output"]["content_delivery"],
+        "mcp_image"
+    );
+    assert_eq!(
+        value["result"]["structuredContent"]["output"]["client_id"],
+        client_id
+    );
+    assert!(value["result"]["structuredContent"]["output"]
+        .get("content_base64")
+        .is_none());
+}
+
 #[test]
 fn mcp_tools_list_explicit_full_projection_retains_output_schema() {
     // Pure renderer with explicit compact=false. Exposure-specific defaults
@@ -1464,6 +1603,13 @@ fn mcp_tools_list_explicit_full_projection_retains_output_schema() {
         );
         assert!(tool["annotations"].is_object() || tool.get("annotations").is_some());
     }
+    let observe = tools
+        .iter()
+        .find(|tool| tool["name"] == "computer_observe")
+        .expect("direct computer_observe tool");
+    let observe_output = &observe["outputSchema"]["properties"]["output"]["properties"];
+    assert_eq!(observe_output["content_delivery"]["const"], "mcp_image");
+    assert!(observe_output.get("content_base64").is_none());
 }
 
 #[test]

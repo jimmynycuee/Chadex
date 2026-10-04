@@ -446,9 +446,9 @@ pub const TOOL_RECOMMENDED_FLOWS: &[ToolRecommendedFlow] = &[
     },
     ToolRecommendedFlow {
         name: "computer_observe",
-        summary: "Computer observe: one guaranteed read-only gateway for Runner/desktop discovery, accessibility inspection, clipboard read, and window/display snapshots. Choose a closed action; no control effects are admitted.",
+        summary: "Computer observe: one guaranteed read-only surface for Runner/desktop discovery, permission readiness, accessibility inspection, clipboard read, and native-image window/display snapshots. Choose a closed action; no control effects are admitted.",
         manifest_purpose:
-            "Use computer_observe with the smallest read-only action needed: targets/windows/displays/applications, accessibility_status/accessibility_tree/find_elements/element_state, snapshot_window/snapshot_display, or read_clipboard. Exact action scopes and Runner capabilities remain fenced.",
+            "Use computer_observe with the smallest read-only action needed: targets/windows/displays/applications, readiness, accessibility_status/accessibility_tree/find_elements/element_state, snapshot_window/snapshot_display, or read_clipboard. MCP snapshot actions return native image content/resources for model vision. Exact action scopes and Runner capabilities remain fenced.",
         tools: &["computer_observe"],
     },
     ToolRecommendedFlow {

@@ -525,7 +525,7 @@ async fn oauth2_mcp_computer_observe_snapshot_keeps_computer_read_scope() {
         &service,
         &token,
         "tools/call",
-        adaptive_gateway_params("computer_observe", arguments.clone()),
+        json!({"name": "computer_observe", "arguments": arguments.clone()}),
     )
     .await;
     assert_mcp_oauth_scope_rejected(
@@ -540,7 +540,7 @@ async fn oauth2_mcp_computer_observe_snapshot_keeps_computer_read_scope() {
         &service,
         &token,
         "tools/call",
-        adaptive_gateway_params("computer_observe", arguments),
+        json!({"name": "computer_observe", "arguments": arguments}),
     )
     .await;
     assert_ne!(status, StatusCode::FORBIDDEN, "body: {body:?}");
@@ -865,7 +865,7 @@ async fn oauth2_memory_tools_require_canonical_project_and_memory_scopes() {
 }
 
 #[tokio::test]
-async fn oauth2_tools_list_keeps_computer_tools_long_tail_across_outer_scopes() {
+async fn oauth2_tools_list_exposes_read_only_computer_observe_but_keeps_effects_long_tail() {
     let baseline = "runtime:read project:read project:write job:run computer:read computer:control";
     for extra_scopes in [
         "",
@@ -881,14 +881,14 @@ async fn oauth2_tools_list_keeps_computer_tools_long_tail_across_outer_scopes() 
         assert_eq!(status, StatusCode::OK, "{scopes}: {body:?}");
         let names = listed_tool_names(&body);
         assert!(names.contains(crate::mcp::tools::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME));
-        for long_tail in [
-            "computer_observe",
-            "computer_control",
-            "computer_save_snapshot",
-        ] {
+        assert!(
+            names.contains("computer_observe"),
+            "computer_observe must remain a direct read-only vision surface: {scopes}"
+        );
+        for long_tail in ["computer_control", "computer_save_snapshot"] {
             assert!(
                 !names.contains(long_tail),
-                "OAuth scopes must not promote long-tail {long_tail} into direct tools/list: {scopes}"
+                "OAuth scopes must not promote effectful/Project-writing long-tail {long_tail} into direct tools/list: {scopes}"
             );
         }
         for retired in [

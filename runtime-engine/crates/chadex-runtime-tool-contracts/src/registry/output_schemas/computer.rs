@@ -48,9 +48,10 @@ fn target_schema() -> Value {
                     "computer_clipboard_write": {"type": "boolean"},
                     "computer_snapshot_region": {"type": "boolean"},
                     "computer_accessibility_observe": {"type": "boolean"},
-                    "computer_permission_readiness": {"type": "boolean"}
+                    "computer_permission_readiness": {"type": "boolean"},
+                    "computer_element_state": {"type": "boolean"}
                 },
-                "required": ["computer_observe", "computer_application_discovery", "computer_application_launch", "computer_display_observe", "computer_pointer_control", "computer_clipboard_read", "computer_clipboard_write", "computer_snapshot_region", "computer_accessibility_observe", "computer_permission_readiness"]
+                "required": ["computer_observe", "computer_application_discovery", "computer_application_launch", "computer_display_observe", "computer_pointer_control", "computer_clipboard_read", "computer_clipboard_write", "computer_snapshot_region", "computer_accessibility_observe", "computer_permission_readiness", "computer_element_state"]
             }
         },
         "required": ["client_id", "display_name", "connected", "capabilities"]

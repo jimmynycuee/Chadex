@@ -461,6 +461,9 @@ const ADAPTIVE_RUNTIME_INITIAL_DIRECT_TOOLS: &[&str] = &[
     // Session recovery).
     "import_conversation_files_to_project",
     "project_artifact",
+    // Read-only Computer vision needs a first-class MCP content channel so window/display
+    // screenshots can arrive as native ImageContent instead of opaque gateway text/base64.
+    "computer_observe",
     "plugin_tool",
     "session_handoff_summary",
     // Descriptor-time Host/App bindings cannot be reconstructed by call_runtime_tool:
