@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 private enum SidebarSelection: Hashable {
-    case project(UUID)
+    case project(UUID, ProjectWorkspaceDestination)
     case activity
     case guide
 }
@@ -18,6 +18,7 @@ struct RootView: View {
     @State private var projectPendingRemoval: ProjectRecord?
     @State private var projectSwitchRequestInFlight = false
     @State private var pendingProjectSwitchID: UUID?
+    @State private var expandedProjectID: UUID?
 
     var body: some View {
         NavigationSplitView {
@@ -47,12 +48,24 @@ struct RootView: View {
 
                 List(selection: $selection) {
                     ForEach(model.projects) { project in
-                        ProjectSidebarRow(
-                            project: project,
-                            isCurrent: model.selectedProject?.id == project.id,
-                            phase: model.connectionPresentationPhase
-                        )
-                        .tag(SidebarSelection.project(project.id))
+                        Button {
+                            expandedProjectID = expandedProjectID == project.id ? nil : project.id
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: expandedProjectID == project.id ? "chevron.down" : "chevron.right")
+                                    .chadexFont(.caption2, weight: .semibold)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 10)
+
+                                ProjectSidebarRow(
+                                    project: project,
+                                    isCurrent: model.selectedProject?.id == project.id,
+                                    phase: model.connectionPresentationPhase
+                                )
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                         .help(project.path)
                         .contextMenu {
                             Button(L10n.string("project.openInFinder")) {
@@ -70,6 +83,18 @@ struct RootView: View {
 
                             Button(L10n.string("project.remove"), role: .destructive) {
                                 projectPendingRemoval = project
+                            }
+                        }
+
+                        if expandedProjectID == project.id {
+                            ForEach(ProjectWorkspaceDestination.allCases) { destination in
+                                Label(
+                                    L10n.string(destination.titleKey),
+                                    systemImage: destination.systemImage
+                                )
+                                .chadexFont(.body)
+                                .padding(.leading, layout.spacing(20))
+                                .tag(SidebarSelection.project(project.id, destination))
                             }
                         }
                     }
@@ -212,11 +237,18 @@ struct RootView: View {
                 }
                 didRouteFirstLaunch = true
             }
+
+            if expandedProjectID == nil, case .project(let id, _) = selection {
+                expandedProjectID = id
+            } else if expandedProjectID == nil {
+                expandedProjectID = model.selectedProject?.id
+            }
         }
         .onChange(of: selection) { _, value in
             persistSidebarDestination(value)
 
-            if case .project(let id) = value {
+            if case .project(let id, _) = value {
+                expandedProjectID = id
                 pendingProjectSwitchID = id
                 guard !projectSwitchRequestInFlight else { return }
                 projectSwitchRequestInFlight = true
@@ -228,8 +260,8 @@ struct RootView: View {
                             _ = await model.selectProject(requestedID)
                         }
                     }
-                    if case .project = selection {
-                        selection = model.selectedProject.map { .project($0.id) } ?? .activity
+                    if case .project(_, let destination) = selection {
+                        selection = model.selectedProject.map { .project($0.id, destination) } ?? .activity
                     }
                 }
             } else if projectSwitchRequestInFlight {
@@ -254,7 +286,8 @@ struct RootView: View {
                 primaryButton: .destructive(Text(L10n.string("project.remove"))) {
                     Task {
                         if await model.removeProject(project.id) {
-                            selection = model.selectedProject.map { .project($0.id) } ?? .activity
+                            expandedProjectID = model.selectedProject?.id
+                            selection = model.selectedProject.map { .project($0.id, .overview) } ?? .activity
                         }
                     }
                 },
@@ -268,7 +301,7 @@ struct RootView: View {
     }
 
     private var selectedSidebarProject: ProjectRecord? {
-        guard case .project(let id) = selection else { return nil }
+        guard case .project(let id, _) = selection else { return nil }
         return model.projects.first(where: { $0.id == id })
     }
 
@@ -296,7 +329,8 @@ struct RootView: View {
             return .activity
         default:
             if let project = model.selectedProject {
-                return .project(project.id)
+                let destination = ProjectWorkspaceDestination(persistedValue: lastSidebarDestination) ?? .overview
+                return .project(project.id, destination)
             }
             return .activity
         }
@@ -308,8 +342,8 @@ struct RootView: View {
             lastSidebarDestination = "guide"
         case .activity:
             lastSidebarDestination = "activity"
-        case .project:
-            lastSidebarDestination = "project"
+        case .project(_, let destination):
+            lastSidebarDestination = destination.persistedValue
         case .none:
             break
         }
@@ -322,10 +356,17 @@ struct RootView: View {
             ActivityView()
         case .guide:
             GuideView()
-        case .project:
-            if let project = model.selectedProject {
-                ProjectDetailView(project: project) {
-                    selection = .activity
+        case .project(let id, let destination):
+            if let project = model.projects.first(where: { $0.id == id }) {
+                if model.selectedProject?.id == id {
+                    ProjectDetailView(
+                        project: project,
+                        destination: destination
+                    ) {
+                        selection = .activity
+                    }
+                } else {
+                    projectSwitchingPlaceholder(project)
                 }
             } else {
                 EmptyProjectView()
@@ -333,6 +374,18 @@ struct RootView: View {
         case .none:
             EmptyProjectView()
         }
+    }
+
+    private func projectSwitchingPlaceholder(_ project: ProjectRecord) -> some View {
+        VStack(spacing: layout.spacing(12)) {
+            ProgressView()
+                .controlSize(.small)
+            Text(L10n.string("project.switching", project.name))
+                .chadexFont(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle(project.name)
     }
 }
 

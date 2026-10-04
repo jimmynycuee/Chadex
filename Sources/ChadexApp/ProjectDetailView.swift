@@ -5,6 +5,7 @@ struct ProjectDetailView: View {
     @Environment(\.chadexLayout) private var layout
     @EnvironmentObject private var model: AppModel
     let project: ProjectRecord
+    let destination: ProjectWorkspaceDestination
     let onShowAllActivity: () -> Void
     @State private var showingErrorDetails = false
     @State private var showingEffectiveInstructions = false
@@ -14,51 +15,69 @@ struct ProjectDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: layout.spacing(ChadexMetrics.sectionSpacing)) {
-                header
-                Divider()
-                connectionSection
-
-                if let error = model.connectionError {
-                    errorSection(error)
-                }
-
-                Divider()
-                computerControlSection
-
-                if let task = model.snapshot.taskProgress {
-                    Divider()
-                    TaskProgressView(task: task) {
-                        Task { await model.cancelTask(task) }
-                    }
-                }
-
-                Divider()
-                instructionsSection
-
-                Divider()
-                SkillsCenterView(project: project)
-
-                Divider()
-                ProjectMemoryView(project: project)
-
-                Divider()
-                recentActivity
+                workspaceContent
             }
             .frame(maxWidth: layout.control(ChadexMetrics.detailMaxWidth), alignment: .leading)
             .chadexPadding(.horizontal, ChadexMetrics.detailHorizontalPadding)
             .chadexPadding(.vertical, ChadexMetrics.detailVerticalPadding)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .navigationTitle(project.name)
-        .task(id: project.id) {
+        .navigationTitle("\(project.name) — \(L10n.string(destination.titleKey))")
+        .task(id: "\(project.id.uuidString):\(destination.rawValue)") {
             guard model.selectedProject?.id == project.id else { return }
-            await model.refreshProjectInstructions()
-            await model.refreshSkills()
-            await model.refreshProjectMemory()
+
+            switch destination {
+            case .computer:
+                await model.refreshComputerSafety()
+            case .instructions:
+                await model.refreshProjectInstructions()
+            case .skills:
+                await model.refreshSkills()
+            case .memory:
+                await model.refreshProjectMemory()
+            case .overview:
+                break
+            }
         }
         .sheet(isPresented: $showingAgentsDraft) {
             AgentsDraftSheet(project: project, draft: $agentsDraft)
                 .environmentObject(model)
+        }
+    }
+
+    @ViewBuilder
+    private var workspaceContent: some View {
+        switch destination {
+        case .overview:
+            header
+            Divider()
+            connectionSection
+
+            if let error = model.connectionError {
+                errorSection(error)
+            }
+
+            if let task = model.snapshot.taskProgress {
+                Divider()
+                TaskProgressView(task: task) {
+                    Task { await model.cancelTask(task) }
+                }
+            }
+
+            Divider()
+            recentActivity
+
+        case .computer:
+            computerControlSection
+
+        case .instructions:
+            instructionsSection
+
+        case .skills:
+            SkillsCenterView(project: project)
+
+        case .memory:
+            ProjectMemoryView(project: project)
         }
     }
 

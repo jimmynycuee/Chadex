@@ -14,6 +14,11 @@
 "sidebar.projects" = "Projects";
 "sidebar.activity" = "Activity";
 "sidebar.guide" = "Guide";
+"sidebar.overview" = "Overview";
+"sidebar.computer" = "Computer";
+"sidebar.instructions" = "Instructions";
+"sidebar.skills" = "Skills";
+"sidebar.memory" = "Memory";
 
 "project.add" = "Add Project";
 "project.addHint" = "Choose a local folder to register with Chadex.";

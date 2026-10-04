@@ -14,6 +14,11 @@
 "sidebar.projects" = "專案";
 "sidebar.activity" = "活動紀錄";
 "sidebar.guide" = "使用指南";
+"sidebar.overview" = "總覽";
+"sidebar.computer" = "電腦控制";
+"sidebar.instructions" = "專案指令";
+"sidebar.skills" = "Skills";
+"sidebar.memory" = "專案記憶";
 
 "project.add" = "加入專案";
 "project.addHint" = "選擇要登錄到 Chadex 的本機資料夾。";
