@@ -28,6 +28,28 @@
 "project.emptyTitle" = "尚未選擇專案";
 "project.emptyMessage" = "加入一個本機資料夾，準備讓 ChatGPT 存取。";
 
+"instructions.title" = "PROJECT INSTRUCTIONS";
+"instructions.subtitle" = "這裡顯示 Chadex 針對目前目標實際解析、並提供給 Agent 的專案規則；來源依實際生效順序排列。";
+"instructions.target" = "目標路徑";
+"instructions.refresh" = "重新整理 Project Instructions";
+"instructions.loading" = "正在解析目前的 Project Instructions…";
+"instructions.none" = "目前目標沒有生效中的支援指令檔。";
+"instructions.unavailable" = "目前無法從作用中的 runtime 觀察 Project Instructions。";
+"instructions.hierarchy" = "實際生效層級";
+"instructions.broadToSpecific" = "由較廣範圍依序套用到較具體範圍；專案規則衝突時，以後方、較具體的規則為準。目前 ChatGPT 任務會在這些專案規則之後成為最後一層任務輸入。";
+"instructions.inherited" = "上層繼承";
+"instructions.targetScope" = "目前目標";
+"instructions.currentTask" = "目前 ChatGPT 任務";
+"instructions.currentTaskNote" = "目前聊天中的要求是最後一層任務輸入；平台安全與授權規則仍具有更高優先權。";
+"instructions.effective" = "查看實際有效指令";
+"instructions.truncated" = "此來源為了模型 context 已受長度限制。";
+"instructions.changed" = "自上次觀察後指令已變更：%@";
+"instructions.create" = "建立 AGENTS.md…";
+"instructions.createTitle" = "建立 AGENTS.md";
+"instructions.createMessage" = "儲存前可先編輯這份草稿。只有按下「建立 AGENTS.md」後，Chadex 才會在專案根目錄建立檔案。";
+"instructions.save" = "建立 AGENTS.md";
+"instructions.noOverwrite" = "這個動作絕不覆寫既有 AGENTS.md；若儲存前檔案已出現，建立會安全失敗。";
+
 "status.unconfigured" = "尚未設定";
 "status.preparing" = "準備中";
 "status.connecting" = "正在連接…";

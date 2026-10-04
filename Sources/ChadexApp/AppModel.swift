@@ -28,6 +28,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var connectionCheckMessage: String?
     @Published private(set) var connectionCheckSucceeded: Bool?
     @Published private(set) var isBootstrapping = false
+    @Published private(set) var projectInstructions: ProjectInstructionsInspection?
+    @Published private(set) var projectInstructionsLoading = false
+    @Published private(set) var projectInstructionsError: String?
+    @Published private(set) var projectInstructionChangedPaths: [String] = []
+    @Published private(set) var projectAgentsWriteInFlight = false
 
     enum ActivityFilter: String, CaseIterable, Identifiable {
         case all
@@ -53,12 +58,15 @@ final class AppModel: ObservableObject {
     private let currentKeychainACLVersion = 1
     private var pollingTask: Task<Void, Never>?
     private var refreshInFlight = false
+    private var projectInstructionsRefreshProjectID: UUID?
+    private var projectInstructionsLastRefreshUptime: TimeInterval?
     private var snapshotRequestGate = SnapshotRequestGate()
     private var activityRefreshGate = ActivityRefreshGate()
     private var snapshotFreshnessGate = SnapshotFreshnessGate()
     private var projectSwitchGate = ProjectSwitchGate()
     private var appPhaseTimings: [AppPhaseTimingSample] = []
     private let foregroundRefreshMaxAge: TimeInterval = 1.5
+    private let projectInstructionsRefreshMaxAge: TimeInterval = 5
 
     init(
         helper: HelperClient = HelperClient(),
@@ -88,6 +96,19 @@ final class AppModel: ObservableObject {
         guard let id = preferences.selectedProjectID else { return preferences.projects.first }
         return preferences.projects.first(where: { $0.id == id }) ?? preferences.projects.first
     }
+
+    static let agentsDraftTemplate = """
+    # Project Instructions
+
+    ## Scope
+    - Describe which files and tasks these instructions apply to.
+
+    ## Working Rules
+    - Add project-specific implementation, architecture, or style requirements here.
+
+    ## Validation
+    - List the checks that should pass before work is considered complete.
+    """
 
     var filteredActivities: [ActivityEntry] {
         activities.filter { entry in
@@ -271,7 +292,10 @@ final class AppModel: ObservableObject {
     func selectProject(_ id: UUID) async -> Bool {
         guard projectSwitchGate.begin(id) else { return false }
         defer { projectSwitchGate.finish(id) }
-        guard id != preferences.selectedProjectID else { return true }
+        if id == preferences.selectedProjectID {
+            await refreshProjectInstructions()
+            return true
+        }
         guard let project = preferences.projects.first(where: { $0.id == id }) else { return false }
         isSwitchingProject = true
         switchingProjectName = project.name
@@ -297,6 +321,8 @@ final class AppModel: ObservableObject {
             preferences.selectedProjectID = id
             try persist()
             await refreshActivities()
+            clearProjectInstructions()
+            await refreshProjectInstructions()
             return true
         } catch {
             recordAppPhase(
@@ -318,6 +344,8 @@ final class AppModel: ObservableObject {
         do {
             _ = try await requestSnapshot(method: "activateProject", params: ActivateProjectParams(path: selectedProject.path))
             await refreshActivities()
+            clearProjectInstructions()
+            await refreshProjectInstructions()
             return true
         } catch {
             present(error)
@@ -338,6 +366,13 @@ final class AppModel: ObservableObject {
             ))
             await refreshActivities()
             await refreshMascotTraces()
+            let now = ProcessInfo.processInfo.systemUptime
+            let instructionObservationIsStale = projectInstructionsLastRefreshUptime
+                .map { now - $0 >= projectInstructionsRefreshMaxAge }
+                ?? true
+            if force || instructionObservationIsStale {
+                await refreshProjectInstructions()
+            }
         } catch {
             // Polling is background work. While the user is entering tunnel
             // credentials, surfacing this as a modal alert would interrupt the
@@ -346,6 +381,80 @@ final class AppModel: ObservableObject {
                 present(error, quietlyIfAlreadyShown: true)
             }
         }
+    }
+
+    func refreshProjectInstructions() async {
+        guard let selectedProject else {
+            clearProjectInstructions()
+            return
+        }
+        let requestedProjectID = selectedProject.id
+        guard projectInstructionsRefreshProjectID != requestedProjectID else { return }
+        projectInstructionsRefreshProjectID = requestedProjectID
+        projectInstructionsLoading = true
+        let hadPreviousObservation = projectInstructions != nil
+        let previousFingerprints = projectInstructions?.sourceFingerprints ?? [:]
+        defer {
+            if projectInstructionsRefreshProjectID == requestedProjectID {
+                projectInstructionsRefreshProjectID = nil
+                projectInstructionsLoading = false
+            }
+            if self.selectedProject?.id == requestedProjectID {
+                projectInstructionsLastRefreshUptime = ProcessInfo.processInfo.systemUptime
+            }
+        }
+        do {
+            let inspection: ProjectInstructionsInspection = try await helper.request(
+                method: "getProjectInstructions",
+                params: InspectProjectParams(path: selectedProject.path)
+            )
+            guard self.selectedProject?.id == requestedProjectID else { return }
+            let currentFingerprints = inspection.sourceFingerprints
+            if hadPreviousObservation && previousFingerprints != currentFingerprints {
+                projectInstructionChangedPaths = Set(previousFingerprints.keys)
+                    .union(currentFingerprints.keys)
+                    .filter { previousFingerprints[$0] != currentFingerprints[$0] }
+                    .sorted()
+            } else {
+                projectInstructionChangedPaths = []
+            }
+            projectInstructions = inspection
+            projectInstructionsError = nil
+        } catch {
+            guard self.selectedProject?.id == requestedProjectID else { return }
+            // Never retain stale instruction bodies when a fresh observation fails.
+            projectInstructions = nil
+            projectInstructionChangedPaths = []
+            projectInstructionsError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func createProjectAgentsFile(content: String) async -> Bool {
+        guard !projectAgentsWriteInFlight, let selectedProject else { return false }
+        projectAgentsWriteInFlight = true
+        defer { projectAgentsWriteInFlight = false }
+        do {
+            let _: ProjectFileWriteResult = try await helper.request(
+                method: "createProjectAgentsFile",
+                params: CreateProjectAgentsFileParams(path: selectedProject.path, content: content)
+            )
+            projectInstructionsError = nil
+            await refreshProjectInstructions()
+            return true
+        } catch {
+            let writeError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
+            await refreshProjectInstructions()
+            projectInstructionsError = writeError
+            return false
+        }
+    }
+
+    private func clearProjectInstructions() {
+        projectInstructions = nil
+        projectInstructionsError = nil
+        projectInstructionChangedPaths = []
+        projectInstructionsLastRefreshUptime = nil
     }
 
     private func refreshMascotTraces() async {

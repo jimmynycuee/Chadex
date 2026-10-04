@@ -52,6 +52,23 @@ impl RuntimeBackendApi {
         self.adapter.observe_mascot_jobs(project_path).await
     }
 
+    pub(crate) async fn project_instructions_context(
+        &self,
+        project_path: &str,
+    ) -> ChadexResult<Value> {
+        self.adapter
+            .project_instructions_context(project_path)
+            .await
+    }
+
+    pub(crate) async fn create_agents_file(
+        &self,
+        project_path: &str,
+        content: &str,
+    ) -> ChadexResult<Value> {
+        self.adapter.create_agents_file(project_path, content).await
+    }
+
     pub(crate) async fn stop_local_runtime(&self) -> ChadexResult<RuntimeSnapshot> {
         self.adapter.stop_local_runtime().await
     }

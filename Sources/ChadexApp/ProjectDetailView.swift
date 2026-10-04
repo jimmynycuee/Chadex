@@ -7,6 +7,9 @@ struct ProjectDetailView: View {
     let project: ProjectRecord
     let onShowAllActivity: () -> Void
     @State private var showingErrorDetails = false
+    @State private var showingEffectiveInstructions = false
+    @State private var showingAgentsDraft = false
+    @State private var agentsDraft = AppModel.agentsDraftTemplate
 
     var body: some View {
         ScrollView {
@@ -27,6 +30,9 @@ struct ProjectDetailView: View {
                 }
 
                 Divider()
+                instructionsSection
+
+                Divider()
                 recentActivity
             }
             .frame(maxWidth: layout.control(ChadexMetrics.detailMaxWidth), alignment: .leading)
@@ -35,6 +41,14 @@ struct ProjectDetailView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .navigationTitle(project.name)
+        .task(id: project.id) {
+            guard model.selectedProject?.id == project.id else { return }
+            await model.refreshProjectInstructions()
+        }
+        .sheet(isPresented: $showingAgentsDraft) {
+            AgentsDraftSheet(project: project, draft: $agentsDraft)
+                .environmentObject(model)
+        }
     }
 
     private var header: some View {
@@ -246,6 +260,186 @@ struct ProjectDetailView: View {
         .accessibilityElement(children: .contain)
     }
 
+    private var instructionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                SectionEyebrow(title: L10n.string("instructions.title"))
+                Spacer(minLength: 12)
+
+                Button {
+                    Task { await model.refreshProjectInstructions() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(model.projectInstructionsLoading || model.isSwitchingProject)
+                .help(L10n.string("instructions.refresh"))
+                .accessibilityLabel(L10n.string("instructions.refresh"))
+
+                Button(L10n.string("instructions.create")) {
+                    agentsDraft = AppModel.agentsDraftTemplate
+                    showingAgentsDraft = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(
+                    model.projectAgentsWriteInFlight
+                        || model.projectInstructionsLoading
+                        || model.isSwitchingProject
+                        || model.projectInstructions?.isAvailable != true
+                        || model.projectInstructions?.hasTargetAgentsFile == true
+                )
+            }
+
+            Text(L10n.string("instructions.subtitle"))
+                .chadexFont(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(L10n.string("instructions.target"))
+                    .chadexFont(.caption, weight: .semibold)
+                    .foregroundStyle(.secondary)
+                Text(project.path)
+                    .chadexFont(.caption, design: .monospaced)
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+            }
+
+            if model.projectInstructionsLoading && model.projectInstructions == nil {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(L10n.string("instructions.loading"))
+                        .chadexFont(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .chadexPadding(.vertical, 8)
+            } else if let error = model.projectInstructionsError, model.projectInstructions == nil {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .chadexFont(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let inspection = model.projectInstructions {
+                if !model.projectInstructionChangedPaths.isEmpty {
+                    Label(
+                        L10n.string("instructions.changed", model.projectInstructionChangedPaths.joined(separator: ", ")),
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                    .chadexFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if inspection.sources.isEmpty {
+                    Label(
+                        inspection.isAvailable ? L10n.string("instructions.none") : L10n.string("instructions.unavailable"),
+                        systemImage: inspection.isAvailable ? "doc.badge.plus" : "exclamationmark.circle"
+                    )
+                    .chadexFont(.callout)
+                    .foregroundStyle(.secondary)
+                    .chadexPadding(.vertical, 6)
+
+                    VStack(spacing: 0) {
+                        currentTaskRow(index: 0)
+                    }
+                    .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous))
+                } else {
+                    Text(L10n.string("instructions.hierarchy"))
+                        .chadexFont(.headline)
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(inspection.sources.enumerated()), id: \.element.id) { index, source in
+                            instructionSourceRow(source, index: index)
+                            if index < inspection.sources.count - 1 {
+                                Divider().padding(.leading, layout.spacing(30))
+                            }
+                        }
+
+                        Divider()
+                        currentTaskRow(index: inspection.sources.count)
+                    }
+                    .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous))
+
+                    Text(L10n.string("instructions.broadToSpecific"))
+                        .chadexFont(.caption)
+                        .foregroundStyle(.tertiary)
+
+                    if inspection.contentIncluded && !inspection.effectiveContent.isEmpty {
+                        DisclosureGroup(L10n.string("instructions.effective"), isExpanded: $showingEffectiveInstructions) {
+                            Text(inspection.effectiveContent)
+                                .chadexFont(.caption, design: .monospaced)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .chadexPadding(.top, 8)
+                        }
+                        .chadexFont(.callout, weight: .medium)
+                    }
+                }
+            }
+        }
+    }
+
+    private func instructionSourceRow(_ source: ProjectInstructionSource, index: Int) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(index + 1)")
+                .chadexFont(.caption, design: .monospaced)
+                .foregroundStyle(.tertiary)
+                .frame(width: layout.control(20), alignment: .trailing)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(source.path)
+                    .chadexFont(.callout, weight: .medium, design: .monospaced)
+                    .textSelection(.enabled)
+
+                HStack(spacing: 7) {
+                    Text(source.isInherited ? L10n.string("instructions.inherited") : L10n.string("instructions.targetScope"))
+                    Text(String(source.fingerprint.prefix(12)))
+                        .monospaced()
+                        .help(source.fingerprint)
+                }
+                .chadexFont(.caption)
+                .foregroundStyle(.tertiary)
+            }
+
+            Spacer(minLength: 12)
+
+            if source.truncated {
+                Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(.tertiary)
+                    .help(L10n.string("instructions.truncated"))
+            }
+        }
+        .chadexPadding(.horizontal, 10)
+        .chadexPadding(.vertical, 8)
+    }
+
+    private func currentTaskRow(index: Int) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(index + 1)")
+                .chadexFont(.caption, design: .monospaced)
+                .foregroundStyle(.tertiary)
+                .frame(width: layout.control(20), alignment: .trailing)
+
+            Image(systemName: "bubble.left.and.text.bubble.right")
+                .chadexFont(.caption)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: layout.control(18))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L10n.string("instructions.currentTask"))
+                    .chadexFont(.callout, weight: .medium)
+                Text(L10n.string("instructions.currentTaskNote"))
+                    .chadexFont(.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+        }
+        .chadexPadding(.horizontal, 10)
+        .chadexPadding(.vertical, 8)
+    }
+
     private var recentActivity: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
@@ -343,6 +537,69 @@ struct ProjectDetailView: View {
         }
     }
 
+}
+
+private struct AgentsDraftSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var model: AppModel
+    let project: ProjectRecord
+    @Binding var draft: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(L10n.string("instructions.createTitle"))
+                    .chadexFont(.title2, weight: .semibold)
+                Text(L10n.string("instructions.createMessage"))
+                    .chadexFont(.callout)
+                    .foregroundStyle(.secondary)
+                Text(project.path + "/AGENTS.md")
+                    .chadexFont(.caption, design: .monospaced)
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+            }
+
+            TextEditor(text: $draft)
+                .font(.system(.body, design: .monospaced))
+                .frame(minWidth: 620, minHeight: 330)
+                .padding(7)
+                .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+            Label(L10n.string("instructions.noOverwrite"), systemImage: "lock.shield")
+                .chadexFont(.caption)
+                .foregroundStyle(.secondary)
+
+            if let error = model.projectInstructionsError {
+                Text(error)
+                    .chadexFont(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Spacer()
+                Button(L10n.string("common.cancel")) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button {
+                    Task {
+                        if await model.createProjectAgentsFile(content: draft) {
+                            dismiss()
+                        }
+                    }
+                } label: {
+                    if model.projectAgentsWriteInFlight {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text(L10n.string("instructions.save"))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.projectAgentsWriteInFlight)
+            }
+        }
+        .padding(22)
+    }
 }
 
 enum ActivityPresentation {

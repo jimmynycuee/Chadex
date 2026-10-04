@@ -380,19 +380,30 @@ async fn load_project_instructions_inherits_agents_from_visible_ancestor_chain()
     let root = tempfile::tempdir().unwrap();
     let project_root = root.path();
     let nested = project_root.join("專題/neurolight_app/tool");
+    let sibling = project_root.join("其他/tool");
     std::fs::create_dir_all(&nested).unwrap();
-    std::fs::write(project_root.join("AGENTS.md"), "# Global\nglobal rule\n").unwrap();
+    std::fs::create_dir_all(&sibling).unwrap();
+    std::fs::write(
+        project_root.join("AGENTS.md"),
+        "# Global\nglobal rule\nMODE=root\n",
+    )
+    .unwrap();
     std::fs::write(
         project_root.join("專題/AGENTS.md"),
-        "# Project\nproject rule\n",
+        "# Project\nproject rule\nMODE=project\n",
     )
     .unwrap();
     std::fs::write(
         project_root.join("專題/neurolight_app/AGENTS.md"),
-        "# App\napp rule\n",
+        "# App\napp rule\nMODE=app\n",
     )
     .unwrap();
-    std::fs::write(nested.join("AGENTS.md"), "# Tool\ntool rule\n").unwrap();
+    std::fs::write(nested.join("AGENTS.md"), "# Tool\ntool rule\nMODE=tool\n").unwrap();
+    std::fs::write(
+        sibling.join("AGENTS.md"),
+        "# Sibling\nsibling rule\nMODE=sibling\n",
+    )
+    .unwrap();
 
     let runtime = test_runtime();
     let client_id = "instr-hierarchy";
@@ -413,6 +424,13 @@ async fn load_project_instructions_inherits_agents_from_visible_ancestor_chain()
                 1,
             ),
             named_registered_project(client_id, "tool", "Tool", &nested.to_string_lossy(), 2),
+            named_registered_project(
+                client_id,
+                "sibling",
+                "Sibling",
+                &sibling.to_string_lossy(),
+                3,
+            ),
         ],
     )
     .await;
@@ -473,4 +491,68 @@ async fn load_project_instructions_inherits_agents_from_visible_ancestor_chain()
     assert!(snapshot.files[1].content.contains("project rule"));
     assert!(snapshot.files[2].content.contains("app rule"));
     assert!(snapshot.files[3].content.contains("tool rule"));
+    assert_eq!(
+        snapshot
+            .files
+            .iter()
+            .map(|file| {
+                file.content
+                    .lines()
+                    .find(|line| line.starts_with("MODE="))
+                    .unwrap()
+                    .to_string()
+            })
+            .collect::<Vec<_>>(),
+        vec!["MODE=root", "MODE=project", "MODE=app", "MODE=tool"]
+    );
+
+    let sibling_config = ProjectConfig {
+        path: sibling.to_string_lossy().to_string(),
+        client_id: client_id.to_string(),
+        allow_patch: true,
+    };
+    let sibling_task = tokio::spawn({
+        let runtime = runtime.clone();
+        async move {
+            runtime
+                .load_project_instructions_for_auth(&sibling_config, None)
+                .await
+        }
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !sibling_task.is_finished() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "sibling instruction fixture timed out"
+        );
+        if let Some(request) = probe_patch_agent_request(&runtime, client_id).await {
+            let (exit_code, stdout, stderr) = run_runner_shell_request_locally(&request);
+            complete_patch_agent_request(
+                &runtime,
+                client_id,
+                &request.request_id,
+                exit_code,
+                &stdout,
+                &stderr,
+            )
+            .await;
+        } else {
+            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        }
+    }
+    let sibling_snapshot = sibling_task.await.unwrap();
+    assert_eq!(
+        sibling_snapshot
+            .files
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["@hierarchy/AGENTS.md", "AGENTS.md"]
+    );
+    assert!(sibling_snapshot.files[0].content.contains("MODE=root"));
+    assert!(sibling_snapshot.files[1].content.contains("MODE=sibling"));
+    assert!(!sibling_snapshot
+        .files
+        .iter()
+        .any(|file| file.content.contains("MODE=project") || file.content.contains("MODE=app")));
 }

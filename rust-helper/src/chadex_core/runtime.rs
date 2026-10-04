@@ -123,6 +123,20 @@ impl ChadexRuntimeCore {
         self.backend.observe_mascot_jobs(project_path).await
     }
 
+    pub async fn project_instructions_context(&self, project_path: &str) -> ChadexResult<Value> {
+        self.backend
+            .project_instructions_context(project_path)
+            .await
+    }
+
+    pub async fn create_agents_file(
+        &self,
+        project_path: &str,
+        content: &str,
+    ) -> ChadexResult<Value> {
+        self.backend.create_agents_file(project_path, content).await
+    }
+
     pub async fn stop_local_runtime(&self) -> ChadexResult<RuntimeSnapshot> {
         self.backend.stop_local_runtime().await
     }

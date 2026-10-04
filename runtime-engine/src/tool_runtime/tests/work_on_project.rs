@@ -3989,6 +3989,109 @@ async fn work_on_project_exact_resume_reuses_rules_and_detects_changes() {
 }
 
 #[tokio::test]
+async fn work_on_project_instruction_rename_delete_and_fresh_session_never_reuse_stale_rules() {
+    let root = tempfile::tempdir().unwrap();
+    seed_coding_repository(root.path(), "original agents rule");
+    let runtime = ToolRuntime::new_for_tests();
+    let project =
+        register_runner_project_at_path(&runtime, "wop-rule-lifecycle", "demo", root.path()).await;
+    let auth = auth_context(None, true);
+
+    let first = dispatch_coding_call_in_window(
+        &runtime,
+        "wop-rule-lifecycle",
+        work_on_project_call(&project, "first", None),
+        Some(&auth),
+        "rule-window",
+    )
+    .await;
+    assert!(first.success, "{:?}", first.error);
+    let first_session_id = first.output["session_id"].as_str().unwrap().to_string();
+    assert!(first.output["instructions"]["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|source| source["path"] == "AGENTS.md"));
+
+    std::fs::rename(
+        root.path().join("AGENTS.md"),
+        root.path().join("CLAUDE.md"),
+    )
+    .unwrap();
+    let renamed = dispatch_coding_call_in_window(
+        &runtime,
+        "wop-rule-lifecycle",
+        work_on_project_call(&project, "after rename", Some(&first_session_id)),
+        Some(&auth),
+        "rule-window",
+    )
+    .await;
+    assert!(renamed.success, "{:?}", renamed.error);
+    assert_eq!(renamed.output["instructions"]["status"], "changed");
+    let renamed_sources = renamed.output["instructions"]["changed_sources"]
+        .as_array()
+        .unwrap();
+    assert!(renamed_sources.contains(&json!("AGENTS.md")));
+    assert!(renamed_sources.contains(&json!("CLAUDE.md")));
+    assert!(renamed.output["instructions"]["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|source| source["path"] == "CLAUDE.md"
+            && source["content"]
+                .as_str()
+                .is_some_and(|content| content.contains("original agents rule"))));
+    assert!(!renamed.output["instructions"]["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|source| source["path"] == "AGENTS.md"));
+
+    let fresh = dispatch_coding_call_in_window(
+        &runtime,
+        "wop-rule-lifecycle",
+        work_on_project_call(&project, "fresh session", None),
+        Some(&auth),
+        "fresh-rule-window",
+    )
+    .await;
+    assert!(fresh.success, "{:?}", fresh.error);
+    let fresh_session_id = fresh.output["session_id"].as_str().unwrap().to_string();
+    assert_ne!(fresh_session_id, first_session_id);
+    assert_eq!(fresh.output["instructions"]["status"], "loaded");
+    assert!(fresh.output["instructions"]["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|source| source["path"] == "CLAUDE.md"));
+    assert!(!fresh.output["instructions"]["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|source| source["path"] == "AGENTS.md"));
+
+    std::fs::remove_file(root.path().join("CLAUDE.md")).unwrap();
+    let deleted = dispatch_coding_call_in_window(
+        &runtime,
+        "wop-rule-lifecycle",
+        work_on_project_call(&project, "after delete", Some(&fresh_session_id)),
+        Some(&auth),
+        "fresh-rule-window",
+    )
+    .await;
+    assert!(deleted.success, "{:?}", deleted.error);
+    assert_eq!(deleted.output["instructions"]["status"], "changed");
+    assert!(deleted.output["instructions"]["changed_sources"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("CLAUDE.md")));
+    assert!(deleted.output["instructions"]["sources"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
 async fn work_on_project_sizes_and_runner_request_reduction_are_stable() {
     let root = tempfile::tempdir().unwrap();
     seed_coding_repository(root.path(), "Keep the focused startup safe.");

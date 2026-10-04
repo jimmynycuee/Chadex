@@ -173,6 +173,117 @@ impl RuntimeBackendAdapter {
         (current == target).then_some(jobs)
     }
 
+    pub(crate) async fn project_instructions_context(
+        &self,
+        project_path: &str,
+    ) -> ChadexResult<Value> {
+        let target = self.exact_runtime_probe_target(project_path).await?;
+        let token = read_probe_token(&target.user_token_file).await.ok_or_else(|| {
+            ChadexError::new(
+                "project_instructions_unavailable",
+                "The local runtime credential is unavailable",
+                "Restore the local runtime, then refresh Project Instructions.",
+            )
+        })?;
+        let cancellation =
+            CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
+        let result = call_local_runtime_tool_with_context(
+            &self.probe_client,
+            &target.server_url,
+            token.as_str(),
+            "git_status",
+            json!({"project": target.runtime_project_id}),
+            &["project.instructions"],
+            &cancellation,
+        )
+        .await
+        .map_err(map_desktop_error)?
+        .ok_or_else(|| {
+            ChadexError::new(
+                "project_instructions_unavailable",
+                "The local runtime did not return Project Instructions",
+                "Restore the local runtime, then refresh Project Instructions.",
+            )
+        })?;
+        Ok(result.output)
+    }
+
+    pub(crate) async fn create_agents_file(
+        &self,
+        project_path: &str,
+        content: &str,
+    ) -> ChadexResult<Value> {
+        let target = self.exact_runtime_probe_target(project_path).await?;
+        let token = read_probe_token(&target.user_token_file).await.ok_or_else(|| {
+            ChadexError::new(
+                "project_instruction_write_unavailable",
+                "The local runtime credential is unavailable",
+                "Restore the local runtime, then try creating AGENTS.md again.",
+            )
+        })?;
+        let cancellation =
+            CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
+        let result = call_local_runtime_tool(
+            &self.probe_client,
+            &target.server_url,
+            token.as_str(),
+            "write_project_file",
+            json!({
+                "project": target.runtime_project_id,
+                "path": "AGENTS.md",
+                "content": content,
+                "overwrite": false
+            }),
+            &cancellation,
+        )
+        .await
+        .map_err(map_desktop_error)?
+        .ok_or_else(|| {
+            ChadexError::new(
+                "project_instruction_write_unavailable",
+                "The local runtime did not return the AGENTS.md write result",
+                "Refresh Project Instructions and retry only if AGENTS.md is still missing.",
+            )
+        })?;
+        if !result.success {
+            return Err(ChadexError::new(
+                operator_error_code(&result).unwrap_or("project_instruction_write_failed"),
+                "Chadex did not create AGENTS.md",
+                "Refresh Project Instructions. Existing files are never overwritten by this action.",
+            ));
+        }
+        Ok(result.output)
+    }
+
+    async fn exact_runtime_probe_target(
+        &self,
+        project_path: &str,
+    ) -> ChadexResult<ChadexRuntimeProbeTarget> {
+        let target = self
+            .app
+            .chadex_runtime_probe_target()
+            .await
+            .map_err(map_desktop_error)?
+            .ok_or_else(|| {
+                ChadexError::new(
+                    "project_runtime_unavailable",
+                    "The selected project is not active in the local runtime",
+                    "Prepare or reconnect the selected project, then retry.",
+                )
+            })?;
+        if !chadex_runtime_runner_config::paths::paths_equal(
+            Path::new(project_path),
+            Path::new(&target.project_path),
+        ) {
+            return Err(ChadexError::new(
+                "project_runtime_mismatch",
+                "The local runtime is active for a different project",
+                "Finish switching projects, then refresh Project Instructions.",
+            ));
+        }
+        Ok(target)
+    }
+
     pub(crate) async fn stop_local_runtime(&self) -> ChadexResult<RuntimeSnapshot> {
         self.app
             .stop_local_runtime()
@@ -612,20 +723,45 @@ async fn call_local_runtime_tool(
     arguments: Value,
     cancellation: &CancellationContext,
 ) -> DesktopResult<Option<OperatorToolResult>> {
+    call_local_runtime_tool_with_context(
+        client,
+        server_url,
+        token,
+        tool,
+        arguments,
+        &[],
+        cancellation,
+    )
+    .await
+}
+
+async fn call_local_runtime_tool_with_context(
+    client: &Client,
+    server_url: &str,
+    token: &str,
+    tool: &str,
+    arguments: Value,
+    context_request: &[&str],
+    cancellation: &CancellationContext,
+) -> DesktopResult<Option<OperatorToolResult>> {
     cancellation.check()?;
     let Some(url) = local_mcp_url(server_url) else {
         return Ok(None);
     };
+    let mut gateway_arguments = json!({
+        "tool": tool,
+        "arguments": arguments
+    });
+    if !context_request.is_empty() {
+        gateway_arguments["context_request"] = json!(context_request);
+    }
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
         "id": 1,
         "method": "tools/call",
         "params": {
             "name": "call_runtime_tool",
-            "arguments": {
-                "tool": tool,
-                "arguments": arguments
-            }
+            "arguments": gateway_arguments
         }
     }))
     .map_err(|_| project_activation_reconcile_error())?;
