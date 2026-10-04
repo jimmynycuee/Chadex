@@ -38,18 +38,21 @@ EXPECTED_RESOURCES = frozenset({
 })
 STAGES = (
     "runner_preflight", "candidate_validation", "user_state_preflight",
-    "runner_tools", "fixture_setup", "synthetic_baseline_install",
+    "runner_tools", "fixture_setup", "baseline_install",
     "baseline_resource_verification", "initial_installed_launch",
     "candidate_upgrade_install", "upgrade_resource_and_data_verification",
     "upgrade_restore_launch", "same_version_reinstall",
     "reinstall_resource_and_data_verification", "reinstall_restore_launch",
-    "uninstall", "uninstall_preservation_verification", "fixture_cleanup",
+    "uninstall", "uninstall_preservation_verification",
+    "default_uninstaller_self_copy", "fixture_cleanup",
 )
-MANUAL_CHECKS_PENDING = [
+EXTERNAL_CHECKS_PENDING = [
     "native_picker", "explorer_open", "tray", "launch_at_login",
-    "notifications", "credentialed_tunnel", "signing", "physical_arm64",
-    "updater", "historical_upgrade", "default_uninstaller_self_copy",
+    "notifications", "credentialed_tunnel", "physical_windows_11", "windows_arm64",
+    "authenticode_signing", "missing_webview2", "interactive_installer",
+    "credential_manager_uninstall_policy", "automatic_updater",
 ]
+VERSION_PATTERN = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?"
 SAFE_CODES = frozenset({
     "windows_native_required", "github_actions_required", "github_hosted_runner_required",
     "runner_temp_missing",
@@ -247,7 +250,7 @@ def validate_release_resources(candidate_dir: Path, version: str) -> dict[str, A
     return manifest
 
 
-def validate_candidate(candidate_dir: Path) -> dict[str, Any]:
+def validate_candidate(candidate_dir: Path, *, require_synthetic_fixture: bool = True) -> dict[str, Any]:
     try:
         info = candidate_dir.lstat()
     except OSError:
@@ -259,12 +262,11 @@ def validate_candidate(candidate_dir: Path) -> dict[str, Any]:
     installer_name = manifest.get("installer")
     require(_safe_executable_basename(installer_name), "candidate_filename_unsafe")
     version = manifest.get("version")
-    version_pattern = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?"
-    require(isinstance(version, str) and re.fullmatch(version_pattern, version),
+    require(isinstance(version, str) and re.fullmatch(VERSION_PATTERN, version),
             "candidate_metadata_invalid")
     baseline_version = manifest.get("synthetic_upgrade_baseline")
     require(isinstance(baseline_version, str)
-            and re.fullmatch(version_pattern, baseline_version)
+            and re.fullmatch(VERSION_PATTERN, baseline_version)
             and baseline_version != version,
             "candidate_metadata_invalid")
     require(type(manifest.get("schema")) is int and manifest.get("schema") == 1
@@ -289,14 +291,15 @@ def validate_candidate(candidate_dir: Path) -> dict[str, Any]:
     _regular_file(installer, "candidate_manifest_invalid")
     require(_sha256(installer) == installer_hash, "candidate_hash_mismatch")
     fixture = candidate_dir / "upgrade-fixture" / "baseline-setup.exe"
-    _regular_file(fixture, "candidate_fixture_missing")
-    require(_sha256(fixture) == fixture_hash, "candidate_hash_mismatch")
-    try:
-        fixture_dir_info = fixture.parent.lstat()
-    except OSError:
-        raise SmokeFailure("candidate_fixture_missing") from None
-    require(stat.S_ISDIR(fixture_dir_info.st_mode) and not fixture.parent.is_symlink()
-            and not _is_reparse(fixture_dir_info), "candidate_fixture_missing")
+    if require_synthetic_fixture:
+        _regular_file(fixture, "candidate_fixture_missing")
+        require(_sha256(fixture) == fixture_hash, "candidate_hash_mismatch")
+        try:
+            fixture_dir_info = fixture.parent.lstat()
+        except OSError:
+            raise SmokeFailure("candidate_fixture_missing") from None
+        require(stat.S_ISDIR(fixture_dir_info.st_mode) and not fixture.parent.is_symlink()
+                and not _is_reparse(fixture_dir_info), "candidate_fixture_missing")
     resources = validate_release_resources(candidate_dir, version)
     return {
         "manifest": manifest,
@@ -310,6 +313,50 @@ def validate_candidate(candidate_dir: Path) -> dict[str, Any]:
         "baseline_installer": fixture,
         "resources": resources,
         "resource_manifest_hash": _sha256(candidate_dir / "release-resources.json"),
+    }
+
+
+def validate_historical_baseline(baseline_dir: Path, candidate_version: str) -> dict[str, Any]:
+    try:
+        info = baseline_dir.lstat()
+    except OSError:
+        raise SmokeFailure("candidate_dir_invalid") from None
+    require(stat.S_ISDIR(info.st_mode) and not baseline_dir.is_symlink() and not _is_reparse(info),
+            "candidate_dir_invalid")
+    manifest = _read_json(baseline_dir / "candidate.json",
+                          "candidate_manifest_missing", "candidate_manifest_invalid")
+    installer_name = manifest.get("installer")
+    require(_safe_executable_basename(installer_name), "candidate_filename_unsafe")
+    version = manifest.get("version")
+    require(isinstance(version, str) and re.fullmatch(VERSION_PATTERN, version)
+            and version != candidate_version, "candidate_metadata_invalid")
+    require(type(manifest.get("schema")) is int and manifest.get("schema") == 1
+            and manifest.get("track") == "W5"
+            and re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("source_sha", "")))
+            and manifest.get("architecture") == "x86_64"
+            and manifest.get("profile") == "release"
+            and manifest.get("features") == ["custom-protocol"]
+            and manifest.get("desktop_smoke") is False
+            and manifest.get("authenticode") == "unsigned",
+            "candidate_metadata_invalid")
+    installer_hash = manifest.get("sha256")
+    desktop_hash = manifest.get("desktop_sha256")
+    require(isinstance(installer_hash, str) and re.fullmatch(r"[0-9a-f]{64}", installer_hash)
+            and isinstance(desktop_hash, str) and re.fullmatch(r"[0-9a-f]{64}", desktop_hash),
+            "candidate_hash_invalid")
+    installer = baseline_dir / installer_name
+    _regular_file(installer, "candidate_manifest_invalid")
+    require(_sha256(installer) == installer_hash, "candidate_hash_mismatch")
+    resources = validate_release_resources(baseline_dir, version)
+    return {
+        "manifest": manifest,
+        "version": version,
+        "source_sha": manifest["source_sha"],
+        "installer": installer,
+        "installer_hash": installer_hash,
+        "desktop_hash": desktop_hash,
+        "resources": resources,
+        "resource_manifest_hash": _sha256(baseline_dir / "release-resources.json"),
     }
 
 
@@ -413,6 +460,10 @@ def installer_arguments(installer: Path, install_dir: Path) -> str:
 
 def uninstaller_arguments(uninstaller: Path, install_dir: Path) -> str:
     return subprocess.list2cmdline([str(uninstaller), "/S"]) + f" _?={install_dir}"
+
+
+def default_uninstaller_arguments(uninstaller: Path) -> str:
+    return subprocess.list2cmdline([str(uninstaller), "/S"])
 
 
 def child_environment(base: Mapping[str, str], port: int) -> dict[str, str]:
@@ -735,6 +786,21 @@ def run_uninstaller(install_dir: Path, root: Path, *, powershell: str,
     return original_hash
 
 
+def run_default_uninstaller(install_dir: Path, root: Path, *, powershell: str,
+                            groups: list[dict[int, dict[str, Any]]],
+                            report: "SmokeReport") -> None:
+    uninstaller = install_dir / "uninstall.exe"
+    _regular_file(uninstaller, "uninstaller_missing")
+    run_owned_executable(
+        uninstaller, default_uninstaller_arguments(uninstaller), cwd=root,
+        powershell=powershell, groups=groups, timeout=INSTALLER_TIMEOUT_SECONDS,
+        timeout_code="installer_timeout", spawn_code="installer_spawn_failed",
+        exit_code="uninstaller_exit_nonzero", report=report,
+    )
+    require(not _lexists(install_dir), "uninstall_files_remain")
+    verify_registry_removed()
+
+
 def _launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: Path,
                      version: str, mode: str, *, powershell: str, node: str,
                      groups: list[dict[int, dict[str, Any]]],
@@ -859,17 +925,21 @@ def launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: P
 
 
 class SmokeReport:
-    def __init__(self, platform: str) -> None:
+    def __init__(self, platform: str, *, upgrade_type: str = "synthetic_metadata_upgrade",
+                 external_checks_pending: list[str] | None = None) -> None:
         self.value: dict[str, Any] = {
             "schema": 1,
             "track": "W5",
             "status": "failed",
             "passed": False,
             "platform": "windows" if platform == "win32" else "non_windows",
-            "upgrade_type": "synthetic_metadata_upgrade",
+            "upgrade_type": upgrade_type,
             "source_sha": None,
+            "baseline_source_sha": None,
             "stages": [{"name": name, "status": "not_run"} for name in STAGES],
             "cleanup": {"owned_count": 0, "remaining_count": 0, "forced_count": 0},
+            "external_checks_pending": list(EXTERNAL_CHECKS_PENDING if external_checks_pending is None
+                                             else external_checks_pending),
         }
 
     @contextmanager
@@ -917,7 +987,7 @@ class SmokeReport:
                 "data_preserved", "registry_owner_match", "registry_version_match",
                 "registry_install_dir_match", "registry_entry_removed", "project_marker_preserved",
                 "fixture_appdata_cleaned", "uninstaller_stub_removed",
-                "cdp_policy_removed",
+                "cdp_policy_removed", "default_uninstaller_self_copy_verified",
             ):
                 if type(item.get(flag)) is bool:
                     row[flag] = item[flag]
@@ -928,8 +998,9 @@ class SmokeReport:
             "status": self.value["status"],
             "passed": self.value["passed"],
             "platform": self.value["platform"],
-            "upgrade_type": "synthetic_metadata_upgrade",
+            "upgrade_type": self.value["upgrade_type"],
             "uninstall_mode": "in_place_no_self_copy",
+            "default_uninstaller_self_copy": "isolated_native_stage",
             "uninstaller_cleanup": "harness_after_exit",
             "stages": clean_stages,
             "cleanup": {
@@ -937,11 +1008,14 @@ class SmokeReport:
                 for key, value in self.value["cleanup"].items()
                 if key in {"owned_count", "remaining_count", "forced_count"}
             },
-            "manual_checks_pending": list(MANUAL_CHECKS_PENDING),
+            "external_checks_pending": list(self.value["external_checks_pending"]),
         }
         source_sha = self.value.get("source_sha")
         if isinstance(source_sha, str) and re.fullmatch(r"[0-9a-f]{40}", source_sha):
             output["source_sha"] = source_sha
+        baseline_source_sha = self.value.get("baseline_source_sha")
+        if isinstance(baseline_source_sha, str) and re.fullmatch(r"[0-9a-f]{40}", baseline_source_sha):
+            output["baseline_source_sha"] = baseline_source_sha
         return output
 
 
@@ -1034,17 +1108,26 @@ def _remove_temp_root(root: Path, runner_temp: Path) -> None:
     require(not _lexists(resolved), "fixture_cleanup_failed")
 
 
-def run_smoke(candidate_dir: Path, *, env: Mapping[str, str] | None = None,
-              platform: str | None = None) -> SmokeReport:
+def run_smoke(candidate_dir: Path, *, historical_baseline_dir: Path | None = None,
+              env: Mapping[str, str] | None = None, platform: str | None = None) -> SmokeReport:
     environment = os.environ if env is None else env
     current_platform = sys.platform if platform is None else platform
-    report = SmokeReport(current_platform)
+    historical = historical_baseline_dir is not None
+    pending = list(EXTERNAL_CHECKS_PENDING)
+    if not historical:
+        pending.append("historical_source_upgrade")
+    report = SmokeReport(
+        current_platform,
+        upgrade_type="historical_source_upgrade" if historical else "synthetic_metadata_upgrade",
+        external_checks_pending=pending,
+    )
     runner_temp: Path | None = None
     local_app_data: Path | None = None
     roaming_app_data: Path | None = None
     powershell: str | None = None
     node: str | None = None
     candidate: dict[str, Any] | None = None
+    baseline: dict[str, Any] | None = None
     root: Path | None = None
     install_dir: Path | None = None
     project: Path | None = None
@@ -1065,8 +1148,22 @@ def run_smoke(candidate_dir: Path, *, env: Mapping[str, str] | None = None,
             runner_temp, local_app_data, roaming_app_data = runner_gate(environment, current_platform)
 
         with report.stage("candidate_validation"):
-            candidate = validate_candidate(candidate_dir)
+            candidate = validate_candidate(
+                candidate_dir, require_synthetic_fixture=historical_baseline_dir is None)
             report.value["source_sha"] = candidate["source_sha"]
+            if historical_baseline_dir is not None:
+                baseline = validate_historical_baseline(historical_baseline_dir, candidate["version"])
+                baseline["probe_version"] = baseline["version"]
+                report.value["baseline_source_sha"] = baseline["source_sha"]
+            else:
+                baseline = {
+                    "version": candidate["baseline_version"],
+                    "probe_version": candidate["version"],
+                    "installer": candidate["baseline_installer"],
+                    "desktop_hash": candidate["desktop_hash"],
+                    "resources": candidate["resources"],
+                    "resource_manifest_hash": candidate["resource_manifest_hash"],
+                }
 
         with report.stage("user_state_preflight"):
             assert local_app_data is not None and roaming_app_data is not None
@@ -1084,7 +1181,7 @@ def run_smoke(candidate_dir: Path, *, env: Mapping[str, str] | None = None,
             probe = Path(__file__).resolve().with_name("windows_installed_probe.mjs")
             _regular_file(probe, "probe_script_missing")
 
-        assert runner_temp is not None and app_data is not None and candidate is not None
+        assert runner_temp is not None and app_data is not None and candidate is not None and baseline is not None
         with report.stage("fixture_setup"):
             try:
                 root = Path(tempfile.mkdtemp(prefix="chadex-w5-", dir=runner_temp))
@@ -1098,29 +1195,29 @@ def run_smoke(candidate_dir: Path, *, env: Mapping[str, str] | None = None,
                 raise SmokeFailure("fixture_setup_failed") from None
 
         assert root is not None and install_dir is not None and project is not None
-        with report.stage("synthetic_baseline_install"):
+        with report.stage("baseline_install"):
             installer_attempted = True
 
             def baseline_succeeded() -> None:
                 nonlocal installer_succeeded
                 installer_succeeded = True
 
-            run_installer(candidate["baseline_installer"], install_dir, root,
+            run_installer(baseline["installer"], install_dir, root,
                           powershell=powershell, groups=groups, report=report,
                           on_success=baseline_succeeded)
             require(installer_succeeded, "installer_exit_nonzero")
-            flags = verify_registry_owner(candidate["baseline_version"], install_dir)
+            flags = verify_registry_owner(baseline["version"], install_dir)
             next(item for item in report.value["stages"]
-                 if item["name"] == "synthetic_baseline_install").update(flags)
+                 if item["name"] == "baseline_install").update(flags)
 
         with report.stage("baseline_resource_verification") as stage:
-            verify_installed_resources(install_dir, candidate["resources"],
-                                       candidate["resource_manifest_hash"], candidate["desktop_hash"])
+            verify_installed_resources(install_dir, baseline["resources"],
+                                       baseline["resource_manifest_hash"], baseline["desktop_hash"])
             stage["resource_hashes_verified"] = True
 
         with report.stage("initial_installed_launch") as stage:
             flags = launch_and_probe(
-                install_dir, project, root, app_data, candidate["version"], "initial",
+                install_dir, project, root, app_data, baseline["probe_version"], "initial",
                 powershell=powershell, node=node, groups=groups, report=report,
             )
             stage.update(flags)
@@ -1197,6 +1294,16 @@ def run_smoke(candidate_dir: Path, *, env: Mapping[str, str] | None = None,
             stage["data_preserved"] = True
             stage["project_marker_preserved"] = True
             stage["registry_entry_removed"] = True
+
+        with report.stage("default_uninstaller_self_copy") as stage:
+            default_install_dir = root / "預設移除 Chadex"
+            run_installer(candidate["installer"], default_install_dir, root,
+                          powershell=powershell, groups=groups, report=report)
+            verify_registry_owner(candidate["version"], default_install_dir)
+            run_default_uninstaller(default_install_dir, root, powershell=powershell,
+                                    groups=groups, report=report)
+            stage["registry_entry_removed"] = True
+            stage["default_uninstaller_self_copy_verified"] = True
 
         main_success = True
     except SmokeFailure as error:
@@ -1282,9 +1389,10 @@ def write_report(path: Path, report: SmokeReport) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-dir", type=Path, required=True)
+    parser.add_argument("--historical-baseline-dir", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
-    report = run_smoke(args.candidate_dir)
+    report = run_smoke(args.candidate_dir, historical_baseline_dir=args.historical_baseline_dir)
     try:
         write_report(args.output, report)
     except SmokeFailure:

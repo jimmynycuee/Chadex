@@ -156,8 +156,8 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
     candidate = root / "candidate"
     candidate.mkdir()
     installer_data = b"unsigned candidate installer"
-    fixture_data = b"same production binaries, synthetic 0.3.3 metadata"
-    installer_name = "Chadex-0.4.0-windows-x64-unsigned-setup.exe"
+    fixture_data = b"same production binaries, synthetic 0.4.0 metadata"
+    installer_name = "Chadex-0.4.1-windows-x64-unsigned-setup.exe"
     (candidate / installer_name).write_bytes(installer_data)
     fixture_dir = candidate / "upgrade-fixture"
     fixture_dir.mkdir()
@@ -168,7 +168,7 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
         resources.append({"relative_path": relative, "sha256": digest(content),
                           "size_bytes": len(content)})
     resource_manifest = {
-        "schema": smoke.RESOURCE_SCHEMA, "version": "0.4.0", "arch": "AMD64",
+        "schema": smoke.RESOURCE_SCHEMA, "version": "0.4.1", "arch": "AMD64",
         "profile": "release", "production_features": {
             "custom-protocol": True, "desktop-smoke": False,
         }, "unsigned": True, "resources": resources,
@@ -176,16 +176,46 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
     resource_bytes = (json.dumps(resource_manifest, sort_keys=True) + "\n").encode()
     (candidate / "release-resources.json").write_bytes(resource_bytes)
     metadata = {
-        "schema": 1, "track": "W5", "version": "0.4.0", "source_sha": "a" * 40,
+        "schema": 1, "track": "W5", "version": "0.4.1", "source_sha": "a" * 40,
         "architecture": "x86_64", "profile": "release", "features": ["custom-protocol"],
         "desktop_smoke": False, "authenticode": "unsigned", "updater": "disabled",
-        "synthetic_upgrade_baseline": "0.3.3",
+        "synthetic_upgrade_baseline": "0.4.0",
         "installer": installer_name, "sha256": digest(installer_data),
         "desktop_sha256": "b" * 64, "upgrade_fixture_sha256": digest(fixture_data),
         "synthetic_upgrade_fixture": True,
     }
     (candidate / "candidate.json").write_text(json.dumps(metadata), encoding="utf-8")
     return candidate, metadata
+
+
+def make_historical_baseline(root: Path) -> tuple[Path, dict[str, object]]:
+    baseline = root / "historical"
+    baseline.mkdir()
+    installer_data = b"historical 0.4.0 installer"
+    installer_name = "Chadex-0.4.0-windows-x64-unsigned-setup.exe"
+    (baseline / installer_name).write_bytes(installer_data)
+    resources = []
+    for index, relative in enumerate(sorted(smoke.EXPECTED_RESOURCES)):
+        content = f"historical resource {index}".encode()
+        resources.append({"relative_path": relative, "sha256": digest(content),
+                          "size_bytes": len(content)})
+    resource_manifest = {
+        "schema": smoke.RESOURCE_SCHEMA, "version": "0.4.0", "arch": "AMD64",
+        "profile": "release", "production_features": {
+            "custom-protocol": True, "desktop-smoke": False,
+        }, "unsigned": True, "resources": resources,
+    }
+    (baseline / "release-resources.json").write_text(
+        json.dumps(resource_manifest, sort_keys=True) + "\n", encoding="utf-8")
+    metadata = {
+        "schema": 1, "track": "W5", "version": "0.4.0", "source_sha": "c" * 40,
+        "architecture": "x86_64", "profile": "release", "features": ["custom-protocol"],
+        "desktop_smoke": False, "authenticode": "unsigned", "updater": "disabled",
+        "installer": installer_name, "sha256": digest(installer_data),
+        "desktop_sha256": "d" * 64, "synthetic_upgrade_fixture": False,
+    }
+    (baseline / "candidate.json").write_text(json.dumps(metadata), encoding="utf-8")
+    return baseline, metadata
 
 
 class WindowsInstallerSmokeTests(unittest.TestCase):
@@ -225,7 +255,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             candidate_dir, candidate_json = make_candidate(root)
             candidate = smoke.validate_candidate(candidate_dir)
             self.assertEqual(candidate["source_sha"], "a" * 40)
-            self.assertEqual(candidate["baseline_version"], "0.3.3")
+            self.assertEqual(candidate["baseline_version"], "0.4.0")
             self.assertEqual(len(candidate["resources"]["resources"]), 7)
             self.assertEqual({path.name for path in candidate_dir.iterdir()}, {
                 candidate_json["installer"], "candidate.json", "release-resources.json",
@@ -237,13 +267,38 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             with self.assertRaises(smoke.SmokeFailure) as failure:
                 smoke.validate_candidate(candidate_dir)
             self.assertEqual(failure.exception.code, "candidate_metadata_invalid")
-            candidate_json["synthetic_upgrade_baseline"] = "0.3.3"
+            candidate_json["synthetic_upgrade_baseline"] = "0.4.0"
 
             candidate_json["upgrade_fixture_sha256"] = "0" * 64
             (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
             with self.assertRaises(smoke.SmokeFailure) as failure:
                 smoke.validate_candidate(candidate_dir)
             self.assertEqual(failure.exception.code, "candidate_hash_mismatch")
+
+            candidate_json["upgrade_fixture_sha256"] = digest((candidate_dir / "upgrade-fixture" / "baseline-setup.exe").read_bytes())
+            (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
+            (candidate_dir / "upgrade-fixture" / "baseline-setup.exe").unlink()
+            candidate = smoke.validate_candidate(candidate_dir, require_synthetic_fixture=False)
+            self.assertEqual(candidate["version"], "0.4.1")
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.validate_candidate(candidate_dir)
+            self.assertEqual(failure.exception.code, "candidate_fixture_missing")
+
+    def test_historical_baseline_uses_its_own_source_and_resource_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline_dir, metadata = make_historical_baseline(root)
+            baseline = smoke.validate_historical_baseline(baseline_dir, "0.4.1")
+            self.assertEqual(baseline["version"], "0.4.0")
+            self.assertEqual(baseline["source_sha"], "c" * 40)
+            self.assertEqual(baseline["resources"]["version"], "0.4.0")
+            self.assertEqual(len(baseline["resources"]["resources"]), 7)
+
+            metadata["version"] = "0.4.1"
+            (baseline_dir / "candidate.json").write_text(json.dumps(metadata), encoding="utf-8")
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.validate_historical_baseline(baseline_dir, "0.4.1")
+            self.assertEqual(failure.exception.code, "candidate_metadata_invalid")
 
     def test_candidate_rejects_traversal_and_installer_hash_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -383,6 +438,9 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         uninstall = smoke.uninstaller_arguments(Path(r"C:\runner\uninstall.exe"), install)
         self.assertTrue(uninstall.endswith(r" _?=C:\runner\安裝 Chadex"))
         self.assertNotIn('"', uninstall[uninstall.rfind(" _?=") + 4:])
+        default_uninstall = smoke.default_uninstaller_arguments(Path(r"C:\runner\uninstall.exe"))
+        self.assertEqual(default_uninstall, r"C:\runner\uninstall.exe /S")
+        self.assertNotIn("_?=", default_uninstall)
 
         process = MagicMock()
         process.poll.return_value = 0
@@ -443,8 +501,22 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         public = report.public_value()
         self.assertEqual(report.value["passed"], False)
         self.assertEqual(public["uninstall_mode"], "in_place_no_self_copy")
+        self.assertEqual(public["default_uninstaller_self_copy"], "isolated_native_stage")
         self.assertEqual(public["uninstaller_cleanup"], "harness_after_exit")
-        self.assertIn("default_uninstaller_self_copy", public["manual_checks_pending"])
+        self.assertNotIn("default_uninstaller_self_copy", public["external_checks_pending"])
+        self.assertEqual(public["upgrade_type"], "synthetic_metadata_upgrade")
+        historical = smoke.SmokeReport(
+            "win32", upgrade_type="historical_source_upgrade",
+            external_checks_pending=["default_uninstaller_self_copy"],
+        )
+        historical.value["baseline_source_sha"] = "c" * 40
+        for stage in historical.value["stages"]:
+            stage["status"] = "passed"
+        historical.finish(True)
+        historical_public = historical.public_value()
+        self.assertEqual(historical_public["upgrade_type"], "historical_source_upgrade")
+        self.assertEqual(historical_public["baseline_source_sha"], "c" * 40)
+        self.assertNotIn("historical_source_upgrade", historical_public["external_checks_pending"])
         for secret in ("C:\\private", "--token secret", '"credential": "secret"', "raw exception"):
             self.assertNotIn(secret, payload)
         self.assertEqual(report.public_value()["upgrade_type"], "synthetic_metadata_upgrade")
