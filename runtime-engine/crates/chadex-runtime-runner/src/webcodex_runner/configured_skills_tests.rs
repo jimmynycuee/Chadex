@@ -353,3 +353,46 @@ fn resource_reads_enforce_actual_byte_bound_and_preserve_range_metadata() {
         "skill_resource_unsupported_encoding"
     );
 }
+
+#[test]
+fn scripts_are_allowed_only_for_opted_in_roots() {
+    let allowed = tempfile::tempdir().unwrap();
+    let guidance = tempfile::tempdir().unwrap();
+    write_skill(allowed.path(), "runner", "runner", "body");
+    write_skill(guidance.path(), "reader", "reader", "body");
+    let config = SkillsConfig {
+        roots: vec![allowed.path().to_path_buf(), guidance.path().to_path_buf()],
+        script_roots: vec![allowed.path().to_path_buf()],
+    };
+    let discovery = discover(&config).unwrap();
+    let by_name = |name: &str| {
+        discovery
+            .skills
+            .iter()
+            .find(|skill| skill.descriptor.name() == name)
+            .unwrap()
+            .descriptor
+            .scripts_allowed()
+    };
+    assert!(by_name("runner"));
+    assert!(!by_name("reader"));
+
+    let resolved = resolve_live_skill(&config, &configured_skill_id(guidance.path(), "reader"))
+        .unwrap()
+        .unwrap();
+    assert!(!resolved.descriptor.scripts_allowed());
+    let resolved = resolve_live_skill(&config, &configured_skill_id(allowed.path(), "runner"))
+        .unwrap()
+        .unwrap();
+    assert!(resolved.descriptor.scripts_allowed());
+
+    let default_config = SkillsConfig {
+        roots: vec![allowed.path().to_path_buf()],
+        script_roots: Vec::new(),
+    };
+    assert!(discover(&default_config)
+        .unwrap()
+        .skills
+        .iter()
+        .all(|skill| !skill.descriptor.scripts_allowed()));
+}

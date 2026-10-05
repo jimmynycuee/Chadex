@@ -208,6 +208,7 @@ fn duplicate_target_and_source_identity_change_fail_closed_without_priority() {
         name: "configured".to_string(),
         description: "configured".to_string(),
         definition_revision: "b".repeat(64),
+        scripts_allowed: false,
     };
     let managed = RunnerSkillDescriptor::Managed {
         skill_id: duplicate_id,

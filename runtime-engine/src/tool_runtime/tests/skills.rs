@@ -348,6 +348,7 @@ struct FakeConfiguredSkillState {
     resource_text: String,
     read_error: Option<String>,
     next_definition_revision_after_probe: Option<String>,
+    scripts_allowed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -373,6 +374,7 @@ fn configured_descriptor(state: &FakeConfiguredSkillState) -> RunnerSkillDescrip
         name: state.name.clone(),
         description: state.description.clone(),
         definition_revision: state.definition_revision.clone(),
+        scripts_allowed: state.scripts_allowed,
     }
 }
 
@@ -886,6 +888,7 @@ async fn project_configured_and_managed_skills_share_one_conflict_safe_catalog()
             resource_text: "configured resource".to_string(),
             read_error: None,
             next_definition_revision_after_probe: None,
+            scripts_allowed: false,
         }),
         managed: Some(FakeManagedSkillState {
             skill_id: managed_id.clone(),
@@ -1010,6 +1013,7 @@ async fn configured_skill_exact_read_uses_unified_resolve_then_read() {
             resource_text: "configured resource".to_string(),
             read_error: None,
             next_definition_revision_after_probe: None,
+            scripts_allowed: false,
         }),
         managed: None,
     }));
@@ -1166,6 +1170,7 @@ async fn exact_skill_resolution_fails_closed_on_duplicate_target_across_sources(
             resource_text: "configured resource".to_string(),
             read_error: None,
             next_definition_revision_after_probe: None,
+            scripts_allowed: false,
         }),
         managed: Some(FakeManagedSkillState {
             skill_id: duplicate_id.clone(),
@@ -1235,6 +1240,7 @@ async fn exact_skill_resolution_fails_closed_when_applicable_source_is_unavailab
             resource_text: "configured resource".to_string(),
             read_error: Some("skill_catalog_unavailable".to_string()),
             next_definition_revision_after_probe: None,
+            scripts_allowed: false,
         }),
         managed: Some(FakeManagedSkillState {
             skill_id: "wc_skill_iIiIiIiIiIiIiIiIiIiIiA".to_string(),
@@ -1315,6 +1321,7 @@ async fn configured_exact_read_pins_probe_revision_across_resource_read() {
             resource_text: "configured resource".to_string(),
             read_error: None,
             next_definition_revision_after_probe: Some(revision_b.to_string()),
+            scripts_allowed: false,
         }),
         managed: None,
     }));
@@ -2301,6 +2308,7 @@ async fn configured_skill_resource_executes_without_model_source_roundtrip_and_f
             resource_text: "import sys\nprint('skill-ok:' + sys.argv[1])\n".to_string(),
             read_error: None,
             next_definition_revision_after_probe: None,
+            scripts_allowed: true,
         }),
         managed: None,
     }));
@@ -2383,6 +2391,106 @@ async fn configured_skill_resource_executes_without_model_source_roundtrip_and_f
     assert_eq!(stale.output["failure_kind"], "skill_definition_changed");
     assert_eq!(stale.output["command_started"], false);
     assert!(!stale_kinds.iter().any(|kind| kind == "skill:read"));
+}
+
+#[tokio::test]
+async fn configured_skill_scripts_are_disabled_unless_root_opted_in() {
+    let root = tempfile::tempdir().unwrap();
+    let runtime = ToolRuntime::new_for_tests();
+    let client_id = "configured-skill-scripts-disabled";
+    register_agent_with_projects(
+        &runtime,
+        client_id,
+        None,
+        RunnerCapabilities {
+            file_read: true,
+            skill_runtime: true,
+            shell: true,
+            structured_process_argv: true,
+            structured_search_text: false,
+            ..Default::default()
+        },
+        vec![registered_project(
+            "project",
+            root.path().to_string_lossy().as_ref(),
+        )],
+    )
+    .await;
+    let project = crate::tool_runtime::runner_project_runtime_id(client_id, "project");
+    let skill_id = "wc_skill_ExExExExExExExExExExEA".to_string();
+    let definition_revision =
+        "abababababababababababababababababababababababababababababababab".to_string();
+    let operator = Arc::new(Mutex::new(FakeOperatorSkillState {
+        configured: Some(FakeConfiguredSkillState {
+            skill_id: skill_id.clone(),
+            name: "configured-guidance".to_string(),
+            description: "Configured guidance without script opt-in".to_string(),
+            definition_revision: definition_revision.clone(),
+            definition_text: "configured definition".to_string(),
+            resource_text: "print('must-not-run')\n".to_string(),
+            read_error: None,
+            next_definition_revision_after_probe: None,
+            scripts_allowed: false,
+        }),
+        managed: None,
+    }));
+
+    let (listed, _) = call_kernel_with_fake_operator_store(
+        &runtime,
+        client_id,
+        "skill_list",
+        json!({"project": project, "limit": 10}),
+        operator.clone(),
+    )
+    .await;
+    assert!(listed.success, "{:?}", listed.error);
+    let configured = listed.output["skills"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|skill| skill["skill_id"] == skill_id)
+        .unwrap()
+        .clone();
+    assert_eq!(configured["scripts_allowed"], false);
+
+    let (denied, kinds) = call_kernel_with_fake_operator_store(
+        &runtime,
+        client_id,
+        "run_skill_resource",
+        json!({
+            "project": project,
+            "skill_id": skill_id,
+            "path": "scripts/probe.py",
+            "expected_definition_revision": definition_revision,
+            "timeout_secs": 30,
+            "sync_wait_secs": 30,
+            "purpose": "diagnostic"
+        }),
+        operator.clone(),
+    )
+    .await;
+    assert!(!denied.success);
+    assert_eq!(denied.output["failure_kind"], "skill_script_execution_disabled");
+    assert_eq!(denied.output["command_started"], false);
+    assert_eq!(denied.output["skill_path"], "scripts/probe.py");
+    assert!(kinds.iter().any(|kind| kind == "skill:resolve"));
+    assert!(!kinds.iter().any(|kind| kind == "skill:read"));
+
+    // Guidance stays readable while execution is disabled.
+    let (read, _) = call_kernel_with_fake_operator_store(
+        &runtime,
+        client_id,
+        "skill_read_file",
+        json!({
+            "project": project,
+            "skill_id": skill_id,
+            "path": "scripts/probe.py",
+            "expected_definition_revision": definition_revision
+        }),
+        operator,
+    )
+    .await;
+    assert!(read.success, "{:?}", read.error);
 }
 
 #[tokio::test]

@@ -142,6 +142,7 @@ fn discover_with_trigger(
                 continue;
             }
         };
+        let scripts_allowed = root_scripts_allowed(config, configured_root);
         let entries = match bounded_root_entries(&root, &mut stats) {
             Ok(entries) => entries,
             Err(code) => {
@@ -157,7 +158,13 @@ fn discover_with_trigger(
                 discovery.discovery_truncated = true;
                 break;
             }
-            match load_live_skill(configured_root, &root, &package_name, &mut stats) {
+            match load_live_skill(
+                configured_root,
+                &root,
+                &package_name,
+                scripts_allowed,
+                &mut stats,
+            ) {
                 Ok(skill) => {
                     if !seen_ids.insert(skill.descriptor.skill_id().to_string()) {
                         observe_configured_skill_scan(
@@ -231,6 +238,7 @@ fn resolve_live_skill_by_id(
                 continue;
             }
         };
+        let scripts_allowed = root_scripts_allowed(config, configured_root);
         let entries = match bounded_root_entries(&root, &mut stats) {
             Ok(entries) => entries,
             Err(code) => {
@@ -253,7 +261,13 @@ fn resolve_live_skill_by_id(
             if configured_skill_id(configured_root, &package_name) != target_skill_id {
                 continue;
             }
-            match load_live_skill(configured_root, &root, &package_name, &mut stats) {
+            match load_live_skill(
+                configured_root,
+                &root,
+                &package_name,
+                scripts_allowed,
+                &mut stats,
+            ) {
                 Ok(skill) => {
                     if !discovery.skills.is_empty() {
                         observe_configured_skill_scan(
@@ -321,10 +335,19 @@ fn bounded_root_entries(
     Ok(candidates)
 }
 
+fn root_scripts_allowed(config: &SkillsConfig, configured_root: &Path) -> bool {
+    let identity = configured_skill_root_identity(configured_root);
+    config
+        .script_roots
+        .iter()
+        .any(|root| configured_skill_root_identity(root) == identity)
+}
+
 fn load_live_skill(
     configured_root: &Path,
     canonical_root: &Path,
     package_name: &str,
+    scripts_allowed: bool,
     stats: &mut ConfiguredSkillScanStats,
 ) -> Result<LiveSkill, &'static str> {
     if !valid_package_name(package_name) {
@@ -370,6 +393,7 @@ fn load_live_skill(
             name: skill_metadata.name,
             description: skill_metadata.description,
             definition_revision,
+            scripts_allowed,
         },
         package_root,
     })

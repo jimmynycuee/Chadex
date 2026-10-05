@@ -35,6 +35,10 @@ pub enum RunnerSkillDescriptor {
         name: String,
         description: String,
         definition_revision: String,
+        /// The operator listed this Skill's root in `skills.script_roots`.
+        /// Omitted when false so a missing field always means disabled.
+        #[serde(default, skip_serializing_if = "is_false")]
+        scripts_allowed: bool,
     },
     Managed {
         skill_id: String,
@@ -94,6 +98,18 @@ impl RunnerSkillDescriptor {
         }
     }
 
+    /// Whether `scripts/` resources of this Skill may be executed. Managed
+    /// Skills were explicitly installed by the operator; configured roots are
+    /// external folders and need a per-root opt-in.
+    pub fn scripts_allowed(&self) -> bool {
+        match self {
+            Self::Configured {
+                scripts_allowed, ..
+            } => *scripts_allowed,
+            Self::Managed { .. } => true,
+        }
+    }
+
     pub fn skill_key(&self) -> Option<&str> {
         match self {
             Self::Configured { .. } => None,
@@ -122,6 +138,10 @@ impl RunnerSkillDescriptor {
         }
         Ok(())
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -427,7 +447,29 @@ mod tests {
             name: "configured".to_string(),
             description: "configured guidance".to_string(),
             definition_revision: "b".repeat(64),
+            scripts_allowed: false,
         }
+    }
+
+    #[test]
+    fn configured_scripts_default_to_disabled_on_the_wire() {
+        let disabled = serde_json::to_value(configured()).unwrap();
+        assert!(disabled.get("scripts_allowed").is_none());
+        let parsed: RunnerSkillDescriptor = serde_json::from_value(disabled).unwrap();
+        assert!(!parsed.scripts_allowed());
+
+        let mut enabled = configured();
+        if let RunnerSkillDescriptor::Configured {
+            scripts_allowed, ..
+        } = &mut enabled
+        {
+            *scripts_allowed = true;
+        }
+        let value = serde_json::to_value(&enabled).unwrap();
+        assert_eq!(value["scripts_allowed"], true);
+        let parsed: RunnerSkillDescriptor = serde_json::from_value(value).unwrap();
+        assert!(parsed.scripts_allowed());
+        assert!(managed().scripts_allowed());
     }
 
     fn managed() -> RunnerSkillDescriptor {

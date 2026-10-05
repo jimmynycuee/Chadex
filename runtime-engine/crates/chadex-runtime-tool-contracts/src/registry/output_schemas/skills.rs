@@ -17,9 +17,10 @@ fn descriptor_schema() -> Value {
             "source_scope": {"type": "string", "enum": ["project", "runner"]},
             "trust": {"type": "string", "enum": ["project_content", "operator_configured_guidance", "operator_installed_guidance"]},
             "package_revision": {"anyOf": [{"type":"string","pattern":"^wc_skillpkg_[A-Za-z0-9_-]{43}$"},{"type":"null"}]},
-            "name_conflict": {"type": "boolean"}
+            "name_conflict": {"type": "boolean"},
+            "scripts_allowed": {"type": "boolean", "description": "Whether run_skill_resource may execute this Skill's scripts/. External Skill folders are disabled unless the operator opts the folder in."}
         },
-        "required": ["skill_id", "name", "description", "definition_revision", "source_scope", "trust", "package_revision", "name_conflict"],
+        "required": ["skill_id", "name", "description", "definition_revision", "source_scope", "trust", "package_revision", "name_conflict", "scripts_allowed"],
         "additionalProperties": false
     })
 }

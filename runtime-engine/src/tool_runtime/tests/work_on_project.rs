@@ -1321,6 +1321,7 @@ async fn work_on_project_extension_catalog_includes_runner_local_configured_skil
             name: "operator-live-guidance".to_string(),
             description: "Configured live Skill metadata".to_string(),
             definition_revision: configured_revision.to_string(),
+            scripts_allowed: false,
         },
     )
     .await;

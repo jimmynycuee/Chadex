@@ -63,6 +63,8 @@ pub(crate) struct SkillDescriptor {
     pub(crate) source_scope: &'static str,
     pub(crate) trust: &'static str,
     pub(crate) name_conflict: bool,
+    /// Whether `run_skill_resource` may execute this Skill's `scripts/`.
+    pub(crate) scripts_allowed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -734,6 +736,7 @@ impl ToolRuntime {
                         name,
                         description,
                         definition_revision,
+                        scripts_allowed,
                     } => {
                         let order_key = skill_id.clone();
                         (
@@ -746,6 +749,7 @@ impl ToolRuntime {
                                 source_scope: "runner",
                                 trust: "operator_configured_guidance",
                                 name_conflict: false,
+                                scripts_allowed,
                             },
                             order_key,
                         )
@@ -767,6 +771,7 @@ impl ToolRuntime {
                             source_scope: "runner",
                             trust: "operator_installed_guidance",
                             name_conflict: false,
+                            scripts_allowed: true,
                         },
                         skill_key,
                     ),
@@ -906,6 +911,14 @@ impl ToolRuntime {
 
         match resolved.source() {
             RunnerSkillSource::Configured => {
+                // External Skill folders are guidance by default; the operator
+                // must list the root in `skills.script_roots` to run scripts.
+                if !resolved.scripts_allowed() {
+                    return skill_execution_error(
+                        "skill_script_execution_disabled",
+                        Some(json!({"skill_id": skill_id, "skill_path": resource_path})),
+                    );
+                }
                 if expected_package_revision.is_some() {
                     return skill_execution_error(
                         "skill_package_revision_not_supported",
@@ -2004,6 +2017,7 @@ impl ToolRuntime {
                     source_scope: "project",
                     trust: "project_content",
                     name_conflict: false,
+                    scripts_allowed: false,
                 },
                 order_key: package.name,
             });
@@ -2728,7 +2742,7 @@ fn catalog_revision(
     discovery_truncated: bool,
 ) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(b"webcodex.skill-catalog.v2\0");
+    hasher.update(b"webcodex.skill-catalog.v3\0");
     for skill in skills {
         for value in [
             skill.descriptor.skill_id.as_str(),
@@ -2746,6 +2760,7 @@ fn catalog_revision(
             hasher.update((value.len() as u64).to_be_bytes());
             hasher.update(value.as_bytes());
         }
+        hasher.update([u8::from(skill.descriptor.scripts_allowed)]);
     }
     hasher.update((invalid_count as u64).to_be_bytes());
     for diagnostic in diagnostics {
@@ -2822,6 +2837,7 @@ mod tests {
                 source_scope: "project",
                 trust: "project_content",
                 name_conflict: false,
+                scripts_allowed: false,
             },
             order_key: "demo".to_string(),
         }];
@@ -2855,6 +2871,7 @@ mod tests {
                     source_scope: "project",
                     trust: "project_content",
                     name_conflict: false,
+                    scripts_allowed: false,
                 },
                 order_key: format!("package-{index:02}"),
             });
