@@ -14,7 +14,54 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Docs-only change sets (see scripts/ci_change_scope.py) skip the macOS and
+# Windows build/package jobs; public-history and the docs checks always run.
+# Rust caches are saved only from main and restored elsewhere. Release tags use
+# .github/workflows/release.yml, which has no change filter and no cache.
 jobs:
+  changes:
+    name: Change classification
+    runs-on: ubuntu-24.04
+    outputs:
+      heavy: ${{ steps.classify.outputs.heavy }}
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Test change classifier
+        run: python3 -B test_ci_change_scope.py
+        working-directory: scripts
+
+      - name: Classify changes
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          python3 -B scripts/ci_change_scope.py classify
+          --event "$EVENT_NAME" --push-before "$PUSH_BEFORE" --pr-base "$PR_BASE"
+
+  docs-check:
+    name: Docs checks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check whitespace and relative Markdown links
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          python3 -B scripts/ci_change_scope.py docs-check
+          --event "$EVENT_NAME" --push-before "$PUSH_BEFORE" --pr-base "$PR_BASE"
+
   public-history:
     name: Public history / secret scan
     runs-on: ubuntu-24.04
@@ -44,6 +91,8 @@ jobs:
 
   source-gate:
     name: Source release gate
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: macos-15
     steps:
       - name: Checkout
@@ -52,6 +101,21 @@ jobs:
       - name: Bootstrap pinned Rust
         run: ./scripts/bootstrap_rust.sh
 
+      - name: Expose project-local Rust
+        run: |
+          echo "CARGO_HOME=$GITHUB_WORKSPACE/.toolchain/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$GITHUB_WORKSPACE/.toolchain/rustup" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/.toolchain/cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            rust-helper -> target
+            runtime-engine -> target
+          cache-bin: "false"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - name: Run source gate
         env:
           CHADEX_RELEASE_CHECK_BUILD_APP: "0"
@@ -59,6 +123,8 @@ jobs:
 
   windows-core:
     name: Windows core gate
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: windows-latest
     timeout-minutes: 120
     env:
@@ -92,6 +158,13 @@ jobs:
           }
           Invoke-NativeChecked -FilePath "rustup" -Arguments @("toolchain", "install", "1.98.1", "--profile", "minimal")
           Invoke-NativeChecked -FilePath "rustup" -Arguments @("default", "1.98.1")
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: runtime-engine -> target
+          cache-bin: "false"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run Windows core gate
         shell: pwsh
@@ -143,6 +216,8 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: apps/windows/package-lock.json
 
       - name: Run Windows desktop W3 gates
         shell: pwsh
@@ -252,6 +327,8 @@ jobs:
 
   windows-release-source:
     name: Windows W5 source integrity
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -289,6 +366,8 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: apps/windows/package-lock.json
 
       - name: Install pinned Rust
         shell: pwsh
@@ -299,6 +378,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Pinned Rust installation failed." }
           rustup default 1.98.1
           if ($LASTEXITCODE -ne 0) { throw "Pinned Rust selection failed." }
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: runtime-engine -> target/w5-release
+          cache-bin: "false"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Validate release tooling
         shell: pwsh
@@ -420,6 +506,8 @@ jobs:
 
   arm64-package:
     name: ARM64 package gate
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: macos-15
     steps:
       - name: Checkout
@@ -427,6 +515,21 @@ jobs:
 
       - name: Bootstrap pinned Rust
         run: ./scripts/bootstrap_rust.sh
+
+      - name: Expose project-local Rust
+        run: |
+          echo "CARGO_HOME=$GITHUB_WORKSPACE/.toolchain/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$GITHUB_WORKSPACE/.toolchain/rustup" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/.toolchain/cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            rust-helper -> target
+            runtime-engine -> target
+          cache-bin: "false"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build hardened-runtime ad-hoc package
         env:

@@ -123,7 +123,14 @@ The script submits a ZIP with `notarytool`, waits for acceptance, staples the ti
 
 ## GitHub CI and release workflow
 
-`.github/workflows/ci.yml` uses the supported ARM64 `macos-15` runner for source/package validation and an Ubuntu job for the dedicated Gitleaks history scan. Gitleaks is pinned to 8.29.1 and its archive checksum is pinned in workflow source.
+`.github/workflows/ci.yml` uses the supported ARM64 `macos-15` runner for source/package validation, `windows-latest` for the Windows core, W3 desktop and W5 installer/historical-upgrade gates, and Ubuntu jobs for the dedicated Gitleaks history scan, change classification and docs checks. Gitleaks is pinned to 8.29.1 and its archive checksum is pinned in workflow source.
+
+CI orchestration rules:
+
+- **Change classification.** `scripts/ci_change_scope.py classify` diffs the push `before` SHA (or the PR base) against `HEAD`. Only when every changed path is in its explicit docs allowlist (`docs/**`, `graphify-out/**`, `README.md`, `CHANGELOG.md`, `PHASES.md`, `HANDOFF.md`, `.graphifyignore`) are the macOS source/package and Windows jobs skipped. A new branch, force push, manual dispatch, empty diff or unknown path always runs the full pipeline. `UPSTREAM.md`, `LICENSE` and `ui-review/` are package or test inputs and are never docs-only.
+- **Always-on checks.** Public history / secret scan and `docs-check` (`git diff --check` plus relative Markdown link targets) run for every change set, including docs-only ones.
+- **Caches.** Cargo registry and dependency build artifacts are cached with a SHA-pinned `Swatinem/rust-cache`, and Windows npm downloads with `setup-node`. Caches are keyed by toolchain/lockfiles, saved only from `main`, and only restored on other branches. The historical `v0.4.0` source build is not cached.
+- **Release tags are unaffected.** `release.yml` has no change filter and no cache; every tag rebuilds and re-validates from scratch.
 
 `.github/workflows/release.yml` is the **free public distribution path**, modeled after WebCodex Desktop's current macOS release approach. A tag-triggered run validates public history and source, builds the exact tagged source with Hardened Runtime and **ad-hoc signing**, packages an Apple Silicon DMG, smoke-tests the mounted DMG, publishes a SHA-256 checksum, and creates the GitHub Release. No Apple Developer Program membership or Apple release secret is required.
 
