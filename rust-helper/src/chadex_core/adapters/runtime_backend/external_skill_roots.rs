@@ -59,12 +59,26 @@ impl RuntimeBackendAdapter {
             // Nothing to write, but a previous failed rollback may have left the
             // Runner on a different snapshot than the file; reloading the file
             // as-is resynchronises it.
-            let token = read_probe_token(&target.user_token_file)
-                .await
-                .ok_or_else(runtime_unreachable)?;
-            let generation = reload_runner_config(&self.probe_client, &target, &token).await?;
+            let Some(token) = read_probe_token(&target.user_token_file).await else {
+                let mut state = self.external_skill_roots().await?;
+                state["runner_resynced"] = json!(false);
+                state["resync_error"] = json!("runtime_unreachable");
+                return Ok(state);
+            };
+            // Best effort: an unchanged save must not fail just because the
+            // Runner is unreachable or has unrelated restart-only edits.
+            let resync = reload_runner_config(&self.probe_client, &target, &token).await;
             let mut state = self.external_skill_roots().await?;
-            state["generation"] = json!(generation);
+            match resync {
+                Ok(generation) => {
+                    state["generation"] = json!(generation);
+                    state["runner_resynced"] = json!(true);
+                }
+                Err(error) => {
+                    state["runner_resynced"] = json!(false);
+                    state["resync_error"] = json!(error.code);
+                }
+            }
             return Ok(state);
         }
 
@@ -265,12 +279,20 @@ pub(super) async fn reload_runner_config(
                 .unwrap_or(generation.saturating_add(1)));
         }
         if operator_error_code(&reloaded) != Some("config_generation_conflict") {
-            return Err(not_applied(ChadexError::new(
+            let error = ChadexError::new(
                 "runner_config_reload_failed",
                 "The Runner could not apply the new Skill folder settings",
-                "The previous settings were restored. Retry in a moment.",
+                "Retry in a moment.",
             )
-            .with_details(json!({ "runner_error": operator_error_code(&reloaded) }))));
+            .with_details(json!({ "runner_error": operator_error_code(&reloaded) }));
+            // Only a reload the Runner reports as not started, or completed
+            // without swapping the snapshot, is known not to have applied; a
+            // lost or untrusted reply (`outcome_unknown`) may have.
+            let execution_state = reloaded.output.get("execution_state").and_then(Value::as_str);
+            let refused = execution_state == Some("not_started")
+                || (execution_state == Some("completed")
+                    && reloaded.output.get("valid").and_then(Value::as_bool) == Some(false));
+            return Err(if refused { not_applied(error) } else { error });
         }
     }
     Err(not_applied(ChadexError::new(
@@ -408,6 +430,8 @@ mod tests {
         check_invalid: bool,
         reload_conflicts: usize,
         reload_fails: bool,
+        /// Reply as if the reload's outcome could not be observed.
+        reload_outcome_unknown: bool,
         /// Fail every reload after this many have succeeded.
         fail_reloads_after: Option<usize>,
         successful_reloads: usize,
@@ -446,7 +470,16 @@ mod tests {
                 .fail_reloads_after
                 .is_some_and(|limit| runner.successful_reloads >= limit)
         {
-            return Json(json!({"success": false, "output": {"error_code": "config_validation_failed"}}));
+            return Json(json!({"success": false, "output": {
+                "error_code": "config_validation_failed",
+                "execution_state": "not_started",
+            }}));
+        }
+        if runner.reload_outcome_unknown {
+            return Json(json!({"success": false, "output": {
+                "error_code": "outcome_unknown",
+                "execution_state": "outcome_unknown",
+            }}));
         }
         assert_eq!(body["expected_generation"], runner.generation);
         let content = std::fs::read_to_string(&runner.config_path).unwrap();
@@ -558,6 +591,17 @@ mod tests {
             &h.target.runner_config,
         );
         assert!(backup.exists(), "keep the backup while the outcome is unknown");
+    }
+
+    #[tokio::test]
+    async fn uncertain_reload_outcome_requires_resync_before_reporting_rollback() {
+        let h = harness(|runner| runner.reload_outcome_unknown = true).await;
+        let error = apply(&h, ORIGINAL, true).await.unwrap_err();
+        assert_eq!(error.code, "external_skill_roots_state_unknown");
+        let details = error.details.unwrap();
+        assert_eq!(details["cause"], "runner_config_reload_failed");
+        assert_eq!(details["file_restored"], true);
+        assert_eq!(on_disk(&h), ORIGINAL);
     }
 
     #[tokio::test]

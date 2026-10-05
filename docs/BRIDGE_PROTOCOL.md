@@ -128,7 +128,7 @@ Catalog descriptor 的 `scripts_allowed`（bool）表示該 Skill 的腳本資�
 
 `getExternalSkillRoots` result：`{ "format": "chadex.external_skill_roots.v1", "roots": [...], "script_roots": [...], "revision": "<sha256 of runner.toml>" }`。Local runtime 尚未設定或非 idle 時回 `runtime_not_ready`。
 
-`setExternalSkillRoots` result 同上並多 `"generation": Int`。路徑必須是 exact canonical path（取自 discovery 的 `canonical_path`／`recommended_roots`，或 `resolvingSymlinksInPath()` 加 standardize 後的目錄選擇結果）；有開啟 project 時帶 `verify_project_path`，供寫入後驗證 catalog。
+`setExternalSkillRoots` result 同上並多 `"generation": Int`。若清單與目前設定相同，helper 不寫檔，只盡力 reload 讓 Runner 與檔案重新同步，並回 `"runner_resynced": Bool`；同步失敗時帶 `"resync_error"`，但不視為錯誤。路徑必須是 exact canonical path（取自 discovery 的 `canonical_path`／`recommended_roots`，或 `resolvingSymlinksInPath()` 加 standardize 後的目錄選擇結果）；有開啟 project 時帶 `verify_project_path`，供寫入後驗證 catalog。
 
 `setExternalSkillRoots` 錯誤碼：
 
@@ -137,7 +137,7 @@ Catalog descriptor 的 `scripts_allowed`（bool）表示該 Skill 的腳本資�
 | `external_skill_roots_conflict` | `expected_revision` 已過期；`details.current_revision`。重新讀取後再套用 |
 | `skill_root_invalid`／`skill_root_not_found`／`skill_root_is_link`／`skill_root_not_directory`／`skill_root_not_canonical`／`skill_root_sensitive` | 路徑被拒；`details.path` |
 | `runner_config_rejected` | Runner 的 config check 拒絕新設定 |
-| `runner_config_reload_failed`／`runner_config_restart_required`／`runner_config_reload_unsupported` | Runner 無法 hot reload；設定已回復（restart_required 需重啟 runtime） |
+| `runner_config_reload_failed`／`runner_config_restart_required`／`runner_config_reload_unsupported` | Runner 無法 hot reload；設定已回復（restart_required 需重啟 runtime）。若 reload 結果無法確認（`outcome_unknown`）且回復後無法重新同步，改回 `external_skill_roots_state_unknown` |
 | `runtime_unreachable`／`runtime_not_ready` | Runtime 無法連線或尚未就緒 |
 | `external_skill_roots_unverified` | 寫入後驗證失敗；`details.rolled_back` 表示是否已回復 |
 | `external_skill_roots_state_unknown` | Runner 可能仍在使用新設定；client 應重新讀取並再套用一次 |
