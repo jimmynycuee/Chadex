@@ -257,6 +257,8 @@
 "connection.disconnect" = "中斷連線";
 "connection.connect" = "連接 ChatGPT";
 "connection.retry" = "重試";
+"connection.credentialsRejectedTitle" = "Tunnel 憑證無效";
+"connection.credentialsRejectedRecovery" = "請到連線設定確認 Tunnel ID 與 restricted API key；如有需要，建立新的 restricted API key 並儲存後再重新連線。";
 "connection.tunnelNotVerified" = "Tunnel 已就緒，但 Chadex 尚未觀察到 ChatGPT 對此專案的實際存取。";
 "connection.tunnelWaitingForChatGPT" = "尚未偵測到本次工作階段的 ChatGPT 操作；第一次在 ChatGPT 使用 Chadex 後會自動更新。";
 "connection.chatGPTConnectedAwaitingVerification" = "ChatGPT 已連線；成功讀取目前專案後才會完成驗證。";

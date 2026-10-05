@@ -54,6 +54,14 @@ pub struct TunnelSnapshot {
     pub last_error: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct TunnelAdminStatus {
+    #[serde(default)]
+    tunnel_metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    tunnel_metadata_error: Option<String>,
+}
+
 impl Default for TunnelSnapshot {
     fn default() -> Self {
         Self {
@@ -744,7 +752,19 @@ async fn wait_until_ready(
         if let Some(base) = health_base.as_ref() {
             if let Ok(response) = client.get(format!("{base}/readyz")).send().await {
                 if response.status().is_success() {
-                    return Ok(());
+                    if let Ok(status_response) = client.get(format!("{base}/api/status")).send().await {
+                        if status_response.status().is_success() {
+                            if let Ok(body) = status_response.text().await {
+                                if let Ok(status) = serde_json::from_str::<TunnelAdminStatus>(&body) {
+                                    match tunnel_control_plane_ready(&status) {
+                                        Ok(true) => return Ok(()),
+                                        Ok(false) => {}
+                                        Err(error) => return Err(error),
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -755,6 +775,25 @@ async fn wait_until_ready(
         }
         tokio::time::sleep(readiness_probe_interval(started.elapsed())).await;
     }
+}
+
+fn tunnel_control_plane_ready(status: &TunnelAdminStatus) -> ChadexResult<bool> {
+    if status.tunnel_metadata.is_some() {
+        return Ok(true);
+    }
+    if let Some(error) = status.tunnel_metadata_error.as_deref() {
+        if is_tunnel_credential_rejection(error) {
+            return Err(tunnel_credentials_rejected_error());
+        }
+    }
+    Ok(false)
+}
+
+fn is_tunnel_credential_rejection(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    ["400", "401", "403", "404", "unauthorized", "forbidden"]
+        .iter()
+        .any(|marker| normalized.contains(marker))
 }
 
 fn readiness_probe_interval(elapsed: Duration) -> Duration {
@@ -1129,6 +1168,14 @@ fn tunnel_runtime_error(message: &str) -> ChadexError {
     )
 }
 
+fn tunnel_credentials_rejected_error() -> ChadexError {
+    ChadexError::new(
+        "tunnel_credentials_rejected",
+        "OpenAI rejected the Secure MCP Tunnel credentials",
+        "Open Connection Settings and verify the Tunnel ID and restricted API key. If needed, create a new restricted API key and save it before reconnecting.",
+    )
+}
+
 fn cancelled_error() -> ChadexError {
     ChadexError::new(
         "tunnel_cancelled",
@@ -1208,6 +1255,40 @@ mod tests {
             readiness_probe_interval(Duration::from_secs(1)),
             Duration::from_millis(100)
         );
+    }
+
+    #[test]
+    fn tunnel_admin_status_requires_metadata_and_fails_fast_on_rejected_credentials() {
+        let pending: TunnelAdminStatus = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(!tunnel_control_plane_ready(&pending).unwrap());
+
+        let ready: TunnelAdminStatus = serde_json::from_value(serde_json::json!({
+            "tunnel_metadata": {
+                "name": "fixture",
+                "description": "fixture"
+            }
+        }))
+        .unwrap();
+        assert!(tunnel_control_plane_ready(&ready).unwrap());
+
+        for message in [
+            "controlplane client: unexpected metadata status 401: Unauthorized",
+            "403 Forbidden",
+            "unexpected metadata status 404",
+        ] {
+            let rejected: TunnelAdminStatus = serde_json::from_value(serde_json::json!({
+                "tunnel_metadata_error": message
+            }))
+            .unwrap();
+            let error = tunnel_control_plane_ready(&rejected).unwrap_err();
+            assert_eq!(error.code, "tunnel_credentials_rejected");
+        }
+
+        let transient: TunnelAdminStatus = serde_json::from_value(serde_json::json!({
+            "tunnel_metadata_error": "controlplane client: unexpected metadata status 503"
+        }))
+        .unwrap();
+        assert!(!tunnel_control_plane_ready(&transient).unwrap());
     }
 
     #[tokio::test]
@@ -1320,12 +1401,23 @@ mod tests {
                 };
                 tokio::spawn(async move {
                     let mut request = [0_u8; 1024];
-                    let _ = stream.read(&mut request).await;
-                    let _ = stream
-                        .write_all(
-                            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK",
-                        )
-                        .await;
+                    let read = stream.read(&mut request).await.unwrap_or(0);
+                    let request = String::from_utf8_lossy(&request[..read]);
+                    let body = if request.starts_with("GET /api/status ") {
+                        r#"{"tunnel_metadata":{"name":"fixture","description":"fixture"}}"#
+                    } else {
+                        "OK"
+                    };
+                    let content_type = if request.starts_with("GET /api/status ") {
+                        "application/json"
+                    } else {
+                        "text/plain"
+                    };
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(response.as_bytes()).await;
                 });
             }
         });

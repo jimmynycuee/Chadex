@@ -257,6 +257,8 @@
 "connection.disconnect" = "Disconnect";
 "connection.connect" = "Connect ChatGPT";
 "connection.retry" = "Retry";
+"connection.credentialsRejectedTitle" = "Tunnel credentials were rejected";
+"connection.credentialsRejectedRecovery" = "Check the Tunnel ID and restricted API key in Connection Settings. If needed, create a new restricted API key and save it before reconnecting.";
 "connection.tunnelNotVerified" = "The tunnel is ready, but Chadex has not observed ChatGPT access to this project yet.";
 "connection.tunnelWaitingForChatGPT" = "No ChatGPT activity has been observed in this app session yet. The status updates automatically after the first Chadex use in ChatGPT.";
 "connection.chatGPTConnectedAwaitingVerification" = "ChatGPT is connected. This project will be verified after ChatGPT successfully reads it.";

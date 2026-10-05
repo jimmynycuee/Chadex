@@ -508,17 +508,33 @@ struct ProjectDetailView: View {
 
     private func errorSection(_ error: HelperErrorPayload) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(error.message, systemImage: "exclamationmark.triangle.fill")
+            Label(
+                error.code == "tunnel_credentials_rejected"
+                    ? L10n.string("connection.credentialsRejectedTitle")
+                    : error.message,
+                systemImage: "exclamationmark.triangle.fill"
+            )
                 .chadexFont(.headline)
                 .foregroundStyle(.red)
 
-            Text(error.recovery ?? L10n.string("error.retry"))
+            Text(
+                error.code == "tunnel_credentials_rejected"
+                    ? L10n.string("connection.credentialsRejectedRecovery")
+                    : (error.recovery ?? L10n.string("error.retry"))
+            )
                 .chadexFont(.callout)
                 .foregroundStyle(.secondary)
 
             HStack(alignment: .top, spacing: 12) {
-                Button(L10n.string("connection.retry")) { model.primaryAction() }
-                    .buttonStyle(.bordered)
+                if error.code == "tunnel_credentials_rejected" {
+                    Button(L10n.string("connection.editSettings")) {
+                        model.showConnectionSettings()
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button(L10n.string("connection.retry")) { model.primaryAction() }
+                        .buttonStyle(.bordered)
+                }
 
                 DisclosureGroup(L10n.string("error.technicalDetails"), isExpanded: $showingErrorDetails) {
                     VStack(alignment: .leading, spacing: 6) {
