@@ -2,6 +2,11 @@ import type { DesktopApi } from './api';
 import type { DesktopState, BackendSnapshot } from './contracts';
 
 export const MAX_SNAPSHOT_AGE_MS = 8_000;
+export const POLL_INTERVAL_MS = 1_500;
+// Once the tunnel is up, ChatGPT's first call is what turns the connection green;
+// poll faster for a bounded window (mirrors macOS awaitingChatGPTFastPollWindow).
+export const AWAITING_CHATGPT_POLL_MS = 1_000;
+export const AWAITING_CHATGPT_WINDOW_MS = 120_000;
 export interface ViewState {
   desktop: DesktopState | null;
   freshness: 'loading' | 'fresh' | 'unavailable';
@@ -45,6 +50,7 @@ export class DesktopStore {
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
   private ageTimer: ReturnType<typeof setInterval> | undefined;
   private revision: { pid: number | null; value: number } | null = null;
+  private awaitingSince: number | null = null;
 
   constructor(private api: Pick<DesktopApi, 'desktopState'>, private now: () => number = Date.now) {}
   getSnapshot = (): ViewState => this.view;
@@ -78,6 +84,9 @@ export class DesktopStore {
           }
           this.revision = { pid: state.helper.pid, value: state.runtime.state_revision };
         } else { this.revision = null; }
+        const runtime = state.helper.state === 'running' ? state.runtime : null;
+        if (runtime?.tunnel_ready && !runtime.chat_gpt_connected) this.awaitingSince ??= this.now();
+        else this.awaitingSince = null;
         this.publish({ desktop: state, freshness: 'fresh', receivedAt: this.now(), error: null });
       } catch (error) {
         if (epoch === this.epoch) this.invalidate(safeError(error), 'unavailable');
@@ -91,13 +100,17 @@ export class DesktopStore {
     if (this.inFlight) await this.inFlight;
     await this.refresh();
   }
+  pollInterval(): number {
+    return this.awaitingSince !== null && this.now() - this.awaitingSince < AWAITING_CHATGPT_WINDOW_MS
+      ? AWAITING_CHATGPT_POLL_MS : POLL_INTERVAL_MS;
+  }
   retain = () => {
     this.users += 1;
     if (this.users === 1) {
       const loop = ++this.loop;
       const poll = async () => {
         await this.refresh();
-        if (this.users && this.loop === loop) this.pollTimer = setTimeout(poll, 1_500);
+        if (this.users && this.loop === loop) this.pollTimer = setTimeout(poll, this.pollInterval());
       };
       void poll();
       this.ageTimer = setInterval(this.checkAge, 500);
@@ -119,17 +132,18 @@ export function connectionStatus(snapshot: BackendSnapshot | null): { label: str
   if (snapshot.error || snapshot.phase === 'error') return { label: '連線需要處理', tone: 'warn', verified: false };
   if (!snapshot.runtime_status) return { label: '本地服務狀態未確認', tone: 'quiet', verified: false };
   if (snapshot.runtime_status.needs_attention) return { label: '本地服務需要處理', tone: 'warn', verified: false };
+  if (snapshot.runtime_status.summary_kind === 'runtime_stopped') return { label: '本地服務已停止', tone: 'quiet', verified: false };
   if (!snapshot.runtime_status.runtime_ready) return { label: '本地服務尚未可用', tone: 'quiet', verified: false };
   const verified = snapshot.phase === 'verified' && Boolean(snapshot.selected_project)
     && snapshot.tunnel_ready && snapshot.chat_gpt_connected && snapshot.chat_gpt_verified_for_selected_project;
   if (verified) return { label: '專案已通過 ChatGPT 驗證', tone: 'good', verified: true };
-  if (snapshot.tunnel_ready) return { label: 'Tunnel 可用 · 等待 ChatGPT 驗證', tone: 'quiet', verified: false };
+  if (snapshot.tunnel_ready) return { label: '已連線 · 等待 ChatGPT 驗證', tone: 'quiet', verified: false };
   if (snapshot.phase === 'preparing') return { label: '正在準備連線', tone: 'quiet', verified: false };
   return { label: snapshot.phase === 'stopped' ? '連線已停止' : '尚未連線', tone: 'quiet', verified: false };
 }
 export function localStatus(snapshot: BackendSnapshot | null) {
   const status = snapshot?.runtime_status;
   if (!status) return { label: '尚無本地服務狀態', ready: false, known: false };
-  return { label: status.needs_attention ? '本地服務需要處理' : status.runtime_ready ? '本地服務可用' : '本地服務尚未可用',
+  return { label: status.needs_attention ? '本地服務需要處理' : status.summary_kind === 'runtime_stopped' ? '本地服務已停止' : status.runtime_ready ? '本地服務可用' : '本地服務尚未可用',
     ready: status.runtime_ready && !status.needs_attention, known: true };
 }

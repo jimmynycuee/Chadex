@@ -296,6 +296,7 @@ const METHODS: &[&str] = &[
     "refreshRuntime",
     "observeChatGPTActivity",
     "queryActivities",
+    "prewarmRuntime",
     "queryPerformanceTraces",
     "queryLifecyclePerformanceTraces",
     "cancelOperation",
@@ -319,11 +320,19 @@ async fn runtime_action(
     if !METHODS.contains(&method.as_str()) {
         return Err("desktop_method_not_allowed".into());
     }
-    let _guard = state.lifecycle.lock().await;
+    let guard = state.lifecycle.lock().await;
     if state.shutdown_started.load(Ordering::SeqCst) {
         return Err("desktop_shutting_down".into());
     }
     let bridge = state.helper().await?;
+    // The launch prewarm is a hidden background operation: the helper joins or
+    // cancels it for contending requests, so it must not hold the lifecycle lock.
+    let _guard = if method == "prewarmRuntime" {
+        drop(guard);
+        None
+    } else {
+        Some(guard)
+    };
     if ["connectChatGPT", "startTunnel"].contains(&method.as_str()) {
         state.provision(&bridge).await?;
     }
@@ -687,6 +696,11 @@ mod tests {
         ] {
             assert!(!METHODS.contains(&name));
         }
+    }
+
+    #[test]
+    fn prewarm_runtime_is_allowed() {
+        assert!(METHODS.contains(&"prewarmRuntime"));
     }
 
     #[test]

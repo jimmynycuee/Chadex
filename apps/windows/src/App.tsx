@@ -70,6 +70,17 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
     && `${entry.message} ${entry.source} ${entry.event_kind}`.toLocaleLowerCase().includes(activitySearch.toLocaleLowerCase())).slice().sort((a, b) => b.sequence - a.sequence);
 
   useEffect(store.retain, [store]);
+  // Launch-time warm-up, once per app start, after the first fresh status. Fire-and-forget:
+  // the helper decides what (if anything) to resume and joins/cancels it for later requests,
+  // so nothing here is busy UI or an error surface.
+  const prewarmChecked = useRef(false);
+  useEffect(() => {
+    if (prewarmChecked.current || !snapshot || !helperRunning) return;
+    prewarmChecked.current = true;
+    if (prefs.prepare_service_on_launch === false || !snapshot.selected_project || !snapshot.runtime_status?.runtime_configured) return;
+    void api.prewarmRuntime().catch((error) => { console.debug('runtime prewarm skipped', safeError(error)); })
+      .finally(() => { void store.refresh(); });
+  }, [api, store, snapshot, helperRunning, prefs.prepare_service_on_launch]);
   useEffect(() => { document.documentElement.dataset.theme = prefs.theme; }, [prefs.theme]);
   useEffect(() => { setTunnelId(prefs.tunnel_id); }, [prefs.tunnel_id]);
   useEffect(() => { if (page !== 'connection') setCredential(''); }, [page]);
@@ -202,8 +213,8 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
             {globalInstructionsError && <div className="notice error">{globalInstructionsError}</div>}
             <div className="button-row"><button className="primary" disabled={globalInstructionsLoading || globalInstructionsSaving || globalInstructions === savedGlobalInstructions || utf8Bytes(globalInstructions) > GLOBAL_INSTRUCTIONS_MAX_BYTES} onClick={() => { void saveGlobalInstructions(); }}>{globalInstructionsSaving ? '儲存中…' : '儲存 Global Instructions'}</button><code>{utf8Bytes(globalInstructions)} / {GLOBAL_INSTRUCTIONS_MAX_BYTES} bytes</code></div>
           </Panel>
-          <Panel title="桌面偏好"><form onSubmit={(event) => { event.preventDefault(); if (prefsDraft) void run('儲存偏好', async () => { const latest = store.getSnapshot().desktop?.preferences ?? prefs; await api.savePreferences({ ...latest, restore_project: prefsDraft.restore_project, launch_at_login: prefsDraft.launch_at_login, notifications: prefsDraft.notifications, ferret_visible: prefsDraft.ferret_visible, ferret_motion: prefsDraft.ferret_motion, theme: prefsDraft.theme }); setPrefsDraft(null); }); }}>
-            {([['restore_project', '啟動時恢復上次專案', '回到上一次使用的本地工作範圍。'], ['launch_at_login', '登入時啟動 Chadex', '由桌面應用程式管理系統登入設定。'], ['notifications', '桌面通知', '允許桌面應用程式顯示服務通知。'], ['ferret_visible', '顯示 Code Ferret', '在側欄呈現實際任務狀態。'], ['ferret_motion', 'Code Ferret 動畫', '降低動態效果時也會自動停用。']] as const).map(([key, label, hint]) => <label className="setting-row" key={key}><span><strong>{label}</strong><small>{hint}</small></span><input type="checkbox" disabled={!prefsEditable} checked={(prefsDraft ?? prefs)[key]} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), [key]: event.target.checked })} /></label>)}
+          <Panel title="桌面偏好"><form onSubmit={(event) => { event.preventDefault(); if (prefsDraft) void run('儲存偏好', async () => { const latest = store.getSnapshot().desktop?.preferences ?? prefs; await api.savePreferences({ ...latest, restore_project: prefsDraft.restore_project, launch_at_login: prefsDraft.launch_at_login, notifications: prefsDraft.notifications, ferret_visible: prefsDraft.ferret_visible, ferret_motion: prefsDraft.ferret_motion, prepare_service_on_launch: prefsDraft.prepare_service_on_launch ?? true, theme: prefsDraft.theme }); setPrefsDraft(null); }); }}>
+            {([['restore_project', '啟動時恢復上次專案', '回到上一次使用的本地工作範圍。'], ['launch_at_login', '登入時啟動 Chadex', '由桌面應用程式管理系統登入設定。'], ['notifications', '桌面通知', '允許桌面應用程式顯示服務通知。'], ['ferret_visible', '顯示 Code Ferret', '在側欄呈現實際任務狀態。'], ['ferret_motion', 'Code Ferret 動畫', '降低動態效果時也會自動停用。'], ['prepare_service_on_launch', '啟動時在背景準備本機服務（加快連接）', '只會恢復你設定過且未手動停止的服務；下次啟動生效。']] as const).map(([key, label, hint]) => <label className="setting-row" key={key}><span><strong>{label}</strong><small>{hint}</small></span><input type="checkbox" disabled={!prefsEditable} checked={(prefsDraft ?? prefs)[key] ?? true} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), [key]: event.target.checked })} /></label>)}
             <label className="setting-row"><span><strong>外觀</strong><small>選擇淺色、深色或跟隨系統。</small></span><select disabled={!prefsEditable} value={(prefsDraft ?? prefs).theme} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), theme: event.target.value as Preferences['theme'] })}><option value="system">跟隨系統</option><option value="light">淺色</option><option value="dark">深色</option></select></label><div className="button-row"><button className="primary" type="submit" disabled={!prefsEditable || !prefsDraft}>儲存偏好</button><button type="button" disabled={!prefsDraft || Boolean(busy)} onClick={() => setPrefsDraft(null)}>取消變更</button></div></form></Panel>
           <Panel title="應用程式"><div className="button-row"><button onClick={() => setPage('updates')}>版本與更新 ↗</button><button onClick={() => setPage('diagnostics')}>診斷資訊 ↗</button><button disabled={Boolean(busy)} onClick={() => { void run('結束 Chadex', api.quitApp, false); }}>結束 Chadex</button></div></Panel>
         </>}

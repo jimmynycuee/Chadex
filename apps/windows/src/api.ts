@@ -9,6 +9,8 @@ export interface DesktopApi {
   chooseProject(): Promise<string | null>;
   openProject(path: string): Promise<void>;
   runtimeAction(method: RuntimeMethod, params?: Record<string, unknown>): Promise<unknown>;
+  /** Fire-and-forget launch warm-up; the helper decides whether anything needs resuming. */
+  prewarmRuntime(): Promise<unknown>;
   inspectProject(path: string): Promise<ProjectInspection>;
   savePreferences(preferences: Preferences): Promise<Preferences>;
   discoverExternalSkillSources(): Promise<ExternalSkillSourceDiscovery>;
@@ -40,6 +42,7 @@ export const desktopApi: DesktopApi = {
   chooseProject: () => call('choose_project'),
   openProject: (path) => call('open_project', { path }),
   runtimeAction: (method, params = {}) => call('runtime_action', { method, params }),
+  prewarmRuntime: () => call('runtime_action', { method: 'prewarmRuntime', params: {} }),
   inspectProject: (path) => call('runtime_action', { method: 'inspectProject', params: { path } }),
   discoverExternalSkillSources: () => call('runtime_action', { method: 'discoverExternalSkillSources', params: {} }),
   getExternalSkillRoots: () => call('runtime_action', { method: 'getExternalSkillRoots', params: {} }),

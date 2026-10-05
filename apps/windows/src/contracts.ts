@@ -42,6 +42,8 @@ export interface Preferences {
   restore_project: boolean; launch_at_login: boolean; notifications: boolean;
   ferret_visible: boolean; ferret_motion: boolean; theme: 'system' | 'dark' | 'light';
   recent_projects: string[]; last_project: string | null; tunnel_id: string;
+  /** Absent in older saved preferences: undefined means ON (matches macOS nil = ON). */
+  prepare_service_on_launch?: boolean;
 }
 export interface DesktopState {
   helper: { state: 'running' | 'stopping' | 'stopped' | 'failed'; pid: number | null; error: string | null };
@@ -56,7 +58,7 @@ export interface DesktopState {
 export type RuntimeMethod = 'inspectProject' | 'activateProject' | 'switchLocalProject'
   | 'configureLocalSetup' | 'resumeService' | 'connectChatGPT' | 'startTunnel' | 'stopTunnel'
   | 'disconnectAI' | 'stopLocalService' | 'updateProxySettings' | 'queryActivities'
-  | 'getStatus' | 'refreshRuntime' | 'observeChatGPTActivity'
+  | 'getStatus' | 'refreshRuntime' | 'prewarmRuntime' | 'observeChatGPTActivity'
   | 'discoverExternalSkillSources' | 'getExternalSkillRoots' | 'setExternalSkillRoots'
   | 'getSkillCatalog' | 'getSkillInventory' | 'installSkill' | 'activateSkill' | 'deactivateSkill';
 
@@ -99,5 +101,5 @@ export interface SkillInventory { project: string; total_count: number; skills: 
 
 export const defaultPreferences: Preferences = {
   restore_project: true, launch_at_login: false, notifications: false,
-  ferret_visible: true, ferret_motion: true, theme: 'system', recent_projects: [], last_project: null, tunnel_id: '',
+  ferret_visible: true, ferret_motion: true, theme: 'system', recent_projects: [], last_project: null, tunnel_id: '', prepare_service_on_launch: true,
 };

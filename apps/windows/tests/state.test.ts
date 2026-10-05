@@ -88,4 +88,20 @@ describe('snapshot authority and freshness', () => {
     await vi.advanceTimersByTimeAsync(1_500); expect(api.desktopState).toHaveBeenCalledTimes(2);
     stopAgain(); await vi.advanceTimersByTimeAsync(10_000); expect(api.desktopState).toHaveBeenCalledTimes(2);
   });
+  it('polls every second only while the tunnel waits for ChatGPT, for a bounded window', async () => {
+    let now = 0; const api = apiMock(desktop({ runtime: snapshot({ tunnel_ready: true, chat_gpt_connected: false }) }));
+    const store = new DesktopStore(api, () => now);
+    expect(store.pollInterval()).toBe(1_500);
+    await store.refresh(); expect(store.pollInterval()).toBe(1_000);
+    now = 119_999; expect(store.pollInterval()).toBe(1_000);
+    now = 120_000; expect(store.pollInterval()).toBe(1_500);
+    vi.mocked(api.desktopState).mockResolvedValue(desktop({ runtime: snapshot({ chat_gpt_connected: true }) }));
+    now = 1; await store.refresh(); expect(store.pollInterval()).toBe(1_500);
+  });
+  it('shows an unstarted runtime as stopped rather than failing', () => {
+    const ready = snapshot().runtime_status!;
+    const runtime = snapshot({ phase: 'stopped', tunnel_ready: false, chat_gpt_connected: false,
+      runtime_status: { ...ready, runtime_ready: false, needs_attention: false, summary_kind: 'runtime_stopped' } });
+    expect(localStatus(runtime).label).toBe('本地服務已停止'); expect(connectionStatus(runtime).tone).toBe('quiet');
+  });
 });

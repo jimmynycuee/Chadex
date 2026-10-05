@@ -334,7 +334,7 @@ impl Drop for PendingGuard {
 
 pub fn request_timeout(method: &str) -> Duration {
     match method {
-        "connectChatGPT" | "startTunnel" | "configureLocalSetup" | "resumeService" => {
+        "connectChatGPT" | "startTunnel" | "configureLocalSetup" | "resumeService" | "prewarmRuntime" => {
             Duration::from_secs(120)
         }
         "switchLocalProject" | "activateProject" | "stopLocalService" | "disconnectAI"
