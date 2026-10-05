@@ -134,11 +134,9 @@ final class AppModel: ObservableObject {
     }
 
     nonisolated static func shouldConnectAfterSavingConnectionSettings(
-        hadUsableCredentials: Bool,
-        hadActiveConnection: Bool,
         hasSelectedProject: Bool
     ) -> Bool {
-        hasSelectedProject && (!hadUsableCredentials || hadActiveConnection)
+        hasSelectedProject
     }
 
     static let skillDraftTemplate = """
@@ -1187,8 +1185,6 @@ final class AppModel: ObservableObject {
 
         do {
             let keyToUse = trimmedAPIKey.isEmpty ? try loadAPIKeyOnce() : trimmedAPIKey
-            let hadUsableCredentials = !preferences.tunnelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && hasStoredAPIKey
             let hadActiveConnection = snapshot.tunnelReady
                 || snapshot.chatGPTConnected
                 || snapshot.chatGPTVerifiedForSelectedProject
@@ -1213,8 +1209,6 @@ final class AppModel: ObservableObject {
             _ = try await sendCredentialSnapshot(tunnelID: trimmedTunnelID, apiKey: keyToUse)
 
             let shouldConnect = Self.shouldConnectAfterSavingConnectionSettings(
-                hadUsableCredentials: hadUsableCredentials,
-                hadActiveConnection: hadActiveConnection,
                 hasSelectedProject: selectedProject != nil
             )
             if shouldConnect {
