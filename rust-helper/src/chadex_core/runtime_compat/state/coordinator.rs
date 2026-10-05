@@ -840,10 +840,7 @@ impl RuntimeCoordinator {
         let mut snapshot = DesktopStateSnapshot::default();
         snapshot.topology = config.topology.clone();
         snapshot.project = project_snapshot(&config);
-        // A freshly started helper owns no runtime processes yet. Until the
-        // first observation proves otherwise, a configured runtime is stopped,
-        // not failing; autostart only says it should be resumed on connect.
-        if config.topology.is_some() {
+        if config.topology.is_some() && config.runtime_autostart == Some(false) {
             snapshot.readiness = aggregate_readiness(
                 ServerReadiness::Stopped,
                 RunnerReadiness::Stopped,
@@ -1019,18 +1016,8 @@ impl RuntimeCoordinator {
         };
         cancellation.check()?;
         // A saved user stop remains stopped across refresh, while a reachable
-        // external service is still observed normally. A local Server that is
-        // unreachable and not owned by this helper (e.g. after an app restart)
-        // has simply not been started yet; that is stopped, not an error.
-        let local_server_not_started = server != ServerReadiness::Ready
-            && matches!(
-                self.config.topology.as_ref().map(|topology| &topology.server),
-                Some(ServerTopology::Local)
-            )
-            && !process_is_active(self.process_snapshot(ProcessKind::LocalServer).await);
-        if (!runtime_autostart(&self.config) || local_server_not_started)
-            && server != ServerReadiness::Ready
-        {
+        // external service is still observed normally.
+        if !runtime_autostart(&self.config) && server != ServerReadiness::Ready {
             self.snapshot.chatgpt_activity = None;
             self.snapshot.readiness = aggregate_readiness(
                 ServerReadiness::Stopped,
