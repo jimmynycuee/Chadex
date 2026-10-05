@@ -12,6 +12,8 @@ pub(super) const STARTUP_FAST_POLL_WINDOW: Duration = Duration::from_secs(1);
 pub(super) const STARTUP_MEDIUM_POLL_WINDOW: Duration = Duration::from_secs(3);
 pub(super) const READINESS_CLEANUP_SLACK: Duration = Duration::from_secs(2);
 pub(super) const SHUTDOWN_OPERATION_WAIT: Duration = Duration::from_secs(5);
+/// Bound on how long cancelling a background warm-up waits for it to unwind.
+pub(super) const BACKGROUND_CANCEL_WAIT: Duration = Duration::from_secs(10);
 pub(super) const DESKTOP_STATE_MAX_BYTES: u64 = 256 * 1024;
 pub(super) const DESKTOP_SERVER_ENV_MAX_BYTES: u64 = 256 * 1024;
 pub(super) const DESKTOP_MCP_COMPACT_SCHEMAS: &str = "true";

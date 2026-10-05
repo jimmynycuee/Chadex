@@ -369,6 +369,9 @@ pub struct DesktopOperationSnapshot {
     pub phase: DesktopOperationPhase,
     pub started_at_ms: u64,
     pub cancellable: bool,
+    /// Launch warm-up work the user did not request; never shown as user work.
+    #[serde(default)]
+    pub background: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

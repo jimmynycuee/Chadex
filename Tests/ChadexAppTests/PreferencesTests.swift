@@ -25,12 +25,40 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(decoded.computerControlDefaultMode, .alwaysAllow)
     }
 
-    func testRestorePreferencesAreIndependent() {
+    func testPrepareServiceAndRestoreConnectionPreferencesAreIndependent() {
         var preferences = ChadexPreferences()
-        preferences.restoreServiceOnLaunch = true
+        preferences.prepareServiceOnLaunch = true
         preferences.restoreConnectionOnLaunch = false
-        XCTAssertTrue(preferences.restoreServiceOnLaunch)
+        XCTAssertTrue(preferences.prepareServiceOnLaunchEnabled)
         XCTAssertFalse(preferences.restoreConnectionOnLaunch)
+        preferences.prepareServiceOnLaunch = false
+        preferences.restoreConnectionOnLaunch = true
+        XCTAssertFalse(preferences.prepareServiceOnLaunchEnabled)
+        XCTAssertTrue(preferences.restoreConnectionOnLaunch)
+    }
+
+    func testPrepareServiceDefaultsOnForNewAndLegacyPreferences() throws {
+        XCTAssertTrue(ChadexPreferences().prepareServiceOnLaunchEnabled)
+        // Existing users carry the old toggle, stored false because it was
+        // never touched. It must not carry over and disable the new default.
+        for legacyValue in ["false", "true"] {
+            let legacy = #"{"projects":[],"tunnelID":"","restoreServiceOnLaunch":\#(legacyValue),"restoreConnectionOnLaunch":false,"backgroundCloseHintShown":false}"#
+                .data(using: .utf8)!
+            let decoded = try JSONDecoder().decode(ChadexPreferences.self, from: legacy)
+            XCTAssertNil(decoded.prepareServiceOnLaunch)
+            XCTAssertTrue(decoded.prepareServiceOnLaunchEnabled)
+        }
+    }
+
+    func testPrepareServiceChoicePersists() throws {
+        var preferences = ChadexPreferences()
+        preferences.prepareServiceOnLaunch = false
+        let decoded = try JSONDecoder().decode(
+            ChadexPreferences.self,
+            from: JSONEncoder().encode(preferences)
+        )
+        XCTAssertEqual(decoded.prepareServiceOnLaunch, false)
+        XCTAssertFalse(decoded.prepareServiceOnLaunchEnabled)
     }
 
     func testProjectStoreSupportsIsolatedPreferencesDirectory() throws {

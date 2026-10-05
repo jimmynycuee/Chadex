@@ -4,10 +4,21 @@ struct ChadexPreferences: Codable, Sendable {
     var projects: [ProjectRecord] = []
     var selectedProjectID: UUID?
     var tunnelID: String = ""
-    var restoreServiceOnLaunch = false
+    /// Prepare the local service in the background at launch so a later
+    /// Connect only has to start the tunnel. nil means "never chosen", which
+    /// reads as ON. It deliberately uses a new key instead of the former
+    /// "restore local service" one (`restoreServiceOnLaunch`, default off):
+    /// that key is stored as `false` for almost everyone because it was never
+    /// touched, so reusing it would silently turn the faster launch off for
+    /// them. The legacy key is ignored when decoding and dropped on next save.
+    var prepareServiceOnLaunch: Bool?
     var restoreConnectionOnLaunch = false
     var backgroundCloseHintShown = false
     var computerControlDefaultMode: ComputerControlMode?
+
+    var prepareServiceOnLaunchEnabled: Bool {
+        prepareServiceOnLaunch ?? true
+    }
 }
 
 enum GlobalInstructionsStoreError: LocalizedError {

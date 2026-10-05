@@ -449,6 +449,84 @@ async fn autostart_runtime_not_yet_started_reads_as_stopped_not_failing() {
     std::fs::remove_dir_all(data_dir).unwrap();
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn crashed_owned_local_server_reports_needs_attention_not_stopped() {
+    let data_dir = unique_state_dir("crashed-server");
+    std::fs::create_dir_all(&data_dir).unwrap();
+    let runner_config = data_dir.join("runner.toml");
+    let user_token_file = data_dir.join("user-token");
+    std::fs::write(&runner_config, "fixture").unwrap();
+    std::fs::write(&user_token_file, "fixture").unwrap();
+    let mut core = RuntimeCoordinator::new(data_dir.clone(), data_dir.join("resources")).unwrap();
+    core.config = test_stored_config("crashed");
+    core.config.topology = Some(RuntimeTopology {
+        experience: Experience::Full,
+        server: ServerTopology::Local,
+        runner: RunnerTopology::Local,
+        exposure: Exposure::None,
+        enrollment: Enrollment::ManagedPairing,
+    });
+    core.config.runtime_autostart = Some(true);
+    core.config.runtime = Some(StoredRuntime {
+        // Nothing listens here, so the Server is unreachable.
+        server_url: "http://127.0.0.1:9".to_string(),
+        server_env_file: None,
+        runner_config: Some(runner_config),
+        user_token_file: Some(user_token_file),
+        runner_client_id: Some("desktop-runner".to_string()),
+        project_id: Some("project".to_string()),
+        runtime_project_id: Some("agent:desktop:project".to_string()),
+    });
+    let cancellation = CancellationContext::never();
+
+    // Never spawned (fresh helper): not started yet, so stopped.
+    let before = core.refresh_runtime_status(&cancellation).await.unwrap();
+    assert_eq!(
+        before.readiness.summary_kind,
+        ReadinessSummaryKind::RuntimeStopped
+    );
+
+    // The owned Server process crashes: that must not read as merely stopped.
+    let mut command = std::process::Command::new("/bin/sh");
+    command.args(["-c", "exit 7"]);
+    core.supervisor
+        .lock()
+        .await
+        .spawn_owned(ProcessKind::LocalServer, command, false)
+        .await
+        .expect("start crashing Server fixture");
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let phase = core
+            .process_snapshot(ProcessKind::LocalServer)
+            .await
+            .map(|process| process.phase);
+        if matches!(phase, Some(ProcessPhase::Exited | ProcessPhase::Failed)) {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "crashing Server fixture did not exit"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    let after = core.refresh_runtime_status(&cancellation).await.unwrap();
+    assert_ne!(
+        after.readiness.summary_kind,
+        ReadinessSummaryKind::RuntimeStopped,
+        "a crashed owned Server must not be reported as merely stopped"
+    );
+    assert!(matches!(
+        after.readiness.summary_kind,
+        ReadinessSummaryKind::ServiceNeedsAttention | ReadinessSummaryKind::RunnerDisconnected
+    ));
+    assert!(!after.readiness.runtime_ready);
+    core.supervisor.lock().await.stop_all().await;
+    std::fs::remove_dir_all(data_dir).unwrap();
+}
+
 #[test]
 fn legacy_full_runtime_defaults_to_autostart_but_explicit_stop_is_preserved() {
     let mut config = test_stored_config("resume");

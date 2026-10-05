@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, RwLock};
 use std::time::Instant;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::Mutex;
+use tokio::sync::{watch, Mutex};
 use tokio::task::JoinSet;
 use zeroize::Zeroizing;
 
@@ -30,6 +30,10 @@ const MASCOT_JOBS_OBSERVATION_TIMEOUT: std::time::Duration = std::time::Duration
 const MAX_IN_FLIGHT_REQUESTS: usize = 64;
 const SHUTDOWN_REQUEST_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 const MAX_REQUEST_FRAME_BYTES: usize = 256 * 1024;
+// Cancelling a launch warm-up retries until the operation has unwound; bounded
+// so a stuck warm-up can never block the request that cancelled it.
+const PREWARM_CANCEL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(12);
+const PREWARM_CANCEL_RETRY: std::time::Duration = std::time::Duration::from_millis(40);
 
 #[derive(Debug, Deserialize)]
 struct Request {
@@ -307,6 +311,179 @@ impl ScopedMascotJobs {
     }
 }
 
+/// How a request interacts with an in-flight launch warm-up. Only requests that
+/// actually contend for the runtime mutation slot are affected; everything else
+/// proceeds immediately and leaves the warm-up running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrewarmInteraction {
+    /// Benefits from the warm-up: wait for it, then continue (Connect then only
+    /// has to start the tunnel).
+    Join,
+    /// Conflicts with or invalidates the warm-up: cancel it and proceed at once.
+    Cancel,
+    Ignore,
+}
+
+fn prewarm_interaction(method: &str) -> PrewarmInteraction {
+    match method {
+        "connectChatGPT" | "startTunnel" | "configureLocalSetup" | "resumeService"
+        | "updateProxySettings" => PrewarmInteraction::Join,
+        "stopLocalService" | "stopTunnel" | "disconnectAI" | "switchLocalProject" => {
+            PrewarmInteraction::Cancel
+        }
+        _ => PrewarmInteraction::Ignore,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrewarmDecision {
+    Resume,
+    NotConfigured,
+    ExplicitlyStopped,
+    NoRuntimeProject,
+    AlreadyReady,
+    OperationInFlight,
+    NoTargetProject,
+}
+
+/// Launch warm-up resumes only a runtime the user already set up and did not
+/// explicitly stop, when nothing else is mutating it.
+fn prewarm_decision(current: &RuntimeSnapshot, has_target_project: bool) -> PrewarmDecision {
+    if !current.runtime_configured {
+        PrewarmDecision::NotConfigured
+    } else if !current.runtime_autostart {
+        PrewarmDecision::ExplicitlyStopped
+    } else if current.project.is_none() {
+        PrewarmDecision::NoRuntimeProject
+    } else if current.readiness.runtime_ready {
+        PrewarmDecision::AlreadyReady
+    } else if current.current_operation.is_some() {
+        PrewarmDecision::OperationInFlight
+    } else if !has_target_project {
+        PrewarmDecision::NoTargetProject
+    } else {
+        PrewarmDecision::Resume
+    }
+}
+
+/// The operation the UI may present. Background warm-up is not user work: it
+/// is never surfaced as an operation (and so never as Preparing / Cancel).
+fn visible_operation(desktop: &RuntimeSnapshot) -> Option<OperationSnapshot> {
+    desktop
+        .current_operation
+        .as_ref()
+        .filter(|operation| !operation.background)
+        .map(|operation| OperationSnapshot {
+            id: operation.id.clone(),
+            kind: operation.kind.to_string(),
+            phase: operation.phase.as_str().to_string(),
+            started_at_ms: operation.started_at_ms,
+            cancellable: operation.cancellable,
+        })
+}
+
+/// Tracks the single in-flight launch warm-up so other requests can join or
+/// cancel it. Completion is signalled when the run guard drops, including when
+/// the warm-up future is aborted.
+struct PrewarmTracker {
+    active: StdMutex<Option<watch::Receiver<bool>>>,
+    cancel_requested: std::sync::atomic::AtomicBool,
+}
+
+struct PrewarmRun<'a> {
+    tracker: &'a PrewarmTracker,
+    done: watch::Sender<bool>,
+}
+
+impl Drop for PrewarmRun<'_> {
+    fn drop(&mut self) {
+        *self
+            .tracker
+            .active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        self.done.send_replace(true);
+    }
+}
+
+impl PrewarmRun<'_> {
+    fn cancel_requested(&self) -> bool {
+        self.tracker
+            .cancel_requested
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl PrewarmTracker {
+    fn new() -> Self {
+        Self {
+            active: StdMutex::new(None),
+            cancel_requested: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    fn begin(&self) -> Option<PrewarmRun<'_>> {
+        let mut active = self
+            .active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if active.is_some() {
+            return None;
+        }
+        let (done, receiver) = watch::channel(false);
+        *active = Some(receiver);
+        self.cancel_requested
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        Some(PrewarmRun {
+            tracker: self,
+            done,
+        })
+    }
+
+    fn receiver(&self) -> Option<watch::Receiver<bool>> {
+        self.active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// Waits for the in-flight warm-up (if any) to finish.
+    async fn join(&self) {
+        if let Some(mut receiver) = self.receiver() {
+            let _ = receiver.wait_for(|done| *done).await;
+        }
+    }
+
+    /// Asks the warm-up to stop and waits (bounded) until it has unwound.
+    /// `cancel_operation` is retried because the warm-up may not have admitted
+    /// its runtime operation yet when the first attempt lands.
+    async fn cancel<F, Fut>(&self, timeout: std::time::Duration, retry: std::time::Duration, mut cancel_operation: F)
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        let Some(mut receiver) = self.receiver() else {
+            return;
+        };
+        self.cancel_requested
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            cancel_operation().await;
+            let wait = retry.min(deadline.saturating_duration_since(tokio::time::Instant::now()));
+            if tokio::time::timeout(wait, receiver.wait_for(|done| *done))
+                .await
+                .is_ok()
+            {
+                return;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return;
+            }
+        }
+    }
+}
+
 struct Bridge {
     runtime: ChadexRuntimeCore,
     graphify: GraphifyStatus,
@@ -318,11 +495,17 @@ struct Bridge {
     snapshot_state: StdMutex<SnapshotRevisionState>,
     project_switch_lifecycle: Mutex<()>,
     mascot_jobs_refresh: Mutex<()>,
+    prewarm: PrewarmTracker,
 }
 
 impl Bridge {
     fn new() -> Result<Self, ErrorPayload> {
         let data_dir = chadex_data_dir()?;
+        let resource_dir = chadex_resource_dir()?;
+        Self::with_dirs(data_dir, resource_dir)
+    }
+
+    fn with_dirs(data_dir: PathBuf, resource_dir: PathBuf) -> Result<Self, ErrorPayload> {
         fs::create_dir_all(&data_dir).map_err(|error| {
             ErrorPayload::new(
                 "data_directory_unavailable",
@@ -331,7 +514,6 @@ impl Bridge {
             )
             .with_details(json!({ "io_kind": format!("{:?}", error.kind()) }))
         })?;
-        let resource_dir = chadex_resource_dir()?;
         let task_state_dir = data_dir.join("phase9-tasks");
         let runtime =
             ChadexRuntimeCore::new(data_dir.clone(), resource_dir).map_err(ErrorPayload::from)?;
@@ -354,6 +536,7 @@ impl Bridge {
             snapshot_state: StdMutex::new(SnapshotRevisionState::default()),
             project_switch_lifecycle: Mutex::new(()),
             mascot_jobs_refresh: Mutex::new(()),
+            prewarm: PrewarmTracker::new(),
         })
     }
 
@@ -863,18 +1046,36 @@ impl Bridge {
 
     // Launch-time warm-up: resume only a runtime the user already set up and
     // did not explicitly stop, so a later Connect only has to start the tunnel.
+    // The resume runs as a background operation: it is never published as the
+    // current user operation, so the UI keeps offering Connect while it runs.
     async fn prewarm_runtime(&self) -> Result<BackendSnapshot, ErrorPayload> {
         let current = self.runtime.snapshot();
-        let should_resume = current.runtime_configured
-            && current.runtime_autostart
-            && current.project.is_some()
-            && !current.readiness.runtime_ready
-            && current.current_operation.is_none()
-            && self.target_project().is_some();
-        if !should_resume {
+        if prewarm_decision(&current, self.target_project().is_some()) != PrewarmDecision::Resume {
             return Ok(self.snapshot_from(current));
         }
-        self.ensure_runtime_for_target().await
+        let Some(run) = self.prewarm.begin() else {
+            return Ok(self.snapshot_from(current));
+        };
+        if run.cancel_requested() {
+            return Ok(self.snapshot_from(current));
+        }
+        let result = self.runtime.resume_saved_runtime_background().await;
+        drop(run);
+        result
+            .map(|snapshot| self.snapshot_from(snapshot))
+            .map_err(ErrorPayload::from)
+    }
+
+    async fn join_prewarm(&self) {
+        self.prewarm.join().await;
+    }
+
+    async fn cancel_prewarm(&self) {
+        self.prewarm
+            .cancel(PREWARM_CANCEL_TIMEOUT, PREWARM_CANCEL_RETRY, || {
+                self.runtime.cancel_background_operation()
+            })
+            .await;
     }
 
     async fn refreshed_snapshot(&self, include_mascot_jobs: bool) -> BackendSnapshot {
@@ -1080,16 +1281,7 @@ impl Bridge {
             && verification_matches_target
             && verification.chatgpt_connected;
         let verified = chat_gpt_connected && verification.verified;
-        let current_operation = desktop
-            .current_operation
-            .as_ref()
-            .map(|operation| OperationSnapshot {
-                id: operation.id.clone(),
-                kind: operation.kind.to_string(),
-                phase: operation.phase.as_str().to_string(),
-                started_at_ms: operation.started_at_ms,
-                cancellable: operation.cancellable,
-            })
+        let current_operation = visible_operation(&desktop)
             .or_else(|| {
                 (tunnel.state == TunnelState::Starting).then(|| OperationSnapshot {
                     id: format!("chadex-tunnel-{}", tunnel.epoch),
@@ -1405,6 +1597,11 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
     }
 
     let request_id = request.request_id.clone();
+    match prewarm_interaction(&request.method) {
+        PrewarmInteraction::Join => bridge.join_prewarm().await,
+        PrewarmInteraction::Cancel => bridge.cancel_prewarm().await,
+        PrewarmInteraction::Ignore => {}
+    }
     let result: Result<ResponseResult, ErrorPayload> = match request.method.as_str() {
         "getStatus" => Ok(ResponseResult::Snapshot(bridge.refreshed_snapshot(
             requested_mascot_jobs(&request.params),
@@ -2181,6 +2378,249 @@ mod tests {
         ] {
             assert!(!additions.contains(sensitive_value));
         }
+    }
+
+    fn prewarm_runtime_snapshot() -> RuntimeSnapshot {
+        RuntimeSnapshot {
+            runtime_configured: true,
+            runtime_autostart: true,
+            readiness: crate::chadex_core::runtime::RuntimeReadiness {
+                runtime_ready: false,
+                needs_attention: false,
+                summary: "Stopped".to_string(),
+                next_action: None,
+                summary_kind: "runtime_stopped",
+                server: "stopped",
+                runner: "stopped",
+                exposure: "disabled",
+                project: "configured",
+            },
+            project: Some(RuntimeProject {
+                path: "/project".to_string(),
+                allowed_root: "/".to_string(),
+                is_git_repository: false,
+            }),
+            current_operation: None,
+            activity_sequence: 0,
+            tunnel_proxy_effective_url: None,
+        }
+    }
+
+    fn runtime_operation(background: bool) -> crate::chadex_core::runtime::RuntimeOperation {
+        crate::chadex_core::runtime::RuntimeOperation {
+            id: "desktop-operation-1".to_string(),
+            kind: "runtime_resume",
+            phase: crate::chadex_core::runtime::RuntimeOperationPhase::Running,
+            started_at_ms: 1,
+            cancellable: true,
+            background,
+        }
+    }
+
+    #[test]
+    fn prewarm_resumes_only_a_configured_autostart_runtime_with_a_target() {
+        assert_eq!(
+            prewarm_decision(&prewarm_runtime_snapshot(), true),
+            PrewarmDecision::Resume
+        );
+    }
+
+    #[test]
+    fn prewarm_skips_when_runtime_was_never_configured() {
+        let mut snapshot = prewarm_runtime_snapshot();
+        snapshot.runtime_configured = false;
+        assert_eq!(
+            prewarm_decision(&snapshot, true),
+            PrewarmDecision::NotConfigured
+        );
+    }
+
+    #[test]
+    fn prewarm_skips_after_an_explicit_stop() {
+        let mut snapshot = prewarm_runtime_snapshot();
+        snapshot.runtime_autostart = false;
+        assert_eq!(
+            prewarm_decision(&snapshot, true),
+            PrewarmDecision::ExplicitlyStopped
+        );
+    }
+
+    #[test]
+    fn prewarm_skips_when_another_operation_is_in_flight() {
+        let mut snapshot = prewarm_runtime_snapshot();
+        snapshot.current_operation = Some(runtime_operation(false));
+        assert_eq!(
+            prewarm_decision(&snapshot, true),
+            PrewarmDecision::OperationInFlight
+        );
+    }
+
+    #[test]
+    fn prewarm_skips_without_a_target_project_or_runtime_project() {
+        assert_eq!(
+            prewarm_decision(&prewarm_runtime_snapshot(), false),
+            PrewarmDecision::NoTargetProject
+        );
+        let mut snapshot = prewarm_runtime_snapshot();
+        snapshot.project = None;
+        assert_eq!(
+            prewarm_decision(&snapshot, true),
+            PrewarmDecision::NoRuntimeProject
+        );
+    }
+
+    #[test]
+    fn prewarm_skips_an_already_ready_runtime() {
+        let mut snapshot = prewarm_runtime_snapshot();
+        snapshot.readiness.runtime_ready = true;
+        assert_eq!(
+            prewarm_decision(&snapshot, true),
+            PrewarmDecision::AlreadyReady
+        );
+    }
+
+    #[test]
+    fn background_operation_is_never_presented_as_user_work() {
+        let mut snapshot = prewarm_runtime_snapshot();
+        snapshot.current_operation = Some(runtime_operation(true));
+        assert_eq!(visible_operation(&snapshot), None);
+
+        snapshot.current_operation = Some(runtime_operation(false));
+        let visible = visible_operation(&snapshot).expect("user operations stay visible");
+        assert_eq!(visible.kind, "runtime_resume");
+        assert!(visible.cancellable);
+    }
+
+    #[test]
+    fn only_contending_requests_join_or_cancel_the_prewarm() {
+        for method in ["connectChatGPT", "startTunnel", "configureLocalSetup", "resumeService"] {
+            assert_eq!(prewarm_interaction(method), PrewarmInteraction::Join, "{method}");
+        }
+        for method in ["stopLocalService", "stopTunnel", "disconnectAI", "switchLocalProject"] {
+            assert_eq!(prewarm_interaction(method), PrewarmInteraction::Cancel, "{method}");
+        }
+        for method in [
+            "getStatus",
+            "prewarmRuntime",
+            "activateProject",
+            "clearCredential",
+            "provideCredential",
+            "cancelTask",
+            "cancelOperation",
+            "queryActivities",
+        ] {
+            assert_eq!(prewarm_interaction(method), PrewarmInteraction::Ignore, "{method}");
+        }
+    }
+
+    #[tokio::test]
+    async fn joining_waits_for_the_prewarm_and_returns_immediately_when_idle() {
+        let tracker = Arc::new(PrewarmTracker::new());
+        tokio::time::timeout(std::time::Duration::from_millis(200), tracker.join())
+            .await
+            .expect("join with no prewarm must not wait");
+
+        let run = tracker.begin().expect("first prewarm starts");
+        assert!(tracker.begin().is_none(), "only one prewarm at a time");
+        let waiter = {
+            let tracker = Arc::clone(&tracker);
+            tokio::spawn(async move { tracker.join().await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(!waiter.is_finished(), "join must wait for the prewarm");
+        drop(run);
+        tokio::time::timeout(std::time::Duration::from_secs(1), waiter)
+            .await
+            .expect("join resumes when the prewarm finishes")
+            .unwrap();
+        assert!(tracker.begin().is_some(), "slot is reusable afterwards");
+    }
+
+    #[tokio::test]
+    async fn cancelling_stops_the_prewarm_and_proceeds_without_waiting_it_out() {
+        let tracker = PrewarmTracker::new();
+        let run = tracker.begin().unwrap();
+        let cancels = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        // The prewarm unwinds once the second cancellation attempt lands.
+        let worker_cancels = Arc::clone(&cancels);
+        let worker = async move {
+            while worker_cancels.load(std::sync::atomic::Ordering::SeqCst) < 2 {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            assert!(run.cancel_requested());
+            drop(run);
+        };
+        let started = std::time::Instant::now();
+        let counter = Arc::clone(&cancels);
+        let cancel = tracker.cancel(
+            std::time::Duration::from_secs(5),
+            std::time::Duration::from_millis(20),
+            move || {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                std::future::ready(())
+            },
+        );
+        tokio::join!(worker, cancel);
+        assert!(cancels.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        assert!(tracker.receiver().is_none());
+    }
+
+    #[tokio::test]
+    async fn cancelling_is_bounded_and_a_noop_without_a_prewarm() {
+        let tracker = PrewarmTracker::new();
+        tracker
+            .cancel(
+                std::time::Duration::from_millis(50),
+                std::time::Duration::from_millis(10),
+                || std::future::ready(()),
+            )
+            .await;
+
+        let _stuck = tracker.begin().unwrap();
+        let started = std::time::Instant::now();
+        tracker
+            .cancel(
+                std::time::Duration::from_millis(100),
+                std::time::Duration::from_millis(10),
+                || std::future::ready(()),
+            )
+            .await;
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+    }
+
+    #[tokio::test]
+    async fn aborted_prewarm_releases_joiners() {
+        let tracker = Arc::new(PrewarmTracker::new());
+        let task = {
+            let tracker = Arc::clone(&tracker);
+            tokio::spawn(async move {
+                let _run = tracker.begin().unwrap();
+                std::future::pending::<()>().await;
+            })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        assert!(tracker.receiver().is_some());
+        task.abort();
+        let _ = task.await;
+        tokio::time::timeout(std::time::Duration::from_millis(500), tracker.join())
+            .await
+            .expect("an aborted prewarm must not strand joiners");
+    }
+
+    #[tokio::test]
+    async fn prewarm_on_an_unconfigured_bridge_skips_without_an_operation() {
+        let root = std::env::temp_dir().join(format!(
+            "chadex-bridge-prewarm-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let bridge = Bridge::with_dirs(root.join("data"), root.join("resources")).unwrap();
+        let snapshot = bridge.prewarm_runtime().await.unwrap();
+        assert!(snapshot.current_operation.is_none());
+        assert_ne!(snapshot.phase, ConnectionPhase::Preparing);
+        assert!(bridge.prewarm.receiver().is_none());
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
