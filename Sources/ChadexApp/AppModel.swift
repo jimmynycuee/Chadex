@@ -133,6 +133,14 @@ final class AppModel: ObservableObject {
         preferences.computerControlDefaultMode ?? .askBeforeControl
     }
 
+    nonisolated static func shouldConnectAfterSavingConnectionSettings(
+        hadUsableCredentials: Bool,
+        hadActiveConnection: Bool,
+        hasSelectedProject: Bool
+    ) -> Bool {
+        hasSelectedProject && (!hadUsableCredentials || hadActiveConnection)
+    }
+
     static let skillDraftTemplate = """
     ## Workflow
     1. Describe the reusable procedure this Skill should follow.
@@ -1179,7 +1187,9 @@ final class AppModel: ObservableObject {
 
         do {
             let keyToUse = trimmedAPIKey.isEmpty ? try loadAPIKeyOnce() : trimmedAPIKey
-            let shouldReconnect = snapshot.tunnelReady
+            let hadUsableCredentials = !preferences.tunnelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && hasStoredAPIKey
+            let hadActiveConnection = snapshot.tunnelReady
                 || snapshot.chatGPTConnected
                 || snapshot.chatGPTVerifiedForSelectedProject
                 || snapshot.phase == .waitingForChatGPTVerification
@@ -1201,28 +1211,25 @@ final class AppModel: ObservableObject {
             }
 
             _ = try await sendCredentialSnapshot(tunnelID: trimmedTunnelID, apiKey: keyToUse)
-            if shouldReconnect {
-                Task { [weak self] in
-                    await self?.reconnectChatGPTAfterSettingsChange()
+
+            let shouldConnect = Self.shouldConnectAfterSavingConnectionSettings(
+                hadUsableCredentials: hadUsableCredentials,
+                hadActiveConnection: hadActiveConnection,
+                hasSelectedProject: selectedProject != nil
+            )
+            if shouldConnect {
+                if hadActiveConnection {
+                    _ = try await requestSnapshot(method: "disconnectAI", params: EmptyParams())
                 }
-                return true
+                guard await connectChatGPT() else { return false }
             }
+
             await refreshActivities()
             return true
         } catch {
             present(error)
             await refreshStatus(force: true)
             return false
-        }
-    }
-
-    private func reconnectChatGPTAfterSettingsChange() async {
-        do {
-            _ = try await requestSnapshot(method: "disconnectAI", params: EmptyParams())
-            _ = await connectChatGPT()
-        } catch {
-            present(error)
-            await refreshStatus(force: true)
         }
     }
 

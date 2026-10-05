@@ -9,6 +9,7 @@ All notable public Chadex releases are summarized here. Detailed notes remain un
 - Defined behavior precedence as current user request → nested/root repository AGENTS → Global Instructions → built-in baseline, inside the existing non-overridable safety/authority envelope.
 - Redesigned macOS Computer Use settings with clearer progressive disclosure, a stopped-state-only Resume action, persistent **Always allow**, temporary **Allow this session**, and Stop that remains in force across tunnel reconnects until explicit resume.
 - Reduced Agent Settings noise by collapsing Repository Instructions into a compact summary and suppressing stale/transient runtime errors during an in-progress cold-start connection.
+- Fixed first-time connection setup so saving Tunnel ID/API key performs the full connection lifecycle immediately instead of leaving a credential-only error state that required Retry.
 - Closed the automatable Windows W5 release-readiness gaps while keeping Windows distribution private to CI artifacts.
 - Added real historical-source `v0.4.0 → v0.4.1` installed-upgrade acceptance instead of relying only on the same-binary synthetic metadata fixture.
 - Added a separate native NSIS default self-copy uninstall stage while retaining strict process-identity, zero-residual and zero-forced-cleanup requirements.

@@ -515,6 +515,29 @@ final class ProtocolModelTests: XCTestCase {
         XCTAssertNil(ConnectionPresentation.error(for: snapshot, actionError: nil, isBootstrapping: true))
     }
 
+    func testConnectionSettingsSaveConnectPolicyCoversFirstSetupWithoutReconnectingIntentionalStops() {
+        XCTAssertTrue(AppModel.shouldConnectAfterSavingConnectionSettings(
+            hadUsableCredentials: false,
+            hadActiveConnection: false,
+            hasSelectedProject: true
+        ))
+        XCTAssertTrue(AppModel.shouldConnectAfterSavingConnectionSettings(
+            hadUsableCredentials: true,
+            hadActiveConnection: true,
+            hasSelectedProject: true
+        ))
+        XCTAssertFalse(AppModel.shouldConnectAfterSavingConnectionSettings(
+            hadUsableCredentials: true,
+            hadActiveConnection: false,
+            hasSelectedProject: true
+        ))
+        XCTAssertFalse(AppModel.shouldConnectAfterSavingConnectionSettings(
+            hadUsableCredentials: false,
+            hadActiveConnection: false,
+            hasSelectedProject: false
+        ))
+    }
+
     func testConnectingSuppressesStaleBackendErrorUntilAttemptFinishes() {
         let backendError = HelperErrorPayload(
             code: "runtime_unavailable",
