@@ -92,6 +92,17 @@ struct SnapshotRequestGate: Sendable {
         latestAppliedSequence = sequence
         return true
     }
+
+    mutating func shouldApply(
+        _ sequence: UInt64,
+        candidateRevision: UInt64,
+        currentRevision: UInt64
+    ) -> Bool {
+        if shouldApply(sequence) {
+            return true
+        }
+        return candidateRevision > currentRevision
+    }
 }
 
 struct ActivityRefreshGate: Sendable {

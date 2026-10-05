@@ -1759,8 +1759,8 @@ final class AppModel: ObservableObject {
         defer { connectionAction = nil }
         do {
             await applyComputerControlDefaultForNewSession()
-            _ = try await requestSnapshot(method: "connectChatGPT", params: EmptyParams())
-            if !snapshot.tunnelReady && snapshot.phase == .stopped {
+            let candidate = try await requestSnapshot(method: "connectChatGPT", params: EmptyParams())
+            if !candidate.tunnelReady && candidate.phase == .stopped {
                 let payload = HelperErrorPayload(
                     code: "connection_state_inconsistent",
                     message: L10n.string("error.connectionNotConfirmed"),
@@ -1841,7 +1841,11 @@ final class AppModel: ObservableObject {
     @discardableResult
     private func applySnapshot(_ candidate: BackendSnapshot, requestSequence: UInt64? = nil) -> Bool {
         if let requestSequence {
-            guard snapshotRequestGate.shouldApply(requestSequence) else { return false }
+            guard snapshotRequestGate.shouldApply(
+                requestSequence,
+                candidateRevision: candidate.stateRevision,
+                currentRevision: snapshot.stateRevision
+            ) else { return false }
         } else if candidate.stateRevision < snapshot.stateRevision {
             return false
         }

@@ -11,6 +11,7 @@ All notable public Chadex releases are summarized here. Detailed notes remain un
 - Reduced Agent Settings noise by collapsing Repository Instructions into a compact summary and suppressing stale/transient runtime errors during an in-progress cold-start connection.
 - Fixed first-time connection setup so saving Tunnel ID/API key performs the full connection lifecycle immediately instead of leaving a credential-only error state that required Retry.
 - Fixed Secure Tunnel false-ready detection: Chadex now waits for authenticated control-plane metadata after `/readyz`, fails fast on rejected credentials, and directs credential errors to Connection Settings instead of waiting through 10-second poll backoff cycles.
+- Fixed a first-connect state race where background status polling could leave the UI on a false Retry screen even though the Tunnel had already connected successfully.
 - Closed the automatable Windows W5 release-readiness gaps while keeping Windows distribution private to CI artifacts.
 - Added real historical-source `v0.4.0 → v0.4.1` installed-upgrade acceptance instead of relying only on the same-binary synthetic metadata fixture.
 - Added a separate native NSIS default self-copy uninstall stage while retaining strict process-identity, zero-residual and zero-forced-cleanup requirements.

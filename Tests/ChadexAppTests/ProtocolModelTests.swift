@@ -379,6 +379,28 @@ final class ProtocolModelTests: XCTestCase {
         XCTAssertFalse(gate.shouldApply(olderRequest))
     }
 
+    func testSnapshotRequestGateAcceptsOlderRequestWhenBackendRevisionIsNewer() {
+        var gate = SnapshotRequestGate()
+        let connectRequest = gate.issue()
+        let pollingRequest = gate.issue()
+
+        XCTAssertTrue(gate.shouldApply(
+            pollingRequest,
+            candidateRevision: 4,
+            currentRevision: 3
+        ))
+        XCTAssertTrue(gate.shouldApply(
+            connectRequest,
+            candidateRevision: 5,
+            currentRevision: 4
+        ))
+        XCTAssertFalse(gate.shouldApply(
+            connectRequest,
+            candidateRevision: 4,
+            currentRevision: 4
+        ))
+    }
+
     func testActivityRefreshGateOnlyRefreshesWhenSequenceChanges() {
         var gate = ActivityRefreshGate()
 
