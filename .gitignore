@@ -72,3 +72,6 @@ xcuserdata/
 /apps/windows/src-tauri/gen/
 /apps/windows/src-tauri/w5-fixture.generated.json
 /apps/windows/bridge/target/
+
+# Auto-generated session handoff snapshots (local state)
+handoffs/
