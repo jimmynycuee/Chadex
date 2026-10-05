@@ -205,7 +205,7 @@ impl RuntimeBackendAdapter {
             if let Some(revision) = catalog_revision.as_deref() {
                 args["expected_catalog_revision"] = Value::String(revision.to_string());
             }
-            let result = call_local_runtime_tool(
+            let result = call_local_runtime_extension_tool(
                 &self.probe_client,
                 &target.server_url,
                 token.as_str(),
@@ -350,7 +350,7 @@ impl RuntimeBackendAdapter {
             if let Some(revision) = package_revision {
                 args["expected_package_revision"] = Value::String(revision.to_string());
             }
-            let result = call_local_runtime_tool(
+            let result = call_local_runtime_extension_tool(
                 &self.probe_client,
                 &target.server_url,
                 token.as_str(),
@@ -785,7 +785,7 @@ impl RuntimeBackendAdapter {
         );
         let cancellation =
             CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
-        let result = call_local_runtime_tool(
+        let result = call_local_runtime_extension_tool(
             &self.probe_client,
             &target.server_url,
             token.as_str(),
@@ -1287,9 +1287,78 @@ async fn call_local_runtime_tool(
         tool,
         arguments,
         &[],
+        McpEra::Legacy,
         cancellation,
     )
     .await
+}
+
+/// Skill and Project Memory tools are stateless operator extensions: the
+/// runtime only routes them through `call_runtime_tool` for MCP 2026-07-28
+/// stateless requests and reports `unknown_tool` on the legacy protocol.
+async fn call_local_runtime_extension_tool(
+    client: &Client,
+    server_url: &str,
+    token: &str,
+    tool: &str,
+    arguments: Value,
+    cancellation: &CancellationContext,
+) -> DesktopResult<Option<OperatorToolResult>> {
+    call_local_runtime_tool_with_context(
+        client,
+        server_url,
+        token,
+        tool,
+        arguments,
+        &[],
+        McpEra::Stateless2026,
+        cancellation,
+    )
+    .await
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum McpEra {
+    Legacy,
+    Stateless2026,
+}
+
+const MCP_STATELESS_PROTOCOL_VERSION: &str = "2026-07-28";
+const ADAPTIVE_RUNTIME_GATEWAY_TOOL: &str = "call_runtime_tool";
+
+fn local_runtime_tool_request_body(
+    tool: &str,
+    arguments: Value,
+    context_request: &[&str],
+    era: McpEra,
+) -> Value {
+    let mut gateway_arguments = json!({
+        "tool": tool,
+        "arguments": arguments
+    });
+    if !context_request.is_empty() {
+        gateway_arguments["context_request"] = json!(context_request);
+    }
+    let mut params = json!({
+        "name": ADAPTIVE_RUNTIME_GATEWAY_TOOL,
+        "arguments": gateway_arguments
+    });
+    if era == McpEra::Stateless2026 {
+        params["_meta"] = json!({
+            "io.modelcontextprotocol/protocolVersion": MCP_STATELESS_PROTOCOL_VERSION,
+            "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientInfo": {
+                "name": "chadex-helper",
+                "version": env!("CARGO_PKG_VERSION"),
+            },
+        });
+    }
+    json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": params
+    })
 }
 
 async fn call_local_runtime_tool_with_context(
@@ -1299,35 +1368,32 @@ async fn call_local_runtime_tool_with_context(
     tool: &str,
     arguments: Value,
     context_request: &[&str],
+    era: McpEra,
     cancellation: &CancellationContext,
 ) -> DesktopResult<Option<OperatorToolResult>> {
     cancellation.check()?;
     let Some(url) = local_mcp_url(server_url) else {
         return Ok(None);
     };
-    let mut gateway_arguments = json!({
-        "tool": tool,
-        "arguments": arguments
-    });
-    if !context_request.is_empty() {
-        gateway_arguments["context_request"] = json!(context_request);
-    }
-    let body = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {
-            "name": "call_runtime_tool",
-            "arguments": gateway_arguments
-        }
-    }))
+    let body = serde_json::to_vec(&local_runtime_tool_request_body(
+        tool,
+        arguments,
+        context_request,
+        era,
+    ))
     .map_err(|_| project_activation_reconcile_error())?;
-    let request = client
+    let mut request = client
         .post(url)
         .bearer_auth(token)
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(body)
-        .send();
+        .header(reqwest::header::CONTENT_TYPE, "application/json");
+    if era == McpEra::Stateless2026 {
+        request = request
+            .header(reqwest::header::ACCEPT, "application/json, text/event-stream")
+            .header("Mcp-Protocol-Version", MCP_STATELESS_PROTOCOL_VERSION)
+            .header("Mcp-Method", "tools/call")
+            .header("Mcp-Name", ADAPTIVE_RUNTIME_GATEWAY_TOOL);
+    }
+    let request = request.body(body).send();
     let response = tokio::select! {
         _ = cancellation.cancelled() => return Err(cancelled_error()),
         response = request => response,
@@ -1778,6 +1844,26 @@ fn project_readiness(value: ProjectReadiness) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extension_tool_requests_use_stateless_mcp_metadata() {
+        let legacy = local_runtime_tool_request_body("list_runners", json!({}), &[], McpEra::Legacy);
+        assert!(legacy["params"].get("_meta").is_none());
+        assert_eq!(legacy["params"]["name"], "call_runtime_tool");
+
+        let stateless = local_runtime_tool_request_body(
+            "skill_list",
+            json!({"project": "p"}),
+            &[],
+            McpEra::Stateless2026,
+        );
+        let meta = &stateless["params"]["_meta"];
+        assert_eq!(meta["io.modelcontextprotocol/protocolVersion"], "2026-07-28");
+        assert!(meta["io.modelcontextprotocol/clientCapabilities"].is_object());
+        assert_eq!(meta["io.modelcontextprotocol/clientInfo"]["name"], "chadex-helper");
+        assert_eq!(stateless["params"]["arguments"]["tool"], "skill_list");
+        assert_eq!(stateless["params"]["arguments"]["arguments"]["project"], "p");
+    }
     use crate::chadex_core::runtime_compat::models::{
         aggregate_readiness, ExposureReadiness, ProjectReadiness, RunnerReadiness, ServerReadiness,
     };
