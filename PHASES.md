@@ -2,9 +2,9 @@
 schema_version: 1
 project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
-updated: 2026-10-05T18:50+08:00
-updated_by: chadex            # codex | webcodex | chadex | claude | human
-current_phase: null           # null 代表目前沒有 active phase；下一階段建立後再填入
+updated: 2026-10-05T22:10+08:00
+updated_by: claude           # codex | webcodex | chadex | claude | human
+current_phase: V042          # null 代表目前沒有 active phase；下一階段建立後再填入
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -133,6 +133,15 @@ phases:
         expect: "release_check.sh exits 0 and builds a fresh release-profile app"
         result: "passed: release_check.sh exit 0; fresh release-profile Chadex.app built and signed @ 0af8fcb"
     closed_commit: 0af8fcb
+  - id: V042
+    name: Baseline hygiene & documentation sync
+    branch: chore/v042-baseline-hygiene
+    status: active
+    owner: claude-code
+    depends_on: [V041]
+    # baseline: main @ 16efcf1, CI run 37306101038 attempt 2 = success
+    #（attempt 1 的 W5 installer candidate 為 runner 端 process_inventory_failed，rerun 通過）
+    closed_commit: null
 ---
 
 # Phases
