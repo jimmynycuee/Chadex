@@ -4,7 +4,8 @@ mod settings;
 mod store;
 
 pub use coordinator::{
-    ChadexProjectActivationObservation, ChadexProjectActivationTarget, ChadexRuntimeProbeTarget,
+    ChadexProjectActivationObservation, ChadexProjectActivationTarget, ChadexRunnerConfigTarget,
+    ChadexRuntimeProbeTarget,
     ChadexRuntimeTunnelTarget, RuntimeStateManager,
 };
 pub(crate) use store::write_atomic_file;

@@ -28,6 +28,8 @@ use std::time::Duration;
 use url::Url;
 use zeroize::Zeroizing;
 
+mod external_skill_roots;
+
 const RUNTIME_PROBE_CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 const RUNTIME_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const RUNTIME_PROBE_MAX_TOKEN_BYTES: u64 = 16 * 1024;

@@ -56,6 +56,15 @@ pub struct ChadexRuntimeProbeTarget {
     pub project_path: String,
 }
 
+/// Local Full Runtime identity needed to edit and hot-reload runner.toml.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChadexRunnerConfigTarget {
+    pub server_url: String,
+    pub user_token_file: PathBuf,
+    pub runner_config: PathBuf,
+    pub runner_client_id: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChadexProjectActivationTarget {
     pub project: ProjectSelection,
@@ -240,6 +249,39 @@ impl RuntimeStateManager {
             runner_client_id,
             runtime_project_id: identity.runtime_project_id,
             project_path: identity.project_path,
+        }))
+    }
+
+    /// The saved local Runner config identity, or `None` while the runtime is
+    /// not a local Full Runtime or another desktop operation is running.
+    pub async fn chadex_runner_config_target(
+        &self,
+    ) -> DesktopResult<Option<ChadexRunnerConfigTarget>> {
+        if self.shutdown_signal.is_cancelled() || self.operations.current().is_some() {
+            return Ok(None);
+        }
+        let slot = self.core.lock().await;
+        let Some(core) = slot.as_ref() else {
+            return Ok(None);
+        };
+        let local_full = core.config.topology.as_ref().is_some_and(|topology| {
+            topology.experience == Experience::Full
+                && matches!(topology.server, ServerTopology::Local)
+        });
+        if !local_full {
+            return Ok(None);
+        }
+        let Some(identity) = identity_from_config(&core.config) else {
+            return Ok(None);
+        };
+        let Some(runner_client_id) = stored_runner_client_id(&core.config) else {
+            return Ok(None);
+        };
+        Ok(Some(ChadexRunnerConfigTarget {
+            server_url: identity.server_url,
+            user_token_file: identity.user_token_file,
+            runner_config: identity.runner_config,
+            runner_client_id,
         }))
     }
 

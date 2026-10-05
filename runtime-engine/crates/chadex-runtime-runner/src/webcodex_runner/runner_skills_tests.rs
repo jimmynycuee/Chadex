@@ -23,6 +23,7 @@ fn configured_fixture() -> (TempDir, SkillsConfig, RunnerSkillDescriptor) {
     let root = tempfile::tempdir().unwrap();
     write_configured_skill(root.path());
     let config = SkillsConfig {
+        script_roots: Vec::new(),
         roots: vec![root.path().to_path_buf()],
     };
     let descriptor = configured_skills::discover(&config)

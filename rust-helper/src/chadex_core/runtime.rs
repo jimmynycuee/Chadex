@@ -127,6 +127,22 @@ impl ChadexRuntimeCore {
         self.backend.skill_catalog(project_path).await
     }
 
+    pub async fn external_skill_roots(&self) -> ChadexResult<Value> {
+        self.backend.external_skill_roots().await
+    }
+
+    pub async fn set_external_skill_roots(
+        &self,
+        roots: Vec<std::path::PathBuf>,
+        script_roots: Vec<std::path::PathBuf>,
+        expected_revision: String,
+        verify_project_path: Option<String>,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .set_external_skill_roots(roots, script_roots, expected_revision, verify_project_path)
+            .await
+    }
+
     pub async fn skill_inventory(&self, project_path: &str) -> ChadexResult<Value> {
         self.backend.skill_inventory(project_path).await
     }

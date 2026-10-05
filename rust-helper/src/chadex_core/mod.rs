@@ -34,6 +34,11 @@ impl ChadexError {
             details: None,
         }
     }
+
+    pub fn with_details(mut self, details: Value) -> Self {
+        self.details = Some(details);
+        self
+    }
 }
 
 pub type ChadexResult<T> = Result<T, ChadexError>;

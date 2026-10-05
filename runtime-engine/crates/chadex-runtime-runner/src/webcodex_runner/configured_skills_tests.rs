@@ -41,6 +41,7 @@ fn exact_resolution_scans_identities_but_reads_only_target_definition() {
     )
     .unwrap();
     let config = SkillsConfig {
+        script_roots: Vec::new(),
         roots: vec![temp.path().to_path_buf()],
     };
     let target_id = configured_skill_id(temp.path(), "skill-23");
@@ -93,6 +94,7 @@ fn live_discovery_and_resource_read_observe_changes() {
     let temp = tempfile::tempdir().unwrap();
     write_skill(temp.path(), "demo", "demo", "version one");
     let config = SkillsConfig {
+        script_roots: Vec::new(),
         roots: vec![temp.path().to_path_buf()],
     };
     let first = discover(&config).unwrap();
@@ -136,6 +138,7 @@ fn missing_root_is_a_bounded_path_free_diagnostic_not_an_empty_fallback() {
     let temp = tempfile::tempdir().unwrap();
     let missing = temp.path().join("missing-live-skills");
     let discovery = discover(&SkillsConfig {
+        script_roots: Vec::new(),
         roots: vec![missing.clone()],
     })
     .unwrap();
@@ -156,6 +159,7 @@ fn same_package_in_two_roots_has_distinct_opaque_identity() {
     write_skill(first.path(), "same", "same", "first");
     write_skill(second.path(), "same", "same", "second");
     let discovery = discover(&SkillsConfig {
+        script_roots: Vec::new(),
         roots: vec![first.path().to_path_buf(), second.path().to_path_buf()],
     })
     .unwrap();
@@ -186,7 +190,8 @@ fn configured_root_symlink_is_rejected() {
         let holder = tempfile::tempdir().unwrap();
         let link = holder.path().join("skills-link");
         symlink(target.path(), &link).unwrap();
-        let discovery = discover(&SkillsConfig { roots: vec![link] }).unwrap();
+        let discovery = discover(&SkillsConfig {
+        script_roots: Vec::new(), roots: vec![link] }).unwrap();
         assert!(discovery.skills.is_empty());
         assert!(discovery
             .diagnostics
@@ -200,6 +205,7 @@ fn traversal_and_symlink_escape_are_rejected() {
     let temp = tempfile::tempdir().unwrap();
     write_skill(temp.path(), "demo", "demo", "body");
     let config = SkillsConfig {
+        script_roots: Vec::new(),
         roots: vec![temp.path().to_path_buf()],
     };
     let skill = discover(&config).unwrap().skills.remove(0);
@@ -258,6 +264,7 @@ fn sensitive_package_names_are_not_discovered() {
     let temp = tempfile::tempdir().unwrap();
     write_skill(temp.path(), ".git", "hidden", "must stay hidden");
     let discovery = discover(&SkillsConfig {
+        script_roots: Vec::new(),
         roots: vec![temp.path().to_path_buf()],
     })
     .unwrap();
@@ -281,6 +288,7 @@ fn malformed_and_oversized_definitions_are_bounded_diagnostics() {
     )
     .unwrap();
     let discovery = discover(&SkillsConfig {
+        script_roots: Vec::new(),
         roots: vec![temp.path().to_path_buf()],
     })
     .unwrap();
@@ -297,6 +305,7 @@ fn resource_reads_enforce_actual_byte_bound_and_preserve_range_metadata() {
     let temp = tempfile::tempdir().unwrap();
     write_skill(temp.path(), "demo", "demo", "body");
     let config = SkillsConfig {
+        script_roots: Vec::new(),
         roots: vec![temp.path().to_path_buf()],
     };
     let skill = discover(&config).unwrap().skills.remove(0);

@@ -1343,6 +1343,35 @@ async fn run_async() -> Result<(), String> {
     Ok(())
 }
 
+type ExternalSkillRootsParams = (Vec<PathBuf>, Vec<PathBuf>, String, Option<String>);
+
+fn external_skill_roots_params(params: &Value) -> Result<ExternalSkillRootsParams, ErrorPayload> {
+    let invalid = || {
+        ErrorPayload::new(
+            "invalid_params",
+            "setExternalSkillRoots needs roots, script_roots and expected_revision",
+            "Reload the Skill folder settings and retry.",
+        )
+    };
+    let paths = |key: &str| -> Result<Vec<PathBuf>, ErrorPayload> {
+        params
+            .get(key)
+            .and_then(Value::as_array)
+            .ok_or_else(invalid)?
+            .iter()
+            .map(|value| value.as_str().map(PathBuf::from).ok_or_else(invalid))
+            .collect()
+    };
+    let roots = paths("roots")?;
+    let script_roots = paths("script_roots")?;
+    let expected_revision = param_str(params, "expected_revision")?.to_string();
+    let verify_project_path = params
+        .get("verify_project_path")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    Ok((roots, script_roots, expected_revision, verify_project_path))
+}
+
 async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
     if request.protocol_version != PROTOCOL_VERSION {
         return error_response(
@@ -1388,6 +1417,21 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
             .discover_external_skill_sources()
             .await
             .map(ResponseResult::Json),
+        "getExternalSkillRoots" => bridge
+            .runtime
+            .external_skill_roots()
+            .await
+            .map(ResponseResult::Json)
+            .map_err(ErrorPayload::from),
+        "setExternalSkillRoots" => match external_skill_roots_params(&request.params) {
+            Ok((roots, script_roots, expected_revision, verify_project_path)) => bridge
+                .runtime
+                .set_external_skill_roots(roots, script_roots, expected_revision, verify_project_path)
+                .await
+                .map(ResponseResult::Json)
+                .map_err(ErrorPayload::from),
+            Err(error) => Err(error),
+        },
         "getSkillDefinition" => {
             let path = param_str(&request.params, "path");
             let skill_id = param_str(&request.params, "skill_id");

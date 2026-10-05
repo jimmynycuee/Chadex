@@ -139,6 +139,7 @@ fn configured_skill_storage_does_not_expand_generic_file_authority() {
             ..RunnerPolicy::default()
         },
         skills: crate::webcodex_runner::config::SkillsConfig {
+        script_roots: Vec::new(),
             roots: vec![skill_root.clone()],
         },
         ..test_config(project_root)

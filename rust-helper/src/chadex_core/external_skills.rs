@@ -413,6 +413,272 @@ fn metadata_is_link_like(metadata: &fs::Metadata) -> bool {
     false
 }
 
+// ---------------------------------------------------------------------------
+// Writing `[skills]` in runner.toml
+// ---------------------------------------------------------------------------
+
+pub(crate) const RUNNER_CONFIG_MAX_BYTES: u64 = 256 * 1024;
+const RUNNER_CONFIG_BACKUP_SUFFIX: &str = ".chadex-skills.bak";
+
+/// System trees that can never be connected as a Skill root. `/` only matches
+/// exactly; every other entry also covers its descendants.
+pub(crate) const SYSTEM_SKILL_ROOT_DENYLIST: &[&str] = &[
+    "/",
+    "/System",
+    "/Library",
+    "/Applications",
+    "/Volumes",
+    "/bin",
+    "/sbin",
+    "/usr",
+    "/etc",
+    "/var",
+    "/private",
+    "/dev",
+    "/proc",
+    "/sys",
+    "/run",
+    "/boot",
+    "/opt",
+];
+
+/// Credential stores under the home directory that are never Skill roots.
+const HOME_CREDENTIAL_DIRS: &[&str] = &[".ssh", ".gnupg", ".aws", ".kube", ".docker"];
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub(crate) struct ExternalSkillRootsState {
+    pub(crate) format: &'static str,
+    pub(crate) roots: Vec<String>,
+    pub(crate) script_roots: Vec<String>,
+    /// SHA-256 of the whole runner.toml; pass it back as `expected_revision`.
+    pub(crate) revision: String,
+}
+
+pub(crate) const EXTERNAL_SKILL_ROOTS_FORMAT: &str = "chadex.external_skill_roots.v1";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RootRejection {
+    pub(crate) code: &'static str,
+    pub(crate) path: Option<String>,
+}
+
+impl RootRejection {
+    fn new(code: &'static str, path: Option<&Path>) -> Self {
+        Self {
+            code,
+            path: path.map(|path| path.to_string_lossy().into_owned()),
+        }
+    }
+}
+
+pub(crate) fn read_runner_config(path: &Path) -> Result<String, &'static str> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| "runner_config_unavailable")?;
+    if metadata_is_link_like(&metadata) || !metadata.is_file() {
+        return Err("runner_config_unavailable");
+    }
+    if metadata.len() > RUNNER_CONFIG_MAX_BYTES {
+        return Err("runner_config_too_large");
+    }
+    let bytes = read_bounded(path, RUNNER_CONFIG_MAX_BYTES as usize)
+        .map_err(|_| "runner_config_unavailable")?;
+    String::from_utf8(bytes).map_err(|_| "runner_config_unavailable")
+}
+
+pub(crate) fn runner_config_revision(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(content.as_bytes()))
+}
+
+pub(crate) fn current_skill_roots(content: &str) -> Result<ExternalSkillRootsState, &'static str> {
+    #[derive(serde::Deserialize, Default)]
+    struct Skills {
+        #[serde(default)]
+        roots: Vec<PathBuf>,
+        #[serde(default)]
+        script_roots: Vec<PathBuf>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Config {
+        #[serde(default)]
+        skills: Skills,
+    }
+    let config: Config = toml::from_str(content).map_err(|_| "runner_config_invalid")?;
+    let strings = |paths: Vec<PathBuf>| {
+        paths
+            .into_iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+    };
+    Ok(ExternalSkillRootsState {
+        format: EXTERNAL_SKILL_ROOTS_FORMAT,
+        roots: strings(config.skills.roots),
+        script_roots: strings(config.skills.script_roots),
+        revision: runner_config_revision(content),
+    })
+}
+
+/// Allow-list check for roots Chadex is about to write. Every root must be an
+/// existing, canonical (link-free) directory outside system trees, the home
+/// directory itself and its credential stores; `script_roots` must be a subset
+/// of `roots`. Shape rules are shared with the Runner.
+pub(crate) fn validate_requested_roots(
+    roots: &[PathBuf],
+    script_roots: &[PathBuf],
+    home: &Path,
+    system_denylist: &[&str],
+) -> Result<(), RootRejection> {
+    chadex_runtime_runner_config::skills::validate_configured_skill_roots(roots, script_roots)
+        .map_err(|_| RootRejection::new("skill_root_invalid", None))?;
+    let home = home.canonicalize().unwrap_or_else(|_| home.to_path_buf());
+    for root in roots {
+        let metadata = fs::symlink_metadata(root)
+            .map_err(|_| RootRejection::new("skill_root_not_found", Some(root)))?;
+        if metadata_is_link_like(&metadata) {
+            return Err(RootRejection::new("skill_root_is_link", Some(root)));
+        }
+        if !metadata.is_dir() {
+            return Err(RootRejection::new("skill_root_not_directory", Some(root)));
+        }
+        let canonical = root
+            .canonicalize()
+            .map_err(|_| RootRejection::new("skill_root_not_found", Some(root)))?;
+        // Compare text, not components: `Path` equality ignores `.` and
+        // trailing separators, but runner.toml should hold the exact path.
+        if canonical.as_os_str() != root.as_os_str() {
+            return Err(RootRejection::new("skill_root_not_canonical", Some(root)));
+        }
+        let denied_system = system_denylist.iter().any(|denied| {
+            let denied = Path::new(denied);
+            if denied.parent().is_none() {
+                canonical == denied
+            } else {
+                canonical.starts_with(denied)
+            }
+        });
+        if denied_system || home.starts_with(&canonical) {
+            return Err(RootRejection::new("skill_root_sensitive", Some(root)));
+        }
+        let in_credential_store = canonical
+            .strip_prefix(&home)
+            .ok()
+            .and_then(|relative| relative.components().next())
+            .is_some_and(|first| {
+                HOME_CREDENTIAL_DIRS
+                    .iter()
+                    .any(|dir| first.as_os_str().eq_ignore_ascii_case(dir))
+            });
+        if in_credential_store || is_secret_path(&canonical.to_string_lossy()) {
+            return Err(RootRejection::new("skill_root_sensitive", Some(root)));
+        }
+    }
+    Ok(())
+}
+
+/// Replace only `skills.roots` / `skills.script_roots`, preserving every other
+/// key, comment and table in the document.
+pub(crate) fn render_skill_roots(
+    content: &str,
+    roots: &[PathBuf],
+    script_roots: &[PathBuf],
+) -> Result<String, &'static str> {
+    let mut document = content
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|_| "runner_config_invalid")?;
+    if document.get("skills").is_none() {
+        document["skills"] = toml_edit::table();
+    }
+    let skills = document["skills"]
+        .as_table_like_mut()
+        .ok_or("runner_config_invalid")?;
+    let array = |paths: &[PathBuf]| {
+        let mut array = toml_edit::Array::new();
+        for path in paths {
+            array.push(path.to_string_lossy().as_ref());
+        }
+        toml_edit::value(array)
+    };
+    skills.insert("roots", array(roots));
+    if script_roots.is_empty() {
+        skills.remove("script_roots");
+    } else {
+        skills.insert("script_roots", array(script_roots));
+    }
+    Ok(document.to_string())
+}
+
+pub(crate) fn runner_config_backup_path(config: &Path) -> PathBuf {
+    let mut name = config
+        .file_name()
+        .map(|name| name.to_os_string())
+        .unwrap_or_default();
+    name.push(RUNNER_CONFIG_BACKUP_SUFFIX);
+    config.with_file_name(name)
+}
+
+/// Write `candidate` only if runner.toml still holds `expected`; the previous
+/// content is saved next to it first so a failed reload can be undone even
+/// across a helper restart.
+pub(crate) fn persist_if_unchanged(
+    path: &Path,
+    expected: &str,
+    candidate: &str,
+) -> Result<(), &'static str> {
+    if read_runner_config(path)? != expected {
+        return Err("runner_config_concurrent_change");
+    }
+    write_atomic(&runner_config_backup_path(path), expected.as_bytes())
+        .map_err(|_| "runner_config_write_failed")?;
+    if read_runner_config(path)? != expected {
+        return Err("runner_config_concurrent_change");
+    }
+    write_atomic(path, candidate.as_bytes()).map_err(|_| "runner_config_write_failed")
+}
+
+/// Put `original` back if runner.toml still holds what Chadex wrote. Returns
+/// `false` when someone else changed the file meanwhile (left untouched).
+pub(crate) fn restore_if_unchanged(
+    path: &Path,
+    written: &str,
+    original: &str,
+) -> Result<bool, &'static str> {
+    if read_runner_config(path)? != written {
+        return Ok(false);
+    }
+    write_atomic(path, original.as_bytes()).map_err(|_| "runner_config_write_failed")?;
+    Ok(true)
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let parent = path.parent().ok_or(std::io::ErrorKind::InvalidInput)?;
+    let name = path
+        .file_name()
+        .ok_or(std::io::ErrorKind::InvalidInput)?
+        .to_string_lossy();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos())
+        .unwrap_or_default();
+    let temp = parent.join(format!(".{name}.{}.{nonce}.tmp", std::process::id()));
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let result = (|| {
+        let mut file = options.open(&temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        fs::rename(&temp, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temp);
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -681,5 +947,136 @@ mod tests {
             }],
         }];
         assert!(recommended_roots(&sources, home.path()).is_empty());
+    }
+
+    // --- runner.toml writes -------------------------------------------------
+
+    const SAMPLE_CONFIG: &str = "# operator comment\nserver_url = \"http://127.0.0.1:1\"\nclient_id = \"c\"\n\n[policy]\nallowed_roots = [\"/p\"]\n";
+
+    #[test]
+    fn render_preserves_other_settings_and_comments() {
+        let rendered = render_skill_roots(
+            SAMPLE_CONFIG,
+            &[PathBuf::from("/s/a"), PathBuf::from("/s/b")],
+            &[PathBuf::from("/s/a")],
+        )
+        .unwrap();
+        assert!(rendered.starts_with(SAMPLE_CONFIG));
+        let state = current_skill_roots(&rendered).unwrap();
+        assert_eq!(state.roots, vec!["/s/a", "/s/b"]);
+        assert_eq!(state.script_roots, vec!["/s/a"]);
+        let cleared = render_skill_roots(&rendered, &[PathBuf::from("/s/a")], &[]).unwrap();
+        let state = current_skill_roots(&cleared).unwrap();
+        assert_eq!(state.roots, vec!["/s/a"]);
+        assert!(state.script_roots.is_empty());
+        assert!(!cleared.contains("script_roots"));
+        assert!(cleared.contains("# operator comment"));
+        assert!(cleared.contains("allowed_roots = [\"/p\"]"));
+    }
+
+    #[test]
+    fn render_keeps_other_skills_keys() {
+        let content = "[skills]\nroots = [\"/old\"]\nfuture_key = 1\n";
+        let rendered = render_skill_roots(content, &[PathBuf::from("/new")], &[]).unwrap();
+        assert!(rendered.contains("future_key = 1"));
+        assert_eq!(current_skill_roots(&rendered).unwrap().roots, vec!["/new"]);
+    }
+
+    #[test]
+    fn persist_is_compare_and_swap_with_backup_and_restore() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runner.toml");
+        fs::write(&path, SAMPLE_CONFIG).unwrap();
+        let candidate = render_skill_roots(SAMPLE_CONFIG, &[PathBuf::from("/s")], &[]).unwrap();
+
+        assert_eq!(
+            persist_if_unchanged(&path, "stale", &candidate),
+            Err("runner_config_concurrent_change")
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), SAMPLE_CONFIG);
+
+        persist_if_unchanged(&path, SAMPLE_CONFIG, &candidate).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), candidate);
+        assert_eq!(
+            fs::read_to_string(runner_config_backup_path(&path)).unwrap(),
+            SAMPLE_CONFIG
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+        let leftovers = fs::read_dir(dir.path())
+            .unwrap()
+            .filter(|entry| entry.as_ref().unwrap().file_name().to_string_lossy().ends_with(".tmp"))
+            .count();
+        assert_eq!(leftovers, 0);
+
+        assert!(restore_if_unchanged(&path, &candidate, SAMPLE_CONFIG).unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), SAMPLE_CONFIG);
+        // A concurrent operator edit is never clobbered by rollback.
+        fs::write(&path, "server_url = \"x\"\n").unwrap();
+        assert!(!restore_if_unchanged(&path, &candidate, SAMPLE_CONFIG).unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "server_url = \"x\"\n");
+    }
+
+    #[test]
+    fn revision_tracks_whole_file() {
+        let state = current_skill_roots(SAMPLE_CONFIG).unwrap();
+        assert!(state.roots.is_empty());
+        assert_eq!(state.revision, runner_config_revision(SAMPLE_CONFIG));
+        assert_ne!(state.revision, runner_config_revision("x = 1\n"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_links_relative_missing_and_sensitive_roots() {
+        use std::os::unix::fs::symlink;
+        let base = tempfile::tempdir().unwrap();
+        let home = base.path().canonicalize().unwrap().join("home");
+        let skills = home.join(".agents/skills");
+        fs::create_dir_all(&skills).unwrap();
+        fs::create_dir_all(home.join(".ssh/skills")).unwrap();
+        symlink(&skills, home.join("linked")).unwrap();
+        let deny: &[&str] = &["/", "/System", "/etc"];
+        let check = |roots: &[PathBuf], scripts: &[PathBuf]| {
+            validate_requested_roots(roots, scripts, &home, deny).map_err(|error| error.code)
+        };
+
+        assert_eq!(check(&[skills.clone()], &[skills.clone()]), Ok(()));
+        assert_eq!(check(&[skills.clone()], &[home.clone()]), Err("skill_root_invalid"));
+        assert_eq!(check(&[PathBuf::from("rel")], &[]), Err("skill_root_invalid"));
+        assert_eq!(check(&[home.join("missing")], &[]), Err("skill_root_not_found"));
+        assert_eq!(check(&[home.join("linked")], &[]), Err("skill_root_is_link"));
+        assert_eq!(
+            check(&[home.join(".agents/./skills")], &[]),
+            Err("skill_root_not_canonical")
+        );
+        assert_eq!(check(&[home.clone()], &[]), Err("skill_root_sensitive"));
+        assert_eq!(check(&[home.parent().unwrap().to_path_buf()], &[]), Err("skill_root_sensitive"));
+        assert_eq!(check(&[home.join(".ssh/skills")], &[]), Err("skill_root_sensitive"));
+        assert_eq!(check(&[PathBuf::from("/")], &[]), Err("skill_root_sensitive"));
+        // `/etc` is itself a link on macOS; either way it is refused.
+        assert!(check(&[PathBuf::from("/etc")], &[]).is_err());
+    }
+
+    #[test]
+    fn production_denylist_covers_system_trees() {
+        let tmp = tempfile::tempdir().unwrap();
+        // macOS temp dirs live under /private/var, which must be refused.
+        let canonical = tmp.path().canonicalize().unwrap();
+        if canonical.starts_with("/private") || canonical.starts_with("/var") {
+            assert_eq!(
+                validate_requested_roots(
+                    &[canonical.clone()],
+                    &[],
+                    Path::new("/nonexistent-home"),
+                    SYSTEM_SKILL_ROOT_DENYLIST
+                )
+                .map_err(|error| error.code),
+                Err("skill_root_sensitive")
+            );
+        }
     }
 }

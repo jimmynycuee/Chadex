@@ -40,13 +40,19 @@ const DEFAULT_PERSISTENT_SHELL_IDLE_TIMEOUT_SECS: u64 = 30 * 60;
 const MIN_PERSISTENT_SHELL_IDLE_TIMEOUT_SECS: u64 = 1;
 const MAX_PERSISTENT_SHELL_IDLE_TIMEOUT_SECS: u64 = 24 * 60 * 60;
 
-pub(crate) const MAX_CONFIGURED_SKILL_ROOTS: usize = 16;
-pub(crate) const MAX_CONFIGURED_SKILL_ROOT_PATH_BYTES: usize = 4096;
+#[cfg(test)]
+pub(crate) use crate::runner_config::skills::MAX_CONFIGURED_SKILL_ROOT_PATH_BYTES;
+pub(crate) use crate::runner_config::skills::configured_skill_root_identity;
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 pub(crate) struct SkillsConfig {
     #[serde(default)]
     pub(crate) roots: Vec<PathBuf>,
+    /// Configured roots whose Skill scripts may run. Empty by default:
+    /// external Skill guidance is readable, but scripts stay disabled until
+    /// the operator opts a root in.
+    #[serde(default)]
+    pub(crate) script_roots: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -953,6 +959,10 @@ fn reload_error_diagnostic(error: &str) -> (Option<&'static str>, Option<&'stati
             "skills.roots",
         ),
         (
+            "skills.script_roots entries must be non-empty paths of at most ",
+            "skills.script_roots",
+        ),
+        (
             "max_concurrent_jobs must be between ",
             "max_concurrent_jobs",
         ),
@@ -982,6 +992,9 @@ fn reload_error_diagnostic(error: &str) -> (Option<&'static str>, Option<&'stati
         || error.starts_with("skills.roots contains duplicate path identities")
     {
         return (Some("skills.roots"), Some("invalid_path"));
+    }
+    if error.starts_with("skills.script_roots ") {
+        return (Some("skills.script_roots"), Some("invalid_path"));
     }
     OUT_OF_RANGE_FIELDS
         .iter()
@@ -1578,49 +1591,11 @@ pub(crate) fn load_config(path: &Path) -> Result<RunnerConfig, String> {
     Ok(cfg)
 }
 
-pub(crate) fn configured_skill_root_identity(root: &Path) -> String {
-    let lexical = root.components().collect::<PathBuf>();
-    crate::runner_config::paths::normalize_path_identity(&lexical)
-}
-
 fn validate_skills_config(config: &SkillsConfig) -> Result<(), String> {
-    use std::collections::HashSet;
-
-    if config.roots.len() > MAX_CONFIGURED_SKILL_ROOTS {
-        return Err(format!(
-            "skills.roots may contain at most {MAX_CONFIGURED_SKILL_ROOTS} entries"
-        ));
-    }
-    let mut identities = HashSet::with_capacity(config.roots.len());
-    for root in &config.roots {
-        let text = root.to_string_lossy();
-        if text.is_empty()
-            || text.len() > MAX_CONFIGURED_SKILL_ROOT_PATH_BYTES
-            || text.contains('\0')
-        {
-            return Err(format!(
-                "skills.roots entries must be non-empty paths of at most {MAX_CONFIGURED_SKILL_ROOT_PATH_BYTES} bytes"
-            ));
-        }
-        if !root.is_absolute()
-            || crate::runner_config::paths::project_path_has_parent_traversal(root)
-        {
-            return Err(
-                "skills.roots entries must be absolute paths without parent traversal".to_string(),
-            );
-        }
-        #[cfg(windows)]
-        if crate::runner_config::paths::windows_project_path_kind(root)
-            == Some(crate::runner_config::paths::WindowsProjectPathKind::UnsupportedNamespace)
-        {
-            return Err("skills.roots contains an unsupported Windows path namespace".to_string());
-        }
-        let identity = configured_skill_root_identity(root);
-        if !identities.insert(identity) {
-            return Err("skills.roots contains duplicate path identities".to_string());
-        }
-    }
-    Ok(())
+    crate::runner_config::skills::validate_configured_skill_roots(
+        &config.roots,
+        &config.script_roots,
+    )
 }
 
 fn validate_acp_env_name(value: &str) -> Result<(), ()> {

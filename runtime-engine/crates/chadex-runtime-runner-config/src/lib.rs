@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use webcodex_core::runner_protocol::RunnerCapabilities;
 
 pub mod paths;
+pub mod skills;
 
 /// Default Runner project registry selected for a new system-level install.
 pub const DEFAULT_INIT_PROJECT_REGISTRY_DIR: &str = "/etc/webcodex/project-registry";
