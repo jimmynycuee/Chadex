@@ -2,9 +2,9 @@
 schema_version: 1
 project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
-updated: 2026-10-05T22:10+08:00
+updated: 2026-10-05T23:15+08:00
 updated_by: claude           # codex | webcodex | chadex | claude | human
-current_phase: V042          # null 代表目前沒有 active phase；下一階段建立後再填入
+current_phase: null          # null 代表目前沒有 active phase；下一階段建立後再填入
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -136,12 +136,32 @@ phases:
   - id: V042
     name: Baseline hygiene & documentation sync
     branch: chore/v042-baseline-hygiene
-    status: active
+    status: done
     owner: claude-code
     depends_on: [V041]
     # baseline: main @ 16efcf1, CI run 37306101038 attempt 2 = success
     #（attempt 1 的 W5 installer candidate 為 runner 端 process_inventory_failed，rerun 通過）
-    closed_commit: null
+    # branch 尚未合入 main（未授權 merge）；closed_commit 為最後一個實作 commit
+    gate:
+      - cmd: "scripts/test.sh (swift test + helper cargo test)"
+        expect: "all pass"
+        result: "passed: Swift 83/83; helper 179+3 passed, 3 ignored @ a220432（較 V041 少的 1+2 個為刪除的 getProjectInstructions 測試）"
+      - cmd: "python3 scripts/test_ci_change_scope.py"
+        expect: "5/5"
+        result: "passed: 5/5 @ f0a7253"
+      - cmd: "full CI on branch"
+        expect: "all jobs success"
+        result: "passed: run 37323159202 = 9/9 success @ f0a7253（含 source release gate、W5 installer + historical upgrade）"
+      - cmd: "docs-only fast path"
+        expect: "heavy jobs skipped; history + docs checks pass"
+        result: "passed: run 37330360154 @ a2a8619, 38s, 6 heavy jobs skipped"
+      - cmd: "graphify update . + coverage diff"
+        expect: "vendor removed; active source coverage unchanged"
+        result: "passed: 60,141→27,938 nodes / 177,154→90,703 edges; runtime-engine 19,232 / apps 367 unchanged; vendor 0"
+      - cmd: "sync_graphify_obsidian.py --check"
+        expect: "changed=0, stale_generated=0"
+        result: "passed: 68 outputs, changed=0, stale_generated=0"
+    closed_commit: a2a8619
 ---
 
 # Phases
@@ -163,8 +183,9 @@ phases:
 第一次在 W5 installer candidate 的 `default_uninstaller_self_copy` stage 出現 runner 端 `process_inventory_failed`，
 rerun（attempt 2）7/7 jobs success，視為 baseline 綠燈。
 
-目前 active phase 為 `V042`（branch `chore/v042-baseline-hygiene`，從 `16efcf1` 建立），範圍是文件／Graphify／CI orchestration
-與 v0.4.1 實際架構對齊，不新增產品功能、不 bump 版本、不發布。舊 V041 managed worktree 已是 clean + detached，不再作為開發 workspace。
+`V042` 已完成（branch `chore/v042-baseline-hygiene`，尚未合入 `main`）：文件與 v0.4.1 架構對齊、移除未使用的
+`getProjectInstructions` bridge path、Graphify 排除 provenance/generated material、CI docs-only fast path 與 Rust/npm cache。
+目前沒有 active phase。待決定：合入 `main`（cache 只在 main 儲存，合入後才會生效）、`AP5 — External skill sources`、Windows UI parity / external acceptance。
 
 ## V041 · v0.4.1
 
