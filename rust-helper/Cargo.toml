@@ -17,6 +17,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tokio = { version = "1", features = ["fs", "io-util", "io-std", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
 url = "2"
 zeroize = { version = "1", features = ["zeroize_derive"] }
+chadex-runtime-core = { path = "../runtime-engine/crates/chadex-runtime-core" }
 chadex-runtime-process = { path = "../runtime-engine/crates/chadex-runtime-process" }
 chadex-runtime-runner-config = { path = "../runtime-engine/crates/chadex-runtime-runner-config" }
 

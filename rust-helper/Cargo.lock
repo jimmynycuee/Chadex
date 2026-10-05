@@ -146,6 +146,7 @@ name = "chadex-helper"
 version = "0.4.1"
 dependencies = [
  "axum",
+ "chadex-runtime-core",
  "chadex-runtime-process",
  "chadex-runtime-runner-config",
  "futures-core",

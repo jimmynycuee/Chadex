@@ -3,6 +3,7 @@ pub(crate) mod adapters;
 pub(crate) mod backend;
 pub mod computer_safety;
 pub mod credentials;
+pub(crate) mod external_skills;
 pub(crate) mod graphify;
 pub mod performance;
 pub mod runtime;

@@ -2,9 +2,9 @@
 schema_version: 1
 project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
-updated: 2026-10-05T23:30+08:00
+updated: 2026-10-06T00:10+08:00
 updated_by: claude           # codex | webcodex | chadex | claude | human
-current_phase: null          # null 代表目前沒有 active phase；下一階段建立後再填入
+current_phase: AP5
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -162,6 +162,15 @@ phases:
         expect: "changed=0, stale_generated=0"
         result: "passed: 68 outputs, changed=0, stale_generated=0"
     closed_commit: a2a8619
+  - id: AP5
+    name: External skill sources
+    branch: feature/ap5-external-skill-sources
+    status: in_progress
+    owner: claude-code
+    depends_on: [V042]
+    # 決策（2026-10-05）：外部來源 script 預設不可執行，閘門對所有 configured roots 一律預設關閉；
+    # 連結範圍為 Runner 層級（所有專案共用）。AP5.1 偵測完成；AP5.2–AP5.5 待做。
+    closed_commit: null
 ---
 
 # Phases
@@ -185,7 +194,7 @@ rerun（attempt 2）7/7 jobs success，視為 baseline 綠燈。
 
 `V042` 已完成，2026-10-05 fast-forward 合入 `main` @ `924c75c`：文件與 v0.4.1 架構對齊、移除未使用的
 `getProjectInstructions` bridge path、Graphify 排除 provenance/generated material、CI docs-only fast path 與 Rust/npm cache。
-目前沒有 active phase。待決定：`AP5 — External skill sources`、Windows UI parity / external acceptance。
+Active phase：`AP5 — External skill sources`（branch `feature/ap5-external-skill-sources`）。之後：Windows UI parity / external acceptance。
 
 ## V041 · v0.4.1
 

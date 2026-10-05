@@ -1,5 +1,6 @@
 use crate::chadex_core::activity::{sanitize_message, RuntimeActivityEntry};
 use crate::chadex_core::computer_safety::ComputerControlMode;
+use crate::chadex_core::external_skills::{discover_external_skill_sources, DiscoveryEnv};
 use crate::chadex_core::graphify::GraphifyStatus;
 use crate::chadex_core::performance::{
     duration_us, now_ms, LifecyclePerformanceTrace, McpPerformanceTrace, PerformanceTraceStore,
@@ -480,6 +481,32 @@ impl Bridge {
             .skill_catalog(path)
             .await
             .map_err(ErrorPayload::from)
+    }
+
+    async fn discover_external_skill_sources(&self) -> Result<Value, ErrorPayload> {
+        let env = DiscoveryEnv::from_process().ok_or_else(|| {
+            ErrorPayload::new(
+                "home_directory_unavailable",
+                "Chadex could not determine the home directory to look for Skill folders",
+                "Check that HOME is set for Chadex and retry.",
+            )
+        })?;
+        let discovery = tokio::task::spawn_blocking(move || discover_external_skill_sources(&env))
+            .await
+            .map_err(|_| {
+                ErrorPayload::new(
+                    "external_skill_discovery_failed",
+                    "Chadex could not finish looking for external Skill folders",
+                    "Retry. If this keeps happening, restart Chadex.",
+                )
+            })?;
+        serde_json::to_value(discovery).map_err(|_| {
+            ErrorPayload::new(
+                "external_skill_discovery_failed",
+                "Chadex could not encode the external Skill folder results",
+                "Retry. If this keeps happening, restart Chadex.",
+            )
+        })
     }
 
     async fn skill_inventory(&self, path: &str) -> Result<Value, ErrorPayload> {
@@ -1357,6 +1384,10 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
             Ok(path) => bridge.skill_inventory(path).await.map(ResponseResult::Json),
             Err(error) => Err(error),
         },
+        "discoverExternalSkillSources" => bridge
+            .discover_external_skill_sources()
+            .await
+            .map(ResponseResult::Json),
         "getSkillDefinition" => {
             let path = param_str(&request.params, "path");
             let skill_id = param_str(&request.params, "skill_id");
