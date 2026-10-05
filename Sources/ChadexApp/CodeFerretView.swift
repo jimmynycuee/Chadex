@@ -16,49 +16,32 @@ struct CodeFerretCompanion: View {
     var body: some View {
         VStack(spacing: 0) {
             if visible {
-                CodeFerretStage(presentation: displayed, animated: motion && model.isAppActive)
-                    .frame(width: layout.control(176), height: layout.control(148))
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-            Button { showingDetails.toggle() } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: displayed.state.symbol)
-                        .foregroundStyle(displayed.state == .error ? Color.orange : .secondary)
-                    Text(visible ? displayed.title : "Code Ferret")
-                        .lineLimit(1)
-                    if preview != nil { Image(systemName: "play.rectangle").foregroundStyle(.secondary) }
-                    Spacer(minLength: 0)
-                    Image(systemName: "ellipsis").foregroundStyle(.tertiary)
+                Button { showingDetails.toggle() } label: {
+                    CodeFerretStage(presentation: displayed, animated: motion && model.isAppActive)
+                        .frame(width: layout.control(176), height: layout.control(148))
+                        .contentShape(Rectangle())
                 }
-                .chadexFont(.callout, weight: .medium)
-                .padding(.horizontal, layout.spacing(12))
-                .frame(height: layout.control(28))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(L10n.string("ferret.details"))
-            .accessibilityLabel("Code Ferret, \(displayed.title)")
-            .popover(isPresented: $showingDetails, arrowEdge: .trailing) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Code Ferret").font(.headline)
-                    Label(controller.presentation.title, systemImage: controller.presentation.state.symbol)
-                    Text(L10n.string("ferret.explanation"))
-                        .font(.callout).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Divider()
-                    Toggle(L10n.string("ferret.visible"), isOn: $visible)
-                    Toggle(L10n.string("ferret.motion"), isOn: $motion)
-                    if FerretReviewMode.enabled {
-                        Divider()
-                        Picker(L10n.string("ferret.preview"), selection: $preview) {
-                            Text(L10n.string("ferret.live")).tag(FerretState?.none)
-                            ForEach(FerretState.allCases) { Text($0.title).tag(Optional($0)) }
+                .buttonStyle(.plain)
+                .help(L10n.string("ferret.details"))
+                .accessibilityLabel("Code Ferret, \(displayed.title)")
+                .popover(isPresented: $showingDetails, arrowEdge: .trailing) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Code Ferret").font(.headline)
+                        Label(controller.presentation.title, systemImage: controller.presentation.state.symbol)
+                        Text(L10n.string("ferret.explanation"))
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if FerretReviewMode.enabled {
+                            Divider()
+                            Picker(L10n.string("ferret.preview"), selection: $preview) {
+                                Text(L10n.string("ferret.live")).tag(FerretState?.none)
+                                ForEach(FerretState.allCases) { Text($0.title).tag(Optional($0)) }
+                            }
+                            Text(L10n.string("ferret.previewHint")).font(.caption).foregroundStyle(.secondary)
                         }
-                        Text(L10n.string("ferret.previewHint")).font(.caption).foregroundStyle(.secondary)
                     }
+                    .padding(16).frame(width: 270)
                 }
-                .padding(16).frame(width: 270)
             }
         }
         .padding(.bottom, layout.spacing(6))

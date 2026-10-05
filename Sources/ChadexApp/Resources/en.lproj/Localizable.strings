@@ -416,6 +416,7 @@
 "settings.connectionSheetMessage" = "Update the Tunnel ID or API key. Manage the full connection setup in Settings.";
 "settings.advanced" = "Advanced";
 "settings.appearance" = "Appearance & Reading";
+"settings.companion" = "Code Ferret";
 "settings.language" = "Language";
 "settings.language.system" = "System Default";
 "settings.language.zhHant" = "繁體中文";

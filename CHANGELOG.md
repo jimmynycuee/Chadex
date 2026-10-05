@@ -9,6 +9,7 @@ All notable public Chadex releases are summarized here. Detailed notes remain un
 - Defined behavior precedence as current user request → nested/root repository AGENTS → Global Instructions → built-in baseline, inside the existing non-overridable safety/authority envelope.
 - Redesigned macOS Computer Use settings with clearer progressive disclosure, a stopped-state-only Resume action, persistent **Always allow**, temporary **Allow this session**, and Stop that remains in force across tunnel reconnects until explicit resume.
 - Removed the redundant Repository Instructions block from project detail while preserving repo-root/nested `AGENTS.md` runtime behavior, and suppressed stale/transient runtime errors during an in-progress cold-start connection.
+- Removed the redundant Code Ferret status strip from the sidebar and moved companion visibility/animation preferences into General Settings.
 - Fixed first-time connection setup so saving Tunnel ID/API key performs the full connection lifecycle immediately instead of leaving a credential-only error state that required Retry.
 - Fixed Secure Tunnel false-ready detection: Chadex now waits for authenticated control-plane metadata after `/readyz`, fails fast on rejected credentials, and directs credential errors to Connection Settings instead of waiting through 10-second poll backoff cycles.
 - Fixed a first-connect state race where background status polling could leave the UI on a false Retry screen even though the Tunnel had already connected successfully.

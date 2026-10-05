@@ -416,6 +416,7 @@
 "settings.connectionSheetMessage" = "更新 Tunnel ID 或 API key；完整連線設定可在「設定」中管理。";
 "settings.advanced" = "進階";
 "settings.appearance" = "外觀與閱讀";
+"settings.companion" = "Code Ferret";
 "settings.language" = "語言";
 "settings.language.system" = "跟隨系統";
 "settings.language.zhHant" = "繁體中文";

@@ -189,6 +189,8 @@ private struct GeneralSettingsView: View {
     @AppStorage(ChadexPreferenceKey.interfaceSize) private var interfaceSizeRaw = ChadexInterfaceSize.comfortable.rawValue
     @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.system.rawValue
     @AppStorage(ChadexPreferenceKey.autoCheckUpdates) private var autoCheckUpdates = true
+    @AppStorage("ferret.visible") private var ferretVisible = true
+    @AppStorage("ferret.motion") private var ferretMotion = true
     @State private var confirmingGuideReset = false
 
     var body: some View {
@@ -234,6 +236,23 @@ private struct GeneralSettingsView: View {
                         .chadexFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Divider()
+
+            SettingsSection(L10n.string("settings.companion")) {
+                SettingsControlBlock {
+                    VStack(alignment: .leading, spacing: ChadexMetrics.settingsRowSpacing) {
+                        Toggle(L10n.string("ferret.visible"), isOn: $ferretVisible)
+                        Toggle(L10n.string("ferret.motion"), isOn: $ferretMotion)
+                            .disabled(!ferretVisible)
+
+                        Text(L10n.string("ferret.explanation"))
+                            .chadexFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
 
