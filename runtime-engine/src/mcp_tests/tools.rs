@@ -602,6 +602,48 @@ fn skill_management_tools_require_admin_and_remain_fixed_schema() {
 }
 
 #[test]
+fn pairing_user_token_never_sees_admin_tools_but_the_local_admin_token_does() {
+    let render = |auth: &crate::auth::AuthContext| {
+        mcp_tools_list_payload_with_features_for_auth(false, false, true, true, Some(auth))
+    };
+    let names = |payload: &Value| {
+        payload["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|tool| tool["name"].as_str().map(str::to_string))
+            .collect::<Vec<_>>()
+    };
+    let pairing = crate::auth::AuthContext {
+        scopes: crate::pairing_http::ENROLL_USER_SCOPES
+            .iter()
+            .map(|scope| scope.to_string())
+            .collect(),
+        ..crate::auth::AuthContext::new(crate::auth::AuthKind::ApiToken)
+    };
+    let desktop_admin = crate::auth::AuthContext {
+        scopes: vec![crate::auth::SCOPE_ADMIN.to_string()],
+        ..crate::auth::AuthContext::new(crate::auth::AuthKind::ApiToken)
+    };
+    let admin_only = [
+        "skill_inventory",
+        "skill_versions",
+        "skill_install",
+        "skill_activate",
+        "skill_deactivate",
+        "skill_remove_revision",
+        "memory_scope_list",
+        "memory_scope_purge",
+    ];
+    let pairing_names = names(&render(&pairing));
+    let admin_names = names(&render(&desktop_admin));
+    for tool in admin_only {
+        assert!(!pairing_names.iter().any(|name| name == tool), "{tool}");
+        assert!(admin_names.iter().any(|name| name == tool), "{tool}");
+    }
+}
+
+#[test]
 fn stateless_workflow_recorder_metadata_adds_protocol_projection() {
     let mut full = mcp_tools_list_payload_with_compact(false);
     add_stateless_workflow_recorder_metadata(&mut full);

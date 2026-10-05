@@ -27,7 +27,7 @@ const DEFAULT_TTL_SECS: i64 = 600;
 const MIN_TTL_SECS: i64 = 60;
 const MAX_TTL_SECS: i64 = 3600;
 
-const ENROLL_USER_SCOPES: &[&str] = &[
+pub(crate) const ENROLL_USER_SCOPES: &[&str] = &[
     SCOPE_RUNTIME_READ,
     SCOPE_RUNNER_MANAGE,
     SCOPE_SESSION_COLLABORATE,

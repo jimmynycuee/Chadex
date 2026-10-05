@@ -508,6 +508,75 @@ async fn http_tokens_register_hash_rejects_existing_account_credential_hash() {
 }
 
 #[tokio::test]
+async fn http_tokens_register_hash_admin_scope_needs_bootstrap_or_admin_caller() {
+    let config = test_config(Some("secret"));
+    let (_tmp, db) = test_db();
+    seed_user(&db, "alice", "user");
+    let service = Service::new(build_router(config, db.clone()));
+
+    // A pairing-style user token (no admin scope) cannot mint an admin token.
+    let user_token = crate::auth::generate_api_token();
+    let record = ApiKeyRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        user_id: db.get_user_by_username("alice").unwrap().unwrap().id,
+        name: "chatgpt-action".to_string(),
+        key_prefix: crate::auth::token_prefix(&user_token),
+        created_at: chrono::Utc::now().timestamp(),
+        last_used_at: None,
+        revoked_at: None,
+        scopes: crate::pairing_http::ENROLL_USER_SCOPES.join(" "),
+        expires_at: None,
+        kind: crate::models::TOKEN_KIND_USER.to_string(),
+        allowed_client_id: None,
+    };
+    db.insert_api_key(&record, &hash_token(&user_token)).unwrap();
+
+    let minted = crate::auth::generate_api_token();
+    let request = |bearer: &str, token: &str| {
+        TestClient::post("http://localhost/api/tokens/register_hash")
+            .bearer_auth(bearer)
+            .json(&json!({
+                "username": "alice",
+                "name": "chadex-desktop-admin",
+                "token_hash": format!("sha256:{}", hash_token(token)),
+                "token_prefix": crate::auth::token_prefix(token),
+                "scopes": ["admin"],
+            }))
+    };
+    let resp = request(&user_token, &minted).send(&service).await;
+    assert_eq!(effective_status(&resp), StatusCode::FORBIDDEN);
+
+    // The bootstrap caller can; the stored token is admin-only.
+    let mut resp = request("secret", &minted).send(&service).await;
+    assert_eq!(effective_status(&resp), StatusCode::OK);
+    let body: Value = resp.take_json().await.unwrap();
+    assert_eq!(body["token"]["name"], "chadex-desktop-admin");
+    assert_eq!(body["token"]["scopes"], json!(["admin"]));
+    assert!(!serde_json::to_string(&body).unwrap().contains(&minted));
+
+    // The minted token authenticates; once revoked the Server answers 401.
+    let resp = TestClient::post("http://localhost/api/runtime/status")
+        .bearer_auth(&minted)
+        .json(&json!({}))
+        .send(&service)
+        .await;
+    assert_eq!(effective_status(&resp), StatusCode::OK);
+    let token_id = body["token"]["id"].as_str().unwrap().to_string();
+    let resp = TestClient::post("http://localhost/api/tokens/revoke")
+        .bearer_auth("secret")
+        .json(&json!({"username": "alice", "token_id": token_id}))
+        .send(&service)
+        .await;
+    assert_eq!(effective_status(&resp), StatusCode::OK);
+    let resp = TestClient::post("http://localhost/api/runtime/status")
+        .bearer_auth(&minted)
+        .json(&json!({}))
+        .send(&service)
+        .await;
+    assert_eq!(effective_status(&resp), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn http_tokens_register_hash_validates_hash_prefix_scope_and_duplicate() {
     let config = test_config(Some("secret"));
     let (_tmp, db) = test_db();

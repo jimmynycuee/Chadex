@@ -4,7 +4,7 @@ mod settings;
 mod store;
 
 pub use coordinator::{
-    ChadexProjectActivationObservation, ChadexProjectActivationTarget, ChadexRunnerConfigTarget,
+    ChadexAdminCredentialTarget, ChadexProjectActivationObservation, ChadexProjectActivationTarget, ChadexRunnerConfigTarget,
     ChadexRuntimeProbeTarget,
     ChadexRuntimeTunnelTarget, RuntimeStateManager,
 };

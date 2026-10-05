@@ -150,6 +150,7 @@ dependencies = [
  "chadex-runtime-process",
  "chadex-runtime-runner-config",
  "futures-core",
+ "getrandom 0.3.4",
  "libc",
  "reqwest",
  "serde",

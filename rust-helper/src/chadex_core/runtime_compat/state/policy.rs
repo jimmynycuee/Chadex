@@ -191,6 +191,18 @@ pub(super) fn stored_runner_client_id(config: &StoredDesktopConfig) -> Option<St
         .map(str::to_string)
 }
 
+/// The recorded admin token file survives a rewrite of the saved runtime only
+/// while it still lives beside the same private server env file. Anything else
+/// is dropped and re-derived (and re-minted) from the new env file location.
+pub(super) fn carried_admin_token_file(
+    config: &StoredDesktopConfig,
+    new_server_env_file: Option<&Path>,
+) -> Option<PathBuf> {
+    let admin = config.runtime.as_ref()?.admin_token_file.as_ref()?;
+    let env_dir = new_server_env_file?.parent()?;
+    (admin.parent() == Some(env_dir)).then(|| admin.clone())
+}
+
 pub(super) fn identity_from_config(config: &StoredDesktopConfig) -> Option<ProjectRuntimeIdentity> {
     let runtime = config.runtime.as_ref()?;
     let project = config.project.as_ref()?;

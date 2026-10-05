@@ -56,6 +56,23 @@ pub struct ChadexRuntimeProbeTarget {
     pub project_path: String,
 }
 
+/// Where the Desktop admin credential lives, or why it cannot exist. Carries
+/// only paths and the Server URL; the bootstrap and admin token contents are
+/// read inside the helper and never leave it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChadexAdminCredentialTarget {
+    /// The Server is not on this computer, so no bootstrap credential is
+    /// available to mint an admin token with.
+    RemoteServer,
+    Local {
+        server_url: String,
+        /// Private `webcodex.env` that holds the bootstrap token.
+        server_env_file: PathBuf,
+        /// Persisted admin token path, when one was recorded earlier.
+        admin_token_file: Option<PathBuf>,
+    },
+}
+
 /// Local Full Runtime identity needed to edit and hot-reload runner.toml.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChadexRunnerConfigTarget {
@@ -250,6 +267,68 @@ impl RuntimeStateManager {
             runtime_project_id: identity.runtime_project_id,
             project_path: identity.project_path,
         }))
+    }
+
+    /// Where Skill management / admin Memory calls must get their credential.
+    /// `None` while the runtime is unavailable (stopping, mid-operation, or not
+    /// a configured local Full Runtime); `RemoteServer` for a remote Server.
+    pub async fn chadex_admin_credential_target(
+        &self,
+    ) -> DesktopResult<Option<ChadexAdminCredentialTarget>> {
+        if self.shutdown_signal.is_cancelled() || self.operations.current().is_some() {
+            return Ok(None);
+        }
+        let slot = self.core.lock().await;
+        let Some(core) = slot.as_ref() else {
+            return Ok(None);
+        };
+        let Some(topology) = core.config.topology.as_ref() else {
+            return Ok(None);
+        };
+        if topology.experience != Experience::Full {
+            return Ok(None);
+        }
+        if matches!(topology.server, ServerTopology::Remote { .. }) {
+            return Ok(Some(ChadexAdminCredentialTarget::RemoteServer));
+        }
+        let Some(runtime) = core.config.runtime.as_ref() else {
+            return Ok(None);
+        };
+        let Some(server_env_file) = runtime.server_env_file.clone() else {
+            return Ok(None);
+        };
+        Ok(Some(ChadexAdminCredentialTarget::Local {
+            server_url: runtime.server_url.clone(),
+            server_env_file,
+            admin_token_file: runtime.admin_token_file.clone(),
+        }))
+    }
+
+    /// Remember where the admin token file was created. Best effort and never
+    /// an operation of its own: it only applies while the saved runtime still
+    /// points at the same `server_env_file` that the token was minted for.
+    pub async fn chadex_record_admin_token_file(
+        &self,
+        server_env_file: &Path,
+        admin_token_file: &Path,
+    ) -> DesktopResult<()> {
+        if self.shutdown_signal.is_cancelled() {
+            return Ok(());
+        }
+        let mut slot = self.core.lock().await;
+        let Some(core) = slot.as_mut() else {
+            return Ok(());
+        };
+        let Some(runtime) = core.config.runtime.as_mut() else {
+            return Ok(());
+        };
+        if runtime.server_env_file.as_deref() != Some(server_env_file)
+            || runtime.admin_token_file.as_deref() == Some(admin_token_file)
+        {
+            return Ok(());
+        }
+        runtime.admin_token_file = Some(admin_token_file.to_path_buf());
+        core.save_config().await
     }
 
     /// The saved local Runner config identity, or `None` while the runtime is
@@ -1858,6 +1937,7 @@ impl RuntimeCoordinator {
             server_env_file: Some(env_file.clone()),
             runner_config: Some(identity.runner_config.clone()),
             user_token_file: Some(identity.user_token_file.clone()),
+            admin_token_file: carried_admin_token_file(&self.config, Some(&env_file)),
             runner_client_id: Some(runner_client_id.clone()),
             project_id: Some(identity.project_id.clone()),
             runtime_project_id: Some(identity.runtime_project_id.clone()),
@@ -2913,6 +2993,7 @@ impl RuntimeCoordinator {
         self.config.project = Some(project.clone());
         self.config.runtime = Some(StoredRuntime {
             server_url: identity.server_url.clone(),
+            admin_token_file: carried_admin_token_file(&self.config, server_env_file.as_deref()),
             server_env_file,
             runner_config: Some(identity.runner_config.clone()),
             user_token_file: Some(identity.user_token_file.clone()),
