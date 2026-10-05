@@ -123,12 +123,6 @@ impl ChadexRuntimeCore {
         self.backend.observe_mascot_jobs(project_path).await
     }
 
-    pub async fn project_instructions_context(&self, project_path: &str) -> ChadexResult<Value> {
-        self.backend
-            .project_instructions_context(project_path)
-            .await
-    }
-
     pub async fn skill_catalog(&self, project_path: &str) -> ChadexResult<Value> {
         self.backend.skill_catalog(project_path).await
     }

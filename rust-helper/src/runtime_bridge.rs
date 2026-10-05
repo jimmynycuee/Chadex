@@ -475,15 +475,6 @@ impl Bridge {
         Ok(project_inspection(project))
     }
 
-    async fn project_instructions(&self, path: &str) -> Result<Value, ErrorPayload> {
-        let output = self
-            .runtime
-            .project_instructions_context(path)
-            .await
-            .map_err(ErrorPayload::from)?;
-        Ok(project_instructions_view(path, &output))
-    }
-
     async fn skill_catalog(&self, path: &str) -> Result<Value, ErrorPayload> {
         self.runtime
             .skill_catalog(path)
@@ -1358,13 +1349,6 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
                 .map(ResponseResult::Project),
             Err(error) => Err(error),
         },
-        "getProjectInstructions" => match param_str(&request.params, "path") {
-            Ok(path) => bridge
-                .project_instructions(path)
-                .await
-                .map(ResponseResult::Json),
-            Err(error) => Err(error),
-        },
         "getSkillCatalog" => match param_str(&request.params, "path") {
             Ok(path) => bridge.skill_catalog(path).await.map(ResponseResult::Json),
             Err(error) => Err(error),
@@ -1772,45 +1756,6 @@ fn project_inspection(project: RuntimeProject) -> ProjectInspection {
         readable: fs::read_dir(&path).is_ok(),
         writable: metadata.is_some_and(|metadata| !metadata.permissions().readonly()),
     }
-}
-
-fn project_instructions_view(target_path: &str, output: &Value) -> Value {
-    let material = output
-        .pointer("/context_projection/materials")
-        .and_then(Value::as_array)
-        .and_then(|materials| {
-            materials.iter().find(|material| {
-                material.get("key").and_then(Value::as_str) == Some("project.instructions")
-            })
-        });
-    let Some(material) = material else {
-        return json!({
-            "target_path": target_path,
-            "status": "unavailable",
-            "reason_code": "project_instructions_projection_missing",
-            "projection_status": "unavailable",
-            "sources": [],
-            "changed_sources": [],
-            "truncated": false,
-            "total_chars": 0,
-            "content_included": false
-        });
-    };
-    let projection = material
-        .get("projection")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
-    json!({
-        "target_path": target_path,
-        "status": material.get("status").cloned().unwrap_or_else(|| json!("unavailable")),
-        "reason_code": material.get("reason_code").cloned().unwrap_or(Value::Null),
-        "projection_status": projection.get("status").cloned().unwrap_or_else(|| json!("unavailable")),
-        "sources": projection.get("sources").cloned().unwrap_or_else(|| json!([])),
-        "changed_sources": projection.get("changed_sources").cloned().unwrap_or_else(|| json!([])),
-        "truncated": projection.get("truncated").cloned().unwrap_or_else(|| json!(false)),
-        "total_chars": projection.get("total_chars").cloned().unwrap_or_else(|| json!(0)),
-        "content_included": projection.get("content_included").cloned().unwrap_or_else(|| json!(false))
-    })
 }
 
 fn requested_mascot_jobs(params: &Value) -> bool {
@@ -2265,63 +2210,6 @@ mod tests {
             log_request_task_result(result);
         }
         assert_eq!(tasks.len(), 0);
-    }
-
-    #[test]
-    fn project_instructions_view_projects_only_canonical_sidecar() {
-        let output = json!({
-            "stdout": "git noise must stay out of the desktop contract",
-            "context_projection": {
-                "materials": [{
-                    "key": "project.instructions",
-                    "status": "available",
-                    "projection": {
-                        "status": "loaded",
-                        "sources": [
-                            {
-                                "path": "AGENTS.md",
-                                "fingerprint": "root-fingerprint",
-                                "truncated": false,
-                                "headings": ["# Root"],
-                                "content": "root rule"
-                            },
-                            {
-                                "path": "subproject/AGENTS.md",
-                                "fingerprint": "target-fingerprint",
-                                "truncated": false,
-                                "headings": ["# Target"],
-                                "content": "target rule"
-                            }
-                        ],
-                        "changed_sources": [],
-                        "content_included": true,
-                        "truncated": false,
-                        "total_chars": 20
-                    }
-                }],
-                "truncated": false
-            }
-        });
-        let view = project_instructions_view("/tmp/project", &output);
-        assert_eq!(view["target_path"], "/tmp/project");
-        assert_eq!(view["status"], "available");
-        assert_eq!(view["projection_status"], "loaded");
-        assert_eq!(view["sources"][0]["path"], "AGENTS.md");
-        assert_eq!(view["sources"][1]["path"], "subproject/AGENTS.md");
-        assert_eq!(view["content_included"], true);
-        assert!(view.get("stdout").is_none());
-    }
-
-    #[test]
-    fn project_instructions_view_fails_closed_when_sidecar_is_missing() {
-        let view = project_instructions_view("/tmp/project", &json!({"stdout": "clean"}));
-        assert_eq!(view["status"], "unavailable");
-        assert_eq!(
-            view["reason_code"],
-            "project_instructions_projection_missing"
-        );
-        assert_eq!(view["sources"], json!([]));
-        assert_eq!(view["content_included"], false);
     }
 
     #[test]

@@ -178,42 +178,6 @@ struct ProjectInspection: Codable, Equatable, Sendable {
     var writable: Bool
 }
 
-struct ProjectInstructionSource: Codable, Equatable, Identifiable, Sendable {
-    var path: String
-    var fingerprint: String
-    var truncated: Bool
-    var headings: [String]?
-    var content: String?
-
-    var id: String { path }
-}
-
-struct ProjectInstructionsInspection: Codable, Equatable, Sendable {
-    var targetPath: String
-    var status: String
-    var reasonCode: String?
-    var projectionStatus: String
-    var sources: [ProjectInstructionSource]
-    var changedSources: [String]
-    var truncated: Bool
-    var totalChars: Int
-    var contentIncluded: Bool
-
-    var isAvailable: Bool { status == "available" }
-    var hasInstructions: Bool { !sources.isEmpty }
-
-    var sourceFingerprints: [String: String] {
-        Dictionary(uniqueKeysWithValues: sources.map { ($0.path, $0.fingerprint) })
-    }
-
-    var effectiveContent: String {
-        sources.compactMap { source in
-            guard let content = source.content, !content.isEmpty else { return nil }
-            return "# \(source.path)\n\n\(content)"
-        }.joined(separator: "\n\n")
-    }
-}
-
 struct SkillDescriptor: Codable, Equatable, Identifiable, Sendable {
     var skillId: String
     var name: String

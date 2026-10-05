@@ -25,7 +25,6 @@ struct ProjectDetailView: View {
 
             switch destination {
             case .agentSettings:
-                await model.refreshProjectInstructions()
                 await model.refreshSkills()
             case .computerUse:
                 await model.refreshComputerSafety()

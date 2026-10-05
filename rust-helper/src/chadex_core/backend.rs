@@ -52,15 +52,6 @@ impl RuntimeBackendApi {
         self.adapter.observe_mascot_jobs(project_path).await
     }
 
-    pub(crate) async fn project_instructions_context(
-        &self,
-        project_path: &str,
-    ) -> ChadexResult<Value> {
-        self.adapter
-            .project_instructions_context(project_path)
-            .await
-    }
-
     pub(crate) async fn skill_catalog(&self, project_path: &str) -> ChadexResult<Value> {
         self.adapter.skill_catalog(project_path).await
     }

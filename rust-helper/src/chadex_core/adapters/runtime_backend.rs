@@ -174,41 +174,6 @@ impl RuntimeBackendAdapter {
         (current == target).then_some(jobs)
     }
 
-    pub(crate) async fn project_instructions_context(
-        &self,
-        project_path: &str,
-    ) -> ChadexResult<Value> {
-        let target = self.exact_runtime_probe_target(project_path).await?;
-        let token = read_probe_token(&target.user_token_file).await.ok_or_else(|| {
-            ChadexError::new(
-                "project_instructions_unavailable",
-                "The local runtime credential is unavailable",
-                "Restore the local runtime, then refresh Project Instructions.",
-            )
-        })?;
-        let cancellation =
-            CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
-        let result = call_local_runtime_tool_with_context(
-            &self.probe_client,
-            &target.server_url,
-            token.as_str(),
-            "git_status",
-            json!({"project": target.runtime_project_id}),
-            &["project.instructions"],
-            &cancellation,
-        )
-        .await
-        .map_err(map_desktop_error)?
-        .ok_or_else(|| {
-            ChadexError::new(
-                "project_instructions_unavailable",
-                "The local runtime did not return Project Instructions",
-                "Restore the local runtime, then refresh Project Instructions.",
-            )
-        })?;
-        Ok(result.output)
-    }
-
     pub(crate) async fn skill_catalog(&self, project_path: &str) -> ChadexResult<Value> {
         let target = self.exact_runtime_probe_target(project_path).await?;
         let token = read_probe_token(&target.user_token_file)

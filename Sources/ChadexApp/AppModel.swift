@@ -31,10 +31,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var connectionCheckMessage: String?
     @Published private(set) var connectionCheckSucceeded: Bool?
     @Published private(set) var isBootstrapping = false
-    @Published private(set) var projectInstructions: ProjectInstructionsInspection?
-    @Published private(set) var projectInstructionsLoading = false
-    @Published private(set) var projectInstructionsError: String?
-    @Published private(set) var projectInstructionChangedPaths: [String] = []
     @Published private(set) var globalInstructions = ""
     @Published private(set) var globalInstructionsError: String?
     @Published private(set) var globalInstructionsSaving = false
@@ -78,8 +74,6 @@ final class AppModel: ObservableObject {
     private let currentKeychainACLVersion = 1
     private var pollingTask: Task<Void, Never>?
     private var refreshInFlight = false
-    private var projectInstructionsRefreshProjectID: UUID?
-    private var projectInstructionsLastRefreshUptime: TimeInterval?
     private var skillsRefreshProjectID: UUID?
     private var skillsLastRefreshUptime: TimeInterval?
     private var projectMemoryRefreshProjectID: UUID?
@@ -90,7 +84,6 @@ final class AppModel: ObservableObject {
     private var projectSwitchGate = ProjectSwitchGate()
     private var appPhaseTimings: [AppPhaseTimingSample] = []
     private let foregroundRefreshMaxAge: TimeInterval = 1.5
-    private let projectInstructionsRefreshMaxAge: TimeInterval = 5
     private let skillsRefreshMaxAge: TimeInterval = 5
     private let projectMemoryRefreshMaxAge: TimeInterval = 5
 
@@ -368,7 +361,6 @@ final class AppModel: ObservableObject {
         guard projectSwitchGate.begin(id) else { return false }
         defer { projectSwitchGate.finish(id) }
         if id == preferences.selectedProjectID {
-            await refreshProjectInstructions()
             await refreshSkills()
             await refreshProjectMemory()
             return true
@@ -398,10 +390,8 @@ final class AppModel: ObservableObject {
             preferences.selectedProjectID = id
             try persist()
             await refreshActivities()
-            clearProjectInstructions()
             clearSkills()
             clearProjectMemory()
-            await refreshProjectInstructions()
             await refreshSkills()
             await refreshProjectMemory()
             return true
@@ -425,10 +415,8 @@ final class AppModel: ObservableObject {
         do {
             _ = try await requestSnapshot(method: "activateProject", params: ActivateProjectParams(path: selectedProject.path))
             await refreshActivities()
-            clearProjectInstructions()
             clearSkills()
             clearProjectMemory()
-            await refreshProjectInstructions()
             await refreshSkills()
             await refreshProjectMemory()
             return true
@@ -453,18 +441,12 @@ final class AppModel: ObservableObject {
             await refreshActivities()
             await refreshMascotTraces()
             let now = ProcessInfo.processInfo.systemUptime
-            let instructionObservationIsStale = projectInstructionsLastRefreshUptime
-                .map { now - $0 >= projectInstructionsRefreshMaxAge }
-                ?? true
             let skillObservationIsStale = skillsLastRefreshUptime
                 .map { now - $0 >= skillsRefreshMaxAge }
                 ?? true
             let memoryObservationIsStale = projectMemoryLastRefreshUptime
                 .map { now - $0 >= projectMemoryRefreshMaxAge }
                 ?? true
-            if force || instructionObservationIsStale {
-                await refreshProjectInstructions()
-            }
             if force || skillObservationIsStale {
                 await refreshSkills()
             }
@@ -609,52 +591,6 @@ final class AppModel: ObservableObject {
         } catch {
             computerSafetyError = error.localizedDescription
             await refreshComputerSafety()
-        }
-    }
-
-    func refreshProjectInstructions() async {
-        guard let selectedProject else {
-            clearProjectInstructions()
-            return
-        }
-        let requestedProjectID = selectedProject.id
-        guard projectInstructionsRefreshProjectID != requestedProjectID else { return }
-        projectInstructionsRefreshProjectID = requestedProjectID
-        projectInstructionsLoading = true
-        let hadPreviousObservation = projectInstructions != nil
-        let previousFingerprints = projectInstructions?.sourceFingerprints ?? [:]
-        defer {
-            if projectInstructionsRefreshProjectID == requestedProjectID {
-                projectInstructionsRefreshProjectID = nil
-                projectInstructionsLoading = false
-            }
-            if self.selectedProject?.id == requestedProjectID {
-                projectInstructionsLastRefreshUptime = ProcessInfo.processInfo.systemUptime
-            }
-        }
-        do {
-            let inspection: ProjectInstructionsInspection = try await helper.request(
-                method: "getProjectInstructions",
-                params: InspectProjectParams(path: selectedProject.path)
-            )
-            guard self.selectedProject?.id == requestedProjectID else { return }
-            let currentFingerprints = inspection.sourceFingerprints
-            if hadPreviousObservation && previousFingerprints != currentFingerprints {
-                projectInstructionChangedPaths = Set(previousFingerprints.keys)
-                    .union(currentFingerprints.keys)
-                    .filter { previousFingerprints[$0] != currentFingerprints[$0] }
-                    .sorted()
-            } else {
-                projectInstructionChangedPaths = []
-            }
-            projectInstructions = inspection
-            projectInstructionsError = nil
-        } catch {
-            guard self.selectedProject?.id == requestedProjectID else { return }
-            // Never retain stale instruction bodies when a fresh observation fails.
-            projectInstructions = nil
-            projectInstructionChangedPaths = []
-            projectInstructionsError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
         }
     }
 
@@ -1052,13 +988,6 @@ final class AppModel: ObservableObject {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n") + "\""
-    }
-
-    private func clearProjectInstructions() {
-        projectInstructions = nil
-        projectInstructionsError = nil
-        projectInstructionChangedPaths = []
-        projectInstructionsLastRefreshUptime = nil
     }
 
     private func refreshMascotTraces() async {

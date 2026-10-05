@@ -34,45 +34,6 @@ final class ProtocolModelTests: XCTestCase {
         XCTAssertFalse(json.contains(Data("clipboard contents".utf8)))
     }
 
-    func testProjectInstructionsInspectionDecodesEffectiveHierarchy() throws {
-        let json = #"""
-        {
-          "target_path": "/tmp/demo/subproject",
-          "status": "available",
-          "reason_code": null,
-          "projection_status": "loaded",
-          "sources": [
-            {
-              "path": "AGENTS.md",
-              "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-              "truncated": false,
-              "headings": ["# Root"],
-              "content": "root rule"
-            },
-            {
-              "path": "subproject/AGENTS.md",
-              "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-              "truncated": false,
-              "headings": ["# Nested"],
-              "content": "nested rule"
-            }
-          ],
-          "changed_sources": [],
-          "truncated": false,
-          "total_chars": 20,
-          "content_included": true
-        }
-        """#.data(using: .utf8)!
-
-        let inspection = try JSONDecoder.chadex.decode(ProjectInstructionsInspection.self, from: json)
-        XCTAssertEqual(inspection.targetPath, "/tmp/demo/subproject")
-        XCTAssertTrue(inspection.isAvailable)
-        XCTAssertEqual(inspection.sources.map(\.path), ["AGENTS.md", "subproject/AGENTS.md"])
-        XCTAssertTrue(inspection.effectiveContent.contains("# AGENTS.md"))
-        XCTAssertTrue(inspection.effectiveContent.contains("# subproject/AGENTS.md"))
-        XCTAssertTrue(inspection.effectiveContent.contains("nested rule"))
-    }
-
     func testSkillCatalogInventoryAndLazyDefinitionDecode() throws {
         let catalogJSON = #"""
         {
