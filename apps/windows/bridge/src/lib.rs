@@ -142,6 +142,10 @@ impl Bridge {
             .current_dir(&data)
             .env_remove("WEBCODEX_DESKTOP_BIN_DIR")
             .env("CHADEX_DATA_DIR", &data)
+            .env(
+                "CHADEX_GLOBAL_INSTRUCTIONS_PATH",
+                data.join("global-instructions.md"),
+            )
             .env("CHADEX_RESOURCE_DIR", &resources)
             .env("CHADEX_RUNTIME_BIN_DIR", &runtime)
             .env("PYTHONDONTWRITEBYTECODE", "1")

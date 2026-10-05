@@ -376,37 +376,31 @@ async fn load_project_instructions_empty_when_no_candidates_exist() {
 }
 
 #[tokio::test]
-async fn load_project_instructions_inherits_agents_from_visible_ancestor_chain() {
+async fn load_project_instructions_ignores_registered_ambient_ancestors() {
     let root = tempfile::tempdir().unwrap();
-    let project_root = root.path();
-    let nested = project_root.join("專題/neurolight_app/tool");
-    let sibling = project_root.join("其他/tool");
-    std::fs::create_dir_all(&nested).unwrap();
+    let ambient_root = root.path();
+    let project = ambient_root.join("project/tool");
+    let sibling = ambient_root.join("other/tool");
+    std::fs::create_dir_all(&project).unwrap();
     std::fs::create_dir_all(&sibling).unwrap();
     std::fs::write(
-        project_root.join("AGENTS.md"),
-        "# Global\nglobal rule\nMODE=root\n",
+        ambient_root.join("AGENTS.md"),
+        "# Ambient\nAMBIENT_SHOULD_NOT_LOAD\nMODE=ambient\n",
     )
     .unwrap();
     std::fs::write(
-        project_root.join("專題/AGENTS.md"),
-        "# Project\nproject rule\nMODE=project\n",
+        project.join("AGENTS.md"),
+        "# Project\nproject root rule\nMODE=project\n",
     )
     .unwrap();
-    std::fs::write(
-        project_root.join("專題/neurolight_app/AGENTS.md"),
-        "# App\napp rule\nMODE=app\n",
-    )
-    .unwrap();
-    std::fs::write(nested.join("AGENTS.md"), "# Tool\ntool rule\nMODE=tool\n").unwrap();
     std::fs::write(
         sibling.join("AGENTS.md"),
-        "# Sibling\nsibling rule\nMODE=sibling\n",
+        "# Sibling\nsibling root rule\nMODE=sibling\n",
     )
     .unwrap();
 
     let runtime = test_runtime();
-    let client_id = "instr-hierarchy";
+    let client_id = "instr-root-boundary";
     register_agent_with_projects(
         &runtime,
         client_id,
@@ -418,12 +412,12 @@ async fn load_project_instructions_inherits_agents_from_visible_ancestor_chain()
         vec![
             named_registered_project(
                 client_id,
-                "chatgpt",
-                "ChatGPT",
-                &project_root.to_string_lossy(),
+                "ambient",
+                "Ambient",
+                &ambient_root.to_string_lossy(),
                 1,
             ),
-            named_registered_project(client_id, "tool", "Tool", &nested.to_string_lossy(), 2),
+            named_registered_project(client_id, "tool", "Tool", &project.to_string_lossy(), 2),
             named_registered_project(
                 client_id,
                 "sibling",
@@ -435,43 +429,49 @@ async fn load_project_instructions_inherits_agents_from_visible_ancestor_chain()
     )
     .await;
 
-    let config = ProjectConfig {
-        path: nested.to_string_lossy().to_string(),
-        client_id: client_id.to_string(),
-        allow_patch: true,
-    };
-    let task = tokio::spawn({
-        let runtime = runtime.clone();
-        async move {
-            runtime
-                .load_project_instructions_for_auth(&config, None)
-                .await
+    async fn load(
+        runtime: &super::super::ToolRuntime,
+        client_id: &str,
+        path: &str,
+    ) -> super::super::project_instructions::ProjectInstructionsSnapshot {
+        let config = ProjectConfig {
+            path: path.to_string(),
+            client_id: client_id.to_string(),
+            allow_patch: true,
+        };
+        let task = tokio::spawn({
+            let runtime = runtime.clone();
+            async move {
+                runtime
+                    .load_project_instructions_for_auth(&config, None)
+                    .await
+            }
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !task.is_finished() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "project-root instruction fixture timed out"
+            );
+            if let Some(request) = probe_patch_agent_request(runtime, client_id).await {
+                let (exit_code, stdout, stderr) = run_runner_shell_request_locally(&request);
+                complete_patch_agent_request(
+                    runtime,
+                    client_id,
+                    &request.request_id,
+                    exit_code,
+                    &stdout,
+                    &stderr,
+                )
+                .await;
+            } else {
+                tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+            }
         }
-    });
-
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while !task.is_finished() {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "hierarchical instruction fixture timed out"
-        );
-        if let Some(request) = probe_patch_agent_request(&runtime, client_id).await {
-            let (exit_code, stdout, stderr) = run_runner_shell_request_locally(&request);
-            complete_patch_agent_request(
-                &runtime,
-                client_id,
-                &request.request_id,
-                exit_code,
-                &stdout,
-                &stderr,
-            )
-            .await;
-        } else {
-            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
-        }
+        task.await.unwrap()
     }
 
-    let snapshot = task.await.unwrap();
+    let snapshot = load(&runtime, client_id, &project.to_string_lossy()).await;
     assert!(snapshot.loaded);
     assert!(snapshot.scan_complete);
     assert_eq!(
@@ -480,79 +480,26 @@ async fn load_project_instructions_inherits_agents_from_visible_ancestor_chain()
             .iter()
             .map(|file| file.path.as_str())
             .collect::<Vec<_>>(),
-        vec![
-            "@hierarchy/AGENTS.md",
-            "@hierarchy/專題/AGENTS.md",
-            "@hierarchy/專題/neurolight_app/AGENTS.md",
-            "AGENTS.md",
-        ]
+        vec!["AGENTS.md"]
     );
-    assert!(snapshot.files[0].content.contains("global rule"));
-    assert!(snapshot.files[1].content.contains("project rule"));
-    assert!(snapshot.files[2].content.contains("app rule"));
-    assert!(snapshot.files[3].content.contains("tool rule"));
-    assert_eq!(
-        snapshot
-            .files
-            .iter()
-            .map(|file| {
-                file.content
-                    .lines()
-                    .find(|line| line.starts_with("MODE="))
-                    .unwrap()
-                    .to_string()
-            })
-            .collect::<Vec<_>>(),
-        vec!["MODE=root", "MODE=project", "MODE=app", "MODE=tool"]
-    );
+    assert!(snapshot.files[0].content.contains("MODE=project"));
+    assert!(!snapshot
+        .files
+        .iter()
+        .any(|file| file.content.contains("AMBIENT_SHOULD_NOT_LOAD")));
 
-    let sibling_config = ProjectConfig {
-        path: sibling.to_string_lossy().to_string(),
-        client_id: client_id.to_string(),
-        allow_patch: true,
-    };
-    let sibling_task = tokio::spawn({
-        let runtime = runtime.clone();
-        async move {
-            runtime
-                .load_project_instructions_for_auth(&sibling_config, None)
-                .await
-        }
-    });
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while !sibling_task.is_finished() {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "sibling instruction fixture timed out"
-        );
-        if let Some(request) = probe_patch_agent_request(&runtime, client_id).await {
-            let (exit_code, stdout, stderr) = run_runner_shell_request_locally(&request);
-            complete_patch_agent_request(
-                &runtime,
-                client_id,
-                &request.request_id,
-                exit_code,
-                &stdout,
-                &stderr,
-            )
-            .await;
-        } else {
-            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
-        }
-    }
-    let sibling_snapshot = sibling_task.await.unwrap();
+    let sibling_snapshot = load(&runtime, client_id, &sibling.to_string_lossy()).await;
     assert_eq!(
         sibling_snapshot
             .files
             .iter()
             .map(|file| file.path.as_str())
             .collect::<Vec<_>>(),
-        vec!["@hierarchy/AGENTS.md", "AGENTS.md"]
+        vec!["AGENTS.md"]
     );
-    assert!(sibling_snapshot.files[0].content.contains("MODE=root"));
-    assert!(sibling_snapshot.files[1].content.contains("MODE=sibling"));
+    assert!(sibling_snapshot.files[0].content.contains("MODE=sibling"));
     assert!(!sibling_snapshot
         .files
         .iter()
-        .any(|file| file.content.contains("MODE=project") || file.content.contains("MODE=app")));
+        .any(|file| file.content.contains("AMBIENT_SHOULD_NOT_LOAD")));
 }

@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod credentials;
+mod global_instructions;
 mod paths;
 mod preferences;
 mod runtime_version;
@@ -415,6 +416,20 @@ async fn save_preferences(
 }
 
 #[tauri::command]
+fn get_global_instructions(state: State<'_, Desktop>) -> Result<String, String> {
+    global_instructions::load(&state.paths.data.join(global_instructions::FILE_NAME))
+}
+
+#[tauri::command]
+fn save_global_instructions(state: State<'_, Desktop>, content: String) -> Result<String, String> {
+    global_instructions::save(
+        &state.paths.data.join(global_instructions::FILE_NAME),
+        &content,
+    )?;
+    Ok(content)
+}
+
+#[tauri::command]
 async fn store_credential(state: State<'_, Desktop>, credential: String) -> Result<(), String> {
     let _guard = state.lifecycle.lock().await;
     let credential = Zeroizing::new(credential);
@@ -562,6 +577,8 @@ fn main() {
         choose_project,
         open_project,
         save_preferences,
+        get_global_instructions,
+        save_global_instructions,
         store_credential,
         forget_credential,
         restart_helper,
@@ -574,6 +591,8 @@ fn main() {
         choose_project,
         open_project,
         save_preferences,
+        get_global_instructions,
+        save_global_instructions,
         store_credential,
         forget_credential,
         restart_helper,

@@ -436,20 +436,23 @@ final class HelperClient: @unchecked Sendable {
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         isExecutable: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
     ) -> [String: String] {
-        guard let graphifyPath = resolveGraphifyExecutable(
+        var environment = baseEnvironment
+        environment["CHADEX_GLOBAL_INSTRUCTIONS_PATH"] = ProjectStore.globalInstructionsURL(
+            environment: baseEnvironment,
+            homeDirectory: homeDirectory
+        ).path
+
+        if let graphifyPath = resolveGraphifyExecutable(
             environment: baseEnvironment,
             homeDirectory: homeDirectory,
             isExecutable: isExecutable
-        ) else {
-            return baseEnvironment
+        ) {
+            environment["CHADEX_GRAPHIFY_BIN"] = graphifyPath
+            let graphifyDirectory = URL(fileURLWithPath: graphifyPath)
+                .deletingLastPathComponent()
+                .path
+            environment["PATH"] = prependPath(graphifyDirectory, to: baseEnvironment["PATH"])
         }
-
-        var environment = baseEnvironment
-        environment["CHADEX_GRAPHIFY_BIN"] = graphifyPath
-        let graphifyDirectory = URL(fileURLWithPath: graphifyPath)
-            .deletingLastPathComponent()
-            .path
-        environment["PATH"] = prependPath(graphifyDirectory, to: baseEnvironment["PATH"])
         return environment
     }
 

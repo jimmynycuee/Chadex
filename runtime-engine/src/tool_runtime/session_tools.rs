@@ -198,6 +198,10 @@ impl ToolRuntime {
             ),
             None => None,
         };
+        let global_instructions = super::global_instructions::global_instructions_projection(
+            &super::global_instructions::load_global_instructions(),
+            true,
+        );
         if resolved.is_none() && auth.is_some_and(AuthContext::is_open_anonymous) {
             return ToolResult::err_with_output(
                 "session_owner_identity_unavailable",
@@ -256,6 +260,7 @@ impl ToolRuntime {
             "execution_context": summary.execution_context,
             "lifecycle": summary.lifecycle,
             "created_at": summary.created_at,
+            "global_instructions": global_instructions,
             "project_instructions": project_instructions,
         }))
     }

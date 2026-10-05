@@ -35,7 +35,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var projectInstructionsLoading = false
     @Published private(set) var projectInstructionsError: String?
     @Published private(set) var projectInstructionChangedPaths: [String] = []
-    @Published private(set) var projectAgentsWriteInFlight = false
+    @Published private(set) var globalInstructions = ""
+    @Published private(set) var globalInstructionsError: String?
+    @Published private(set) var globalInstructionsSaving = false
     @Published private(set) var skillCatalog: SkillCatalogInspection?
     @Published private(set) var skillInventory: SkillInventoryInspection?
     @Published private(set) var skillDefinitions: [String: SkillDefinitionPreview] = [:]
@@ -104,6 +106,12 @@ final class AppModel: ObservableObject {
         self.keychain = keychain
         self.store = store
         self.preferences = store.load()
+        do {
+            self.globalInstructions = try store.loadGlobalInstructions()
+        } catch {
+            self.globalInstructions = ""
+            self.globalInstructionsError = error.localizedDescription
+        }
         // Do not touch Keychain during model construction. Bootstrap performs
         // one lazy read and caches it for the lifetime of this AppModel.
         self.hasStoredAPIKey = false
@@ -121,18 +129,9 @@ final class AppModel: ObservableObject {
         return preferences.projects.first(where: { $0.id == id }) ?? preferences.projects.first
     }
 
-    static let agentsDraftTemplate = """
-    # Project Instructions
-
-    ## Scope
-    - Describe which files and tasks these instructions apply to.
-
-    ## Working Rules
-    - Add project-specific implementation, architecture, or style requirements here.
-
-    ## Validation
-    - List the checks that should pass before work is considered complete.
-    """
+    var computerControlDefaultMode: ComputerControlMode {
+        preferences.computerControlDefaultMode ?? .askBeforeControl
+    }
 
     static let skillDraftTemplate = """
     ## Workflow
@@ -505,6 +504,64 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setComputerControlDefaultMode(_ mode: ComputerControlMode) async {
+        guard mode != .allowSession else {
+            await setComputerControlMode(mode)
+            return
+        }
+        let previous = preferences.computerControlDefaultMode
+        preferences.computerControlDefaultMode = mode
+        do {
+            try persist()
+        } catch {
+            preferences.computerControlDefaultMode = previous
+            computerSafetyError = error.localizedDescription
+            present(error)
+            return
+        }
+        await setComputerControlMode(mode)
+    }
+
+    func resumeComputerControl() async {
+        guard !computerSafetyMutationInFlight else { return }
+        computerSafetyMutationInFlight = true
+        defer { computerSafetyMutationInFlight = false }
+        do {
+            let status: ComputerSafetyStatus = try await helper.request(
+                method: "resumeComputerControl",
+                params: EmptyParams()
+            )
+            computerSafety = status
+            computerSafetyError = nil
+        } catch {
+            computerSafetyError = error.localizedDescription
+            present(error)
+        }
+    }
+
+    func alwaysAllowComputerControl(_ approval: ComputerApproval) async {
+        guard !computerSafetyMutationInFlight else { return }
+        computerSafetyMutationInFlight = true
+        defer { computerSafetyMutationInFlight = false }
+        let previous = preferences.computerControlDefaultMode
+        preferences.computerControlDefaultMode = .alwaysAllow
+        do {
+            try persist()
+            let status: ComputerSafetyStatus = try await helper.request(
+                method: "approveComputerControlAlways",
+                params: ComputerApprovalParams(approvalId: approval.approvalId)
+            )
+            computerSafety = status
+            computerSafetyError = nil
+        } catch {
+            preferences.computerControlDefaultMode = previous
+            try? persist()
+            computerSafetyError = error.localizedDescription
+            present(error)
+            await refreshComputerSafety()
+        }
+    }
+
     func approveComputerControl(_ approval: ComputerApproval) async {
         await resolveComputerApproval(approval, method: "approveComputerControl")
     }
@@ -594,22 +651,17 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func createProjectAgentsFile(content: String) async -> Bool {
-        guard !projectAgentsWriteInFlight, let selectedProject else { return false }
-        projectAgentsWriteInFlight = true
-        defer { projectAgentsWriteInFlight = false }
+    func saveGlobalInstructions(_ content: String) -> Bool {
+        guard !globalInstructionsSaving else { return false }
+        globalInstructionsSaving = true
+        defer { globalInstructionsSaving = false }
         do {
-            let _: ProjectFileWriteResult = try await helper.request(
-                method: "createProjectAgentsFile",
-                params: CreateProjectAgentsFileParams(path: selectedProject.path, content: content)
-            )
-            projectInstructionsError = nil
-            await refreshProjectInstructions()
+            try store.saveGlobalInstructions(content)
+            globalInstructions = content
+            globalInstructionsError = nil
             return true
         } catch {
-            let writeError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
-            await refreshProjectInstructions()
-            projectInstructionsError = writeError
+            globalInstructionsError = error.localizedDescription
             return false
         }
     }
@@ -1547,6 +1599,8 @@ final class AppModel: ObservableObject {
                 throw error
             }
 
+            await applyComputerControlDefaultForNewSession()
+
             let credentialTimestamp = Date()
             let credentialStarted = ProcessInfo.processInfo.systemUptime
             let credentialSucceeded = await pushStoredCredentialIfAvailable()
@@ -1669,6 +1723,23 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func applyComputerControlDefaultForNewSession() async {
+        guard !computerSafety.stopped else { return }
+        let mode = computerControlDefaultMode
+        do {
+            let status: ComputerSafetyStatus = try await helper.request(
+                method: "setComputerControlMode",
+                params: ComputerControlModeParams(mode: mode)
+            )
+            computerSafety = status
+            computerSafetyError = nil
+        } catch {
+            // Fail closed: the helper defaults to Ask before control if this
+            // preference cannot be applied. Connection recovery remains usable.
+            computerSafetyError = error.localizedDescription
+        }
+    }
+
     @discardableResult
     private func connectChatGPT() async -> Bool {
         guard !connectionActionInFlight else { return false }
@@ -1678,6 +1749,7 @@ final class AppModel: ObservableObject {
         connectionAction = .connecting
         defer { connectionAction = nil }
         do {
+            await applyComputerControlDefaultForNewSession()
             _ = try await requestSnapshot(method: "connectChatGPT", params: EmptyParams())
             if !snapshot.tunnelReady && snapshot.phase == .stopped {
                 let payload = HelperErrorPayload(
@@ -1711,6 +1783,9 @@ final class AppModel: ObservableObject {
         defer { connectionAction = nil }
         do {
             _ = try await requestSnapshot(method: "disconnectAI", params: EmptyParams())
+            if !computerSafety.stopped && computerSafety.mode == .allowSession {
+                await applyComputerControlDefaultForNewSession()
+            }
             await refreshActivities()
             return true
         } catch {

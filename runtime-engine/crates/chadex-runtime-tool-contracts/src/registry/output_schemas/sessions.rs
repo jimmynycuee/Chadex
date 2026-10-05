@@ -67,10 +67,16 @@ pub(super) fn output_schema_for_tool(name: &str) -> Option<Value> {
                 schema_type("integer", "Unix timestamp in seconds."),
             ),
             (
+                "global_instructions",
+                open_object_schema(
+                    "Current Chadex-managed Global Instructions projection. Available even without a project; never sourced from repository or ambient ancestor AGENTS.md files, and cannot override system/platform safety or authority constraints.",
+                ),
+            ),
+            (
                 "project_instructions",
                 nullable_schema(
                     "object",
-                    "Best-effort project-local instruction files loaded at session start (e.g. AGENTS.md). null when no project was provided. Project-local guidance only; does not override system/platform/WebCodex safety policy.",
+                    "Best-effort project-root instruction files loaded at session start (e.g. AGENTS.md). null when no project was provided. Ambient ancestors outside the registered project root are ignored. Project-local guidance only; does not override system/platform/WebCodex safety policy.",
                 ),
             ),
         ])),

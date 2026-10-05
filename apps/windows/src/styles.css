@@ -19,8 +19,8 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; color: var(--ink); background: var(--background); font-size: 14px; }
-button, input, select { font: inherit; }
-button, a, input, select { -webkit-tap-highlight-color: transparent; }
+button, input, select, textarea { font: inherit; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 button { color: var(--ink); border: 1px solid var(--line); background: var(--surface); border-radius: 7px; padding: 9px 15px; cursor: pointer; font-size: 13px; line-height: 1.5; transition: background 120ms, border-color 120ms; }
 button:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); }
 button:disabled { cursor: default; opacity: .44; }
@@ -30,9 +30,10 @@ button.danger { color: var(--warn); }
 button.text-button { background: none; border: none; color: var(--accent); padding: 3px 0; }
 button.icon-button { padding: 4px; width: 30px; height: 30px; font-size: 21px; border: none; background: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-input, select { color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; min-width: 0; width: 100%; }
+input, select, textarea { color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; min-width: 0; width: 100%; }
 input[type="checkbox"] { width: 18px; height: 18px; margin: 0 3px; accent-color: var(--accent); }
-input:disabled, select:disabled { opacity: .5; }
+input:disabled, select:disabled, textarea:disabled { opacity: .5; }
+.global-instructions-editor { min-height: 190px; resize: vertical; font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; line-height: 1.6; }
 p { line-height: 1.75; }
 code, .path-block { font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
 .app-shell { display: flex; min-height: 100vh; }

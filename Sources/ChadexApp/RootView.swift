@@ -378,7 +378,13 @@ struct RootView: View {
         case .guide:
             GuideView()
         case .agentSettings:
-            selectedProjectDetail(destination: .agentSettings)
+            if let project = model.selectedProject {
+                ProjectDetailView(project: project, destination: .agentSettings) {
+                    selection = .activity
+                }
+            } else {
+                GlobalInstructionsStandaloneView()
+            }
         case .computerUse:
             selectedProjectDetail(destination: .computerUse)
         case .project(let id):

@@ -484,13 +484,6 @@ impl Bridge {
         Ok(project_instructions_view(path, &output))
     }
 
-    async fn create_agents_file(&self, path: &str, content: &str) -> Result<Value, ErrorPayload> {
-        self.runtime
-            .create_agents_file(path, content)
-            .await
-            .map_err(ErrorPayload::from)
-    }
-
     async fn skill_catalog(&self, path: &str) -> Result<Value, ErrorPayload> {
         self.runtime
             .skill_catalog(path)
@@ -1372,17 +1365,6 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
                 .map(ResponseResult::Json),
             Err(error) => Err(error),
         },
-        "createProjectAgentsFile" => {
-            let path = param_str(&request.params, "path").map(str::to_owned);
-            let content = take_param_string(&mut request.params, "content");
-            match (path, content) {
-                (Ok(path), Ok(content)) => bridge
-                    .create_agents_file(&path, &content)
-                    .await
-                    .map(ResponseResult::Json),
-                (Err(error), _) | (_, Err(error)) => Err(error),
-            }
-        }
         "getSkillCatalog" => match param_str(&request.params, "path") {
             Ok(path) => bridge.skill_catalog(path).await.map(ResponseResult::Json),
             Err(error) => Err(error),
@@ -1570,9 +1552,37 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
                 None => Err(ErrorPayload::new(
                     "invalid_params",
                     "Unsupported Computer control mode",
-                    "Use read_only, ask_before_control, or allow_session.",
+                    "Use read_only, ask_before_control, allow_session, or always_allow.",
                 )),
             },
+            Err(error) => Err(error),
+        },
+        "resumeComputerControl" => serde_json::to_value(bridge.tunnel.resume_computer_control())
+            .map(ResponseResult::Json)
+            .map_err(|_| {
+                ErrorPayload::new(
+                    "computer_safety_unavailable",
+                    "Chadex could not encode Computer control safety state",
+                    "Restart Chadex and retry.",
+                )
+            }),
+        "approveComputerControlAlways" => match param_str(&request.params, "approval_id") {
+            Ok(approval_id) if bridge.tunnel.approve_computer_control_always(approval_id) => {
+                serde_json::to_value(bridge.tunnel.computer_safety_snapshot())
+                    .map(ResponseResult::Json)
+                    .map_err(|_| {
+                        ErrorPayload::new(
+                            "computer_safety_unavailable",
+                            "Chadex could not encode Computer control safety state",
+                            "Restart Chadex and retry.",
+                        )
+                    })
+            }
+            Ok(_) => Err(ErrorPayload::new(
+                "computer_approval_expired",
+                "Computer control approval is no longer pending",
+                "Wait for a new approval request and try again.",
+            )),
             Err(error) => Err(error),
         },
         "approveComputerControl" => match param_str(&request.params, "approval_id") {
@@ -2269,14 +2279,14 @@ mod tests {
                         "status": "loaded",
                         "sources": [
                             {
-                                "path": "@hierarchy/AGENTS.md",
+                                "path": "AGENTS.md",
                                 "fingerprint": "root-fingerprint",
                                 "truncated": false,
                                 "headings": ["# Root"],
                                 "content": "root rule"
                             },
                             {
-                                "path": "AGENTS.md",
+                                "path": "subproject/AGENTS.md",
                                 "fingerprint": "target-fingerprint",
                                 "truncated": false,
                                 "headings": ["# Target"],
@@ -2296,8 +2306,8 @@ mod tests {
         assert_eq!(view["target_path"], "/tmp/project");
         assert_eq!(view["status"], "available");
         assert_eq!(view["projection_status"], "loaded");
-        assert_eq!(view["sources"][0]["path"], "@hierarchy/AGENTS.md");
-        assert_eq!(view["sources"][1]["path"], "AGENTS.md");
+        assert_eq!(view["sources"][0]["path"], "AGENTS.md");
+        assert_eq!(view["sources"][1]["path"], "subproject/AGENTS.md");
         assert_eq!(view["content_included"], true);
         assert!(view.get("stdout").is_none());
     }

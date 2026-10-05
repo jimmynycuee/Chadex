@@ -129,14 +129,6 @@ impl ChadexRuntimeCore {
             .await
     }
 
-    pub async fn create_agents_file(
-        &self,
-        project_path: &str,
-        content: &str,
-    ) -> ChadexResult<Value> {
-        self.backend.create_agents_file(project_path, content).await
-    }
-
     pub async fn skill_catalog(&self, project_path: &str) -> ChadexResult<Value> {
         self.backend.skill_catalog(project_path).await
     }

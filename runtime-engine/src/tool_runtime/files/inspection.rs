@@ -723,86 +723,6 @@ impl ToolRuntime {
     // Project instructions auto-load (best-effort, session-start guidance)
     // -------------------------------------------------------------------------
 
-    fn instruction_hierarchy_ancestor_directories(relative_target: &str) -> Vec<String> {
-        if relative_target == "." || relative_target.is_empty() {
-            return Vec::new();
-        }
-        let components = relative_target
-            .split('/')
-            .filter(|component| !component.is_empty() && *component != ".")
-            .collect::<Vec<_>>();
-        if components.is_empty() {
-            return Vec::new();
-        }
-
-        let mut directories = vec![String::new()];
-        let mut prefix = String::new();
-        for component in components.iter().take(components.len().saturating_sub(1)) {
-            if !prefix.is_empty() {
-                prefix.push('/');
-            }
-            prefix.push_str(component);
-            directories.push(prefix.clone());
-        }
-        directories
-    }
-
-    fn instruction_hierarchy_candidate_path(directory: &str, filename: &str) -> String {
-        if directory.is_empty() {
-            filename.to_string()
-        } else {
-            format!("{directory}/{filename}")
-        }
-    }
-
-    fn instruction_hierarchy_display_path(actual_path: &str) -> String {
-        format!("@hierarchy/{actual_path}")
-    }
-
-    async fn load_hierarchical_ancestor_agents(
-        &self,
-        target: &ProjectConfig,
-        auth: Option<&crate::auth::AuthContext>,
-    ) -> (
-        Vec<super::project_instructions::LoadedInstructionCandidate>,
-        bool,
-    ) {
-        let hierarchy_root = self.instruction_hierarchy_root_for_auth(target, auth).await;
-        let relative_target = match crate::tool_runtime::helpers::project_relative_runner_cwd(
-            &hierarchy_root,
-            &target.path,
-        ) {
-            Ok(relative) => relative,
-            Err(_) => return (Vec::new(), false),
-        };
-        let directories = Self::instruction_hierarchy_ancestor_directories(&relative_target);
-        if directories.is_empty() {
-            return (Vec::new(), true);
-        }
-
-        let mut found = Vec::new();
-        let mut scan_complete = true;
-        for directory in directories {
-            for filename in ["AGENTS.md", "agents.md"] {
-                let actual_path = Self::instruction_hierarchy_candidate_path(&directory, filename);
-                match self
-                    .read_instruction_candidate(&hierarchy_root, &actual_path)
-                    .await
-                {
-                    InstructionCandidateRead::Found(mut candidate) => {
-                        candidate.path = Self::instruction_hierarchy_display_path(&actual_path);
-                        candidate.read_more_supported = false;
-                        found.push(candidate);
-                        break;
-                    }
-                    InstructionCandidateRead::Missing => {}
-                    InstructionCandidateRead::Unavailable => scan_complete = false,
-                }
-            }
-        }
-        (found, scan_complete)
-    }
-
     /// Best-effort load of project-local instruction files
     /// (`project_instructions::INSTRUCTION_CANDIDATE_PATHS`) for a resolved
     /// project. Candidates are tried in fixed order; the first candidate that
@@ -823,13 +743,13 @@ impl ToolRuntime {
     pub(crate) async fn load_project_instructions_for_auth(
         &self,
         config: &ProjectConfig,
-        auth: Option<&crate::auth::AuthContext>,
+        _auth: Option<&crate::auth::AuthContext>,
     ) -> super::project_instructions::ProjectInstructionsSnapshot {
         use super::project_instructions::{
             ProjectInstructionsSnapshot, INSTRUCTION_CANDIDATE_PATHS,
         };
-        let (mut found, mut scan_complete) =
-            self.load_hierarchical_ancestor_agents(config, auth).await;
+        let mut found = Vec::new();
+        let mut scan_complete = true;
 
         for candidate in INSTRUCTION_CANDIDATE_PATHS {
             match self.read_instruction_candidate(config, candidate).await {
@@ -867,13 +787,13 @@ impl ToolRuntime {
     pub(crate) async fn load_coding_project_instructions_for_auth(
         &self,
         config: &ProjectConfig,
-        auth: Option<&crate::auth::AuthContext>,
+        _auth: Option<&crate::auth::AuthContext>,
     ) -> super::project_instructions::ProjectInstructionsSnapshot {
         use super::project_instructions::{
             ProjectInstructionsSnapshot, INSTRUCTION_CANDIDATE_PATHS,
         };
-        let (mut found, mut scan_complete) =
-            self.load_hierarchical_ancestor_agents(config, auth).await;
+        let mut found = Vec::new();
+        let mut scan_complete = true;
         let reads = INSTRUCTION_CANDIDATE_PATHS
             .iter()
             .map(|candidate| self.read_instruction_candidate(config, candidate));

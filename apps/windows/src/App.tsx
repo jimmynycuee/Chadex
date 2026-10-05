@@ -17,6 +17,8 @@ const pageNotes: Record<Page, string> = {
   connection: '把目前的專案連接到 ChatGPT。', activity: '由本地服務回報的實際活動。', settings: '調整桌面體驗與啟動偏好。',
   diagnostics: '檢視本地服務與連線的觀測資訊。', updates: '目前安裝的版本與更新狀態。',
 };
+const GLOBAL_INSTRUCTIONS_MAX_BYTES = 8 * 1024;
+const utf8Bytes = (value: string) => new TextEncoder().encode(value).length;
 function basename(path: string) { return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path; }
 function date(time: number | null | undefined) { return time == null ? '尚無紀錄' : new Date(time).toLocaleString('zh-TW', { hour12: false }); }
 function Badge({ children, tone = 'quiet' }: { children: ReactNode; tone?: 'good' | 'quiet' | 'warn' }) {
@@ -46,6 +48,11 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
   const [proxyMode, setProxyMode] = useState<'auto' | 'direct' | 'custom'>('auto');
   const [proxyUrl, setProxyUrl] = useState('');
   const [prefsDraft, setPrefsDraft] = useState<Preferences | null>(null);
+  const [globalInstructions, setGlobalInstructions] = useState('');
+  const [savedGlobalInstructions, setSavedGlobalInstructions] = useState('');
+  const [globalInstructionsLoading, setGlobalInstructionsLoading] = useState(true);
+  const [globalInstructionsSaving, setGlobalInstructionsSaving] = useState(false);
+  const [globalInstructionsError, setGlobalInstructionsError] = useState<string | null>(null);
   const prefs = view.desktop?.preferences ?? defaultPreferences;
   const snapshot = observedRuntime(view);
   const project = snapshot?.selected_project ?? null;
@@ -65,6 +72,16 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
   useEffect(() => { document.documentElement.dataset.theme = prefs.theme; }, [prefs.theme]);
   useEffect(() => { setTunnelId(prefs.tunnel_id); }, [prefs.tunnel_id]);
   useEffect(() => { if (page !== 'connection') setCredential(''); }, [page]);
+  useEffect(() => {
+    let active = true;
+    setGlobalInstructionsLoading(true);
+    void api.getGlobalInstructions().then((value) => {
+      if (!active) return;
+      setGlobalInstructions(value); setSavedGlobalInstructions(value); setGlobalInstructionsError(null);
+    }).catch((error) => { if (active) setGlobalInstructionsError(safeError(error)); })
+      .finally(() => { if (active) setGlobalInstructionsLoading(false); });
+    return () => { active = false; };
+  }, [api]);
 
   async function run(label: string, work: () => Promise<void>, affectsRuntime = true) {
     if (actionGate.current) return;
@@ -79,6 +96,15 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
   }
   function runtime(method: RuntimeMethod, label: string, params: Record<string, unknown> = {}) {
     return run(label, async () => { await api.runtimeAction(method, params); });
+  }
+  async function saveGlobalInstructions() {
+    if (globalInstructionsSaving || utf8Bytes(globalInstructions) > GLOBAL_INSTRUCTIONS_MAX_BYTES) return;
+    setGlobalInstructionsSaving(true); setGlobalInstructionsError(null);
+    try {
+      const saved = await api.saveGlobalInstructions(globalInstructions);
+      setGlobalInstructions(saved); setSavedGlobalInstructions(saved);
+    } catch (error) { setGlobalInstructionsError(safeError(error)); }
+    finally { setGlobalInstructionsSaving(false); }
   }
   async function chooseProject() {
     await run('選擇專案', async () => {
@@ -164,6 +190,15 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
         {page === 'activity' && <><Panel title="本地 Job"><JobActivity jobs={jobs} available={Boolean(snapshot)} /></Panel><Panel title="工具／命令呼叫"><TraceActivity traces={traces} available={Boolean(snapshot)} /><p className="panel-note">顯示服務實際觀測的工具名稱、完成狀態與耗時。</p></Panel><Panel title="服務活動"><div className="filter-row"><label className="field">等級<select value={activityLevel} onChange={(event) => setActivityLevel(event.target.value)}><option value="all">全部等級</option><option value="info">資訊</option><option value="warning">警告</option><option value="error">錯誤</option></select></label><label className="field grow">搜尋紀錄<input type="search" value={activitySearch} onChange={(event) => setActivitySearch(event.target.value)} placeholder="搜尋訊息、來源或事件" /></label></div>{filteredActivities.length ? <ul className="activity-list">{filteredActivities.map((entry) => <li key={entry.sequence}><Badge tone={entry.level === 'error' || entry.level === 'warning' ? 'warn' : 'quiet'}>{entry.level}</Badge><div><p>{safeError(entry.message)}</p><small>{entry.source} · {entry.event_kind} · #{entry.sequence} · {date(entry.timestamp_ms)}</small></div></li>)}</ul> : <Empty title={snapshot ? '沒有符合的紀錄' : '活動狀態未確認'}>{snapshot ? '試著調整搜尋條件，或等待服務回報新活動。' : '重新取得 helper 狀態後會顯示活動紀錄。'}</Empty>}</Panel></>}
 
         {page === 'settings' && <>
+          <Panel title="Chadex Global Instructions" action={<Badge tone={globalInstructionsError ? 'warn' : 'quiet'}>{globalInstructionsLoading ? '載入中' : globalInstructions === savedGlobalInstructions ? '已儲存' : '尚未儲存'}</Badge>}>
+            <p className="panel-note">所有 Chadex 專案共用的可編輯行為偏好。內容由 Chadex 儲存在 App 資料中，不會讀取或修改 repository 或父資料夾的 AGENTS.md。</p>
+            <label className="field">Global Instructions
+              <textarea aria-label="Chadex Global Instructions" className="global-instructions-editor" value={globalInstructions} disabled={globalInstructionsLoading || globalInstructionsSaving} onChange={(event) => setGlobalInstructions(event.target.value)} placeholder="可以留白；Chadex 內建的安全與行為 baseline 仍會正常運作。" />
+            </label>
+            <p className="panel-note">行為偏好優先序：目前要求 -&gt; nested／repository AGENTS.md -&gt; Global Instructions -&gt; built-in baseline。System／platform safety、authority、approval 與 sensitive-content 保護永遠不可被覆寫。</p>
+            {globalInstructionsError && <div className="notice error">{globalInstructionsError}</div>}
+            <div className="button-row"><button className="primary" disabled={globalInstructionsLoading || globalInstructionsSaving || globalInstructions === savedGlobalInstructions || utf8Bytes(globalInstructions) > GLOBAL_INSTRUCTIONS_MAX_BYTES} onClick={() => { void saveGlobalInstructions(); }}>{globalInstructionsSaving ? '儲存中…' : '儲存 Global Instructions'}</button><code>{utf8Bytes(globalInstructions)} / {GLOBAL_INSTRUCTIONS_MAX_BYTES} bytes</code></div>
+          </Panel>
           <Panel title="桌面偏好"><form onSubmit={(event) => { event.preventDefault(); if (prefsDraft) void run('儲存偏好', async () => { const latest = store.getSnapshot().desktop?.preferences ?? prefs; await api.savePreferences({ ...latest, restore_project: prefsDraft.restore_project, launch_at_login: prefsDraft.launch_at_login, notifications: prefsDraft.notifications, ferret_visible: prefsDraft.ferret_visible, ferret_motion: prefsDraft.ferret_motion, theme: prefsDraft.theme }); setPrefsDraft(null); }); }}>
             {([['restore_project', '啟動時恢復上次專案', '回到上一次使用的本地工作範圍。'], ['launch_at_login', '登入時啟動 Chadex', '由桌面應用程式管理系統登入設定。'], ['notifications', '桌面通知', '允許桌面應用程式顯示服務通知。'], ['ferret_visible', '顯示 Code Ferret', '在側欄呈現實際任務狀態。'], ['ferret_motion', 'Code Ferret 動畫', '降低動態效果時也會自動停用。']] as const).map(([key, label, hint]) => <label className="setting-row" key={key}><span><strong>{label}</strong><small>{hint}</small></span><input type="checkbox" disabled={!prefsEditable} checked={(prefsDraft ?? prefs)[key]} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), [key]: event.target.checked })} /></label>)}
             <label className="setting-row"><span><strong>外觀</strong><small>選擇淺色、深色或跟隨系統。</small></span><select disabled={!prefsEditable} value={(prefsDraft ?? prefs).theme} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), theme: event.target.value as Preferences['theme'] })}><option value="system">跟隨系統</option><option value="light">淺色</option><option value="dark">深色</option></select></label><div className="button-row"><button className="primary" type="submit" disabled={!prefsEditable || !prefsDraft}>儲存偏好</button><button type="button" disabled={!prefsDraft || Boolean(busy)} onClick={() => setPrefsDraft(null)}>取消變更</button></div></form></Panel>

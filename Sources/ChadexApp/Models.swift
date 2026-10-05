@@ -18,6 +18,7 @@ enum ComputerControlMode: String, Codable, CaseIterable, Identifiable, Sendable 
     case readOnly = "read_only"
     case askBeforeControl = "ask_before_control"
     case allowSession = "allow_session"
+    case alwaysAllow = "always_allow"
 
     var id: String { rawValue }
 }
@@ -174,7 +175,6 @@ struct ProjectInstructionSource: Codable, Equatable, Identifiable, Sendable {
     var content: String?
 
     var id: String { path }
-    var isInherited: Bool { path.hasPrefix("@hierarchy/") }
 }
 
 struct ProjectInstructionsInspection: Codable, Equatable, Sendable {
@@ -190,11 +190,6 @@ struct ProjectInstructionsInspection: Codable, Equatable, Sendable {
 
     var isAvailable: Bool { status == "available" }
     var hasInstructions: Bool { !sources.isEmpty }
-    var hasTargetAgentsFile: Bool {
-        sources.contains { source in
-            !source.isInherited && source.path.lowercased() == "agents.md"
-        }
-    }
 
     var sourceFingerprints: [String: String] {
         Dictionary(uniqueKeysWithValues: sources.map { ($0.path, $0.fingerprint) })
@@ -206,16 +201,6 @@ struct ProjectInstructionsInspection: Codable, Equatable, Sendable {
             return "# \(source.path)\n\n\(content)"
         }.joined(separator: "\n\n")
     }
-}
-
-struct ProjectFileWriteResult: Codable, Equatable, Sendable {
-    var path: String?
-    var created: Bool?
-    var overwritten: Bool?
-    var bytesWritten: UInt64?
-    var changed: Bool?
-    var stateChanged: Bool?
-    var executionState: String?
 }
 
 struct SkillDescriptor: Codable, Equatable, Identifiable, Sendable {
@@ -750,11 +735,6 @@ struct InspectProjectParams: Codable, Sendable {
 
 struct ActivateProjectParams: Codable, Sendable {
     var path: String
-}
-
-struct CreateProjectAgentsFileParams: Codable, Sendable {
-    var path: String
-    var content: String
 }
 
 struct SkillDefinitionParams: Codable, Sendable {

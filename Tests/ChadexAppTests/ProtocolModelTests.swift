@@ -43,14 +43,14 @@ final class ProtocolModelTests: XCTestCase {
           "projection_status": "loaded",
           "sources": [
             {
-              "path": "@hierarchy/AGENTS.md",
+              "path": "AGENTS.md",
               "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "truncated": false,
               "headings": ["# Root"],
               "content": "root rule"
             },
             {
-              "path": "AGENTS.md",
+              "path": "subproject/AGENTS.md",
               "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
               "truncated": false,
               "headings": ["# Nested"],
@@ -67,11 +67,9 @@ final class ProtocolModelTests: XCTestCase {
         let inspection = try JSONDecoder.chadex.decode(ProjectInstructionsInspection.self, from: json)
         XCTAssertEqual(inspection.targetPath, "/tmp/demo/subproject")
         XCTAssertTrue(inspection.isAvailable)
-        XCTAssertEqual(inspection.sources.map(\.path), ["@hierarchy/AGENTS.md", "AGENTS.md"])
-        XCTAssertTrue(inspection.sources[0].isInherited)
-        XCTAssertFalse(inspection.sources[1].isInherited)
-        XCTAssertTrue(inspection.hasTargetAgentsFile)
-        XCTAssertTrue(inspection.effectiveContent.contains("# @hierarchy/AGENTS.md"))
+        XCTAssertEqual(inspection.sources.map(\.path), ["AGENTS.md", "subproject/AGENTS.md"])
+        XCTAssertTrue(inspection.effectiveContent.contains("# AGENTS.md"))
+        XCTAssertTrue(inspection.effectiveContent.contains("# subproject/AGENTS.md"))
         XCTAssertTrue(inspection.effectiveContent.contains("nested rule"))
     }
 

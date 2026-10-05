@@ -15,6 +15,7 @@ pub enum ComputerControlMode {
     ReadOnly,
     AskBeforeControl,
     AllowSession,
+    AlwaysAllow,
 }
 
 impl Default for ComputerControlMode {
@@ -29,6 +30,7 @@ impl ComputerControlMode {
             "read_only" => Some(Self::ReadOnly),
             "ask_before_control" => Some(Self::AskBeforeControl),
             "allow_session" => Some(Self::AllowSession),
+            "always_allow" => Some(Self::AlwaysAllow),
             _ => None,
         }
     }
@@ -38,6 +40,7 @@ impl ComputerControlMode {
             Self::ReadOnly => "read_only",
             Self::AskBeforeControl => "ask_before_control",
             Self::AllowSession => "allow_session",
+            Self::AlwaysAllow => "always_allow",
         }
     }
 }
@@ -157,7 +160,6 @@ impl ComputerSafetyController {
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let responses = drain_pending(&mut state);
             state.generation = state.generation.saturating_add(1);
-            state.stopped = false;
             if state.mode == ComputerControlMode::AllowSession {
                 state.mode = ComputerControlMode::AskBeforeControl;
             }
@@ -220,6 +222,55 @@ impl ComputerSafetyController {
         deny_pending(responses);
         self.changed.notify_waiters();
         self.snapshot()
+    }
+
+    pub fn resume(&self) -> ComputerSafetySnapshot {
+        {
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.generation = state.generation.saturating_add(1);
+            state.stopped = false;
+            let mode = state.mode.as_str().to_string();
+            push_audit(
+                &mut state,
+                &self.next_audit,
+                "control_resumed",
+                None,
+                Some(mode),
+            );
+        }
+        self.changed.notify_waiters();
+        self.snapshot()
+    }
+
+    pub fn approve_and_set_always_allow(&self, approval_id: &str) -> bool {
+        let response = {
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let Some(pending) = state.pending.remove(approval_id) else {
+                return false;
+            };
+            if state.stopped || pending.generation != state.generation {
+                let _ = pending.response.send(false);
+                return false;
+            }
+            state.mode = ComputerControlMode::AlwaysAllow;
+            push_audit(
+                &mut state,
+                &self.next_audit,
+                "mode_changed",
+                None,
+                Some("always_allow".to_string()),
+            );
+            pending.response
+        };
+        let _ = response.send(true);
+        self.changed.notify_waiters();
+        true
     }
 
     pub fn approve(&self, approval_id: &str) -> bool {
@@ -297,14 +348,19 @@ impl ComputerSafetyController {
                         message: "Computer control is disabled in Read-only mode.",
                     };
                 }
-                ComputerControlMode::AllowSession => {
+                ComputerControlMode::AllowSession | ComputerControlMode::AlwaysAllow => {
                     let generation = state.generation;
+                    let reason = if state.mode == ComputerControlMode::AlwaysAllow {
+                        "always_allow"
+                    } else {
+                        "allow_session"
+                    };
                     push_audit(
                         &mut state,
                         &self.next_audit,
                         "control_allowed",
                         Some(action.to_string()),
-                        Some("allow_session".to_string()),
+                        Some(reason.to_string()),
                     );
                     return ComputerAuthorization::Allowed(ComputerDispatchPermit {
                         generation,
@@ -612,6 +668,55 @@ mod tests {
         let next_session = safety.snapshot();
         assert_eq!(next_session.mode, ComputerControlMode::AskBeforeControl);
         assert!(!next_session.stopped);
+    }
+
+    #[test]
+    fn stop_survives_new_tunnel_session_until_explicit_resume() {
+        let safety = ComputerSafetyController::default();
+        safety.stop();
+        safety.begin_session();
+        assert!(safety.snapshot().stopped);
+        let resumed = safety.resume();
+        assert!(!resumed.stopped);
+        assert_eq!(resumed.mode, ComputerControlMode::AskBeforeControl);
+    }
+
+    #[test]
+    fn always_allow_survives_new_tunnel_sessions_and_stop_resume() {
+        let safety = ComputerSafetyController::default();
+        safety.set_mode(ComputerControlMode::AlwaysAllow);
+        safety.begin_session();
+        assert_eq!(safety.snapshot().mode, ComputerControlMode::AlwaysAllow);
+        safety.stop();
+        assert!(safety.snapshot().stopped);
+        let resumed = safety.resume();
+        assert!(!resumed.stopped);
+        assert_eq!(resumed.mode, ComputerControlMode::AlwaysAllow);
+    }
+
+    #[tokio::test]
+    async fn approval_can_atomically_promote_to_always_allow() {
+        let safety = std::sync::Arc::new(ComputerSafetyController::default());
+        let authorizing = {
+            let safety = std::sync::Arc::clone(&safety);
+            tokio::spawn(async move { safety.authorize("press").await })
+        };
+        let approval = loop {
+            if let Some(approval) = safety.snapshot().pending_approvals.first().cloned() {
+                break approval;
+            }
+            tokio::task::yield_now().await;
+        };
+        assert!(safety.approve_and_set_always_allow(&approval.approval_id));
+        let ComputerAuthorization::Allowed(permit) = authorizing.await.unwrap() else {
+            panic!("approved request must remain allowed while promoting mode");
+        };
+        assert!(safety.permit_is_current(&permit));
+        assert_eq!(safety.snapshot().mode, ComputerControlMode::AlwaysAllow);
+        assert!(matches!(
+            safety.authorize("focus").await,
+            ComputerAuthorization::Allowed(_)
+        ));
     }
 
     #[tokio::test]

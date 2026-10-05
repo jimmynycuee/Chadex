@@ -61,14 +61,6 @@ impl RuntimeBackendApi {
             .await
     }
 
-    pub(crate) async fn create_agents_file(
-        &self,
-        project_path: &str,
-        content: &str,
-    ) -> ChadexResult<Value> {
-        self.adapter.create_agents_file(project_path, content).await
-    }
-
     pub(crate) async fn skill_catalog(&self, project_path: &str) -> ChadexResult<Value> {
         self.adapter.skill_catalog(project_path).await
     }

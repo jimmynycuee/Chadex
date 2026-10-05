@@ -9,8 +9,6 @@ struct ProjectDetailView: View {
     let onShowAllActivity: () -> Void
     @State private var showingErrorDetails = false
     @State private var showingEffectiveInstructions = false
-    @State private var showingAgentsDraft = false
-    @State private var agentsDraft = AppModel.agentsDraftTemplate
 
     var body: some View {
         ScrollView {
@@ -35,10 +33,6 @@ struct ProjectDetailView: View {
             case .overview:
                 break
             }
-        }
-        .sheet(isPresented: $showingAgentsDraft) {
-            AgentsDraftSheet(project: project, draft: $agentsDraft)
-                .environmentObject(model)
         }
     }
 
@@ -105,6 +99,8 @@ struct ProjectDetailView: View {
                 }
             }
 
+            Divider()
+            GlobalInstructionsEditor()
             Divider()
             instructionsSection
             Divider()
@@ -203,7 +199,7 @@ struct ProjectDetailView: View {
 
 
     private var computerControlSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: layout.spacing(22)) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 SectionEyebrow(title: L10n.string("computer.title"))
                 Spacer(minLength: 12)
@@ -221,75 +217,100 @@ struct ProjectDetailView: View {
                 )
             }
 
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(L10n.string("computer.defaultPolicy"))
-                        .chadexFont(.caption, weight: .semibold)
+            if model.computerSafety.stopped {
+                VStack(alignment: .leading, spacing: layout.spacing(12)) {
+                    Text(L10n.string("computer.description.stopped"))
+                        .chadexFont(.callout)
                         .foregroundStyle(.secondary)
-                    computerDefaultPolicyPicker
-                }
+                        .fixedSize(horizontal: false, vertical: true)
 
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(L10n.string("computer.currentSession"))
-                        .chadexFont(.caption, weight: .semibold)
-                        .foregroundStyle(.secondary)
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 8) {
-                            computerAllowSessionButton
-                            computerStopButton
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            computerAllowSessionButton
-                            computerStopButton
-                        }
+                    Button {
+                        Task { await model.resumeComputerControl() }
+                    } label: {
+                        Label(L10n.string("computer.resume"), systemImage: "play.fill")
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .disabled(model.computerSafetyMutationInFlight)
+                    .help(L10n.string("computer.resumeHelp"))
+                }
+            } else {
+                VStack(alignment: .leading, spacing: layout.spacing(10)) {
+                    Text(L10n.string("computer.controlModeTitle"))
+                        .chadexFont(.callout, weight: .semibold)
+                    Text(L10n.string("computer.controlModeHelp"))
+                        .chadexFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    computerControlModePicker
+                        .chadexPadding(.top, 2)
+                    Text(computerControlModeDescription)
+                        .chadexFont(.caption)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                     if !model.snapshot.tunnelReady {
                         Text(L10n.string("computer.sessionUnavailable"))
                             .chadexFont(.caption)
                             .foregroundStyle(.tertiary)
                     }
                 }
-            }
 
-            Text(computerControlModeDescription)
-                .chadexFont(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let approval = model.computerSafety.pendingApprovals.first {
-                Divider()
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(L10n.string("computer.approvalTitle"))
-                            .chadexFont(.callout, weight: .semibold)
-                        Text(L10n.string("computer.approvalAction", computerActionLabel(approval.action)))
-                            .chadexFont(.caption)
+                if let approval = model.computerSafety.pendingApprovals.first {
+                    Divider()
+                    VStack(alignment: .leading, spacing: layout.spacing(10)) {
+                        Text(L10n.string("computer.requestTitle"))
+                            .chadexFont(.caption, weight: .semibold)
                             .foregroundStyle(.secondary)
+
+                        HStack(alignment: .center, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(L10n.string("computer.approvalTitle"))
+                                    .chadexFont(.callout, weight: .semibold)
+                                Text(L10n.string("computer.approvalAction", computerActionLabel(approval.action)))
+                                    .chadexFont(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 12)
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 8) {
+                                    computerApprovalButtons(approval)
+                                }
+                                VStack(alignment: .trailing, spacing: 8) {
+                                    computerApprovalButtons(approval)
+                                }
+                            }
+                        }
+                        .accessibilityElement(children: .contain)
+
+                        if model.computerSafety.pendingApprovals.count > 1 {
+                            Text(L10n.string(
+                                "computer.moreApprovals",
+                                model.computerSafety.pendingApprovals.count - 1
+                            ))
+                            .chadexFont(.caption)
+                            .foregroundStyle(.tertiary)
+                        }
                     }
-                    Spacer(minLength: 12)
-                    Button(L10n.string("computer.deny")) {
-                        Task { await model.denyComputerControl(approval) }
+                }
+
+                Divider()
+                VStack(alignment: .leading, spacing: layout.spacing(10)) {
+                    Text(L10n.string("computer.safetyTitle"))
+                        .chadexFont(.callout, weight: .semibold)
+                    Text(L10n.string("computer.safetyNote"))
+                        .chadexFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Button(role: .destructive) {
+                        Task { await model.stopComputerControl() }
+                    } label: {
+                        Label(L10n.string("computer.stop"), systemImage: "stop.circle.fill")
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .controlSize(.regular)
                     .disabled(model.computerSafetyMutationInFlight)
-
-                    Button(L10n.string("computer.allowOnce")) {
-                        Task { await model.approveComputerControl(approval) }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(model.computerSafetyMutationInFlight)
-                }
-                .accessibilityElement(children: .contain)
-
-                if model.computerSafety.pendingApprovals.count > 1 {
-                    Text(L10n.string(
-                        "computer.moreApprovals",
-                        model.computerSafety.pendingApprovals.count - 1
-                    ))
-                    .chadexFont(.caption)
-                    .foregroundStyle(.tertiary)
+                    .help(L10n.string("computer.stopHelp"))
                 }
             }
 
@@ -298,85 +319,61 @@ struct ProjectDetailView: View {
                     .chadexFont(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            Text(L10n.string("computer.safetyNote"))
-                .chadexFont(.caption)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var computerDefaultPolicyPicker: some View {
+    private var computerControlModePicker: some View {
         Picker(
-            L10n.string("computer.defaultPolicy"),
+            L10n.string("computer.controlModeTitle"),
             selection: Binding(
-                get: {
-                    model.computerSafety.mode == .readOnly
-                        ? ComputerControlMode.readOnly
-                        : ComputerControlMode.askBeforeControl
-                },
+                get: { model.computerSafety.mode },
                 set: { mode in
-                    Task { await model.setComputerControlMode(mode) }
+                    Task {
+                        if mode == .allowSession {
+                            await model.setComputerControlMode(mode)
+                        } else {
+                            await model.setComputerControlDefaultMode(mode)
+                        }
+                    }
                 }
             )
         ) {
-            Text(L10n.string("computer.mode.readOnly")).tag(ComputerControlMode.readOnly)
             Text(L10n.string("computer.mode.ask")).tag(ComputerControlMode.askBeforeControl)
+            if model.snapshot.tunnelReady {
+                Text(L10n.string("computer.mode.allowSession")).tag(ComputerControlMode.allowSession)
+            }
+            Text(L10n.string("computer.mode.alwaysAllow")).tag(ComputerControlMode.alwaysAllow)
+            Text(L10n.string("computer.mode.readOnly")).tag(ComputerControlMode.readOnly)
         }
-        .pickerStyle(.segmented)
+        .pickerStyle(.radioGroup)
         .labelsHidden()
-        .frame(maxWidth: layout.control(420))
         .disabled(model.computerSafetyMutationInFlight)
-        .accessibilityLabel(L10n.string("computer.defaultPolicy"))
+        .accessibilityLabel(L10n.string("computer.controlModeTitle"))
     }
 
     @ViewBuilder
-    private var computerAllowSessionButton: some View {
-        if model.computerSafety.mode == .allowSession && model.snapshot.tunnelReady {
-            Button {
-                Task { await model.setComputerControlMode(.askBeforeControl) }
-            } label: {
-                Label(L10n.string("computer.resumeAsk"), systemImage: "person.crop.circle.badge.checkmark")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .disabled(model.computerSafetyMutationInFlight)
-        } else {
-            Button {
-                Task { await model.setComputerControlMode(.allowSession) }
-            } label: {
-                Label(L10n.string("computer.mode.allowSession"), systemImage: "person.crop.circle.badge.checkmark")
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .disabled(model.computerSafetyMutationInFlight || !model.snapshot.tunnelReady)
-            .help(L10n.string("computer.allowSessionHelp"))
+    private func computerApprovalButtons(_ approval: ComputerApproval) -> some View {
+        Button(L10n.string("computer.deny")) {
+            Task { await model.denyComputerControl(approval) }
         }
-    }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(model.computerSafetyMutationInFlight)
 
-    @ViewBuilder
-    private var computerStopButton: some View {
-        if model.computerSafety.stopped {
-            Button {
-                Task { await model.setComputerControlMode(.askBeforeControl) }
-            } label: {
-                Label(L10n.string("computer.resumeAsk"), systemImage: "play.circle")
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .disabled(model.computerSafetyMutationInFlight || !model.snapshot.tunnelReady)
-            .help(L10n.string("computer.resumeAskHelp"))
-        } else {
-            Button(role: .destructive) {
-                Task { await model.stopComputerControl() }
-            } label: {
-                Label(L10n.string("computer.stop"), systemImage: "stop.circle.fill")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .disabled(model.computerSafetyMutationInFlight || !model.snapshot.tunnelReady)
-            .help(L10n.string("computer.stopHelp"))
+        Button(L10n.string("computer.allowOnce")) {
+            Task { await model.approveComputerControl(approval) }
         }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+        .disabled(model.computerSafetyMutationInFlight)
+
+        Button(L10n.string("computer.alwaysAllow")) {
+            Task { await model.alwaysAllowComputerControl(approval) }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(model.computerSafetyMutationInFlight)
+        .help(L10n.string("computer.alwaysAllowHelp"))
     }
 
     private var computerControlStatusText: String {
@@ -393,13 +390,12 @@ struct ProjectDetailView: View {
             return L10n.string("computer.status.ask")
         case .allowSession:
             return L10n.string("computer.status.allowSession")
+        case .alwaysAllow:
+            return L10n.string("computer.status.alwaysAllow")
         }
     }
 
     private var computerControlModeDescription: String {
-        if model.computerSafety.stopped {
-            return L10n.string("computer.description.stopped")
-        }
         switch model.computerSafety.mode {
         case .readOnly:
             return L10n.string("computer.description.readOnly")
@@ -407,6 +403,8 @@ struct ProjectDetailView: View {
             return L10n.string("computer.description.ask")
         case .allowSession:
             return L10n.string("computer.description.allowSession")
+        case .alwaysAllow:
+            return L10n.string("computer.description.alwaysAllow")
         }
     }
 
@@ -546,14 +544,6 @@ struct ProjectDetailView: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var localAgentsFileExists: Bool {
-        FileManager.default.fileExists(
-            atPath: URL(fileURLWithPath: project.path)
-                .appendingPathComponent("AGENTS.md", isDirectory: false)
-                .path
-        )
-    }
-
     private var instructionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -570,17 +560,6 @@ struct ProjectDetailView: View {
                 .help(L10n.string("instructions.refresh"))
                 .accessibilityLabel(L10n.string("instructions.refresh"))
 
-                Button(L10n.string("instructions.create")) {
-                    agentsDraft = AppModel.agentsDraftTemplate
-                    showingAgentsDraft = true
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(
-                    model.projectAgentsWriteInFlight
-                        || model.isSwitchingProject
-                        || localAgentsFileExists
-                )
             }
 
             Text(L10n.string("instructions.subtitle"))
@@ -685,7 +664,7 @@ struct ProjectDetailView: View {
                     .textSelection(.enabled)
 
                 HStack(spacing: 7) {
-                    Text(source.isInherited ? L10n.string("instructions.inherited") : L10n.string("instructions.targetScope"))
+                    Text(L10n.string("instructions.targetScope"))
                     Text(String(source.fingerprint.prefix(12)))
                         .monospaced()
                         .help(source.fingerprint)
@@ -831,66 +810,104 @@ struct ProjectDetailView: View {
 
 }
 
-private struct AgentsDraftSheet: View {
-    @Environment(\.dismiss) private var dismiss
+struct GlobalInstructionsEditor: View {
+    @Environment(\.chadexLayout) private var layout
     @EnvironmentObject private var model: AppModel
-    let project: ProjectRecord
-    @Binding var draft: String
+    @State private var draft = ""
+    @State private var loadedDraft = false
+    @State private var saved = false
+
+    private var byteCount: Int { draft.lengthOfBytes(using: .utf8) }
+    private var canSave: Bool {
+        byteCount <= ProjectStore.maxGlobalInstructionsBytes
+            && draft != model.globalInstructions
+            && !model.globalInstructionsSaving
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(L10n.string("instructions.createTitle"))
-                    .chadexFont(.title2, weight: .semibold)
-                Text(L10n.string("instructions.createMessage"))
-                    .chadexFont(.callout)
-                    .foregroundStyle(.secondary)
-                Text(project.path + "/AGENTS.md")
-                    .chadexFont(.caption, design: .monospaced)
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                SectionEyebrow(title: L10n.string("globalInstructions.title"))
+                Spacer(minLength: 12)
+                if saved {
+                    Label(L10n.string("globalInstructions.saved"), systemImage: "checkmark")
+                        .chadexFont(.caption, weight: .medium)
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    saved = model.saveGlobalInstructions(draft)
+                } label: {
+                    if model.globalInstructionsSaving {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text(L10n.string("globalInstructions.save"))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(!canSave)
             }
+
+            Text(L10n.string("globalInstructions.subtitle"))
+                .chadexFont(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             TextEditor(text: $draft)
                 .font(.system(.body, design: .monospaced))
-                .frame(minWidth: 620, minHeight: 330)
+                .frame(minHeight: layout.control(180), maxHeight: layout.control(320))
                 .padding(7)
-                .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: layout.control(9), style: .continuous))
+                .onChange(of: draft) { _, _ in saved = false }
 
-            Label(L10n.string("instructions.noOverwrite"), systemImage: "lock.shield")
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Label(L10n.string("globalInstructions.storageNote"), systemImage: "externaldrive")
+                    .chadexFont(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 10)
+                Text("\(byteCount) / \(ProjectStore.maxGlobalInstructionsBytes) bytes")
+                    .chadexFont(.caption, design: .monospaced)
+                    .foregroundStyle(byteCount > ProjectStore.maxGlobalInstructionsBytes ? Color.red : Color.secondary)
+            }
+
+            Text(L10n.string("globalInstructions.precedence"))
                 .chadexFont(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
 
-            if let error = model.projectInstructionsError {
-                Text(error)
+            if let error = model.globalInstructionsError {
+                Label(error, systemImage: "exclamationmark.triangle")
                     .chadexFont(.caption)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            HStack {
-                Spacer()
-                Button(L10n.string("common.cancel")) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button {
-                    Task {
-                        if await model.createProjectAgentsFile(content: draft) {
-                            dismiss()
-                        }
-                    }
-                } label: {
-                    if model.projectAgentsWriteInFlight {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Text(L10n.string("instructions.save"))
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.projectAgentsWriteInFlight)
-            }
         }
-        .padding(22)
+        .onAppear { loadDraftIfNeeded() }
+        .onChange(of: model.globalInstructions) { _, value in
+            guard draft == model.globalInstructions || !loadedDraft else { return }
+            draft = value
+        }
+    }
+
+    private func loadDraftIfNeeded() {
+        guard !loadedDraft else { return }
+        draft = model.globalInstructions
+        loadedDraft = true
+    }
+}
+
+struct GlobalInstructionsStandaloneView: View {
+    @Environment(\.chadexLayout) private var layout
+
+    var body: some View {
+        ScrollView {
+            GlobalInstructionsEditor()
+                .frame(maxWidth: layout.control(ChadexMetrics.detailMaxWidth), alignment: .leading)
+                .chadexPadding(.horizontal, ChadexMetrics.detailHorizontalPadding)
+                .chadexPadding(.vertical, ChadexMetrics.detailVerticalPadding)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .navigationTitle(L10n.string("sidebar.agentSettings"))
     }
 }
 

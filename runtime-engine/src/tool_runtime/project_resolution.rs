@@ -320,38 +320,6 @@ impl ToolRuntime {
         candidates
     }
 
-    /// Return the broadest caller-visible registered ancestor for instruction
-    /// inheritance. Only projects already visible through the caller's ordinary
-    /// Runner/Project authority participate, so instruction lookup never expands
-    /// filesystem authority beyond registered roots.
-    pub(crate) async fn instruction_hierarchy_root_for_auth(
-        &self,
-        target: &ProjectConfig,
-        auth: Option<&AuthContext>,
-    ) -> ProjectConfig {
-        self.agent_project_candidates_for_auth(auth)
-            .await
-            .into_iter()
-            .filter(|candidate| candidate.client_id == target.client_id)
-            .filter_map(|candidate| {
-                let config = Self::project_config_from_candidate(&candidate);
-                let relative =
-                    super::helpers::project_relative_runner_cwd(&config, &target.path).ok()?;
-                let depth = if relative == "." {
-                    0
-                } else {
-                    relative
-                        .split('/')
-                        .filter(|component| !component.is_empty())
-                        .count()
-                };
-                Some((config, depth))
-            })
-            .max_by_key(|(_, depth)| *depth)
-            .map(|(config, _)| config)
-            .unwrap_or_else(|| target.clone())
-    }
-
     pub(crate) async fn resolve_project_input_for_auth(
         &self,
         project: &str,

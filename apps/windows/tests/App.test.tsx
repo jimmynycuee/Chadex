@@ -107,6 +107,23 @@ describe('desktop pages and IPC behavior', () => {
     await waitFor(() => expect(api.runtimeAction).toHaveBeenCalledWith('activateProject', { path: checked.path }));
     expect(api.savePreferences).not.toHaveBeenCalled();
   });
+  it('edits Chadex Global Instructions without a selected project or runtime action', async () => {
+    const state = desktop({ runtime: snapshot({ selected_project: null }) });
+    const api = apiMock(state);
+    vi.mocked(api.getGlobalInstructions).mockResolvedValueOnce('shared global rule');
+    const store = new DesktopStore(api);
+    render(<App api={api} store={store} />);
+    await waitFor(() => expect(store.getSnapshot().freshness).toBe('fresh'));
+    await waitFor(() => expect(api.getGlobalInstructions).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: '設定' }));
+    const editor = await screen.findByLabelText('Chadex Global Instructions') as HTMLTextAreaElement;
+    expect(editor.value).toBe('shared global rule');
+    fireEvent.change(editor, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存 Global Instructions' }));
+    await waitFor(() => expect(api.saveGlobalInstructions).toHaveBeenCalledWith(''));
+    expect(api.runtimeAction).not.toHaveBeenCalled();
+  });
+
   it('keeps the companion in sidebar and allows disabling it from backend preferences', async () => {
     const { api, store } = await mount();
     expect(screen.getByLabelText(/Code Ferret：/).closest('aside')).toBeTruthy();

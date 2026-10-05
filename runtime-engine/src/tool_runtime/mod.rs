@@ -41,6 +41,7 @@ pub(crate) use git::{framed_clean_show_changes_test_stdout, framed_show_changes_
 mod git_committed;
 mod git_review;
 mod git_tools;
+pub(crate) mod global_instructions;
 mod goal;
 mod handoff;
 mod handoff_brief;

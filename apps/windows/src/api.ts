@@ -8,6 +8,8 @@ export interface DesktopApi {
   runtimeAction(method: RuntimeMethod, params?: Record<string, unknown>): Promise<unknown>;
   inspectProject(path: string): Promise<ProjectInspection>;
   savePreferences(preferences: Preferences): Promise<Preferences>;
+  getGlobalInstructions(): Promise<string>;
+  saveGlobalInstructions(content: string): Promise<string>;
   storeCredential(credential: string): Promise<void>;
   forgetCredential(): Promise<void>;
   restartHelper(): Promise<void>;
@@ -25,6 +27,8 @@ export const desktopApi: DesktopApi = {
   runtimeAction: (method, params = {}) => call('runtime_action', { method, params }),
   inspectProject: (path) => call('runtime_action', { method: 'inspectProject', params: { path } }),
   savePreferences: (preferences) => call('save_preferences', { preferences }),
+  getGlobalInstructions: () => call('get_global_instructions'),
+  saveGlobalInstructions: (content) => call('save_global_instructions', { content }),
   storeCredential: (credential) => call('store_credential', { credential }),
   forgetCredential: () => call('forget_credential'),
   restartHelper: () => call('restart_helper'),

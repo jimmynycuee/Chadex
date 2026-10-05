@@ -7,27 +7,43 @@ struct ChadexPreferences: Codable, Sendable {
     var restoreServiceOnLaunch = false
     var restoreConnectionOnLaunch = false
     var backgroundCloseHintShown = false
+    var computerControlDefaultMode: ComputerControlMode?
+}
+
+enum GlobalInstructionsStoreError: LocalizedError {
+    case invalidFile
+    case tooLarge
+    case invalidEncoding
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidFile: return "Global Instructions storage is not a regular Chadex-owned file."
+        case .tooLarge: return "Global Instructions are too large (maximum 8 KiB)."
+        case .invalidEncoding: return "Global Instructions must be valid UTF-8 text."
+        }
+    }
 }
 
 final class ProjectStore: @unchecked Sendable {
+    static let globalInstructionsFilename = "global-instructions.md"
+    static let maxGlobalInstructionsBytes = 8 * 1024
+
     private let fileURL: URL
+    private let globalInstructionsURL: URL
     private let queue = DispatchQueue(label: "app.chadex.preferences")
 
     init(
         fileManager: FileManager = .default,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
-        let override = environment["CHADEX_PREFERENCES_DIR"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let base: URL
-        if let override, !override.isEmpty {
-            base = URL(fileURLWithPath: override, isDirectory: true)
-        } else {
-            base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("Chadex", isDirectory: true)
-        }
+        let globalURL = Self.globalInstructionsURL(
+            environment: environment,
+            homeDirectory: fileManager.homeDirectoryForCurrentUser
+        )
+        let base = globalURL.deletingLastPathComponent()
         try? fileManager.createDirectory(at: base, withIntermediateDirectories: true)
         self.fileURL = base.appendingPathComponent("preferences.json")
+        self.globalInstructionsURL = globalURL
     }
 
     func load() -> ChadexPreferences {
@@ -44,6 +60,64 @@ final class ProjectStore: @unchecked Sendable {
             let data = try JSONEncoder.pretty.encode(preferences)
             try data.write(to: fileURL, options: [.atomic])
         }
+    }
+
+    private func globalInstructionsFileExists() throws -> Bool {
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: globalInstructionsURL.path)) != nil {
+            throw GlobalInstructionsStoreError.invalidFile
+        }
+        return FileManager.default.fileExists(atPath: globalInstructionsURL.path)
+    }
+
+    func loadGlobalInstructions() throws -> String {
+        try queue.sync {
+            guard try globalInstructionsFileExists() else { return "" }
+            let values = try globalInstructionsURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+            guard values.isRegularFile == true, values.isSymbolicLink != true else {
+                throw GlobalInstructionsStoreError.invalidFile
+            }
+            if let size = values.fileSize, size > Self.maxGlobalInstructionsBytes {
+                throw GlobalInstructionsStoreError.tooLarge
+            }
+            let data = try Data(contentsOf: globalInstructionsURL, options: [.mappedIfSafe])
+            guard data.count <= Self.maxGlobalInstructionsBytes else {
+                throw GlobalInstructionsStoreError.tooLarge
+            }
+            guard let value = String(data: data, encoding: .utf8) else {
+                throw GlobalInstructionsStoreError.invalidEncoding
+            }
+            return value
+        }
+    }
+
+    func saveGlobalInstructions(_ value: String) throws {
+        try queue.sync {
+            let data = Data(value.utf8)
+            guard data.count <= Self.maxGlobalInstructionsBytes else {
+                throw GlobalInstructionsStoreError.tooLarge
+            }
+            if try globalInstructionsFileExists() {
+                let values = try globalInstructionsURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+                guard values.isRegularFile == true, values.isSymbolicLink != true else {
+                    throw GlobalInstructionsStoreError.invalidFile
+                }
+            }
+            try data.write(to: globalInstructionsURL, options: [.atomic])
+        }
+    }
+
+    static func globalInstructionsURL(
+        environment: [String: String],
+        homeDirectory: URL
+    ) -> URL {
+        if let override = environment["CHADEX_PREFERENCES_DIR"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+                .appendingPathComponent(globalInstructionsFilename)
+        }
+        return homeDirectory
+            .appendingPathComponent("Library/Application Support/Chadex", isDirectory: true)
+            .appendingPathComponent(globalInstructionsFilename)
     }
 }
 

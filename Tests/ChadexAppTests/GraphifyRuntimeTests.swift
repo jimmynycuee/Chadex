@@ -18,6 +18,19 @@ final class GraphifyRuntimeTests: XCTestCase {
         XCTAssertEqual(environment["PATH"], "/Users/test/Library/Python/3.13/bin:/usr/bin")
     }
 
+    func testHelperEnvironmentAlwaysPublishesChadexOwnedGlobalInstructionsPath() {
+        let environment = HelperClient.environmentForHelper(
+            baseEnvironment: ["PATH": "/usr/bin"],
+            homeDirectory: URL(fileURLWithPath: "/Users/test"),
+            isExecutable: { _ in false }
+        )
+        XCTAssertEqual(
+            environment["CHADEX_GLOBAL_INSTRUCTIONS_PATH"],
+            "/Users/test/Library/Application Support/Chadex/global-instructions.md"
+        )
+        XCTAssertFalse(environment["CHADEX_GLOBAL_INSTRUCTIONS_PATH"]!.contains("Documents/ChatGPT"))
+    }
+
     func testHelperEnvironmentDoesNotDuplicateGraphifyDirectory() {
         XCTAssertEqual(
             HelperClient.prependPath("/usr/local/bin", to: "/usr/local/bin:/usr/bin"),

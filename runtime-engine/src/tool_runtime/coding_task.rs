@@ -859,6 +859,7 @@ impl ToolRuntime {
                 Some(project_instructions.files.len()),
             );
         }
+        let global_instructions = super::global_instructions::load_global_instructions();
         let semantic_navigation = serde_json::to_value(semantic_navigation).unwrap_or_else(|_| {
             json!({
                 "supported": false,
@@ -1244,6 +1245,7 @@ impl ToolRuntime {
             reused: session_outcome.reused,
             resume_requested,
             instructions: &project_instructions,
+            global_instructions: &global_instructions,
             previous_instructions,
             force_instruction_load,
             include_project_instructions: startup.include_project_instructions,
@@ -2288,6 +2290,7 @@ struct WorkOnProjectBriefProjection {
     project_resolution: ProjectResolutionMetadata,
     workspace: WorkOnProjectWorkspaceProjection,
     workflow: Value,
+    global_instructions: Value,
     instructions: WorkOnProjectInstructionsProjection,
     semantic_navigation: WorkOnProjectSemanticNavigationProjection,
     #[serde(default)]
@@ -2681,6 +2684,7 @@ fn project_work_on_project_output_with_workflow_inner(
         "resolved_project": projection.project.resolved_id,
         "continuation": projection.session.continuation,
         "workspace": workspace,
+        "global_instructions": projection.global_instructions,
         "instructions": instructions,
         "semantic_navigation": semantic_navigation,
     }));

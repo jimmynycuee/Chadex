@@ -11,6 +11,20 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(decoded.selectedProjectID, project.id)
     }
 
+    func testLegacyPreferencesDecodeWithoutComputerControlDefault() throws {
+        let legacy = #"{"projects":[],"tunnelID":"","restoreServiceOnLaunch":false,"restoreConnectionOnLaunch":false,"backgroundCloseHintShown":false}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(ChadexPreferences.self, from: legacy)
+        XCTAssertNil(decoded.computerControlDefaultMode)
+    }
+
+    func testComputerControlAlwaysAllowPersistsAsPreference() throws {
+        var preferences = ChadexPreferences()
+        preferences.computerControlDefaultMode = .alwaysAllow
+        let data = try JSONEncoder().encode(preferences)
+        let decoded = try JSONDecoder().decode(ChadexPreferences.self, from: data)
+        XCTAssertEqual(decoded.computerControlDefaultMode, .alwaysAllow)
+    }
+
     func testRestorePreferencesAreIndependent() {
         var preferences = ChadexPreferences()
         preferences.restoreServiceOnLaunch = true
@@ -32,6 +46,64 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(loaded.projects, [project])
         XCTAssertEqual(loaded.selectedProjectID, project.id)
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("preferences.json").path))
+    }
+
+    func testGlobalInstructionsAreAppOwnedAndIndependentOfSelectedProject() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = ProjectStore(environment: ["CHADEX_PREFERENCES_DIR": root.path])
+        XCTAssertEqual(try store.loadGlobalInstructions(), "")
+        try store.saveGlobalInstructions("# Global\nShared rule\n")
+
+        let first = ProjectRecord(name: "A", path: "/tmp/a")
+        let second = ProjectRecord(name: "B", path: "/tmp/b")
+        try store.save(ChadexPreferences(projects: [first, second], selectedProjectID: first.id))
+        XCTAssertEqual(try store.loadGlobalInstructions(), "# Global\nShared rule\n")
+        try store.save(ChadexPreferences(projects: [first, second], selectedProjectID: second.id))
+        XCTAssertEqual(try store.loadGlobalInstructions(), "# Global\nShared rule\n")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("global-instructions.md").path))
+    }
+
+    @MainActor
+    func testGlobalInstructionsCanBeEditedWithoutAnyProjectOrConnection() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ProjectStore(environment: ["CHADEX_PREFERENCES_DIR": root.path])
+        let model = AppModel(store: store, autostart: false)
+        XCTAssertTrue(model.projects.isEmpty)
+        XCTAssertNil(model.selectedProject)
+        XCTAssertTrue(model.saveGlobalInstructions("offline global preference"))
+        XCTAssertEqual(model.globalInstructions, "offline global preference")
+        XCTAssertEqual(try store.loadGlobalInstructions(), "offline global preference")
+    }
+
+    func testGlobalInstructionsPathNeverUsesAmbientDocumentsAgents() {
+        let path = ProjectStore.globalInstructionsURL(
+            environment: [:],
+            homeDirectory: URL(fileURLWithPath: "/Users/test")
+        )
+        XCTAssertEqual(path.path, "/Users/test/Library/Application Support/Chadex/global-instructions.md")
+        XCTAssertFalse(path.path.contains("Documents/ChatGPT"))
+        XCTAssertNotEqual(path.lastPathComponent, "AGENTS.md")
+    }
+
+    func testGlobalInstructionsRejectSymlinkStorageWithoutTouchingTarget() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let target = root.appendingPathComponent("outside.txt")
+        let link = root.appendingPathComponent("global-instructions.md")
+        try "ambient target".write(to: target, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        let store = ProjectStore(environment: ["CHADEX_PREFERENCES_DIR": root.path])
+
+        XCTAssertThrowsError(try store.loadGlobalInstructions())
+        XCTAssertThrowsError(try store.saveGlobalInstructions("replacement"))
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "ambient target")
     }
 
     func testInterfaceSizeZoomOrdering() {

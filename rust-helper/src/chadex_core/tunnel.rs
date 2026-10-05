@@ -561,6 +561,14 @@ impl TunnelManager {
         self.computer_safety.approve(approval_id)
     }
 
+    pub fn approve_computer_control_always(&self, approval_id: &str) -> bool {
+        self.computer_safety.approve_and_set_always_allow(approval_id)
+    }
+
+    pub fn resume_computer_control(&self) -> ComputerSafetySnapshot {
+        self.computer_safety.resume()
+    }
+
     pub fn deny_computer_control(&self, approval_id: &str) -> bool {
         self.computer_safety.deny(approval_id)
     }

@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 use super::continuation_feedback::EXPLORATION_CONTINUITY_ACTION;
+use super::global_instructions::{global_instructions_projection, GlobalInstructionsSnapshot};
 #[cfg(test)]
 use super::project_instructions::INSTRUCTION_CANDIDATE_PATHS;
 use super::project_instructions::{
@@ -69,7 +70,7 @@ pub(crate) fn builtin_coding_workflow_projection() -> Value {
         "role_selection": "Ordinary implementation uses default guidance. Use independent_review only for an explicit independent review pass. Roles never grant authority.",
         "guidance": [
             "Follow host safety and user/project scope/rules; carry authorized work to concrete, reviewable completion. Ask only for missing requirements/authority; guidance grants no authority.",
-            "Verify Project/branch/HEAD/changes/nested rules. Recovery/compaction/exact Session resume is continuation: reuse still-current Git/read/validation/Job facts; revalidate changed snapshots/HEAD/worktree/instructions.",
+            "Within non-overridable safety/authority, precedence is current user > nested repo AGENTS > root repo AGENTS > Global Instructions > built-in baseline. Blank Global is a no-op; ambient ancestors outside the registered root are ignored. Verify Project/branch/HEAD and nested rules after recovery.",
             "Preserve unrelated work; push/publish/deploy/restart need explicit action/target. If a user answer/Job/validation/result is not a dependency, continue independent work; wait only on real dependencies.",
             "Ordinary implementation is default: map cross-layer changes end to end; use compiler/schema/exhaustiveness failures; avoid speculative redesign. Before closeout, if authorized, persist durable architecture/decisions/workflows to Memory; never save transient state/logs/paths/secrets/speculation.",
             "Use the simplest sufficient primitive. Native commands are first-class. Batch predetermined observations; adaptive follow-ups stay sequential. Use bounded deterministic Python/run_shell. Prefer bounded targeted reads; broad discovery uses files/count/small-context search then targeted reads.",
@@ -323,6 +324,7 @@ pub(crate) struct StartupBriefInput<'a> {
     pub(crate) reused: bool,
     pub(crate) resume_requested: bool,
     pub(crate) instructions: &'a ProjectInstructionsSnapshot,
+    pub(crate) global_instructions: &'a GlobalInstructionsSnapshot,
     pub(crate) previous_instructions: Option<&'a ProjectInstructionsSummarySnapshot>,
     pub(crate) force_instruction_load: bool,
     pub(crate) include_project_instructions: bool,
@@ -349,6 +351,8 @@ pub(crate) fn build_startup_brief(input: StartupBriefInput<'_>) -> Value {
         input.include_reused_instruction_content,
         minimal,
     );
+    let global_instruction_projection =
+        global_instructions_projection(input.global_instructions, !minimal);
     let continuation = continuation_projection(
         input.continuation_feedback,
         input.active_jobs,
@@ -389,6 +393,7 @@ pub(crate) fn build_startup_brief(input: StartupBriefInput<'_>) -> Value {
         "project_resolution": input.project_resolution,
         "workspace": workspace,
         "workflow": builtin_coding_workflow_projection(),
+        "global_instructions": global_instruction_projection,
         "instructions": instruction_projection,
         "continuation": continuation,
         "semantic_navigation": semantic_navigation,
@@ -873,9 +878,6 @@ fn instruction_source_projection(
 }
 
 fn projected_read_more(path: &str, returned: &str) -> Value {
-    if path.starts_with("@hierarchy/") {
-        return Value::Null;
-    }
     let observed_lines = returned.lines().count().max(1);
     let start_line = if returned.ends_with('\n') {
         observed_lines.saturating_add(1)
@@ -1465,7 +1467,36 @@ fn enforce_hard_size_limit(brief: &mut Value) {
         }
     }
 
-    // Rules content is the largest prose block. Shrink each source only to a
+    // Chadex Global Instructions are lower-precedence behavior preferences than
+    // repository AGENTS.md. If the transport budget is still exceeded, reduce
+    // Global content before touching higher-precedence repository rule prose.
+    loop {
+        if serialized_len(brief) <= STANDARD_STARTUP_HARD_MAX_BYTES {
+            return;
+        }
+        let Some(content) = brief
+            .pointer("/global_instructions/content")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
+            break;
+        };
+        if content.is_empty() {
+            break;
+        }
+        let original_chars = brief
+            .pointer("/global_instructions/total_chars")
+            .and_then(Value::as_u64)
+            .unwrap_or_else(|| content.chars().count() as u64);
+        let current_budget = json_string_payload_len(&content);
+        let next_budget = current_budget.saturating_sub(512);
+        let (bounded, _) = bounded_json_string(&content, next_budget);
+        brief["global_instructions"]["content"] = json!(bounded);
+        brief["global_instructions"]["truncated"] = json!(true);
+        brief["global_instructions"]["total_chars"] = json!(original_chars);
+    }
+
+    // Rules content is the largest higher-precedence prose block. Shrink each source only to a
     // useful floor first, preserving content from every loaded source along
     // with source identity, headings, read_more, and truncation facts.
     loop {
@@ -2088,6 +2119,60 @@ mod tests {
     }
 
     #[test]
+    fn hard_size_limit_trims_global_before_repository_instruction_content() {
+        let global = "g".repeat(8 * 1024);
+        let repository_rules = "r".repeat(24 * 1024);
+        let mut brief = json!({
+            "global_instructions": {
+                "status": "loaded",
+                "scope": "all_chadex_projects",
+                "storage": "chadex_managed",
+                "content": global,
+                "content_included": true,
+                "precedence": {
+                    "safety_envelope": "non_overridable",
+                    "behavior_high_to_low": [
+                        "current_user_instruction",
+                        "repo_nested_agents",
+                        "repo_root_agents",
+                        "chadex_global_instructions",
+                        "chadex_builtin_baseline"
+                    ]
+                },
+                "note": "test"
+            },
+            "instructions": {
+                "sources": [{
+                    "path": "AGENTS.md",
+                    "content": repository_rules,
+                    "truncated": false,
+                    "headings": []
+                }],
+                "truncated": false
+            }
+        });
+        assert!(serialized_len(&brief) > STANDARD_STARTUP_HARD_MAX_BYTES);
+        enforce_hard_size_limit(&mut brief);
+        assert!(serialized_len(&brief) <= STANDARD_STARTUP_HARD_MAX_BYTES);
+        assert_eq!(
+            brief["instructions"]["sources"][0]["content"]
+                .as_str()
+                .unwrap()
+                .len(),
+            24 * 1024
+        );
+        assert!(
+            brief["global_instructions"]["content"]
+                .as_str()
+                .unwrap()
+                .len()
+                < 8 * 1024
+        );
+        assert_eq!(brief["global_instructions"]["truncated"], true);
+        assert_eq!(brief["global_instructions"]["total_chars"], 8 * 1024);
+    }
+
+    #[test]
     fn standard_coding_task_startup_is_deterministic_and_hard_bounded() {
         let runtime = ToolRuntime::new_for_tests();
         let session = runtime.sessions.start_session_with_guards(
@@ -2183,6 +2268,14 @@ mod tests {
             "resolved_project": "agent:size:demo",
             "registered": false,
         });
+        let global_content = "# Global\nshared behavior preference\n";
+        let global_instructions = GlobalInstructionsSnapshot {
+            status: "loaded".into(),
+            fingerprint: Some("a".repeat(64)),
+            content: global_content.into(),
+            truncated: false,
+            total_chars: global_content.chars().count(),
+        };
         let build = || {
             build_startup_brief(StartupBriefInput {
                 detail: StartupDetail::Standard,
@@ -2195,6 +2288,7 @@ mod tests {
                 reused: true,
                 resume_requested: false,
                 instructions: &instructions,
+                global_instructions: &global_instructions,
                 previous_instructions: None,
                 force_instruction_load: true,
                 include_project_instructions: true,
@@ -2234,6 +2328,23 @@ mod tests {
                 .iter()
                 .map(|path| (*path).to_string())
                 .collect()
+        );
+        assert_eq!(first["global_instructions"]["status"], "loaded");
+        assert_eq!(first["global_instructions"]["content"], global_content);
+        assert_eq!(first["global_instructions"]["scope"], "all_chadex_projects");
+        assert_eq!(
+            first["global_instructions"]["precedence"]["safety_envelope"],
+            "non_overridable"
+        );
+        assert_eq!(
+            first["global_instructions"]["precedence"]["behavior_high_to_low"],
+            json!([
+                "current_user_instruction",
+                "repo_nested_agents",
+                "repo_root_agents",
+                "chadex_global_instructions",
+                "chadex_builtin_baseline"
+            ])
         );
         assert_eq!(first["instructions"]["content_included"], true);
         assert_eq!(first["instructions"]["truncated"], true);

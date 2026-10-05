@@ -105,6 +105,26 @@ final class VisualReviewTests: XCTestCase {
             to: output.appendingPathComponent("settings-advanced-140-light.png")
         )
         try render(
+            presented(
+                GlobalInstructionsStandaloneView()
+                    .environmentObject(model),
+                interfaceSize: .standard
+            ),
+            size: CGSize(width: 900, height: 680),
+            scheme: .light,
+            to: output.appendingPathComponent("global-instructions-100-light.png")
+        )
+        try render(
+            presented(
+                ProjectDetailView(project: project, destination: .computerUse) {}
+                    .environmentObject(model),
+                interfaceSize: .standard
+            ),
+            size: CGSize(width: 900, height: 720),
+            scheme: .light,
+            to: output.appendingPathComponent("computer-use-100-light.png")
+        )
+        try render(
             presented(GuideView().environmentObject(model), interfaceSize: .extraLarge),
             size: CGSize(width: 1320, height: 900),
             scheme: .light,
@@ -124,6 +144,8 @@ final class VisualReviewTests: XCTestCase {
             "settings-general-100-light.png",
             "settings-connection-140-dark.png",
             "settings-advanced-140-light.png",
+            "global-instructions-100-light.png",
+            "computer-use-100-light.png",
             "guide-wide-140-light.png",
             "guide-narrow-100-dark.png"
         ].map { output.appendingPathComponent($0) }

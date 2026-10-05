@@ -11,6 +11,8 @@ describe('Tauri 2 command contract', () => {
     await desktopApi.runtimeAction('connectChatGPT'); expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'connectChatGPT', params: {} });
     await desktopApi.inspectProject('C:\\project'); expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'inspectProject', params: { path: 'C:\\project' } });
     await desktopApi.savePreferences(desktop().preferences); expect(core.invoke).toHaveBeenLastCalledWith('save_preferences', { preferences: desktop().preferences });
+    await desktopApi.getGlobalInstructions(); expect(core.invoke).toHaveBeenLastCalledWith('get_global_instructions', undefined);
+    await desktopApi.saveGlobalInstructions('all projects'); expect(core.invoke).toHaveBeenLastCalledWith('save_global_instructions', { content: 'all projects' });
     await desktopApi.storeCredential('opaque'); expect(core.invoke).toHaveBeenLastCalledWith('store_credential', { credential: 'opaque' });
     await desktopApi.forgetCredential(); expect(core.invoke).toHaveBeenLastCalledWith('forget_credential', undefined);
     await desktopApi.restartHelper(); expect(core.invoke).toHaveBeenLastCalledWith('restart_helper', undefined);

@@ -271,6 +271,7 @@ fn startup_brief_schema(detail: &str) -> Value {
             "project_resolution": project_resolution_schema(),
             "workspace": startup_workspace_schema(),
             "workflow": startup_workflow_schema(),
+            "global_instructions": global_instructions_schema(),
             "instructions": startup_instructions_schema(),
             "continuation": startup_continuation_schema(detail),
             "semantic_navigation": startup_semantic_navigation_schema(),
@@ -289,6 +290,7 @@ fn startup_brief_schema(detail: &str) -> Value {
             "project_resolution",
             "workspace",
             "workflow",
+            "global_instructions",
             "instructions",
             "continuation",
             "semantic_navigation",
@@ -562,6 +564,50 @@ fn startup_workflow_role_schema() -> Value {
             }
         },
         "required": ["purpose", "guidance"],
+        "additionalProperties": false
+    })
+}
+
+fn global_instructions_schema() -> Value {
+    json!({
+        "type": "object",
+        "description": "Chadex-managed Global Instructions shared across Chadex projects. This is app-owned preference state, never a repository or ambient ancestor AGENTS.md. Safety/authority constraints remain non-overridable.",
+        "properties": {
+            "status": {"type": "string", "enum": ["loaded", "empty", "unavailable"]},
+            "scope": {"type": "string", "const": "all_chadex_projects"},
+            "storage": {"type": "string", "const": "chadex_managed"},
+            "fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "content": {"type": "string", "maxLength": 8192},
+            "content_included": {"type": "boolean", "const": true},
+            "truncated": {"type": "boolean", "const": true},
+            "total_chars": {"type": "integer", "minimum": 1, "maximum": 8192},
+            "precedence": {
+                "type": "object",
+                "properties": {
+                    "safety_envelope": {"type": "string", "const": "non_overridable"},
+                    "behavior_high_to_low": {
+                        "type": "array",
+                        "description": "Fixed high-to-low behavior order: current user instruction, nested repository AGENTS.md, repository-root AGENTS.md, Chadex Global Instructions, built-in baseline.",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "current_user_instruction",
+                                "repo_nested_agents",
+                                "repo_root_agents",
+                                "chadex_global_instructions",
+                                "chadex_builtin_baseline"
+                            ]
+                        },
+                        "minItems": 5,
+                        "maxItems": 5
+                    }
+                },
+                "required": ["safety_envelope", "behavior_high_to_low"],
+                "additionalProperties": false
+            },
+            "note": {"type": "string"}
+        },
+        "required": ["status", "scope", "storage", "precedence", "note"],
         "additionalProperties": false
     })
 }
@@ -1291,6 +1337,7 @@ fn work_on_project_output_schema() -> Value {
                 schema
             },
         ),
+        ("global_instructions", global_instructions_schema()),
         ("instructions", compact_instructions),
         ("semantic_navigation", compact_semantic_navigation),
         ("extensions", startup_extensions_schema()),
