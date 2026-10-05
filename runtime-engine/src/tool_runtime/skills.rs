@@ -981,6 +981,23 @@ impl ToolRuntime {
         let Some(script) = read_output.get("text").and_then(Value::as_str) else {
             return skill_execution_error("skill_resource_unavailable", None);
         };
+        // An operator may revoke a root's script opt-in (config reload) between
+        // the resolve above and the read; re-resolve so the last observation
+        // before execution is the one that authorises it.
+        if resolved.source() == RunnerSkillSource::Configured {
+            let still_allowed = matches!(
+                self.resolve_exact_skill(project, auth, &skill_id).await,
+                Ok(Some(ExactSkillCandidate::Runner(current)))
+                    if current.scripts_allowed()
+                        && current.definition_revision() == resolved.definition_revision()
+            );
+            if !still_allowed {
+                return skill_execution_error(
+                    "skill_script_execution_disabled",
+                    Some(json!({"skill_id": skill_id, "skill_path": resource_path})),
+                );
+            }
+        }
         let metadata = json!({
             "skill_id": skill_id,
             "skill_name": read_output.get("name").cloned().unwrap_or(Value::Null),

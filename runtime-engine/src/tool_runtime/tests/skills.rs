@@ -349,6 +349,8 @@ struct FakeConfiguredSkillState {
     read_error: Option<String>,
     next_definition_revision_after_probe: Option<String>,
     scripts_allowed: bool,
+    /// Simulate an operator revoking the script opt-in right after a read.
+    revoke_scripts_after_read: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -555,6 +557,13 @@ async fn call_kernel_with_fake_operator_store(
                                         if let Some(error) = error {
                                             (None, None, Some(error))
                                         } else {
+                                            if configured.revoke_scripts_after_read {
+                                                if let Some(configured) =
+                                                    operator.lock().unwrap().configured.as_mut()
+                                                {
+                                                    configured.scripts_allowed = false;
+                                                }
+                                            }
                                             let text = if path == "SKILL.md" {
                                                 configured.definition_text.clone()
                                             } else {
@@ -889,6 +898,7 @@ async fn project_configured_and_managed_skills_share_one_conflict_safe_catalog()
             read_error: None,
             next_definition_revision_after_probe: None,
             scripts_allowed: false,
+            revoke_scripts_after_read: false,
         }),
         managed: Some(FakeManagedSkillState {
             skill_id: managed_id.clone(),
@@ -1014,6 +1024,7 @@ async fn configured_skill_exact_read_uses_unified_resolve_then_read() {
             read_error: None,
             next_definition_revision_after_probe: None,
             scripts_allowed: false,
+            revoke_scripts_after_read: false,
         }),
         managed: None,
     }));
@@ -1171,6 +1182,7 @@ async fn exact_skill_resolution_fails_closed_on_duplicate_target_across_sources(
             read_error: None,
             next_definition_revision_after_probe: None,
             scripts_allowed: false,
+            revoke_scripts_after_read: false,
         }),
         managed: Some(FakeManagedSkillState {
             skill_id: duplicate_id.clone(),
@@ -1241,6 +1253,7 @@ async fn exact_skill_resolution_fails_closed_when_applicable_source_is_unavailab
             read_error: Some("skill_catalog_unavailable".to_string()),
             next_definition_revision_after_probe: None,
             scripts_allowed: false,
+            revoke_scripts_after_read: false,
         }),
         managed: Some(FakeManagedSkillState {
             skill_id: "wc_skill_iIiIiIiIiIiIiIiIiIiIiA".to_string(),
@@ -1322,6 +1335,7 @@ async fn configured_exact_read_pins_probe_revision_across_resource_read() {
             read_error: None,
             next_definition_revision_after_probe: Some(revision_b.to_string()),
             scripts_allowed: false,
+            revoke_scripts_after_read: false,
         }),
         managed: None,
     }));
@@ -2309,6 +2323,7 @@ async fn configured_skill_resource_executes_without_model_source_roundtrip_and_f
             read_error: None,
             next_definition_revision_after_probe: None,
             scripts_allowed: true,
+            revoke_scripts_after_read: false,
         }),
         managed: None,
     }));
@@ -2431,6 +2446,7 @@ async fn configured_skill_scripts_are_disabled_unless_root_opted_in() {
             read_error: None,
             next_definition_revision_after_probe: None,
             scripts_allowed: false,
+            revoke_scripts_after_read: false,
         }),
         managed: None,
     }));
@@ -2491,6 +2507,74 @@ async fn configured_skill_scripts_are_disabled_unless_root_opted_in() {
     )
     .await;
     assert!(read.success, "{:?}", read.error);
+}
+
+#[tokio::test]
+async fn configured_skill_script_opt_in_revoked_after_read_does_not_run() {
+    let root = tempfile::tempdir().unwrap();
+    let runtime = ToolRuntime::new_for_tests();
+    let client_id = "configured-skill-scripts-revoked";
+    register_agent_with_projects(
+        &runtime,
+        client_id,
+        None,
+        RunnerCapabilities {
+            file_read: true,
+            skill_runtime: true,
+            shell: true,
+            structured_process_argv: true,
+            structured_search_text: false,
+            ..Default::default()
+        },
+        vec![registered_project(
+            "project",
+            root.path().to_string_lossy().as_ref(),
+        )],
+    )
+    .await;
+    let project = crate::tool_runtime::runner_project_runtime_id(client_id, "project");
+    let skill_id = "wc_skill_ExExExExExExExExExExEA".to_string();
+    let definition_revision =
+        "abababababababababababababababababababababababababababababababab".to_string();
+    let operator = Arc::new(Mutex::new(FakeOperatorSkillState {
+        configured: Some(FakeConfiguredSkillState {
+            skill_id: skill_id.clone(),
+            name: "configured-revoked".to_string(),
+            description: "Configured guidance whose opt-in is revoked mid-call".to_string(),
+            definition_revision: definition_revision.clone(),
+            definition_text: "configured definition".to_string(),
+            resource_text: "print('must-not-run')\n".to_string(),
+            read_error: None,
+            next_definition_revision_after_probe: None,
+            scripts_allowed: true,
+            revoke_scripts_after_read: true,
+        }),
+        managed: None,
+    }));
+
+    let (denied, kinds) = call_kernel_with_fake_operator_store(
+        &runtime,
+        client_id,
+        "run_skill_resource",
+        json!({
+            "project": project,
+            "skill_id": skill_id,
+            "path": "scripts/probe.py",
+            "expected_definition_revision": definition_revision,
+            "timeout_secs": 30,
+            "sync_wait_secs": 30,
+            "purpose": "diagnostic"
+        }),
+        operator,
+    )
+    .await;
+    assert!(!denied.success);
+    assert_eq!(denied.output["failure_kind"], "skill_script_execution_disabled");
+    assert_eq!(denied.output["command_started"], false);
+    assert!(kinds.iter().any(|kind| kind == "skill:read"));
+    assert!(kinds
+        .iter()
+        .all(|kind| kind.starts_with("skill:") || kind.starts_with("file_")));
 }
 
 #[tokio::test]

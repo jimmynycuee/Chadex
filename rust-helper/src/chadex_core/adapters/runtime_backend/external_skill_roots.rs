@@ -56,7 +56,16 @@ impl RuntimeBackendAdapter {
         .await??;
         let (original, candidate) = prepared;
         if candidate == original {
-            return self.external_skill_roots().await;
+            // Nothing to write, but a previous failed rollback may have left the
+            // Runner on a different snapshot than the file; reloading the file
+            // as-is resynchronises it.
+            let token = read_probe_token(&target.user_token_file)
+                .await
+                .ok_or_else(runtime_unreachable)?;
+            let generation = reload_runner_config(&self.probe_client, &target, &token).await?;
+            let mut state = self.external_skill_roots().await?;
+            state["generation"] = json!(generation);
+            return Ok(state);
         }
 
         let token = read_probe_token(&target.user_token_file)
@@ -137,7 +146,10 @@ where
     }
     .await;
     let error = match applied {
-        Ok(generation) => return Ok(generation),
+        Ok(generation) => {
+            discard_backup(&target.runner_config).await;
+            return Ok(generation);
+        }
         Err(error) => error,
     };
     let config_path = target.runner_config.clone();
@@ -146,15 +158,58 @@ where
         .ok()
         .and_then(Result::ok)
         .unwrap_or(false);
-    // Re-apply the restored file so the active snapshot matches disk again. If
-    // this reload fails the Runner keeps its previous snapshot, which already
-    // matches the restored file unless the first reload had succeeded.
-    if restored {
-        let _ = reload_runner_config(client, target, token).await;
+    // The candidate may already be live (reload succeeded, or its response was
+    // lost) unless the Runner definitively refused it. When it may be live the
+    // restored file must be reloaded too; only report a rollback when both the
+    // file and the Runner are known to be back on the previous settings.
+    let resync_required = !definitely_not_applied(&error);
+    let resynced = restored
+        && (reload_runner_config(client, target, token).await.is_ok() || !resync_required);
+    if !resynced {
+        return Err(ChadexError::new(
+            "external_skill_roots_state_unknown",
+            if restored {
+                "The previous Skill folders were written back, but the Runner could not reload them"
+            } else {
+                "runner.toml changed while Chadex was undoing a failed update, so it was left as is"
+            },
+            "The Runner may still use the new Skill folders. Reload the Skill folder settings and apply them again.",
+        )
+        .with_details(json!({
+            "cause": error.code,
+            "file_restored": restored,
+            "runner_resynced": false,
+        })));
     }
+    discard_backup(&target.runner_config).await;
     let mut details = error.details.clone().unwrap_or_else(|| json!({}));
-    details["rolled_back"] = json!(restored);
+    details["rolled_back"] = json!(true);
     Err(error.with_details(details))
+}
+
+const NOT_APPLIED: &str = "runner_applied";
+
+/// Errors raised before the Runner swapped in the candidate snapshot.
+fn not_applied(error: ChadexError) -> ChadexError {
+    let mut details = error.details.clone().unwrap_or_else(|| json!({}));
+    details[NOT_APPLIED] = json!(false);
+    error.with_details(details)
+}
+
+fn definitely_not_applied(error: &ChadexError) -> bool {
+    error
+        .details
+        .as_ref()
+        .and_then(|details| details.get(NOT_APPLIED))
+        .and_then(Value::as_bool)
+        == Some(false)
+}
+
+/// The backup holds a full runner.toml (including its token); keep it only
+/// while an update is in flight or its outcome is unknown.
+async fn discard_backup(config: &Path) {
+    let backup = crate::chadex_core::external_skills::runner_config_backup_path(config);
+    let _ = tokio::fs::remove_file(backup).await;
 }
 
 /// `check` validates the on-disk candidate and reports the active
@@ -172,15 +227,15 @@ pub(super) async fn reload_runner_config(
             .await?;
         if !checked.success || checked.output.get("valid").and_then(Value::as_bool) != Some(true)
         {
-            return Err(ChadexError::new(
+            return Err(not_applied(ChadexError::new(
                 "runner_config_rejected",
                 "The Runner rejected the new Skill folder settings",
                 "The previous settings were restored. Check the folders and retry.",
             )
-            .with_details(json!({ "runner_error": operator_error_code(&checked) })));
+            .with_details(json!({ "runner_error": operator_error_code(&checked) }))));
         }
         if restart_required(&checked) {
-            return Err(restart_required_error());
+            return Err(not_applied(restart_required_error()));
         }
         let generation = checked
             .output
@@ -210,19 +265,19 @@ pub(super) async fn reload_runner_config(
                 .unwrap_or(generation.saturating_add(1)));
         }
         if operator_error_code(&reloaded) != Some("config_generation_conflict") {
-            return Err(ChadexError::new(
+            return Err(not_applied(ChadexError::new(
                 "runner_config_reload_failed",
                 "The Runner could not apply the new Skill folder settings",
                 "The previous settings were restored. Retry in a moment.",
             )
-            .with_details(json!({ "runner_error": operator_error_code(&reloaded) })));
+            .with_details(json!({ "runner_error": operator_error_code(&reloaded) }))));
         }
     }
-    Err(ChadexError::new(
+    Err(not_applied(ChadexError::new(
         "runner_config_reload_failed",
         "The Runner configuration kept changing while Chadex applied Skill folders",
         "The previous settings were restored. Retry in a moment.",
-    ))
+    )))
 }
 
 async fn operator_call(
@@ -353,6 +408,9 @@ mod tests {
         check_invalid: bool,
         reload_conflicts: usize,
         reload_fails: bool,
+        /// Fail every reload after this many have succeeded.
+        fail_reloads_after: Option<usize>,
+        successful_reloads: usize,
         generation: u64,
         calls: Vec<String>,
         reloaded_contents: Vec<String>,
@@ -383,12 +441,17 @@ mod tests {
             runner.generation += 1;
             return Json(json!({"success": false, "output": {"error_code": "config_generation_conflict"}}));
         }
-        if runner.reload_fails {
+        if runner.reload_fails
+            || runner
+                .fail_reloads_after
+                .is_some_and(|limit| runner.successful_reloads >= limit)
+        {
             return Json(json!({"success": false, "output": {"error_code": "config_validation_failed"}}));
         }
         assert_eq!(body["expected_generation"], runner.generation);
         let content = std::fs::read_to_string(&runner.config_path).unwrap();
         runner.reloaded_contents.push(content);
+        runner.successful_reloads += 1;
         runner.generation += 1;
         Json(json!({"success": true, "output": {"current_generation": runner.generation, "restart_required": false}}))
     }
@@ -476,7 +539,47 @@ mod tests {
         let backup = crate::chadex_core::external_skills::runner_config_backup_path(
             &h.target.runner_config,
         );
-        assert_eq!(std::fs::read_to_string(backup).unwrap(), ORIGINAL);
+        assert!(!backup.exists(), "backup with the token must not outlive the update");
+    }
+
+    #[tokio::test]
+    async fn failed_resync_after_restore_reports_unknown_state() {
+        // First reload applies the candidate; verification fails; the reload of
+        // the restored file fails, so the Runner may still run the candidate.
+        let h = harness(|runner| runner.fail_reloads_after = Some(1)).await;
+        let error = apply(&h, ORIGINAL, false).await.unwrap_err();
+        assert_eq!(error.code, "external_skill_roots_state_unknown");
+        let details = error.details.unwrap();
+        assert_eq!(details["cause"], "external_skill_roots_unverified");
+        assert_eq!(details["file_restored"], true);
+        assert_eq!(details["runner_resynced"], false);
+        assert_eq!(on_disk(&h), ORIGINAL);
+        let backup = crate::chadex_core::external_skills::runner_config_backup_path(
+            &h.target.runner_config,
+        );
+        assert!(backup.exists(), "keep the backup while the outcome is unknown");
+    }
+
+    #[tokio::test]
+    async fn concurrent_edit_during_rollback_is_kept_and_reported() {
+        let h = harness(|_| {}).await;
+        let path = h.target.runner_config.clone();
+        let error = apply_runner_config_candidate(
+            &h.client,
+            &h.target,
+            "token",
+            ORIGINAL.to_string(),
+            candidate(),
+            || async move {
+                std::fs::write(&path, "operator = \"edit\"\n").unwrap();
+                Err(ChadexError::new("external_skill_roots_unverified", "x", "y"))
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, "external_skill_roots_state_unknown");
+        assert_eq!(error.details.unwrap()["file_restored"], false);
+        assert_eq!(on_disk(&h), "operator = \"edit\"\n");
     }
 
     #[tokio::test]

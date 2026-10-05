@@ -120,10 +120,35 @@ fn parse_frontmatter_scalar(raw: &str, continuation: &[&str]) -> Result<String, 
         };
         return Ok(collapse_whitespace(std::iter::once(unquoted.as_str())));
     }
+    if raw.is_empty() && continuation_is_collection(continuation) {
+        return Err("skill_frontmatter_scalar_invalid");
+    }
     let first = raw.split(" #").next().unwrap_or(raw);
     Ok(collapse_whitespace(
         std::iter::once(first).chain(continuation.iter().copied()),
     ))
+}
+
+/// `key:` with an empty value followed by an indented `- item` or `sub: value`
+/// is a YAML sequence or mapping, not a multi-line plain scalar.
+fn continuation_is_collection(continuation: &[&str]) -> bool {
+    let Some(first) = continuation
+        .iter()
+        .map(|line| line.trim())
+        .find(|line| !line.is_empty())
+    else {
+        return false;
+    };
+    if first == "-" || first.starts_with("- ") {
+        return true;
+    }
+    first.split_once(':').is_some_and(|(key, rest)| {
+        !key.is_empty()
+            && key
+                .chars()
+                .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-' | '.'))
+            && (rest.is_empty() || rest.starts_with([' ', '\t']))
+    })
 }
 
 fn parse_double_quoted(raw: &str) -> Result<String, &'static str> {
@@ -221,6 +246,9 @@ mod tests {
             "---\nname: x\ndescription: \"bad \\q escape\"\n---",
             "---\nname: x\ndescription: |\n---",
             "---\nname: x\nname: y\ndescription: d\n---",
+            "---\nname:\n  sub: x\ndescription: d\n---",
+            "---\nname:\n  - a\n  - b\ndescription: d\n---",
+            "---\nname: x\ndescription:\n  key: value\n---",
         ] {
             assert!(parse_skill_metadata(invalid).is_err(), "{invalid}");
         }
@@ -249,6 +277,11 @@ mod tests {
                 .unwrap();
         assert_eq!(parsed.name, "it's");
         assert_eq!(parsed.description, "plain start continued here");
+        let parsed = parse_skill_metadata(
+            "---\nname: demo\ndescription:\n  Use when: the user asks\n---",
+        )
+        .unwrap();
+        assert_eq!(parsed.description, "Use when: the user asks");
     }
 
     #[test]

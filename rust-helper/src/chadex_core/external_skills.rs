@@ -659,7 +659,9 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|elapsed| elapsed.as_nanos())
         .unwrap_or_default();
-    let temp = parent.join(format!(".{name}.{}.{nonce}.tmp", std::process::id()));
+    // Keep the target name as the prefix so runner.toml temp files stay covered
+    // by the secret-path rules even if a crash leaves one behind.
+    let temp = parent.join(format!("{name}.{}.{nonce}.tmp", std::process::id()));
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
