@@ -89,6 +89,12 @@ final class AppModel: ObservableObject {
     private var projectSwitchGate = ProjectSwitchGate()
     private var appPhaseTimings: [AppPhaseTimingSample] = []
     private let foregroundRefreshMaxAge: TimeInterval = 1.5
+    // After the tunnel becomes ready, ChatGPT's first MCP request is what turns
+    // the connection green. Users usually switch to ChatGPT at this point, so
+    // keep a fast poll even in the background for a bounded window.
+    private var awaitingChatGPTSinceUptime: TimeInterval?
+    private let awaitingChatGPTFastPollWindow: TimeInterval = 120
+    private let pollTick: TimeInterval = 0.25
     private let skillsRefreshMaxAge: TimeInterval = 5
     private let projectMemoryRefreshMaxAge: TimeInterval = 5
 
@@ -256,8 +262,13 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             await self.bootstrap()
             while !Task.isCancelled {
-                let nanos = UInt64(self.pollInterval * 1_000_000_000)
-                try? await Task.sleep(nanoseconds: nanos)
+                // Re-evaluate the interval every tick so a state change (e.g. a
+                // connect that just finished) shortens a long pending wait.
+                let waitStarted = ProcessInfo.processInfo.systemUptime
+                while !Task.isCancelled,
+                      ProcessInfo.processInfo.systemUptime - waitStarted < self.pollInterval {
+                    try? await Task.sleep(nanoseconds: UInt64(self.pollTick * 1_000_000_000))
+                }
                 guard !Task.isCancelled else { break }
                 await self.refreshStatus()
             }
@@ -1541,6 +1552,11 @@ final class AppModel: ObservableObject {
     }
 
     private var pollInterval: TimeInterval {
+        if snapshot.tunnelReady && !snapshot.chatGPTConnected,
+           let since = awaitingChatGPTSinceUptime,
+           ProcessInfo.processInfo.systemUptime - since < awaitingChatGPTFastPollWindow {
+            return 1
+        }
         if snapshot.tunnelReady && snapshot.chatGPTConnected {
             return isAppActive ? 1 : 5
         }
@@ -1865,6 +1881,13 @@ final class AppModel: ObservableObject {
         }
         snapshot = candidate
         snapshotFreshnessGate.markApplied(at: ProcessInfo.processInfo.systemUptime)
+        if candidate.tunnelReady && !candidate.chatGPTConnected {
+            if awaitingChatGPTSinceUptime == nil {
+                awaitingChatGPTSinceUptime = ProcessInfo.processInfo.systemUptime
+            }
+        } else {
+            awaitingChatGPTSinceUptime = nil
+        }
         if candidate.tunnelReady || candidate.chatGPTConnected || candidate.phase == .verified {
             connectionActionError = nil
         }

@@ -415,6 +415,40 @@ async fn explicit_stop_survives_refresh_and_desktop_restart() {
     std::fs::remove_dir_all(data_dir).unwrap();
 }
 
+#[tokio::test]
+async fn autostart_runtime_not_yet_started_reads_as_stopped_not_failing() {
+    let data_dir = unique_state_dir("autostart-relaunch");
+    let mut core = RuntimeCoordinator::new(data_dir.clone(), data_dir.join("resources")).unwrap();
+    core.config = test_stored_config("autostart");
+    core.config.topology = Some(RuntimeTopology {
+        experience: Experience::Full,
+        server: ServerTopology::Local,
+        runner: RunnerTopology::Local,
+        exposure: Exposure::None,
+        enrollment: Enrollment::ManagedPairing,
+    });
+    core.config.runtime_autostart = Some(true);
+    core.save_config().await.unwrap();
+
+    // App relaunch: the new helper owns no runtime processes yet.
+    let mut restarted =
+        RuntimeCoordinator::new(data_dir.clone(), data_dir.join("resources")).unwrap();
+    assert_eq!(
+        restarted.snapshot.readiness.summary_kind,
+        ReadinessSummaryKind::RuntimeStopped
+    );
+    let refreshed = restarted
+        .refresh_runtime_status(&CancellationContext::never())
+        .await
+        .unwrap();
+    assert_eq!(
+        refreshed.readiness.summary_kind,
+        ReadinessSummaryKind::RuntimeStopped
+    );
+    assert!(refreshed.runtime_autostart);
+    std::fs::remove_dir_all(data_dir).unwrap();
+}
+
 #[test]
 fn legacy_full_runtime_defaults_to_autostart_but_explicit_stop_is_preserved() {
     let mut config = test_stored_config("resume");

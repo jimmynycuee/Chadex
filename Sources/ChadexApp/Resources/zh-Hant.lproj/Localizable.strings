@@ -249,7 +249,7 @@
 "status.preparing" = "準備中";
 "status.connecting" = "正在連接…";
 "status.disconnecting" = "正在中斷連線…";
-"status.waiting" = "Tunnel 已就緒";
+"status.waiting" = "已連線，等待 ChatGPT";
 "status.verified" = "此專案已驗證";
 "status.stopped" = "尚未連線";
 "status.error" = "需要處理";
@@ -313,7 +313,7 @@
 "connection.explainConnecting" = "Chadex 正在啟動本機服務與安全 Tunnel。連線檢查可能需要一些時間，執行期間會在此顯示進度。";
 "connection.explainDisconnecting" = "Chadex 正在關閉安全 Tunnel；目前選擇的本機專案會保留，方便下次重新連線。";
 "connection.explainWaiting" = "安全 Tunnel 已就緒，Chadex 正在等待 ChatGPT 連入。";
-"connection.explainReadyToUse" = "安全 Tunnel 已建立，但 ChatGPT 尚未成功讀取目前專案；完成一次成功的專案讀取後才會驗證。";
+"connection.explainReadyToUse" = "連線已就緒，可以到 ChatGPT 開始使用；ChatGPT 第一次呼叫後這裡會轉為已連線，成功讀取專案後完成驗證。";
 "connection.explainConnected" = "已偵測到 ChatGPT；第一次成功存取目前專案後會完成驗證。";
 "connection.explainVerified" = "Tunnel 與 ChatGPT 存取都正常，可以直接從 ChatGPT 使用目前專案。";
 "connection.explainStopped" = "本機專案已就緒，但尚未建立安全 Tunnel。";
