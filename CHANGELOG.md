@@ -4,11 +4,11 @@ All notable public Chadex releases are summarized here. Detailed notes remain un
 
 ## 0.4.1
 
-- Added **Chadex Global Instructions** as app-managed behavior preferences shared across projects, editable even without an active project; repository `AGENTS.md` files remain repository-native and read-only from Agent Settings.
+- Added **Chadex Global Instructions** as app-managed behavior preferences shared across projects, editable even without an active project; repository `AGENTS.md` files remain repository-native and are no longer duplicated as a Chadex-managed project-instructions UI.
 - Stopped ambient ancestor `AGENTS.md` files outside the registered project root from influencing Chadex projects, while preserving project-root and target-scoped nested repository instruction hierarchy.
 - Defined behavior precedence as current user request → nested/root repository AGENTS → Global Instructions → built-in baseline, inside the existing non-overridable safety/authority envelope.
 - Redesigned macOS Computer Use settings with clearer progressive disclosure, a stopped-state-only Resume action, persistent **Always allow**, temporary **Allow this session**, and Stop that remains in force across tunnel reconnects until explicit resume.
-- Reduced Agent Settings noise by collapsing Repository Instructions into a compact summary and suppressing stale/transient runtime errors during an in-progress cold-start connection.
+- Removed the redundant Repository Instructions block from project detail while preserving repo-root/nested `AGENTS.md` runtime behavior, and suppressed stale/transient runtime errors during an in-progress cold-start connection.
 - Fixed first-time connection setup so saving Tunnel ID/API key performs the full connection lifecycle immediately instead of leaving a credential-only error state that required Retry.
 - Fixed Secure Tunnel false-ready detection: Chadex now waits for authenticated control-plane metadata after `/readyz`, fails fast on rejected credentials, and directs credential errors to Connection Settings instead of waiting through 10-second poll backoff cycles.
 - Fixed a first-connect state race where background status polling could leave the UI on a false Retry screen even though the Tunnel had already connected successfully.
