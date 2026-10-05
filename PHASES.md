@@ -2,7 +2,7 @@
 schema_version: 1
 project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
-updated: 2026-10-05T23:15+08:00
+updated: 2026-10-05T23:30+08:00
 updated_by: claude           # codex | webcodex | chadex | claude | human
 current_phase: null          # null 代表目前沒有 active phase；下一階段建立後再填入
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
@@ -141,7 +141,7 @@ phases:
     depends_on: [V041]
     # baseline: main @ 16efcf1, CI run 37306101038 attempt 2 = success
     #（attempt 1 的 W5 installer candidate 為 runner 端 process_inventory_failed，rerun 通過）
-    # branch 尚未合入 main（未授權 merge）；closed_commit 為最後一個實作 commit
+    # 2026-10-05 經使用者授權 fast-forward 合入 main @ 924c75c；closed_commit 為最後一個實作 commit
     gate:
       - cmd: "scripts/test.sh (swift test + helper cargo test)"
         expect: "all pass"
@@ -183,9 +183,9 @@ phases:
 第一次在 W5 installer candidate 的 `default_uninstaller_self_copy` stage 出現 runner 端 `process_inventory_failed`，
 rerun（attempt 2）7/7 jobs success，視為 baseline 綠燈。
 
-`V042` 已完成（branch `chore/v042-baseline-hygiene`，尚未合入 `main`）：文件與 v0.4.1 架構對齊、移除未使用的
+`V042` 已完成，2026-10-05 fast-forward 合入 `main` @ `924c75c`：文件與 v0.4.1 架構對齊、移除未使用的
 `getProjectInstructions` bridge path、Graphify 排除 provenance/generated material、CI docs-only fast path 與 Rust/npm cache。
-目前沒有 active phase。待決定：合入 `main`（cache 只在 main 儲存，合入後才會生效）、`AP5 — External skill sources`、Windows UI parity / external acceptance。
+目前沒有 active phase。待決定：`AP5 — External skill sources`、Windows UI parity / external acceptance。
 
 ## V041 · v0.4.1
 
