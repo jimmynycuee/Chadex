@@ -8,7 +8,7 @@
 
 `macOS 14+` · `Apple Silicon` · `Free & Open Source`
 
-**Latest stable release: v0.4.0** — Chadex now adds Agent Settings, reusable Skills, automatic Project Memory context, and safety-gated Computer Use alongside the existing local development bridge.
+**Latest stable release: v0.4.1** — Chadex now separates app-managed Global Instructions from repository-native `AGENTS.md`, refines Computer Use with persistent **Always allow** and explicit Stop/Resume semantics, and closes the automatable Windows W5 release-engineering track while keeping public distribution macOS-only.
 
 > On the Releases page, expand **Assets** and download the latest `Chadex-...-macos-arm64.dmg`.
 
