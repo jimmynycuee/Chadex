@@ -117,6 +117,9 @@ pub(crate) struct OperationAdmission {
     shared: Arc<ControllerShared>,
 }
 
+// Releases the slot when a request future is aborted (only done at shutdown
+// today). The coordinator core taken by `begin_operation_with` is NOT restored
+// here, so never wrap an operation in `timeout`/`select!` without handling that.
 impl Drop for OperationAdmission {
     fn drop(&mut self) {
         let aborted: DesktopResult<()> = Err(cancelled_error());

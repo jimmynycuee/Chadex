@@ -469,7 +469,10 @@ impl PrewarmTracker {
             .store(true, std::sync::atomic::Ordering::SeqCst);
         let deadline = tokio::time::Instant::now() + timeout;
         loop {
-            cancel_operation().await;
+            // The coordinator's own wait may exceed our remaining budget;
+            // dropping it only stops waiting, the cancellation stays requested.
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let _ = tokio::time::timeout(remaining, cancel_operation()).await;
             let wait = retry.min(deadline.saturating_duration_since(tokio::time::Instant::now()));
             if tokio::time::timeout(wait, receiver.wait_for(|done| *done))
                 .await

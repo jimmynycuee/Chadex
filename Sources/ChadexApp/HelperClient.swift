@@ -61,6 +61,8 @@ final class HelperClient: @unchecked Sendable {
     private let executableOverride: URL?
     private var process: Process?
     private var processGeneration: UInt64 = 0
+    /// Set once the app quits; a late request must not relaunch the helper.
+    private var isShutDown = false
     private var stdinPipe: Pipe?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
@@ -87,6 +89,7 @@ final class HelperClient: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         if process?.isRunning == true { return }
+        if isShutDown { throw HelperClientError.disconnected }
 
         let executableURL = try executableOverride ?? Self.resolveExecutableURL()
         guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
@@ -247,6 +250,9 @@ final class HelperClient: @unchecked Sendable {
 
     func shutdown() async {
         let startedAt = ProcessInfo.processInfo.systemUptime
+        lock.lock()
+        isShutDown = true
+        lock.unlock()
         let (process, writer, generation) = processContext()
         guard let process, process.isRunning else { return }
 
