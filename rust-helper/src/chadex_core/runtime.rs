@@ -63,6 +63,7 @@ pub struct RuntimeReadiness {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeSnapshot {
     pub runtime_configured: bool,
+    pub runtime_autostart: bool,
     pub readiness: RuntimeReadiness,
     pub project: Option<RuntimeProject>,
     pub current_operation: Option<RuntimeOperation>,
