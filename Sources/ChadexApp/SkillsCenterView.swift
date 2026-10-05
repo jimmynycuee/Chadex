@@ -59,6 +59,9 @@ struct SkillsCenterView: View {
                 }
             }
 
+            ExternalSkillSourcesView()
+                .chadexPadding(.top, 6)
+
             Label(L10n.string("skills.authorityNote"), systemImage: "lock.shield")
                 .chadexFont(.caption)
                 .foregroundStyle(.tertiary)
@@ -149,6 +152,10 @@ struct SkillsCenterView: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
                                 .help(L10n.string("skills.nameConflict"))
+                        }
+                        if item.trust == "operator_configured_guidance", item.scriptsAllowed == false {
+                            badge(L10n.string("skills.external.scriptsOff"))
+                                .help(L10n.string("skills.external.scriptsOffHelp"))
                         }
                     }
                     Text(item.description)

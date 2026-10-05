@@ -113,6 +113,19 @@ v0.4.1 移除 project-detail 的 repository instructions 面板後，原本只�
 
 Skills 是可重用的程序，與 instructions 分開。Project skill 位於 repository `.agents/skills/<key>/SKILL.md`；另有 configured 與 managed 來源，catalog 中以 `source_scope` 與 trust 區分，同名衝突明確標示。Catalog 只帶 descriptor，`SKILL.md` 內容依 `definition_revision`／`package_revision` lazy load；activate／deactivate 需帶目前 `state_revision`，stale revision 會被拒絕，避免把舊定義當成目前定義。macOS desktop 透過 `getSkillCatalog`、`getSkillInventory`、`getSkillDefinition`、`createProjectSkill`、`installSkill`、`activateSkill`、`deactivateSkill` 操作（見 [Bridge Protocol](BRIDGE_PROTOCOL.md)）。
 
+### External Skill sources
+
+使用者可連接已存在於 Codex、Claude Code 或共用 agent 的 Skill 資料夾，Chadex 不複製內容，而是讓 Runner 跟隨原始資料夾（與「上傳 Skill」把 ZIP 複製進 Chadex 自己的 managed store 不同）。
+
+- **Discovery**：helper 唯讀掃描 `~/.agents/skills`、`$CLAUDE_CONFIG_DIR` 或 `~/.claude/skills`、`$CODEX_HOME` 或 `~/.codex/skills`。Symlink package 會解析到真實 root（`provided_by`），重複來源標為 `duplicate_source`，建議連接的是真實 root（`recommended_roots`）。Runner 本身拒絕 link root 與 link package，所以 UI 只連接 canonical 目錄。
+- **設定位置**：Runner `runner.toml` 的 `[skills] roots` 為已連接 root；新增的 `script_roots` 是其子集，預設為空，代表所有 configured root 的腳本資源預設停用。Managed／installed skill 不受此 gate 影響。
+- **寫入流程**：只用 `toml_edit` 修改 `[skills]`，其餘內容保持原樣；以整檔 revision（sha256）做 compare-and-swap；寫入前建立暫存備份 `runner.toml.chadex-skills.bak`，結果確定（成功或已回復）後刪除；之後執行 config check，再做 generation-fenced reload 並驗證，失敗則回復。若無法確定 Runner 是否已套用新設定，回 `external_skill_roots_state_unknown`，client 須重新讀取後再套用。
+- **Root denylist**：系統目錄（含 `/private`、`/Volumes`）、home 本身及其祖先、`~/.ssh`、`~/.gnupg`、`~/.aws`、`~/.kube`、`~/.docker`，以及非 canonical 或 link 路徑一律拒絕。
+- **Frontmatter parser**：接受 block scalar（`|`、`>`）、escape 與長 description；description 超過 512 字元會截斷並加上 `…`。
+- **安全註記**：`script_roots` 只是 `run_skill_resource` 的預設政策，不是 sandbox。啟用 shell 工具時，ChatGPT 仍可直接執行指令，不受此 gate 約束；Skill 仍是程序而非授權，Chadex 權限邊界照常適用。
+
+macOS Agent 設定的 Skills 頁提供「外部 Skill 來源」區塊，使用 `discoverExternalSkillSources`、`getExternalSkillRoots`、`setExternalSkillRoots`（見 [Bridge Protocol](BRIDGE_PROTOCOL.md)）。
+
 ## Project Memory
 
 Project Memory 保存跨 session 的長期架構、決策與工作流程脈絡，存於 runtime database，以 project runtime ID + Runner client + registered root 推導的 memory scope 隔離。Coding task 開始時，runtime 只自動投影標記為 bootstrap 的受限 summary；完整 body 維持 lazy read。寫入以 `expected_revision` 做 optimistic concurrency；暫時性 log、generated path、secret 與推測不屬於正常 closeout 應寫入的內容。macOS desktop 只在進階 **Memory Inspector** 透過 `getProjectMemoryCatalog`／`getProjectMemory`／`setProjectMemory`／`deleteProjectMemory` 檢查與修改，不再是常駐 sidebar 頁面。

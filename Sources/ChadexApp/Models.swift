@@ -187,6 +187,8 @@ struct SkillDescriptor: Codable, Equatable, Identifiable, Sendable {
     var sourceScope: String
     var trust: String
     var nameConflict: Bool
+    /// Absent from older helpers; nil means the helper did not report a policy.
+    var scriptsAllowed: Bool?
 
     var id: String { skillId }
     var isProjectSkill: Bool { sourceScope == "project" }
@@ -245,6 +247,58 @@ struct SkillDefinitionPreview: Codable, Equatable, Sendable {
 
 struct SkillOperationResult: Codable, Equatable, Sendable {}
 
+struct ExternalSkillPackage: Codable, Equatable, Identifiable, Sendable {
+    var package: String
+    var state: String
+    var name: String?
+    var description: String?
+    var hasScripts: Bool
+    var linkTargetRoot: String?
+    var invalidReason: String?
+    var nameConflict: Bool
+
+    var id: String { package }
+}
+
+struct ExternalSkillSource: Codable, Equatable, Identifiable, Sendable {
+    var kind: String
+    var path: String
+    var canonicalPath: String?
+    var status: String
+    var rootIsLink: Bool
+    var sameAs: String?
+    var validCount: Int
+    var symlinkCount: Int
+    var invalidCount: Int
+    var scriptCount: Int
+    var truncated: Bool
+    var providedBy: [String]
+    var packages: [ExternalSkillPackage]
+
+    var id: String { kind + "|" + path }
+}
+
+struct ExternalSkillSourceDiscovery: Codable, Equatable, Sendable {
+    var format: String
+    var sources: [ExternalSkillSource]
+    var recommendedRoots: [String]
+}
+
+struct ExternalSkillRootsState: Codable, Equatable, Sendable {
+    var format: String
+    var roots: [String]
+    var scriptRoots: [String]
+    var revision: String
+    var generation: Int?
+}
+
+struct SetExternalSkillRootsParams: Codable, Sendable {
+    var roots: [String]
+    var scriptRoots: [String]
+    var expectedRevision: String
+    var verifyProjectPath: String?
+}
+
 struct SkillCenterItem: Equatable, Identifiable, Sendable {
     var skillId: String
     var name: String
@@ -254,6 +308,7 @@ struct SkillCenterItem: Equatable, Identifiable, Sendable {
     var sourceScope: String
     var trust: String
     var nameConflict: Bool
+    var scriptsAllowed: Bool?
     var managed: ManagedSkillInventoryEntry?
 
     var id: String { skillId }

@@ -88,13 +88,59 @@ protocol version 不相容時 fail closed，不嘗試猜測欄位。
 
 | Method | 參數 | 行為 |
 | --- | --- | --- |
-| `getSkillCatalog` | `path` | Skill descriptor catalog（不含 definition 內容） |
+| `getSkillCatalog` | `path` | Skill descriptor catalog（不含 definition 內容）；descriptor 含 `scripts_allowed`（見下） |
 | `getSkillInventory` | `path` | 已安裝／啟用狀態與 `state_revision` |
 | `getSkillDefinition` | `path`, `skill_id`, `definition_revision`, `package_revision?` | Lazy 讀取指定 revision 的 `SKILL.md` |
 | `createProjectSkill` | `path`, `skill_key`, `content` | 在 `.agents/skills/<key>/` 建立 project skill |
 | `installSkill` | `path`, `skill_key`, `artifact_path` | 從 artifact 安裝 skill |
 | `activateSkill` | `path`, `skill_key`, `package_revision`, `state_revision` | Revision-fenced 啟用 |
 | `deactivateSkill` | `path`, `skill_key`, `state_revision` | Revision-fenced 停用 |
+
+Catalog descriptor 的 `scripts_allowed`（bool）表示該 Skill 的腳本資源是否被預設政策允許：configured／external root 依 root 的 `script_roots` opt-in；installed skill 為 `true`；project skill 為 `false`。舊版 helper 可能不帶此欄位，client 必須視為「未回報」。
+
+#### External Skill sources
+
+下列三個 method 不帶 `path`（設定是 Runner 全域），與 `getSkillCatalog` 使用相同 request／response envelope。
+
+| Method | 參數 | 行為 |
+| --- | --- | --- |
+| `discoverExternalSkillSources` | 無 | 掃描 `~/.agents/skills`、`$CLAUDE_CONFIG_DIR/skills`（預設 `~/.claude/skills`）、`$CODEX_HOME/skills`（預設 `~/.codex/skills`），唯讀、不寫入任何設定 |
+| `getExternalSkillRoots` | 無 | 讀取目前 Runner `[skills]` 的 `roots`／`script_roots` 與 `revision` |
+| `setExternalSkillRoots` | `roots`, `script_roots`, `expected_revision`, `verify_project_path?` | Replace 語意：送完整清單；`script_roots` 必須是 `roots` 的子集 |
+
+`discoverExternalSkillSources` result：
+
+```json
+{ "format": "chadex.external_skill_sources.v1",
+  "sources": [{
+    "kind": "agents|claude|codex", "path": "...", "canonical_path": "...?",
+    "status": "available|not_found|not_directory|unavailable|scan_limit_exceeded|duplicate_source",
+    "root_is_link": false, "same_as": "agents|claude|codex?",
+    "valid_count": 0, "symlink_count": 0, "invalid_count": 0, "script_count": 0,
+    "truncated": false, "provided_by": ["canonical root"],
+    "packages": [{ "package": "...", "state": "valid|symlink|invalid", "name": "?",
+                   "description": "?", "has_scripts": false, "link_target_root": "?",
+                   "invalid_reason": "?", "name_conflict": false }] }],
+  "recommended_roots": ["canonical path"] }
+```
+
+`provided_by` 是該 source 內 symlink package 解析後落入的 canonical root；全部 package 都是 symlink（`valid_count == 0`）或 `duplicate_source` 的 source 不應直接連接，應連接 `provided_by`／`recommended_roots` 中的真實 root。
+
+`getExternalSkillRoots` result：`{ "format": "chadex.external_skill_roots.v1", "roots": [...], "script_roots": [...], "revision": "<sha256 of runner.toml>" }`。Local runtime 尚未設定或非 idle 時回 `runtime_not_ready`。
+
+`setExternalSkillRoots` result 同上並多 `"generation": Int`。路徑必須是 exact canonical path（取自 discovery 的 `canonical_path`／`recommended_roots`，或 `resolvingSymlinksInPath()` 加 standardize 後的目錄選擇結果）；有開啟 project 時帶 `verify_project_path`，供寫入後驗證 catalog。
+
+`setExternalSkillRoots` 錯誤碼：
+
+| Code | 意義 |
+| --- | --- |
+| `external_skill_roots_conflict` | `expected_revision` 已過期；`details.current_revision`。重新讀取後再套用 |
+| `skill_root_invalid`／`skill_root_not_found`／`skill_root_is_link`／`skill_root_not_directory`／`skill_root_not_canonical`／`skill_root_sensitive` | 路徑被拒；`details.path` |
+| `runner_config_rejected` | Runner 的 config check 拒絕新設定 |
+| `runner_config_reload_failed`／`runner_config_restart_required`／`runner_config_reload_unsupported` | Runner 無法 hot reload；設定已回復（restart_required 需重啟 runtime） |
+| `runtime_unreachable`／`runtime_not_ready` | Runtime 無法連線或尚未就緒 |
+| `external_skill_roots_unverified` | 寫入後驗證失敗；`details.rolled_back` 表示是否已回復 |
+| `external_skill_roots_state_unknown` | Runner 可能仍在使用新設定；client 應重新讀取並再套用一次 |
 
 ### Project Memory
 

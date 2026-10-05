@@ -43,6 +43,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var skillMutationInFlightIDs: Set<String> = []
     @Published private(set) var projectSkillWriteInFlight = false
     @Published private(set) var skillInstallInFlight = false
+    @Published private(set) var externalSkillSources: ExternalSkillSourceDiscovery?
+    @Published private(set) var externalSkillRoots: ExternalSkillRootsState?
+    @Published private(set) var externalSkillsLoading = false
+    @Published private(set) var externalSkillsApplying = false
+    @Published private(set) var externalSkillsError: String?
     @Published private(set) var projectMemoryCatalog: ProjectMemoryCatalog?
     @Published private(set) var projectMemoryRecords: [String: ProjectMemoryRecord] = [:]
     @Published private(set) var projectMemoryLoading = false
@@ -153,6 +158,7 @@ final class AppModel: ObservableObject {
                 sourceScope: descriptor.sourceScope,
                 trust: descriptor.trust,
                 nameConflict: descriptor.nameConflict,
+                scriptsAllowed: descriptor.scriptsAllowed,
                 managed: managedByID[descriptor.skillId]
             )
         }
@@ -167,6 +173,7 @@ final class AppModel: ObservableObject {
                 sourceScope: "runner",
                 trust: "operator_installed_guidance",
                 nameConflict: false,
+                scriptsAllowed: true,
                 managed: managed
             ))
         }
@@ -761,6 +768,89 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func refreshExternalSkillSources() async {
+        guard !externalSkillsLoading, !externalSkillsApplying else { return }
+        externalSkillsLoading = true
+        defer { externalSkillsLoading = false }
+        do {
+            externalSkillSources = try await helper.request(
+                method: "discoverExternalSkillSources",
+                params: EmptyParams()
+            )
+            externalSkillsError = nil
+        } catch {
+            externalSkillSources = nil
+            externalSkillsError = externalSkillErrorMessage(error)
+        }
+        do {
+            externalSkillRoots = try await helper.request(
+                method: "getExternalSkillRoots",
+                params: EmptyParams()
+            )
+        } catch {
+            externalSkillRoots = nil
+            externalSkillsError = externalSkillErrorMessage(error)
+        }
+    }
+
+    /// Replaces the configured external roots with the full desired lists.
+    @discardableResult
+    func applyExternalSkillRoots(roots: [String], scriptRoots: [String]) async -> Bool {
+        guard !externalSkillsApplying, let current = externalSkillRoots else { return false }
+        externalSkillsApplying = true
+        defer { externalSkillsApplying = false }
+        let rootSet = Set(roots)
+        let params = SetExternalSkillRootsParams(
+            roots: roots,
+            scriptRoots: scriptRoots.filter { rootSet.contains($0) },
+            expectedRevision: current.revision,
+            verifyProjectPath: selectedProject?.path
+        )
+        do {
+            externalSkillRoots = try await helper.request(method: "setExternalSkillRoots", params: params)
+            externalSkillsError = nil
+            skillsLastRefreshUptime = nil
+            await refreshSkills()
+            return true
+        } catch {
+            let message = externalSkillErrorMessage(error)
+            let code = helperErrorPayload(error)?.code
+            if code == "external_skill_roots_conflict" || code == "external_skill_roots_state_unknown" {
+                if let fresh: ExternalSkillRootsState = try? await helper.request(
+                    method: "getExternalSkillRoots",
+                    params: EmptyParams()
+                ) {
+                    externalSkillRoots = fresh
+                }
+            }
+            externalSkillsError = message
+            return false
+        }
+    }
+
+    private func externalSkillErrorMessage(_ error: Error) -> String {
+        guard let payload = helperErrorPayload(error) else { return error.localizedDescription }
+        var path = ""
+        if case .object(let details)? = payload.details, case .string(let value)? = details["path"] {
+            path = value
+        }
+        switch payload.code {
+        case "external_skill_roots_conflict": return L10n.string("skills.external.error.conflict")
+        case "skill_root_invalid", "skill_root_not_found", "skill_root_is_link",
+             "skill_root_not_directory", "skill_root_not_canonical":
+            return L10n.string("skills.external.error.rootInvalid", path)
+        case "skill_root_sensitive": return L10n.string("skills.external.error.rootSensitive", path)
+        case "runner_config_rejected": return L10n.string("skills.external.error.rejected")
+        case "runner_config_reload_failed", "runner_config_reload_unsupported", "runtime_unreachable":
+            return L10n.string("skills.external.error.reload")
+        case "runner_config_restart_required": return L10n.string("skills.external.error.restart")
+        case "runtime_not_ready": return L10n.string("skills.external.error.notReady")
+        case "external_skill_roots_unverified": return L10n.string("skills.external.error.unverified")
+        case "external_skill_roots_state_unknown": return L10n.string("skills.external.error.stateUnknown")
+        default: return payload.message
+        }
+    }
+
     func setManagedSkillEnabled(_ item: SkillCenterItem, enabled: Bool) async {
         guard let selectedProject, let managed = item.managed else { return }
         guard !skillMutationInFlightIDs.contains(item.skillId) else { return }
@@ -970,6 +1060,7 @@ final class AppModel: ObservableObject {
         skillDefinitionLoadingIDs.removeAll()
         skillMutationInFlightIDs.removeAll()
         skillsLastRefreshUptime = nil
+        externalSkillsError = nil
     }
 
     private func helperErrorPayload(_ error: Error) -> HelperErrorPayload? {

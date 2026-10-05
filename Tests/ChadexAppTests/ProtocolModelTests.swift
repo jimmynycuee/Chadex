@@ -106,6 +106,87 @@ final class ProtocolModelTests: XCTestCase {
         XCTAssertFalse(catalogJSON.contains(Data("PRIVATE_DEFINITION_BODY".utf8)))
     }
 
+    func testExternalSkillRpcModelsDecode() throws {
+        let discoveryJSON = #"""
+        {
+          "format": "chadex.external_skill_sources.v1",
+          "sources": [
+            {
+              "kind": "agents", "path": "/Users/me/.agents/skills",
+              "canonical_path": "/Users/me/.agents/skills", "status": "available",
+              "root_is_link": false, "valid_count": 2, "symlink_count": 0,
+              "invalid_count": 1, "script_count": 1, "truncated": false,
+              "provided_by": [],
+              "packages": [
+                {"package": "a", "state": "valid", "name": "a", "description": "A", "has_scripts": true, "name_conflict": false},
+                {"package": "bad", "state": "invalid", "has_scripts": false, "invalid_reason": "missing description", "name_conflict": false}
+              ]
+            },
+            {
+              "kind": "claude", "path": "/Users/me/.claude/skills", "status": "not_found",
+              "root_is_link": false, "same_as": "agents", "valid_count": 0, "symlink_count": 3,
+              "invalid_count": 0, "script_count": 0, "truncated": false,
+              "provided_by": ["/Users/me/dev/skills"],
+              "packages": [{"package": "x", "state": "symlink", "has_scripts": false, "link_target_root": "/Users/me/dev/skills", "name_conflict": false}]
+            }
+          ],
+          "recommended_roots": ["/Users/me/.agents/skills", "/Users/me/dev/skills"]
+        }
+        """#.data(using: .utf8)!
+        let discovery = try JSONDecoder.chadex.decode(ExternalSkillSourceDiscovery.self, from: discoveryJSON)
+        XCTAssertEqual(discovery.sources.count, 2)
+        XCTAssertEqual(discovery.sources[0].canonicalPath, "/Users/me/.agents/skills")
+        XCTAssertEqual(discovery.sources[0].packages[1].invalidReason, "missing description")
+        XCTAssertTrue(discovery.sources[0].packages[0].hasScripts)
+        XCTAssertNil(discovery.sources[1].canonicalPath)
+        XCTAssertEqual(discovery.sources[1].sameAs, "agents")
+        XCTAssertEqual(discovery.sources[1].providedBy, ["/Users/me/dev/skills"])
+        XCTAssertEqual(discovery.sources[1].packages[0].linkTargetRoot, "/Users/me/dev/skills")
+        XCTAssertEqual(discovery.recommendedRoots.count, 2)
+
+        let rootsJSON = #"""
+        {"format": "chadex.external_skill_roots.v1", "roots": ["/a"], "script_roots": ["/a"], "revision": "abc"}
+        """#.data(using: .utf8)!
+        let roots = try JSONDecoder.chadex.decode(ExternalSkillRootsState.self, from: rootsJSON)
+        XCTAssertEqual(roots.scriptRoots, ["/a"])
+        XCTAssertNil(roots.generation)
+
+        let setJSON = #"""
+        {"format": "chadex.external_skill_roots.v1", "roots": [], "script_roots": [], "revision": "def", "generation": 4}
+        """#.data(using: .utf8)!
+        XCTAssertEqual(try JSONDecoder.chadex.decode(ExternalSkillRootsState.self, from: setJSON).generation, 4)
+
+        let params = SetExternalSkillRootsParams(
+            roots: ["/a"], scriptRoots: [], expectedRevision: "abc", verifyProjectPath: nil
+        )
+        let encoded = try JSONEncoder.chadex.encode(params)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(object["expected_revision"] as? String, "abc")
+        XCTAssertEqual(object["script_roots"] as? [String], [])
+        XCTAssertNil(object["verify_project_path"])
+    }
+
+    func testSkillDescriptorScriptsAllowedIsOptional() throws {
+        func catalog(_ extra: String) -> Data {
+            """
+            {"project": "p", "catalog_revision": "r", "total_count": 1, "returned_count": 1,
+             "skills": [{"skill_id": "s", "name": "n", "description": "d",
+               "definition_revision": "x", "package_revision": null,
+               "source_scope": "runner", "trust": "operator_configured_guidance",
+               "name_conflict": false\(extra)}],
+             "invalid_count": 0, "diagnostics": [], "discovery_truncated": false}
+            """.data(using: .utf8)!
+        }
+        let legacy = try JSONDecoder.chadex.decode(SkillCatalogInspection.self, from: catalog(""))
+        XCTAssertNil(legacy.skills[0].scriptsAllowed)
+        let off = try JSONDecoder.chadex.decode(
+            SkillCatalogInspection.self, from: catalog(", \"scripts_allowed\": false"))
+        XCTAssertEqual(off.skills[0].scriptsAllowed, false)
+        let on = try JSONDecoder.chadex.decode(
+            SkillCatalogInspection.self, from: catalog(", \"scripts_allowed\": true"))
+        XCTAssertEqual(on.skills[0].scriptsAllowed, true)
+    }
+
     func testProjectMemoryCatalogAndLazyRecordDecode() throws {
         let catalogJSON = #"""
         {
