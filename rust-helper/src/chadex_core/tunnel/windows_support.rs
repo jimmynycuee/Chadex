@@ -47,7 +47,7 @@ pub(super) fn protect_private_directory(path: &Path) -> Result<(), String> {
     protect_handle(directory.as_raw_handle() as _, true)
 }
 
-pub(super) fn write_new_private_file(path: &Path, content: &[u8]) -> Result<(), String> {
+pub(crate) fn write_new_private_file(path: &Path, content: &[u8]) -> Result<(), String> {
     reject_reparse_path(path)?;
     let mut file = OpenOptions::new()
         .write(true)

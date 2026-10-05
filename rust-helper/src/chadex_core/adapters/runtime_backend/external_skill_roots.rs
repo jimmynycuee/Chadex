@@ -5,9 +5,9 @@
 
 use super::*;
 use crate::chadex_core::external_skills::{
-    current_skill_roots, persist_if_unchanged, read_runner_config, render_skill_roots,
-    restore_if_unchanged, runner_config_revision, validate_requested_roots, RootRejection,
-    SYSTEM_SKILL_ROOT_DENYLIST,
+    current_skill_roots, normalize_requested_roots, persist_if_unchanged, read_runner_config,
+    render_skill_roots, restore_if_unchanged, runner_config_revision, system_skill_root_denylist,
+    validate_requested_roots, RootRejection,
 };
 use crate::chadex_core::runtime_compat::state::ChadexRunnerConfigTarget;
 
@@ -47,7 +47,11 @@ impl RuntimeBackendAdapter {
             if revision != expected_revision {
                 return Err(revision_conflict(&revision));
             }
-            validate_requested_roots(&roots, &script_roots, &home, SYSTEM_SKILL_ROOT_DENYLIST)
+            // Store the plain spelling even when the client sent `\\?\C:\...`.
+            let roots = normalize_requested_roots(&roots);
+            let script_roots = normalize_requested_roots(&script_roots);
+            let denylist = system_skill_root_denylist();
+            validate_requested_roots(&roots, &script_roots, &home, &denylist)
                 .map_err(root_rejection)?;
             let candidate =
                 render_skill_roots(&original, &roots, &script_roots).map_err(config_error)?;

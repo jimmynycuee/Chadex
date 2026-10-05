@@ -133,6 +133,48 @@ fn windows_private_directory_file_and_session_have_protected_dacl() {
     assert!(!session_dir.exists());
 }
 
+#[test]
+fn windows_runner_config_and_backup_carry_the_private_dacl() {
+    use crate::chadex_core::external_skills::{
+        persist_if_unchanged, restore_if_unchanged, runner_config_backup_path,
+    };
+    let fixture = tempfile::tempdir().unwrap();
+    let config = fixture.path().join("runner.toml");
+    // The original file inherits the (open) parent ACL, as a hand-made one would.
+    fs::write(&config, "client_id = \"c\"\n").unwrap();
+    persist_if_unchanged(&config, "client_id = \"c\"\n", "client_id = \"d\"\n").unwrap();
+    assert_eq!(fs::read_to_string(&config).unwrap(), "client_id = \"d\"\n");
+    assert_private_dacl(&config, false);
+    let backup = runner_config_backup_path(&config);
+    assert_eq!(fs::read_to_string(&backup).unwrap(), "client_id = \"c\"\n");
+    assert_private_dacl(&backup, false);
+    // Rollback replaces runner.toml again and keeps it private.
+    assert!(restore_if_unchanged(&config, "client_id = \"d\"\n", "client_id = \"c\"\n").unwrap());
+    assert_eq!(fs::read_to_string(&config).unwrap(), "client_id = \"c\"\n");
+    assert_private_dacl(&config, false);
+    let leftovers = fs::read_dir(fixture.path())
+        .unwrap()
+        .filter(|entry| entry.as_ref().unwrap().file_name().to_string_lossy().ends_with(".tmp"))
+        .count();
+    assert_eq!(leftovers, 0);
+}
+
+#[test]
+fn windows_runner_config_is_not_written_through_a_junction_directory() {
+    use crate::chadex_core::external_skills::persist_if_unchanged;
+    let fixture = tempfile::tempdir().unwrap();
+    let target = fixture.path().join("real");
+    fs::create_dir(&target).unwrap();
+    let junction = Junction::new(&fixture.path().join("linked"), &target);
+    let config = junction.0.join("runner.toml");
+    // runner.toml cannot be read through the link, so nothing may be written.
+    fs::write(target.join("runner.toml"), "a = 1\n").unwrap();
+    let before = fs::read_dir(&target).unwrap().count();
+    assert!(persist_if_unchanged(&config, "a = 1\n", "a = 2\n").is_err());
+    assert_eq!(fs::read_to_string(target.join("runner.toml")).unwrap(), "a = 1\n");
+    assert_eq!(fs::read_dir(&target).unwrap().count(), before);
+}
+
 struct Junction(PathBuf);
 
 impl Junction {

@@ -20,8 +20,9 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use zeroize::Zeroizing;
 
+// Shared with `external_skills`, which protects runner.toml and its backup.
 #[cfg(windows)]
-mod windows_support;
+pub(super) mod windows_support;
 
 const TUNNEL_CLIENT_VERSION: &str = "0.0.12";
 const RELEASE_BASE: &str = "https://github.com/openai/tunnel-client/releases/download/v0.0.12";

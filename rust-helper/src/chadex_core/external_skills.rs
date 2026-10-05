@@ -14,6 +14,8 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+mod path_form;
+
 pub(crate) const EXTERNAL_SKILL_DISCOVERY_FORMAT: &str = "chadex.external_skill_sources.v1";
 /// Same bound as the Runner's `MAX_CONFIGURED_SKILL_ROOT_SCAN_ENTRIES`.
 pub(crate) const MAX_ROOT_SCAN_ENTRIES: usize = 1024;
@@ -126,7 +128,10 @@ pub(crate) fn discover_external_skill_sources(env: &DiscoveryEnv) -> ExternalSki
     for (kind, path) in env.candidates() {
         let mut source = scan_source(kind, &path);
         if let Some(canonical) = source.canonical_path.as_deref().map(PathBuf::from) {
-            if let Some((_, first_kind)) = seen_roots.iter().find(|(root, _)| *root == canonical) {
+            if let Some((_, first_kind)) = seen_roots
+                .iter()
+                .find(|(root, _)| path_form::same_path(root, &canonical))
+            {
                 source.status = "duplicate_source";
                 source.same_as = Some(first_kind);
                 source.packages.clear();
@@ -178,7 +183,7 @@ fn scan_source(kind: &'static str, path: &Path) -> ExternalSkillSource {
         }
     };
     source.root_is_link = metadata_is_link_like(&metadata);
-    let root = match path.canonicalize() {
+    let root = match path_form::canonicalize(path) {
         Ok(root) if root.is_dir() => root,
         Ok(_) => {
             source.status = "not_directory";
@@ -239,11 +244,12 @@ fn bounded_root_entries(root: &Path) -> Result<Vec<(String, bool)>, &'static str
         }
         let entry = entry.map_err(|_| "unavailable")?;
         let file_type = entry.file_type().map_err(|_| "unavailable")?;
-        if !file_type.is_dir() && !file_type.is_symlink() {
+        let is_link = file_type.is_symlink() || entry_is_reparse_point(&entry);
+        if !file_type.is_dir() && !is_link {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        candidates.push((name, file_type.is_symlink()));
+        candidates.push((name, is_link));
     }
     candidates.sort();
     Ok(candidates)
@@ -270,7 +276,7 @@ fn inspect_package(root: &Path, (package_name, is_link): &(String, bool)) -> Ext
         return package;
     }
     let entry_path = root.join(package_name);
-    let package_root = match entry_path.canonicalize() {
+    let package_root = match path_form::canonicalize(&entry_path) {
         Ok(path) if path.is_dir() => path,
         _ => {
             if *is_link {
@@ -361,11 +367,14 @@ fn mark_name_conflicts(sources: &mut [ExternalSkillSource]) {
 }
 
 fn recommended_roots(sources: &[ExternalSkillSource], home: &Path) -> Vec<String> {
-    let home = home.canonicalize().unwrap_or_else(|_| home.to_path_buf());
+    let home = path_form::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
     let mut roots = Vec::<String>::new();
     let mut push = |root: &str| {
         let path = Path::new(root);
-        if path == home || path.parent().is_none() || roots.iter().any(|seen| seen == root) {
+        if path_form::same_path(path, &home)
+            || path.parent().is_none()
+            || roots.iter().any(|seen| seen == root)
+        {
             return;
         }
         roots.push(root.to_string());
@@ -413,6 +422,23 @@ fn metadata_is_link_like(metadata: &fs::Metadata) -> bool {
     false
 }
 
+/// `FileType::is_symlink` is the Unix link check; on Windows it depends on the
+/// reparse tag, so also treat any reparse point (junction, symlinked
+/// directory) as a link, exactly as `metadata_is_link_like` does for
+/// `symlink_metadata`. `DirEntry::metadata` does not follow links.
+#[cfg(windows)]
+fn entry_is_reparse_point(entry: &fs::DirEntry) -> bool {
+    entry
+        .metadata()
+        .map(|metadata| metadata_is_link_like(&metadata))
+        .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+fn entry_is_reparse_point(_entry: &fs::DirEntry) -> bool {
+    false
+}
+
 // ---------------------------------------------------------------------------
 // Writing `[skills]` in runner.toml
 // ---------------------------------------------------------------------------
@@ -420,8 +446,9 @@ fn metadata_is_link_like(metadata: &fs::Metadata) -> bool {
 pub(crate) const RUNNER_CONFIG_MAX_BYTES: u64 = 256 * 1024;
 const RUNNER_CONFIG_BACKUP_SUFFIX: &str = ".chadex-skills.bak";
 
-/// System trees that can never be connected as a Skill root. `/` only matches
-/// exactly; every other entry also covers its descendants.
+/// Unix system trees that can never be connected as a Skill root. `/` only
+/// matches exactly; every other entry also covers its descendants. See
+/// `system_skill_root_denylist` for the list used on the running platform.
 pub(crate) const SYSTEM_SKILL_ROOT_DENYLIST: &[&str] = &[
     "/",
     "/System",
@@ -441,6 +468,21 @@ pub(crate) const SYSTEM_SKILL_ROOT_DENYLIST: &[&str] = &[
     "/boot",
     "/opt",
 ];
+
+/// System trees that can never be connected as a Skill root on this platform.
+/// On Windows these are `%SystemRoot%`, `%ProgramFiles%`,
+/// `%ProgramFiles(x86)%` and `%ProgramData%`; filesystem roots (`/`, `C:\`,
+/// UNC share roots) are always refused by `validate_requested_roots` itself.
+pub(crate) fn system_skill_root_denylist() -> Vec<String> {
+    if cfg!(windows) {
+        path_form::windows_system_roots(|name| std::env::var_os(name))
+    } else {
+        SYSTEM_SKILL_ROOT_DENYLIST
+            .iter()
+            .map(|entry| entry.to_string())
+            .collect()
+    }
+}
 
 /// Credential stores under the home directory that are never Skill roots.
 const HOME_CREDENTIAL_DIRS: &[&str] = &[".ssh", ".gnupg", ".aws", ".kube", ".docker"];
@@ -517,20 +559,34 @@ pub(crate) fn current_skill_roots(content: &str) -> Result<ExternalSkillRootsSta
     })
 }
 
+/// Requested roots in the spelling that is stored in runner.toml: a Windows
+/// verbatim prefix (`\\?\C:\Skills`, what `std::fs::canonicalize` returns and
+/// the folder picker sends) is dropped when that is lossless. No-op on Unix.
+pub(crate) fn normalize_requested_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
+    roots
+        .iter()
+        .map(|root| path_form::simplify_verbatim(root.clone()))
+        .collect()
+}
+
 /// Allow-list check for roots Chadex is about to write. Every root must be an
 /// existing, canonical (link-free) directory outside system trees, the home
 /// directory itself and its credential stores; `script_roots` must be a subset
-/// of `roots`. Shape rules are shared with the Runner.
+/// of `roots`. Shape rules are shared with the Runner. Both the verbatim and
+/// the plain Windows spelling of a root are accepted (see
+/// `normalize_requested_roots`; callers must write the normalized form).
 pub(crate) fn validate_requested_roots(
     roots: &[PathBuf],
     script_roots: &[PathBuf],
     home: &Path,
-    system_denylist: &[&str],
+    system_denylist: &[impl AsRef<str>],
 ) -> Result<(), RootRejection> {
-    chadex_runtime_runner_config::skills::validate_configured_skill_roots(roots, script_roots)
+    let roots = normalize_requested_roots(roots);
+    let script_roots = normalize_requested_roots(script_roots);
+    chadex_runtime_runner_config::skills::validate_configured_skill_roots(&roots, &script_roots)
         .map_err(|_| RootRejection::new("skill_root_invalid", None))?;
-    let home = home.canonicalize().unwrap_or_else(|_| home.to_path_buf());
-    for root in roots {
+    let home = path_form::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    for root in &roots {
         let metadata = fs::symlink_metadata(root)
             .map_err(|_| RootRejection::new("skill_root_not_found", Some(root)))?;
         if metadata_is_link_like(&metadata) {
@@ -539,33 +595,34 @@ pub(crate) fn validate_requested_roots(
         if !metadata.is_dir() {
             return Err(RootRejection::new("skill_root_not_directory", Some(root)));
         }
-        let canonical = root
-            .canonicalize()
+        let canonical = path_form::canonicalize(root)
             .map_err(|_| RootRejection::new("skill_root_not_found", Some(root)))?;
         // Compare text, not components: `Path` equality ignores `.` and
         // trailing separators, but runner.toml should hold the exact path.
-        if canonical.as_os_str() != root.as_os_str() {
+        // Windows paths are case-insensitive, so only the spelling of the
+        // letters may differ there.
+        if !path_form::same_text(&canonical, root) {
             return Err(RootRejection::new("skill_root_not_canonical", Some(root)));
         }
-        let denied_system = system_denylist.iter().any(|denied| {
-            let denied = Path::new(denied);
-            if denied.parent().is_none() {
-                canonical == denied
-            } else {
-                canonical.starts_with(denied)
-            }
-        });
-        if denied_system || home.starts_with(&canonical) {
+        // A path without a parent is a filesystem root (`/`, `C:\`, a UNC share).
+        let denied_system = canonical.parent().is_none()
+            || system_denylist.iter().any(|denied| {
+                let denied = Path::new(denied.as_ref());
+                if denied.parent().is_none() {
+                    path_form::same_path(&canonical, denied)
+                } else {
+                    path_form::starts_with(&canonical, denied)
+                }
+            });
+        if denied_system || path_form::starts_with(&home, &canonical) {
             return Err(RootRejection::new("skill_root_sensitive", Some(root)));
         }
-        let in_credential_store = canonical
-            .strip_prefix(&home)
-            .ok()
-            .and_then(|relative| relative.components().next())
+        let in_credential_store = path_form::strip_prefix(&canonical, &home)
+            .and_then(|relative| relative.components().next().map(|first| first.as_os_str().to_owned()))
             .is_some_and(|first| {
                 HOME_CREDENTIAL_DIRS
                     .iter()
-                    .any(|dir| first.as_os_str().eq_ignore_ascii_case(dir))
+                    .any(|dir| first.eq_ignore_ascii_case(dir))
             });
         if in_credential_store || is_secret_path(&canonical.to_string_lossy()) {
             return Err(RootRejection::new("skill_root_sensitive", Some(root)));
@@ -649,7 +706,6 @@ pub(crate) fn restore_if_unchanged(
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
     let parent = path.parent().ok_or(std::io::ErrorKind::InvalidInput)?;
     let name = path
         .file_name()
@@ -662,6 +718,19 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     // Keep the target name as the prefix so runner.toml temp files stay covered
     // by the secret-path rules even if a crash leaves one behind.
     let temp = parent.join(format!("{name}.{}.{nonce}.tmp", std::process::id()));
+    let result = write_new_private_temp(&temp, bytes).and_then(|()| fs::rename(&temp, path));
+    if result.is_err() {
+        let _ = fs::remove_file(&temp);
+    }
+    result
+}
+
+/// Create `temp` exclusively, owner-only from the first byte, then fill and
+/// sync it. The rename in `write_atomic` carries the protection to the final
+/// file (runner.toml and its backup hold the Runner token).
+#[cfg(not(windows))]
+fn write_new_private_temp(temp: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -669,16 +738,17 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let result = (|| {
-        let mut file = options.open(&temp)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        fs::rename(&temp, path)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temp);
-    }
-    result
+    let mut file = options.open(temp)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+/// Windows has no mode bits: the file would inherit the parent's ACL, so use
+/// the same protected current-user/SYSTEM DACL the tunnel state files get.
+#[cfg(windows)]
+fn write_new_private_temp(temp: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    crate::chadex_core::tunnel::windows_support::write_new_private_file(temp, bytes)
+        .map_err(std::io::Error::other)
 }
 
 #[cfg(test)]
@@ -705,6 +775,62 @@ mod tests {
             claude_config_dir: None,
             codex_home: None,
         }
+    }
+
+    /// The canonical spelling discovery reports (no `\\?\` prefix on Windows).
+    fn canon(path: &Path) -> PathBuf {
+        path_form::canonicalize(path).unwrap()
+    }
+
+    fn canon_text(path: &Path) -> String {
+        canon(path).to_string_lossy().into_owned()
+    }
+
+    fn symlink_dir(link: &Path, target: &Path) -> bool {
+        #[cfg(unix)]
+        let result = std::os::unix::fs::symlink(target, link);
+        #[cfg(windows)]
+        let result = std::os::windows::fs::symlink_dir(target, link);
+        result.is_ok()
+    }
+
+    /// Junctions need no privilege; `mklink /J` requires an existing target.
+    #[cfg(windows)]
+    fn junction_dir(link: &Path, target: &Path) -> bool {
+        std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    /// Symlink where possible, else (Windows without symlink privilege) a junction.
+    fn any_dir_link(link: &Path, target: &Path) -> bool {
+        if symlink_dir(link, target) {
+            return true;
+        }
+        #[cfg(windows)]
+        {
+            junction_dir(link, target)
+        }
+        #[cfg(not(windows))]
+        {
+            false
+        }
+    }
+
+    /// Windows symlink creation needs a privilege (or Developer Mode).
+    fn symlinks_available() -> bool {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        fs::create_dir(&target).unwrap();
+        let available = symlink_dir(&dir.path().join("link"), &target);
+        if !available {
+            eprintln!("skipping: directory symlinks are not permitted here");
+        }
+        available
     }
 
     fn source<'a>(discovery: &'a ExternalSkillDiscovery, kind: &str) -> &'a ExternalSkillSource {
@@ -754,11 +880,16 @@ mod tests {
         assert_eq!(reasons["empty"], Some("missing_skill_definition"));
         assert_eq!(reasons["bad"], Some("skill_frontmatter_missing"));
         assert_eq!(reasons["alpha"], None);
-        let canonical = agents.canonicalize().unwrap();
+        assert_eq!(discovery.recommended_roots, vec![canon_text(&agents)]);
         assert_eq!(
-            discovery.recommended_roots,
-            vec![canonical.to_string_lossy().into_owned()]
+            agents_source.canonical_path.as_deref(),
+            Some(canon_text(&agents).as_str())
         );
+        assert!(!agents_source
+            .canonical_path
+            .as_deref()
+            .unwrap()
+            .starts_with(r"\\?\"));
     }
 
     #[test]
@@ -835,23 +966,21 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn symlink_packages_resolve_to_real_root_and_are_not_conflicts() {
-        use std::os::unix::fs::symlink;
+    fn symlink_packages_resolve_to_real_root(link: fn(&Path, &Path) -> bool) {
         let home = tempfile::tempdir().unwrap();
         let agents = home.path().join(".agents/skills");
         let claude = home.path().join(".claude/skills");
         write_skill(&agents, "alpha", "alpha", true);
         fs::create_dir_all(&claude).unwrap();
-        symlink(agents.join("alpha"), claude.join("alpha")).unwrap();
-        symlink(home.path().join("nowhere"), claude.join("dangling")).unwrap();
+        assert!(link(&claude.join("alpha"), &agents.join("alpha")));
+        // A dangling link can only be made with real symlinks.
+        let dangling = link(&claude.join("dangling"), &home.path().join("nowhere"));
 
         let discovery = discover_external_skill_sources(&env_for(home.path()));
         let claude_source = source(&discovery, "claude");
-        let agents_canonical = agents.canonicalize().unwrap().to_string_lossy().into_owned();
+        let agents_canonical = canon_text(&agents);
         assert_eq!(claude_source.valid_count, 0);
-        assert_eq!(claude_source.symlink_count, 2);
+        assert_eq!(claude_source.symlink_count, 1 + usize::from(dangling));
         assert_eq!(claude_source.script_count, 0);
         assert_eq!(claude_source.provided_by, vec![agents_canonical.clone()]);
         let linked = claude_source
@@ -863,49 +992,87 @@ mod tests {
         assert_eq!(linked.name.as_deref(), Some("alpha"));
         assert!(linked.has_scripts);
         assert!(!linked.name_conflict);
-        let dangling = claude_source
-            .packages
-            .iter()
-            .find(|package| package.package == "dangling")
-            .unwrap();
-        assert_eq!(dangling.state, "symlink");
-        assert_eq!(dangling.invalid_reason, Some("invalid_skill_package"));
+        if dangling {
+            let dangling = claude_source
+                .packages
+                .iter()
+                .find(|package| package.package == "dangling")
+                .unwrap();
+            assert_eq!(dangling.state, "symlink");
+            assert_eq!(dangling.invalid_reason, Some("invalid_skill_package"));
+        }
         assert_eq!(discovery.recommended_roots, vec![agents_canonical]);
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn link_only_source_recommends_its_target_root() {
-        use std::os::unix::fs::symlink;
+    fn link_only_source_recommends_target_root(link: fn(&Path, &Path) -> bool) {
         let home = tempfile::tempdir().unwrap();
         let store = home.path().join("dev/skill-store");
         let claude = home.path().join(".claude/skills");
         write_skill(&store, "gamma", "gamma", false);
         fs::create_dir_all(&claude).unwrap();
-        symlink(store.join("gamma"), claude.join("gamma")).unwrap();
+        assert!(link(&claude.join("gamma"), &store.join("gamma")));
         let discovery = discover_external_skill_sources(&env_for(home.path()));
-        assert_eq!(
-            discovery.recommended_roots,
-            vec![store.canonicalize().unwrap().to_string_lossy().into_owned()]
-        );
+        assert_eq!(source(&discovery, "claude").symlink_count, 1);
+        assert_eq!(discovery.recommended_roots, vec![canon_text(&store)]);
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn linked_root_reports_canonical_path_and_duplicates() {
-        use std::os::unix::fs::symlink;
+    fn linked_root_reports_canonical_path_and_duplicates_scenario(link: fn(&Path, &Path) -> bool) {
         let home = tempfile::tempdir().unwrap();
         let agents = home.path().join(".agents/skills");
         write_skill(&agents, "alpha", "alpha", false);
         fs::create_dir_all(home.path().join(".codex")).unwrap();
-        symlink(&agents, home.path().join(".codex/skills")).unwrap();
+        assert!(link(&home.path().join(".codex/skills"), &agents));
         let discovery = discover_external_skill_sources(&env_for(home.path()));
         let codex = source(&discovery, "codex");
         assert!(codex.root_is_link);
         assert_eq!(codex.status, "duplicate_source");
         assert_eq!(codex.same_as, Some("agents"));
         assert!(codex.packages.is_empty());
+        assert_eq!(
+            codex.canonical_path.as_deref(),
+            Some(canon_text(&agents).as_str())
+        );
         assert_eq!(discovery.recommended_roots.len(), 1);
+    }
+
+    #[test]
+    fn symlink_packages_resolve_to_real_root_and_are_not_conflicts() {
+        if symlinks_available() {
+            symlink_packages_resolve_to_real_root(symlink_dir);
+        }
+    }
+
+    #[test]
+    fn link_only_source_recommends_its_target_root() {
+        if symlinks_available() {
+            link_only_source_recommends_target_root(symlink_dir);
+        }
+    }
+
+    #[test]
+    fn linked_root_reports_canonical_path_and_duplicates() {
+        if symlinks_available() {
+            linked_root_reports_canonical_path_and_duplicates_scenario(symlink_dir);
+        }
+    }
+
+    // Junctions are what most Windows users have; they must look like symlinks.
+    #[cfg(windows)]
+    #[test]
+    fn junction_packages_resolve_to_real_root_and_are_not_conflicts() {
+        symlink_packages_resolve_to_real_root(junction_dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn junction_only_source_recommends_its_target_root() {
+        link_only_source_recommends_target_root(junction_dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn junction_root_reports_canonical_path_and_duplicates() {
+        linked_root_reports_canonical_path_and_duplicates_scenario(junction_dir);
     }
 
     #[test]
@@ -922,7 +1089,8 @@ mod tests {
     #[test]
     fn home_and_filesystem_root_are_never_recommended() {
         let home = tempfile::tempdir().unwrap();
-        let canonical_home = home.path().canonicalize().unwrap();
+        let canonical_home = canon(home.path());
+        let fs_root = canonical_home.ancestors().last().unwrap().to_path_buf();
         let sources = vec![ExternalSkillSource {
             kind: "agents",
             path: String::new(),
@@ -942,10 +1110,10 @@ mod tests {
                 name: Some("x".into()),
                 description: None,
                 has_scripts: false,
-                link_target_root: Some("/".into()),
+                link_target_root: Some(fs_root.to_string_lossy().into_owned()),
                 invalid_reason: None,
                 name_conflict: false,
-                canonical_package: Some(PathBuf::from("/x")),
+                canonical_package: Some(fs_root.join("x")),
             }],
         }];
         assert!(recommended_roots(&sources, home.path()).is_empty());
@@ -1031,53 +1199,225 @@ mod tests {
         assert_ne!(state.revision, runner_config_revision("x = 1\n"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn rejects_links_relative_missing_and_sensitive_roots() {
-        use std::os::unix::fs::symlink;
         let base = tempfile::tempdir().unwrap();
-        let home = base.path().canonicalize().unwrap().join("home");
-        let skills = home.join(".agents/skills");
+        let home = canon(base.path()).join("home");
+        let skills = home.join(".agents").join("skills");
         fs::create_dir_all(&skills).unwrap();
-        fs::create_dir_all(home.join(".ssh/skills")).unwrap();
-        symlink(&skills, home.join("linked")).unwrap();
-        let deny: &[&str] = &["/", "/System", "/etc"];
+        let ssh_skills = home.join(".ssh").join("skills");
+        fs::create_dir_all(&ssh_skills).unwrap();
+        let linked = home.join("linked");
+        let have_link = any_dir_link(&linked, &skills);
+        assert!(have_link || !cfg!(unix), "symlink creation must work on Unix");
+        let fs_root = home.ancestors().last().unwrap().to_path_buf();
+        let deny: Vec<&str> = if cfg!(windows) {
+            Vec::new()
+        } else {
+            vec!["/", "/System", "/etc"]
+        };
         let check = |roots: &[PathBuf], scripts: &[PathBuf]| {
-            validate_requested_roots(roots, scripts, &home, deny).map_err(|error| error.code)
+            validate_requested_roots(roots, scripts, &home, &deny).map_err(|error| error.code)
         };
 
         assert_eq!(check(&[skills.clone()], &[skills.clone()]), Ok(()));
         assert_eq!(check(&[skills.clone()], &[home.clone()]), Err("skill_root_invalid"));
         assert_eq!(check(&[PathBuf::from("rel")], &[]), Err("skill_root_invalid"));
         assert_eq!(check(&[home.join("missing")], &[]), Err("skill_root_not_found"));
-        assert_eq!(check(&[home.join("linked")], &[]), Err("skill_root_is_link"));
+        if have_link {
+            assert_eq!(check(&[linked], &[]), Err("skill_root_is_link"));
+        }
         assert_eq!(
-            check(&[home.join(".agents/./skills")], &[]),
+            check(&[home.join(".agents").join(".").join("skills")], &[]),
             Err("skill_root_not_canonical")
         );
         assert_eq!(check(&[home.clone()], &[]), Err("skill_root_sensitive"));
         assert_eq!(check(&[home.parent().unwrap().to_path_buf()], &[]), Err("skill_root_sensitive"));
-        assert_eq!(check(&[home.join(".ssh/skills")], &[]), Err("skill_root_sensitive"));
-        assert_eq!(check(&[PathBuf::from("/")], &[]), Err("skill_root_sensitive"));
-        // `/etc` is itself a link on macOS; either way it is refused.
-        assert!(check(&[PathBuf::from("/etc")], &[]).is_err());
+        assert_eq!(check(&[ssh_skills], &[]), Err("skill_root_sensitive"));
+        assert_eq!(check(&[fs_root], &[]), Err("skill_root_sensitive"));
+        #[cfg(unix)]
+        {
+            // `/etc` is itself a link on macOS; either way it is refused.
+            assert!(check(&[PathBuf::from("/etc")], &[]).is_err());
+        }
+    }
+
+    #[test]
+    fn requested_roots_are_normalized_only_on_windows() {
+        let roots = [PathBuf::from(r"\\?\C:\Skills"), PathBuf::from("/plain")];
+        let normalized = normalize_requested_roots(&roots);
+        if cfg!(windows) {
+            assert_eq!(normalized, vec![PathBuf::from(r"C:\Skills"), PathBuf::from("/plain")]);
+        } else {
+            assert_eq!(normalized, roots.to_vec());
+        }
+    }
+
+    #[test]
+    fn filesystem_roots_are_refused_even_without_a_denylist_entry() {
+        let root = std::env::current_dir()
+            .unwrap()
+            .ancestors()
+            .last()
+            .unwrap()
+            .to_path_buf();
+        let no_denylist: &[&str] = &[];
+        assert_eq!(
+            validate_requested_roots(&[root], &[], Path::new("/nonexistent-home"), no_denylist)
+                .map_err(|error| error.code),
+            Err("skill_root_sensitive")
+        );
     }
 
     #[test]
     fn production_denylist_covers_system_trees() {
+        let denylist = system_skill_root_denylist();
+        if cfg!(windows) {
+            assert!(denylist.len() >= 4);
+            assert!(denylist.iter().all(|entry| Path::new(entry).is_absolute()));
+            assert!(!denylist.iter().any(|entry| entry == "/"));
+        } else {
+            assert_eq!(denylist, SYSTEM_SKILL_ROOT_DENYLIST);
+        }
         let tmp = tempfile::tempdir().unwrap();
         // macOS temp dirs live under /private/var, which must be refused.
-        let canonical = tmp.path().canonicalize().unwrap();
+        let canonical = canon(tmp.path());
         if canonical.starts_with("/private") || canonical.starts_with("/var") {
             assert_eq!(
                 validate_requested_roots(
                     &[canonical.clone()],
                     &[],
                     Path::new("/nonexistent-home"),
-                    SYSTEM_SKILL_ROOT_DENYLIST
+                    &denylist
                 )
                 .map_err(|error| error.code),
                 Err("skill_root_sensitive")
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    mod windows {
+        use super::*;
+
+        fn windows_dir() -> PathBuf {
+            PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into()))
+        }
+
+        #[test]
+        fn denylist_refuses_system_trees_and_drive_roots() {
+            let denylist = system_skill_root_denylist();
+            let check = |root: PathBuf| {
+                validate_requested_roots(&[root], &[], Path::new(r"C:\no-home"), &denylist)
+                    .map_err(|error| error.code)
+            };
+            let system32 = canon(&windows_dir().join("System32"));
+            assert_eq!(check(system32.clone()), Err("skill_root_sensitive"));
+            assert_eq!(check(canon(&windows_dir())), Err("skill_root_sensitive"));
+            let drive_root = system32.ancestors().last().unwrap().to_path_buf();
+            assert_eq!(check(drive_root), Err("skill_root_sensitive"));
+            if let Some(program_files) = std::env::var_os("ProgramFiles") {
+                assert_eq!(check(canon(Path::new(&program_files))), Err("skill_root_sensitive"));
+            }
+            if let Some(program_data) = std::env::var_os("ProgramData") {
+                assert_eq!(check(canon(Path::new(&program_data))), Err("skill_root_sensitive"));
+            }
+        }
+
+        #[test]
+        fn denylist_and_home_checks_ignore_case() {
+            let denylist = system_skill_root_denylist();
+            let shouting = canon(&windows_dir().join("System32"))
+                .to_string_lossy()
+                .to_uppercase();
+            // A case-only difference is still the canonical directory, so the
+            // denylist (not the canonical-spelling check) is what refuses it.
+            let error = validate_requested_roots(
+                &[PathBuf::from(shouting)],
+                &[],
+                Path::new(r"C:\no-home"),
+                &denylist,
+            )
+            .unwrap_err();
+            assert_eq!(error.code, "skill_root_sensitive");
+
+            let base = tempfile::tempdir().unwrap();
+            let home = canon(base.path()).join("Home");
+            let ssh = home.join(".SSH").join("skills");
+            fs::create_dir_all(&ssh).unwrap();
+            let lower_home = PathBuf::from(home.to_string_lossy().to_lowercase());
+            assert_eq!(
+                validate_requested_roots(&[ssh], &[], &lower_home, &denylist)
+                    .map_err(|error| error.code),
+                Err("skill_root_sensitive")
+            );
+        }
+
+        #[test]
+        fn canonical_roots_use_the_plain_spelling_and_ignore_case() {
+            let base = tempfile::tempdir().unwrap();
+            let home = canon(base.path()).join("home");
+            let skills = home.join("Skills");
+            write_skill(&skills, "alpha", "alpha", false);
+            let denylist = system_skill_root_denylist();
+            let text = skills.to_string_lossy().into_owned();
+            assert!(!text.starts_with(r"\\?\"), "{text}");
+            let check = |root: &Path| {
+                validate_requested_roots(&[root.to_path_buf()], &[], &home, &denylist)
+                    .map_err(|error| error.code)
+            };
+            assert_eq!(check(&skills), Ok(()));
+            assert_eq!(check(&PathBuf::from(text.to_lowercase())), Ok(()));
+            assert_eq!(check(&PathBuf::from(text.to_uppercase())), Ok(()));
+            // The verbatim spelling (what the folder picker sends) is accepted
+            // and normalised to the plain one.
+            let verbatim = PathBuf::from(format!(r"\\?\{text}"));
+            assert_eq!(check(&verbatim), Ok(()));
+            assert_eq!(
+                normalize_requested_roots(&[verbatim.clone()]),
+                vec![skills.clone()]
+            );
+            assert_eq!(
+                validate_requested_roots(&[verbatim.clone()], &[verbatim], &home, &denylist)
+                    .map_err(|error| error.code),
+                Ok(())
+            );
+            // Both spellings of one root are a duplicate, not two roots.
+            assert_eq!(
+                validate_requested_roots(
+                    &[skills.clone(), PathBuf::from(format!(r"\\?\{text}"))],
+                    &[],
+                    &home,
+                    &denylist
+                )
+                .map_err(|error| error.code),
+                Err("skill_root_invalid")
+            );
+            assert_eq!(
+                check(&PathBuf::from(format!("{text}\\"))),
+                Err("skill_root_not_canonical")
+            );
+            fs::create_dir_all(home.join(".agents")).unwrap();
+            fs::rename(&skills, home.join(".agents").join("skills")).unwrap();
+            let discovery = discover_external_skill_sources(&env_for(&home));
+            let reported = &discovery.recommended_roots[0];
+            assert!(!reported.starts_with(r"\\?\"), "{reported}");
+            assert_eq!(check(Path::new(reported)), Ok(()));
+        }
+
+        #[test]
+        fn runner_config_and_backup_are_replaced_atomically_without_stray_files() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("runner.toml");
+            fs::write(&path, SAMPLE_CONFIG).unwrap();
+            persist_if_unchanged(&path, SAMPLE_CONFIG, "x = 1\n").unwrap();
+            assert_eq!(fs::read_to_string(&path).unwrap(), "x = 1\n");
+            // A second write replaces both files that now exist.
+            persist_if_unchanged(&path, "x = 1\n", "x = 2\n").unwrap();
+            assert_eq!(fs::read_to_string(&path).unwrap(), "x = 2\n");
+            assert_eq!(
+                fs::read_to_string(runner_config_backup_path(&path)).unwrap(),
+                "x = 1\n"
             );
         }
     }
