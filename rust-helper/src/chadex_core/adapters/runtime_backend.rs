@@ -1775,7 +1775,6 @@ fn map_snapshot(snapshot: DesktopStateSnapshot) -> RuntimeSnapshot {
         });
     RuntimeSnapshot {
         runtime_configured: snapshot.topology.is_some(),
-        runtime_autostart: snapshot.runtime_autostart,
         readiness,
         project: snapshot.project.map(map_project),
         current_operation,

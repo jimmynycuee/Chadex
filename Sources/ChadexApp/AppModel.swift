@@ -78,7 +78,6 @@ final class AppModel: ObservableObject {
     private let keychainACLVersionKey = "app.chadex.keychain-acl-version"
     private let currentKeychainACLVersion = 1
     private var pollingTask: Task<Void, Never>?
-    private var runtimePrewarmTask: Task<Void, Never>?
     private var refreshInFlight = false
     private var skillsRefreshProjectID: UUID?
     private var skillsLastRefreshUptime: TimeInterval?
@@ -1669,8 +1668,6 @@ final class AppModel: ObservableObject {
                         startedUptime: serviceStarted,
                         succeeded: snapshot.error == nil
                     )
-                } else {
-                    startRuntimePrewarm()
                 }
             } else {
                 await refreshStatus(force: true)
@@ -1679,43 +1676,6 @@ final class AppModel: ObservableObject {
         } catch {
             present(error)
         }
-    }
-
-    /// Resumes an already configured local runtime in the background so a
-    /// later Connect only has to start the tunnel. The helper skips this when
-    /// the user explicitly stopped the service. Failures stay quiet: Connect
-    /// still runs the full recovery path and reports real errors.
-    private func startRuntimePrewarm() {
-        guard runtimePrewarmTask == nil else { return }
-        runtimePrewarmTask = Task { [weak self] in
-            guard let self else { return }
-            let timestamp = Date()
-            let started = ProcessInfo.processInfo.systemUptime
-            let succeeded: Bool
-            do {
-                _ = try await self.requestSnapshot(method: "prewarmRuntime", params: EmptyParams())
-                succeeded = true
-            } catch {
-                succeeded = false
-            }
-            self.recordAppPhase(
-                timestamp: timestamp,
-                operation: "bootstrap",
-                phase: "runtime_prewarm",
-                startedUptime: started,
-                succeeded: succeeded
-            )
-            self.runtimePrewarmTask = nil
-            if !succeeded {
-                await self.refreshStatus(force: true)
-            }
-        }
-    }
-
-    /// Runtime mutations are serialized in the helper; wait for the warm-up
-    /// instead of failing a user action with "operation busy".
-    private func waitForRuntimePrewarm() async {
-        await runtimePrewarmTask?.value
     }
 
     private func recordAppPhase(
@@ -1924,9 +1884,6 @@ final class AppModel: ObservableObject {
         method: String,
         params: Params
     ) async throws -> BackendSnapshot {
-        if !["prewarmRuntime", "getStatus", "cancelOperation"].contains(method) {
-            await waitForRuntimePrewarm()
-        }
         let requestSequence = beginSnapshotRequest()
         let candidate: BackendSnapshot = try await helper.request(method: method, params: params)
         applySnapshot(candidate, requestSequence: requestSequence)
