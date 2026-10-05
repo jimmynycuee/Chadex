@@ -249,7 +249,7 @@
 "status.preparing" = "Preparing";
 "status.connecting" = "Connecting…";
 "status.disconnecting" = "Disconnecting…";
-"status.waiting" = "Tunnel ready";
+"status.waiting" = "Connected, waiting for ChatGPT";
 "status.verified" = "Verified for this project";
 "status.stopped" = "Not connected";
 "status.error" = "Needs attention";
@@ -313,7 +313,7 @@
 "connection.explainConnecting" = "Chadex is starting the local service and Secure Tunnel. Connection checks can take a little while; progress is shown here while they run.";
 "connection.explainDisconnecting" = "Chadex is closing the Secure Tunnel while keeping the selected local project ready for the next connection.";
 "connection.explainWaiting" = "The secure tunnel is ready and Chadex is waiting for ChatGPT to connect.";
-"connection.explainReadyToUse" = "The Secure Tunnel is established, but ChatGPT has not yet successfully read this project. Verification completes after a successful project read.";
+"connection.explainReadyToUse" = "The connection is ready; you can start using it in ChatGPT. This turns to connected after ChatGPT's first call, and verification completes after a successful project read.";
 "connection.explainConnected" = "ChatGPT activity has been detected; verification completes after the first successful access to this project.";
 "connection.explainVerified" = "Tunnel and ChatGPT access are healthy. You can use the current project directly from ChatGPT.";
 "connection.explainStopped" = "The local project is ready, but the Secure Tunnel has not been established.";
