@@ -100,6 +100,10 @@
 "instructions.effective" = "View effective instructions";
 "instructions.truncated" = "This source was bounded for model context.";
 "instructions.changed" = "Instructions changed since the last observation: %@";
+"instructions.summary.loading" = "Checking…";
+"instructions.summary.none" = "None detected";
+"instructions.summary.sources" = "Sources: %d";
+"instructions.summary.unavailable" = "Details unavailable";
 
 "globalInstructions.title" = "CHADEX GLOBAL INSTRUCTIONS";
 "globalInstructions.subtitle" = "Applies to every Chadex project as an editable behavior preference. This is stored by Chadex itself and never reads or writes a parent-folder or repository AGENTS.md.";

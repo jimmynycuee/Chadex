@@ -100,6 +100,10 @@
 "instructions.effective" = "查看實際有效指令";
 "instructions.truncated" = "此來源為了模型 context 已受長度限制。";
 "instructions.changed" = "自上次觀察後指令已變更：%@";
+"instructions.summary.loading" = "檢查中…";
+"instructions.summary.none" = "未偵測到";
+"instructions.summary.sources" = "來源：%d";
+"instructions.summary.unavailable" = "詳細資訊暫不可用";
 
 "globalInstructions.title" = "CHADEX GLOBAL INSTRUCTIONS";
 "globalInstructions.subtitle" = "作為所有 Chadex 專案共用、可編輯的行為偏好。內容由 Chadex 自己儲存，不會讀取或寫入任何父資料夾或 repository 的 AGENTS.md。";

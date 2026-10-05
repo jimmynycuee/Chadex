@@ -515,6 +515,46 @@ final class ProtocolModelTests: XCTestCase {
         XCTAssertNil(ConnectionPresentation.error(for: snapshot, actionError: nil, isBootstrapping: true))
     }
 
+    func testConnectingSuppressesStaleBackendErrorUntilAttemptFinishes() {
+        let backendError = HelperErrorPayload(
+            code: "runtime_unavailable",
+            message: "Chadex local service needs attention",
+            recovery: "Retry",
+            details: nil
+        )
+        let snapshot = BackendSnapshot(
+            phase: .error,
+            selectedProject: nil,
+            tunnelReady: false,
+            chatGPTConnected: false,
+            chatGPTVerifiedForSelectedProject: false,
+            lastVerifiedAtMs: nil,
+            currentOperation: nil,
+            error: backendError,
+            activitySequence: 0,
+            stateRevision: 1
+        )
+
+        XCTAssertEqual(
+            ConnectionPresentation.phase(
+                for: snapshot,
+                isBootstrapping: false,
+                isConnecting: true
+            ),
+            .preparing
+        )
+        XCTAssertNil(
+            ConnectionPresentation.error(
+                for: snapshot,
+                actionError: nil,
+                isBootstrapping: false,
+                isConnecting: true
+            )
+        )
+        XCTAssertEqual(ConnectionPresentation.phase(for: snapshot, isBootstrapping: false), .error)
+        XCTAssertEqual(ConnectionPresentation.error(for: snapshot, actionError: nil, isBootstrapping: false), backendError)
+    }
+
     func testPersistentBackendErrorReturnsAfterBootstrap() {
         let backendError = HelperErrorPayload(
             code: "runtime_unavailable",

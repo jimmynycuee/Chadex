@@ -9,6 +9,7 @@ struct ProjectDetailView: View {
     let onShowAllActivity: () -> Void
     @State private var showingErrorDetails = false
     @State private var showingEffectiveInstructions = false
+    @State private var showingRepositoryInstructions = false
 
     var body: some View {
         ScrollView {
@@ -545,110 +546,134 @@ struct ProjectDetailView: View {
     }
 
     private var instructionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                SectionEyebrow(title: L10n.string("instructions.title"))
-                Spacer(minLength: 12)
-
-                Button {
-                    Task { await model.refreshProjectInstructions() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .disabled(model.projectInstructionsLoading || model.isSwitchingProject)
-                .help(L10n.string("instructions.refresh"))
-                .accessibilityLabel(L10n.string("instructions.refresh"))
-
-            }
-
-            Text(L10n.string("instructions.subtitle"))
-                .chadexFont(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(L10n.string("instructions.target"))
-                    .chadexFont(.caption, weight: .semibold)
-                    .foregroundStyle(.secondary)
-                Text(project.path)
-                    .chadexFont(.caption, design: .monospaced)
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
-            }
-
-            if model.projectInstructionsLoading && model.projectInstructions == nil {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(L10n.string("instructions.loading"))
+        HStack(alignment: .top, spacing: 12) {
+            DisclosureGroup(isExpanded: $showingRepositoryInstructions) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(L10n.string("instructions.subtitle"))
                         .chadexFont(.callout)
                         .foregroundStyle(.secondary)
-                }
-                .chadexPadding(.vertical, 8)
-            } else if let error = model.projectInstructionsError, model.projectInstructions == nil {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .chadexFont(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if let inspection = model.projectInstructions {
-                if !model.projectInstructionChangedPaths.isEmpty {
-                    Label(
-                        L10n.string("instructions.changed", model.projectInstructionChangedPaths.joined(separator: ", ")),
-                        systemImage: "arrow.triangle.2.circlepath"
-                    )
-                    .chadexFont(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
+                        .fixedSize(horizontal: false, vertical: true)
 
-                if inspection.sources.isEmpty {
-                    Label(
-                        inspection.isAvailable ? L10n.string("instructions.none") : L10n.string("instructions.unavailable"),
-                        systemImage: inspection.isAvailable ? "doc.badge.plus" : "exclamationmark.circle"
-                    )
-                    .chadexFont(.callout)
-                    .foregroundStyle(.secondary)
-                    .chadexPadding(.vertical, 6)
-
-                    VStack(spacing: 0) {
-                        currentTaskRow(index: 0)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(L10n.string("instructions.target"))
+                            .chadexFont(.caption, weight: .semibold)
+                            .foregroundStyle(.secondary)
+                        Text(project.path)
+                            .chadexFont(.caption, design: .monospaced)
+                            .foregroundStyle(.tertiary)
+                            .textSelection(.enabled)
                     }
-                    .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous))
-                } else {
-                    Text(L10n.string("instructions.hierarchy"))
-                        .chadexFont(.headline)
 
-                    VStack(spacing: 0) {
-                        ForEach(Array(inspection.sources.enumerated()), id: \.element.id) { index, source in
-                            instructionSourceRow(source, index: index)
-                            if index < inspection.sources.count - 1 {
-                                Divider().padding(.leading, layout.spacing(30))
+                    if model.projectInstructionsLoading && model.projectInstructions == nil {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text(L10n.string("instructions.loading"))
+                                .chadexFont(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .chadexPadding(.vertical, 8)
+                    } else if let error = model.projectInstructionsError, model.projectInstructions == nil {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .chadexFont(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if let inspection = model.projectInstructions {
+                        if !model.projectInstructionChangedPaths.isEmpty {
+                            Label(
+                                L10n.string("instructions.changed", model.projectInstructionChangedPaths.joined(separator: ", ")),
+                                systemImage: "arrow.triangle.2.circlepath"
+                            )
+                            .chadexFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        if inspection.sources.isEmpty {
+                            Label(
+                                inspection.isAvailable ? L10n.string("instructions.none") : L10n.string("instructions.unavailable"),
+                                systemImage: inspection.isAvailable ? "doc" : "exclamationmark.circle"
+                            )
+                            .chadexFont(.callout)
+                            .foregroundStyle(.secondary)
+                            .chadexPadding(.vertical, 6)
+
+                            VStack(spacing: 0) {
+                                currentTaskRow(index: 0)
+                            }
+                            .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous))
+                        } else {
+                            Text(L10n.string("instructions.hierarchy"))
+                                .chadexFont(.headline)
+
+                            VStack(spacing: 0) {
+                                ForEach(Array(inspection.sources.enumerated()), id: \.element.id) { index, source in
+                                    instructionSourceRow(source, index: index)
+                                    if index < inspection.sources.count - 1 {
+                                        Divider().padding(.leading, layout.spacing(30))
+                                    }
+                                }
+
+                                Divider()
+                                currentTaskRow(index: inspection.sources.count)
+                            }
+                            .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous))
+
+                            Text(L10n.string("instructions.broadToSpecific"))
+                                .chadexFont(.caption)
+                                .foregroundStyle(.tertiary)
+
+                            if inspection.contentIncluded && !inspection.effectiveContent.isEmpty {
+                                DisclosureGroup(L10n.string("instructions.effective"), isExpanded: $showingEffectiveInstructions) {
+                                    Text(inspection.effectiveContent)
+                                        .chadexFont(.caption, design: .monospaced)
+                                        .textSelection(.enabled)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .chadexPadding(.top, 8)
+                                }
+                                .chadexFont(.callout, weight: .medium)
                             }
                         }
-
-                        Divider()
-                        currentTaskRow(index: inspection.sources.count)
-                    }
-                    .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous))
-
-                    Text(L10n.string("instructions.broadToSpecific"))
-                        .chadexFont(.caption)
-                        .foregroundStyle(.tertiary)
-
-                    if inspection.contentIncluded && !inspection.effectiveContent.isEmpty {
-                        DisclosureGroup(L10n.string("instructions.effective"), isExpanded: $showingEffectiveInstructions) {
-                            Text(inspection.effectiveContent)
-                                .chadexFont(.caption, design: .monospaced)
-                                .textSelection(.enabled)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .chadexPadding(.top, 8)
-                        }
-                        .chadexFont(.callout, weight: .medium)
                     }
                 }
+                .chadexPadding(.top, 10)
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    SectionEyebrow(title: L10n.string("instructions.title"))
+                    Text(repositoryInstructionsSummary)
+                        .chadexFont(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                Task { await model.refreshProjectInstructions() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .disabled(model.projectInstructionsLoading || model.isSwitchingProject)
+            .help(L10n.string("instructions.refresh"))
+            .accessibilityLabel(L10n.string("instructions.refresh"))
         }
+    }
+
+    private var repositoryInstructionsSummary: String {
+        if model.projectInstructionsLoading && model.projectInstructions == nil {
+            return L10n.string("instructions.summary.loading")
+        }
+        if let inspection = model.projectInstructions {
+            guard !inspection.sources.isEmpty else {
+                return L10n.string("instructions.summary.none")
+            }
+            return L10n.string("instructions.summary.sources", inspection.sources.count)
+        }
+        if model.projectInstructionsError != nil {
+            return L10n.string("instructions.summary.unavailable")
+        }
+        return L10n.string("instructions.summary.none")
     }
 
     private func instructionSourceRow(_ source: ProjectInstructionSource, index: Int) -> some View {

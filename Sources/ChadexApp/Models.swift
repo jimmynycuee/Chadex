@@ -638,9 +638,10 @@ enum ConnectionPresentation {
     static func phase(
         for snapshot: BackendSnapshot,
         isBootstrapping: Bool,
-        isSwitchingProject: Bool = false
+        isSwitchingProject: Bool = false,
+        isConnecting: Bool = false
     ) -> ConnectionPhase {
-        if isSwitchingProject {
+        if isSwitchingProject || isConnecting {
             return .preparing
         }
         if isBootstrapping && snapshot.phase == .error {
@@ -653,9 +654,10 @@ enum ConnectionPresentation {
         for snapshot: BackendSnapshot,
         actionError: HelperErrorPayload?,
         isBootstrapping: Bool,
-        isSwitchingProject: Bool = false
+        isSwitchingProject: Bool = false,
+        isConnecting: Bool = false
     ) -> HelperErrorPayload? {
-        if isSwitchingProject {
+        if isSwitchingProject || isConnecting {
             return nil
         }
         if isBootstrapping && snapshot.phase == .error {

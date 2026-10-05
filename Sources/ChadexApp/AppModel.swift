@@ -194,7 +194,8 @@ final class AppModel: ObservableObject {
         ConnectionPresentation.phase(
             for: snapshot,
             isBootstrapping: isBootstrapping,
-            isSwitchingProject: isSwitchingProject
+            isSwitchingProject: isSwitchingProject,
+            isConnecting: connectionAction == .connecting
         )
     }
 
@@ -203,7 +204,8 @@ final class AppModel: ObservableObject {
             for: snapshot,
             actionError: connectionActionError,
             isBootstrapping: isBootstrapping,
-            isSwitchingProject: isSwitchingProject
+            isSwitchingProject: isSwitchingProject,
+            isConnecting: connectionAction == .connecting
         )
     }
 
