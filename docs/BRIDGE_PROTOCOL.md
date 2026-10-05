@@ -50,7 +50,7 @@ protocol version 不相容時 fail closed，不嘗試猜測欄位。
 
 ## v1 Methods
 
-下表與 `rust-helper/src/runtime_bridge.rs` 的 `handle_request` dispatch 一一對應；未列出的 method 回 `method_not_found`。App 與 helper 必須同版本一起更新。macOS 由 Swift `HelperClient` 呼叫全部 method；Windows 的 Tauri whitelisted IPC（`apps/windows/src-tauri`）經 `apps/windows/bridge` 只轉送 Runtime / connection 與 `queryActivities` 子集，目前沒有 Skills、Project Memory 或 Computer safety 的 desktop RPC。
+下表與 `rust-helper/src/runtime_bridge.rs` 的 `handle_request` dispatch 一一對應；未列出的 method 回 `method_not_found`。App 與 helper 必須同版本一起更新。macOS 由 Swift `HelperClient` 呼叫全部 method；Windows 的 Tauri whitelisted IPC（`apps/windows/src-tauri`）經 `apps/windows/bridge` 只轉送 Runtime / connection、`queryActivities` 與 Skills（`discoverExternalSkillSources`、`getExternalSkillRoots`、`setExternalSkillRoots`、`getSkillCatalog`、`getSkillInventory`、`installSkill`、`activateSkill`、`deactivateSkill`）子集，目前沒有 Project Memory 或 Computer safety 的 desktop RPC。
 
 ### Runtime / connection
 

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App } from '../src/App';
 import { DesktopStore } from '../src/state';
-import { apiMock, deferred, desktop, snapshot } from './fixtures';
+import { apiMock, deferred, desktop, skillSource, snapshot } from './fixtures';
 
 afterEach(() => { cleanup(); localStorage.clear(); sessionStorage.clear(); });
 async function mount(state = desktop()) {
@@ -157,5 +157,72 @@ describe('desktop pages and IPC behavior', () => {
     await act(async () => { await store.refresh(); });
     expect(screen.queryByText('run_process')).toBeNull(); expect(screen.queryByText('job-live')).toBeNull();
     expect(screen.getByText('工具呼叫狀態未確認。')).toBeTruthy(); expect(screen.getByText('Job 狀態未確認。')).toBeTruthy();
+  });
+});
+
+describe('Skills page', () => {
+  async function openSkills(setup?: (api: ReturnType<typeof apiMock>) => void) {
+    const api = apiMock(desktop()); setup?.(api); const store = new DesktopStore(api);
+    render(<App api={api} store={store} />);
+    await waitFor(() => expect(store.getSnapshot().freshness).toBe('fresh'));
+    fireEvent.click(screen.getByRole('button', { name: 'Skills' }));
+    await waitFor(() => expect(api.getExternalSkillRoots).toHaveBeenCalled());
+    return api;
+  }
+  it('makes import prominent when no valid source is detected', async () => {
+    await openSkills();
+    const button = await screen.findByRole('button', { name: '匯入 Skill（ZIP）…' });
+    expect(button.className).toContain('primary');
+  });
+  it('demotes import to a secondary action when a source is found, and connects with scripts off', async () => {
+    const source = skillSource();
+    const api = await openSkills((mock) => { vi.mocked(mock.discoverExternalSkillSources).mockResolvedValue({ format: 'f', sources: [source], recommended_roots: [] }); });
+    const button = await screen.findByRole('button', { name: '匯入 Skill（ZIP）…' });
+    expect(button.className).not.toContain('primary');
+    const [connect, scripts] = await screen.findAllByRole('checkbox') as HTMLInputElement[];
+    expect(scripts.disabled).toBe(true);
+    fireEvent.click(connect);
+    await waitFor(() => expect(api.setExternalSkillRoots).toHaveBeenCalledWith({ roots: [source.canonical_path], script_roots: [], expected_revision: 'rev1', verify_project_path: 'C:\\work\\chadex' }));
+    await waitFor(() => expect((screen.getAllByRole('checkbox')[1] as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    await waitFor(() => expect(api.setExternalSkillRoots).toHaveBeenLastCalledWith(expect.objectContaining({ roots: [source.canonical_path], script_roots: [source.canonical_path], expected_revision: 'rev2' })));
+  });
+  it('reloads roots and shows a clear message on a revision conflict', async () => {
+    const source = skillSource();
+    const api = await openSkills((mock) => { vi.mocked(mock.discoverExternalSkillSources).mockResolvedValue({ format: 'f', sources: [source], recommended_roots: [] });
+      vi.mocked(mock.setExternalSkillRoots).mockRejectedValue('Chadex bridge: Backend (external_skill_roots_conflict)。請查看診斷並重試。'); });
+    fireEvent.click((await screen.findAllByRole('checkbox'))[0]);
+    expect(await screen.findByText(/已在其他地方變更/)).toBeTruthy();
+    await waitFor(() => expect(api.getExternalSkillRoots).toHaveBeenCalledTimes(2));
+  });
+  it('connects a chosen folder using its exact canonical path', async () => {
+    const api = await openSkills((mock) => { vi.mocked(mock.chooseSkillFolder).mockResolvedValue('\\\\?\\D:\\my-skills'); });
+    await waitFor(() => expect((screen.getByRole('button', { name: '選擇資料夾…' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: '選擇資料夾…' }));
+    await waitFor(() => expect(api.setExternalSkillRoots).toHaveBeenCalledWith(expect.objectContaining({ roots: ['\\\\?\\D:\\my-skills'] })));
+    expect(await screen.findByText('D:\\my-skills')).toBeTruthy();
+  });
+  it('lists catalog skills, flags scripts-off, and toggles managed skills with the inventory revision', async () => {
+    const managed = { skill_id: 'm1', skill_key: 'mine', state_revision: 'st1', active_package_revision: 'pk1', preferred_package_revision: 'pk1', definition_revision: 'def-managed-1', name: 'Mine', description: 'managed one', total_versions: 1 };
+    const api = await openSkills((mock) => {
+      vi.mocked(mock.getSkillCatalog).mockResolvedValue({ project: 'p', catalog_revision: 'c', total_count: 2, returned_count: 2, invalid_count: 0, diagnostics: [], discovery_truncated: false, skills: [
+        { skill_id: 'm1', name: 'Mine', description: 'managed one', definition_revision: 'def-managed-1', package_revision: 'pk1', source_scope: 'runner', trust: 'operator_installed_guidance', name_conflict: false, scripts_allowed: true },
+        { skill_id: 'x1', name: 'Ext', description: 'external', definition_revision: 'def-ext', source_scope: 'configured', trust: 'operator_configured_guidance', name_conflict: false, scripts_allowed: false }] });
+      vi.mocked(mock.getSkillInventory).mockResolvedValue({ project: 'p', total_count: 1, skills: [managed] });
+    });
+    expect(await screen.findByText('腳本關閉')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '停用 Mine' }));
+    await waitFor(() => expect(api.deactivateSkill).toHaveBeenCalledWith('C:\\work\\chadex', managed));
+  });
+  it('installs a ZIP through the project-relative archive and surfaces helper errors', async () => {
+    const api = await openSkills((mock) => { vi.mocked(mock.chooseSkillArchive).mockResolvedValue('skills/pack.zip');
+      vi.mocked(mock.installSkill).mockRejectedValue('Chadex bridge: Backend (tool_failure)。請查看診斷並重試。'); });
+    fireEvent.click(await screen.findByRole('button', { name: '匯入 Skill（ZIP）…' }));
+    fireEvent.change(screen.getByLabelText('Skill key'), { target: { value: 'my-skill' } });
+    fireEvent.click(screen.getByRole('button', { name: '選擇 ZIP…' }));
+    await screen.findByText('skills/pack.zip');
+    fireEvent.click(screen.getByRole('button', { name: '安裝並啟用' }));
+    await waitFor(() => expect(api.installSkill).toHaveBeenCalledWith('C:\\work\\chadex', 'my-skill', 'skills/pack.zip'));
+    expect(await screen.findByText(/tool_failure/)).toBeTruthy();
   });
 });

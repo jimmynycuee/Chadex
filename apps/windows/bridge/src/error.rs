@@ -96,7 +96,26 @@ impl BridgeError {
             | "session_guard_denied"
             | "session_closed"
             | "runtime_error"
-            | "tool_failure" => code,
+            | "tool_failure"
+            | "runtime_not_ready"
+            | "runtime_unreachable"
+            | "external_skill_roots_conflict"
+            | "external_skill_roots_unverified"
+            | "external_skill_roots_state_unknown"
+            | "skill_root_invalid"
+            | "skill_root_not_found"
+            | "skill_root_is_link"
+            | "skill_root_not_directory"
+            | "skill_root_not_canonical"
+            | "skill_root_sensitive"
+            | "runner_config_rejected"
+            | "runner_config_reload_failed"
+            | "runner_config_restart_required"
+            | "runner_config_reload_unsupported"
+            | "runner_config_invalid"
+            | "runner_config_too_large"
+            | "runner_config_unavailable"
+            | "runner_config_write_failed" => code,
             _ => "unclassified",
         };
         error.helper_code = Some(safe.to_owned());

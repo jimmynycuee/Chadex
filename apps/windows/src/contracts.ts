@@ -56,7 +56,46 @@ export interface DesktopState {
 export type RuntimeMethod = 'inspectProject' | 'activateProject' | 'switchLocalProject'
   | 'configureLocalSetup' | 'resumeService' | 'connectChatGPT' | 'startTunnel' | 'stopTunnel'
   | 'disconnectAI' | 'stopLocalService' | 'updateProxySettings' | 'queryActivities'
-  | 'getStatus' | 'refreshRuntime' | 'observeChatGPTActivity';
+  | 'getStatus' | 'refreshRuntime' | 'observeChatGPTActivity'
+  | 'discoverExternalSkillSources' | 'getExternalSkillRoots' | 'setExternalSkillRoots'
+  | 'getSkillCatalog' | 'getSkillInventory' | 'installSkill' | 'activateSkill' | 'deactivateSkill';
+
+// Skills (docs/BRIDGE_PROTOCOL.md "Skills" / "External Skill sources"); raw helper snake_case.
+export type ExternalSkillStatus = 'available' | 'not_found' | 'not_directory' | 'unavailable' | 'scan_limit_exceeded' | 'duplicate_source';
+export interface ExternalSkillPackage {
+  package: string; state: 'valid' | 'symlink' | 'invalid'; name?: string | null; description?: string | null;
+  has_scripts: boolean; link_target_root?: string | null; invalid_reason?: string | null; name_conflict: boolean;
+}
+export interface ExternalSkillSource {
+  kind: 'agents' | 'claude' | 'codex' | string; path: string; canonical_path?: string | null; status: ExternalSkillStatus | string;
+  root_is_link: boolean; same_as?: string | null; valid_count: number; symlink_count: number; invalid_count: number;
+  script_count: number; truncated: boolean; provided_by: string[]; packages: ExternalSkillPackage[];
+}
+export interface ExternalSkillSourceDiscovery {
+  format: 'chadex.external_skill_sources.v1' | string; sources: ExternalSkillSource[]; recommended_roots: string[];
+}
+export interface ExternalSkillRootsState {
+  format: 'chadex.external_skill_roots.v1' | string; roots: string[]; script_roots: string[]; revision: string;
+  generation?: number | null; runner_resynced?: boolean | null; resync_error?: string | null;
+}
+export interface SetExternalSkillRootsParams {
+  roots: string[]; script_roots: string[]; expected_revision: string; verify_project_path?: string;
+}
+export interface SkillDescriptor {
+  skill_id: string; name: string; description: string; definition_revision: string; package_revision?: string | null;
+  source_scope: string; trust: string; name_conflict: boolean;
+  /** Absent from older helpers: undefined means the helper did not report a policy. */
+  scripts_allowed?: boolean | null;
+}
+export interface SkillCatalog {
+  project: string; catalog_revision: string; total_count: number; returned_count: number;
+  skills: SkillDescriptor[]; invalid_count: number; diagnostics: unknown[]; discovery_truncated: boolean;
+}
+export interface ManagedSkillEntry {
+  skill_id: string; skill_key: string; state_revision: string; active_package_revision?: string | null;
+  preferred_package_revision: string; definition_revision: string; name: string; description: string; total_versions: number;
+}
+export interface SkillInventory { project: string; total_count: number; skills: ManagedSkillEntry[] }
 
 export const defaultPreferences: Preferences = {
   restore_project: true, launch_at_login: false, notifications: false,

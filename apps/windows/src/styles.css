@@ -158,3 +158,19 @@ footer { display: flex; justify-content: space-between; gap: 15px; font-size: 10
   .panel { padding: 19px 17px; } .page-heading { align-items: flex-start; flex-direction: column; } .overview-hero { padding: 24px; } .hero-index { display: none; } footer { padding: 12px 18px; flex-direction: column; }
   .facts > div { grid-template-columns: 1fr; gap: 6px; } .filter-row { flex-direction: column; align-items: stretch; gap: 0; } .project-row .badge { display: none; }
 }
+.skill-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.skill-row { padding: 14px 0; border-top: 1px solid var(--line); }
+.skill-title { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; font-size: 13px; }
+.skill-title code, .skill-meta code, .skill-archive code { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.skill-chip { font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+.skill-meta { margin: 7px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.skill-rev { display: block; margin-top: 6px; font-size: 10px; font-family: monospace; color: var(--muted); }
+.skill-toggles { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 9px; font-size: 12px; }
+.skill-toggles label { display: inline-flex; align-items: center; gap: 4px; }
+.skill-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.skill-invalid ul { margin: 6px 0 0; padding-left: 18px; }
+.skill-import { margin-top: 18px; padding-top: 6px; border-top: 1px solid var(--line); }
+.skill-import h3 { font-size: 13px; margin: 12px 0 0; }
+.skill-archive { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.skill-import-cta { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 14px 16px; border-radius: 8px; background: var(--accent-soft); font-size: 12px; }
+.skill-import-cta p { margin: 0; flex: 1; min-width: 200px; }

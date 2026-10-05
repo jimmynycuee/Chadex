@@ -4,16 +4,17 @@ import { defaultPreferences, type Preferences, type ProjectInspection, type Runt
 import { DesktopStore, connectionStatus, localStatus, observedRuntime, safeError } from './state';
 import { Ferret } from './FerretCompanion';
 import { JobActivity, TraceActivity } from './RuntimeActivity';
+import { SkillsPage } from './SkillsPage';
 
-type Page = 'home' | 'projects' | 'project' | 'connection' | 'activity' | 'settings' | 'diagnostics' | 'updates';
-const titles: Record<Page, string> = { home: '總覽', projects: '專案', project: '專案詳情', connection: '連線', activity: '活動紀錄', settings: '設定', diagnostics: '診斷', updates: '版本與更新' };
+type Page = 'home' | 'projects' | 'project' | 'skills' | 'connection' | 'activity' | 'settings' | 'diagnostics' | 'updates';
+const titles: Record<Page, string> = { home: '總覽', projects: '專案', project: '專案詳情', skills: 'Skills', connection: '連線', activity: '活動紀錄', settings: '設定', diagnostics: '診斷', updates: '版本與更新' };
 const nav: { page: Page; glyph: string; name: string }[] = [
-  { page: 'home', glyph: '◫', name: '總覽' }, { page: 'projects', glyph: '▱', name: '專案' },
+  { page: 'home', glyph: '◫', name: '總覽' }, { page: 'projects', glyph: '▱', name: '專案' }, { page: 'skills', glyph: '✦', name: 'Skills' },
   { page: 'connection', glyph: '↗', name: '連線' }, { page: 'activity', glyph: '≡', name: '活動紀錄' },
   { page: 'settings', glyph: '⚙', name: '設定' },
 ];
 const pageNotes: Record<Page, string> = {
-  home: '你的專案與連線，在這裡掌握。', projects: '選擇資料夾，讓工作留在你的電腦。', project: '檢視工作範圍與專案狀態。',
+  home: '你的專案與連線，在這裡掌握。', projects: '選擇資料夾，讓工作留在你的電腦。', project: '檢視工作範圍與專案狀態。', skills: '管理 Skills、外部來源與 ZIP 匯入。',
   connection: '把目前的專案連接到 ChatGPT。', activity: '由本地服務回報的實際活動。', settings: '調整桌面體驗與啟動偏好。',
   diagnostics: '檢視本地服務與連線的觀測資訊。', updates: '目前安裝的版本與更新狀態。',
 };
@@ -177,6 +178,8 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
           ]} /><div className="button-row"><button className="primary" disabled={!editable || !detail.readable || !detail.writable || detail.path === project?.path} onClick={() => activate(detail.path)}>設為目前專案</button><button disabled={!editable || detail.path !== project?.path} onClick={() => { void run('開啟檔案總管', () => api.openProject(detail.path), false); }}>在檔案總管開啟 ↗</button><button onClick={() => setPage('connection')}>連線設定</button></div></Panel>
           {detail.path === project?.path && <Panel title="本地服務"><Facts items={statusRows.slice(1)} /><div className="button-row"><button disabled={!editable} onClick={() => { void runtime(snapshot?.runtime_status?.runtime_configured ? 'resumeService' : 'configureLocalSetup', '準備本地服務'); }}>準備／恢復服務</button><button className="danger" disabled={!editable} onClick={() => { void runtime('stopLocalService', '停止本地服務'); }}>停止本地服務</button></div></Panel>}
         </> : <Empty title="尚未選擇專案">到「專案」選擇資料夾，查看實際檢查結果。</Empty>)}
+
+        {page === 'skills' && <SkillsPage api={api} project={project?.path ?? null} helperReady={helperRunning} />}
 
         {page === 'connection' && <>
           <Panel title="ChatGPT 連線" action={<Badge tone={connection.tone}>{connection.label}</Badge>}><Facts items={[
