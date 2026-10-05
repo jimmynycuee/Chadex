@@ -9,8 +9,9 @@ Chadex 的 Swift 層不推測連線成功，而只消費 Rust helper 的 truth-b
 ```text
 SwiftUI / AppKit
   │
-  ├─ ProjectStore (non-secret preferences)
+  ├─ ProjectStore (non-secret preferences + global-instructions.md)
   ├─ KeychainStore (API key)
+  ├─ UpdateManager (GitHub Release updater)
   └─ HelperClient
        │ private NDJSON over stdin/stdout
        ▼
@@ -21,7 +22,8 @@ chadex-helper
   │    ├─ TunnelManager
   │    │    └─ pinned OpenAI tunnel-client v0.0.12
   │    ├─ MCP ingress + VerificationTracker
-  │    │    └─ epoch-fenced MCP proxy
+  │    │    ├─ epoch-fenced MCP proxy
+  │    │    └─ ComputerSafetyController (Computer control gate)
   │    └─ ChadexRuntimeCore
   │         └─ RuntimeBackendAdapter (single migration boundary)
   │              └─ Chadex runtime entrypoints
@@ -32,12 +34,13 @@ chadex-helper
   │                             ├─ MCP/file operations
   │                             ├─ Runner execution
   │                             ├─ project activation
+  │                             ├─ instructions / Skills / Project Memory context
   │                             └─ process / tool / validation contracts
 ```
 
 ## 隔離
 
-### Windows desktop（W3 開發分支）
+### Windows desktop（W5 release-readiness 候選）
 
 Windows 沿用同一個 helper 與 `runtime-engine/`，不建立另一套執行核心：
 
@@ -48,9 +51,11 @@ React / TypeScript (apps/windows/src)
   → existing chadex-helper → existing runtime / tunnel
 ```
 
-Tauri 保管 Windows Credential Manager 的 API key；前端不能讀取 key 或直接呼叫 `provideCredential`。一般偏好與最後專案由 app-local data 保存；重啟僅恢復選取，不恢復舊 connected／verified 狀態。bridge transport、runtime ready、tunnel ready、目前專案 ChatGPT verification 是不同事實，觀察失敗會撤銷前端可用狀態。Windows Job Object 管理 owned process tree，正常退出要求 graceful shutdown 與零殘留。
+Tauri 保管 Windows Credential Manager 的 API key；前端不能讀取 key 或直接呼叫 `provideCredential`。一般偏好、最後專案與 `global-instructions.md` 由 Tauri app-local data 保存；重啟僅恢復選取，不恢復舊 connected／verified 狀態。bridge transport、runtime ready、tunnel ready、目前專案 ChatGPT verification 是不同事實，觀察失敗會撤銷前端可用狀態。Windows Job Object 管理 owned process tree，正常退出要求 graceful shutdown 與零殘留。
 
-W3 最終 source `dd7d5ebbc4bf06c91ebe3a86a8e52c2d38fc52c3` 已通過 [CI 37029362354, attempt 2](https://github.com/jimmynycuee/Chadex/actions/runs/37029362354)。完整產品驗收仍 pending；native picker、Explorer、tray、登入啟動、通知與 credentialed tunnel 工作流程皆保留 `not validated`。目前 artifact 為未簽章 debug build，installer／updater／release 尚未驗證。詳見 [W3](windows/W3-desktop-product.md) 與 [W4 知識同步](windows/W4-source-converged.md)。
+W5 的可自動化 release engineering 已在 v0.4.1 收斂：CI 會建出 unsigned NSIS installer candidate，執行 install → upgrade → relaunch → same-version reinstall → uninstall（含 NSIS default self-copy uninstall）的 installed lifecycle，並另以真實 `v0.4.0` tag source 建出的舊版本做 historical-source upgrade。這些是 release-engineering 證據，**不是公開 Windows 發行**：`.github/workflows/release.yml` 只發佈 macOS Apple Silicon DMG。
+
+仍屬 external acceptance、未由 CI 代替的項目：實體 Windows 11 互動、Windows ARM64、native picker／Explorer／tray／登入啟動／通知、credentialed ChatGPT tunnel workflow、Authenticode 簽章與 SmartScreen、真正缺少 WebView2 的主機、互動式 installer 選項、uninstall 時的 Credential Manager 刪除政策，以及 Windows updater／delivery policy。詳見 [W5 readiness](windows/W5-release-readiness.md)、[W5 handoff](windows/W5_HANDOFF.md) 與 [v0.4.1 release notes](releases/0.4.1.md)。
 
 Chadex 不讀寫既有 WebCodex Desktop 的設定或憑證。預設 runtime 資料位於：
 
@@ -83,6 +88,55 @@ Tunnel 若仍存在，切換前由 Chadex `TunnelManager` 停止它。每次 tar
 helper 從 stdin EOF 視為 parent-liveness lease 結束。它先呼叫 Chadex `TunnelManager.shutdown()`，只終止自己持有的 OpenAI `tunnel-client` child，再關閉 Chadex runtime engine。沒有以程序名稱廣泛 kill。
 
 `⌘Q` 會經 `applicationShouldTerminate` 延後 App 終止，先送 `shutdown` request 給 helper；若 helper 在 bounded grace period 內沒有退出，Swift 才把該 helper child terminate。這不會碰既有 WebCodex instance。
+
+## Agent instructions 與 precedence（v0.4.1）
+
+Chadex 管理的指令只有一份 **Chadex Global Instructions**：存於 app data 的 `global-instructions.md`（macOS 為 `~/Library/Application Support/Chadex/`，Windows 為 Tauri app-local data），所有專案共用，未選專案或未連線時也可編輯。Swift `ProjectStore`／Tauri 只接受 UTF-8、上限 8 KiB、非 symlink 的 regular file；helper 啟動 runtime 時只透過 `CHADEX_GLOBAL_INSTRUCTIONS_PATH` 傳入這個 Chadex-owned 路徑，runtime 端 `global_instructions.rs` 再次執行相同 bound 與 symlink 檢查，空檔視為 no-op。
+
+Repository `AGENTS.md` 維持 repository-native 檔案，不由 Chadex UI 編輯或複製顯示。Runtime 以 `project.instructions` context material 讀取已註冊 project root 與 target-scoped nested `AGENTS.md`；不繼承 registered project root 之外的 ambient ancestor（例如 `~/Documents/ChatGPT/AGENTS.md` 不會被當成 Global Instructions）。Repository 沒有 root `AGENTS.md` 是正常狀態。
+
+行為 precedence：
+
+```text
+current user instruction
+  → most-specific nested repository AGENTS.md
+  → repository-root AGENTS.md
+  → Chadex Global Instructions
+  → Chadex built-in baseline
+```
+
+System／platform safety、authority、approval 與 sensitive-content 限制是不可被上述任何一層覆寫的外層邊界。
+
+v0.4.1 移除 project-detail 的 repository instructions 面板後，原本只服務該面板的 helper `getProjectInstructions` RPC 與 Swift 5 秒輪詢也已移除（V042）。這不影響模型端行為：模型看到的 repository instructions 一直由 runtime 的 `project.instructions` material 提供，與 desktop RPC 無關。
+
+## Skills
+
+Skills 是可重用的程序，與 instructions 分開。Project skill 位於 repository `.agents/skills/<key>/SKILL.md`；另有 configured 與 managed 來源，catalog 中以 `source_scope` 與 trust 區分，同名衝突明確標示。Catalog 只帶 descriptor，`SKILL.md` 內容依 `definition_revision`／`package_revision` lazy load；activate／deactivate 需帶目前 `state_revision`，stale revision 會被拒絕，避免把舊定義當成目前定義。macOS desktop 透過 `getSkillCatalog`、`getSkillInventory`、`getSkillDefinition`、`createProjectSkill`、`installSkill`、`activateSkill`、`deactivateSkill` 操作（見 [Bridge Protocol](BRIDGE_PROTOCOL.md)）。
+
+## Project Memory
+
+Project Memory 保存跨 session 的長期架構、決策與工作流程脈絡，存於 runtime database，以 project runtime ID + Runner client + registered root 推導的 memory scope 隔離。Coding task 開始時，runtime 只自動投影標記為 bootstrap 的受限 summary；完整 body 維持 lazy read。寫入以 `expected_revision` 做 optimistic concurrency；暫時性 log、generated path、secret 與推測不屬於正常 closeout 應寫入的內容。macOS desktop 只在進階 **Memory Inspector** 透過 `getProjectMemoryCatalog`／`getProjectMemory`／`setProjectMemory`／`deleteProjectMemory` 檢查與修改，不再是常駐 sidebar 頁面。
+
+## Computer Use safety
+
+Computer control 在 helper MCP ingress 由 `ComputerSafetyController` 獨立把關，與 project 檔案邊界無關也不放寬它。模式：
+
+| Mode | 行為 | 跨 tunnel session |
+| --- | --- | --- |
+| `read_only` | 只允許 observation | 保留 |
+| `ask_before_control` | 每個 control action 需使用者批准（45 秒逾時，最多 16 筆 pending） | helper 預設值 |
+| `allow_session` | 本次 tunnel session 內允許 | 新 session 重設為 Ask |
+| `always_allow` | 持久允許 | 保留 |
+
+Swift 將使用者選的預設模式（Read-only／Ask／Always allow）存於 preferences，每次新 tunnel session 套用；套用失敗時 fail closed 回 Ask。
+
+**Stop 是持久的 kill switch**：`stopComputerControl` 立即 deny 所有 pending approval、遞增 generation，之後所有 control dispatch 以 `computer_control_stopped` 拒絕。新的 tunnel session 不會清除 Stop，Swift 也不會在 stopped 時套用預設模式；只有使用者明確 `resumeComputerControl`（或改選模式）才恢復，且恢復後保留原本模式（含 Always allow）。Stopped 狀態的 UI 只顯示 Resume。Stop 存於 helper 記憶體，範圍是同一個 helper 生命週期；重新啟動 app 會從 Ask 預設與 Swift 偏好重新開始。
+
+每個 approval／dispatch 都綁定 generation；在批准與 dispatch 之間發生 Stop、模式切換或新 session 都會使 permit 失效。Protected／password／authentication surface 是不受模式影響的 hard block；stale UI identity 被拒絕；dispatch 後無法確認結果時回報 `outcome_unknown`，要求重新 observe，不盲目重送。Audit 只保留最近 64 筆，不含輸入內容或剪貼簿。
+
+## In-app updater
+
+Packaged macOS build 由 `UpdateManager` 查詢 GitHub `releases/latest`，只接受 `Chadex-vX.Y.Z-macos-arm64.dmg` 與其 `.sha256` 這組資產。安裝前驗證 checksum、bundle identifier、版本、Apple Silicon 架構與 code signature，並先在目前 app 旁 staging 以提早發現寫入權限問題。實際替換由外部 installer 在 helper／runtime 正常 shutdown 後執行；舊版保留為 sibling backup，直到新版啟動並寫入 version-bound health marker，逾時則還原舊版並重新開啟。Updater 不移除 Gatekeeper quarantine，也不改變 ad-hoc signing 邊界。Windows 尚無 production updater（屬 W5 external acceptance）。完整 contract 見 [RELEASE.md](RELEASE.md#in-app-update-contract)。
 
 ## Polling
 

@@ -5,7 +5,7 @@
 - `chadex-helper` 是 App 私有 child process。
 - stdin / stdout 使用 UTF-8、每行一個 JSON object（NDJSON）。
 - stdout 僅允許協定訊息。
-- diagnostics 只寫 stderr，沿用 WebCodex activity sanitizer 遮蔽 token pattern。
+- diagnostics 只寫 stderr，經 activity sanitizer 遮蔽 token pattern。
 - API key 不放 argv，也不回傳給 Swift。
 
 ## Request
@@ -50,24 +50,78 @@ protocol version 不相容時 fail closed，不嘗試猜測欄位。
 
 ## v1 Methods
 
+下表與 `rust-helper/src/runtime_bridge.rs` 的 `handle_request` dispatch 一一對應；未列出的 method 回 `method_not_found`。App 與 helper 必須同版本一起更新。macOS 由 Swift `HelperClient` 呼叫全部 method；Windows 的 Tauri whitelisted IPC（`apps/windows/src-tauri`）經 `apps/windows/bridge` 只轉送 Runtime / connection 與 `queryActivities` 子集，目前沒有 Skills、Project Memory 或 Computer safety 的 desktop RPC。
+
+### Runtime / connection
+
 | Method | 行為 |
 | --- | --- |
-| `getStatus` | 取得目前 bridge snapshot |
-| `refreshRuntime` | WebCodex runtime health refresh |
+| `getStatus` | 取得目前 bridge snapshot；可帶 `include_mascot_jobs`（見下方） |
+| `refreshRuntime` | Chadex runtime health refresh |
 | `observeChatGPTActivity` | 相容性方法名稱；刷新 Chadex Tunnel/verification snapshot，不再呼叫 WebCodex activity probe |
 | `inspectProject` | canonicalize + inspect folder |
 | `activateProject` | 設定 UI target，不假裝 runtime 已切換 |
 | `switchLocalProject` | 依目前 runtime 狀態安全切換專案 |
-| `configureLocalSetup` / `resumeService` | 建立或恢復本機 runtime |
+| `configureLocalSetup` / `resumeService` | 建立或恢復本機 runtime（同一實作） |
+| `connectChatGPT` | 完整 `ensure runtime → start tunnel` 連線流程；成功與否以本回應判斷 |
 | `startTunnel` | 由 Chadex TunnelManager 直接啟動並驗證 OpenAI Secure MCP Tunnel |
-| `stopTunnel` / `disconnectAI` | 只停止 Chadex 擁有的 Tunnel child 與 MCP ingress |
+| `stopTunnel` / `disconnectAI` | 只停止 Chadex 擁有的 Tunnel child 與 MCP ingress（同一實作） |
 | `stopLocalService` | 停止 Chadex 管理的本機 runtime |
 | `provideCredential` | Tunnel ID + API key 注入 Chadex memory-only CredentialStore；不 echo secret |
-| `updateProxySettings` | 更新上游 Tunnel proxy 設定 |
+| `clearCredential` | 清除 helper 記憶體中的 Tunnel credential，並重設目前 target 的 verification |
+| `updateProxySettings` | 更新上游 Tunnel proxy 設定（`auto` / `direct` / `custom`） |
+| `cancelOperation` | 以 exact operation ID 取消 runtime operation |
+| `cancelTask` | 以 `project` + `task_id` 要求 cooperative task cancellation |
+| `shutdown` | 先 abort／drain 進行中的 request，回覆後進行 graceful shutdown |
+
+### Diagnostics
+
+| Method | 行為 |
+| --- | --- |
 | `queryActivities` | 最多 200 筆 bounded activity |
 | `queryPerformanceTraces` | 最多 100 筆 bounded MCP ingress timing；只含 method/tool 名稱、bytes、status 與各階段耗時，不含 params、檔案路徑或內容 |
-| `cancelOperation` | 以 exact operation ID 取消 |
-| `shutdown` | 回覆後進行 AppState graceful shutdown |
+| `queryLifecyclePerformanceTraces` | 最多 100 筆 bounded lifecycle（connect／switch 等）階段耗時 |
+
+### Skills
+
+所有 method 都帶 `path`（目前 project），由 helper 以 exact runtime probe target 轉成 runtime tool call。
+
+| Method | 參數 | 行為 |
+| --- | --- | --- |
+| `getSkillCatalog` | `path` | Skill descriptor catalog（不含 definition 內容） |
+| `getSkillInventory` | `path` | 已安裝／啟用狀態與 `state_revision` |
+| `getSkillDefinition` | `path`, `skill_id`, `definition_revision`, `package_revision?` | Lazy 讀取指定 revision 的 `SKILL.md` |
+| `createProjectSkill` | `path`, `skill_key`, `content` | 在 `.agents/skills/<key>/` 建立 project skill |
+| `installSkill` | `path`, `skill_key`, `artifact_path` | 從 artifact 安裝 skill |
+| `activateSkill` | `path`, `skill_key`, `package_revision`, `state_revision` | Revision-fenced 啟用 |
+| `deactivateSkill` | `path`, `skill_key`, `state_revision` | Revision-fenced 停用 |
+
+### Project Memory
+
+| Method | 參數 | 行為 |
+| --- | --- | --- |
+| `getProjectMemoryCatalog` | `path` | Memory descriptor catalog |
+| `getProjectMemory` | `path`, `memory_key`, `expected_revision?` | 讀取單筆 memory |
+| `setProjectMemory` | `path`, `memory_key`, `summary`, `body`, `priority`, `bootstrap`, `tags`, `expected_revision?` | 建立或以 revision CAS 更新 |
+| `deleteProjectMemory` | `path`, `memory_key`, `expected_revision` | 以 revision CAS 刪除 |
+
+### Computer Use safety
+
+回應皆為 `ComputerSafetySnapshot`（`mode`、`stopped`、`generation`、`pending_approvals`、`audit`）。語意見 [Architecture · Computer Use safety](ARCHITECTURE.md#computer-use-safety)。
+
+| Method | 參數 | 行為 |
+| --- | --- | --- |
+| `getComputerSafety` | — | 目前 safety snapshot |
+| `setComputerControlMode` | `mode` | `read_only` / `ask_before_control` / `allow_session` / `always_allow`；同時清除 Stop |
+| `approveComputerControl` | `approval_id` | 批准單一 pending action；已失效回 `computer_approval_stale` |
+| `approveComputerControlAlways` | `approval_id` | 批准並原子切換為 `always_allow`；已失效回 `computer_approval_expired` |
+| `denyComputerControl` | `approval_id` | 拒絕單一 pending action |
+| `stopComputerControl` | — | 持久 Stop：deny 所有 pending，直到明確 resume |
+| `resumeComputerControl` | — | 解除 Stop，保留原模式 |
+
+### Removed
+
+- `getProjectInstructions`（V042 移除）：只服務 v0.4.1 已移除的 repository instructions 面板。Repository `AGENTS.md` 仍由 runtime `project.instructions` context material 提供給模型；Chadex Global Instructions 由 app 直接讀寫 `global-instructions.md`，不經 bridge RPC。
 
 ## Backend Snapshot
 

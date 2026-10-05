@@ -61,9 +61,9 @@ CHADEX_CODESIGN_IDENTITY="Developer ID Application: ..." \
 
 For a version bump, update the default in `scripts/build_app.sh`, the own-package versions in `chadex-runtime/Cargo.toml`, `runtime-engine/Cargo.toml` (`workspace.package.version`), and `rust-helper/Cargo.toml`, plus the synchronized Windows product metadata in `apps/windows/package.json`, `apps/windows/src-tauri/Cargo.toml`, and `apps/windows/src-tauri/tauri.conf.json`. Update only Chadex-owned path-package entries in the corresponding Cargo/package lockfiles; third-party dependency versions must remain unchanged. Advance the Windows synthetic upgrade baseline to the previous public version. Add `docs/releases/X.Y.Z.md` for the exact release tag and update `CHANGELOG.md` and the README release-note link. The generated app `Info.plist` takes its version from the build environment; it is not a source file to edit.
 
-### v0.4.1 validation
+### Per-release validation notes
 
-See `docs/releases/0.4.1.md` for the Windows W5 automated closeout, historical-source upgrade validation, default NSIS self-copy coverage, and the remaining external acceptance boundaries. Run the source gate from a clean release checkout. A dirty-tree run with `CHADEX_RELEASE_ALLOW_DIRTY=1` is development evidence only.
+Each `docs/releases/X.Y.Z.md` records the validation evidence and remaining external boundaries for that tag (for example, `0.4.1.md` covers the Windows W5 automated closeout, historical-source upgrade and default NSIS self-copy coverage). Run the source gate from a clean release checkout. A dirty-tree run with `CHADEX_RELEASE_ALLOW_DIRTY=1` is development evidence only.
 
 For the free artifact path, explicitly select ad-hoc signing, then package the resulting bundle:
 
@@ -76,13 +76,11 @@ CHADEX_CODESIGN_MODE=adhoc CHADEX_RUNTIME_PROFILE=release \
 
 The expected artifacts are `dist/Chadex-v0.4.1-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
 
-## Public Git history strategy
+## Public Git history
 
-The private development history contains historical machine-local paths and connector/device identifiers. Do not publish that history unchanged.
+`main` on GitHub is the public, single-root history; every release tag is cut from it. The pre-publication private development history (which contained machine-local paths and connector/device identifiers) is kept outside the public repository for provenance only and must never be pushed or merged into the public remote.
 
-For the first public release, Chadex uses a separate clean-history candidate branch whose root commit contains exactly the audited release-checkpoint tree. The private `phase6/runtime-core` history remains untouched for provenance. The clean public branch is created locally only; adding a remote or pushing it is a later distribution step.
-
-Before the first public push, verify the public candidate branch independently: inspect its single-root history, scan that history for secrets and machine-specific identifiers, confirm its tree matches the release checkpoint, and run the release gate from a clean checkout of that branch.
+Every push and every release tag re-runs the public-history gate below against `HEAD`, so new commits are held to the same identity, path and secret rules as the original public root.
 
 ## Distribution signing
 
@@ -141,7 +139,7 @@ The final swap is performed by an external installer after Chadex has completed 
 
 ## Public-history gate
 
-Run `./scripts/public_release_check.sh` on the public branch before publication. It rejects placeholder commit identity, scans reachable history for machine-local paths/device identifiers, and runs Gitleaks against only the selected public ref. For the first public root, set `CHADEX_PUBLIC_REQUIRE_SINGLE_ROOT=1`; `CHADEX_PUBLIC_EXPECT_EMAIL` can additionally pin the author/committer email. CI sets `CHADEX_REQUIRE_GITLEAKS=1`, so absence of the dedicated scanner is a failure there. `.gitleaks.toml` extends the default rules with narrowly scoped allowlists for known synthetic test credentials and non-secret client-window correlation hashes.
+`./scripts/public_release_check.sh <ref>` rejects placeholder commit identity, scans history reachable from the ref for machine-local paths/device identifiers, and runs Gitleaks against only that ref. CI, the free release workflow and the optional notarized workflow all run it against `HEAD`. Optional local checks: `CHADEX_PUBLIC_REQUIRE_SINGLE_ROOT=1` asserts the ref still has exactly one root commit, and `CHADEX_PUBLIC_EXPECT_EMAIL` pins the author/committer email. CI sets `CHADEX_REQUIRE_GITLEAKS=1`, so absence of the dedicated scanner is a failure there. `.gitleaks.toml` extends the default rules with narrowly scoped allowlists for known synthetic test credentials and non-secret client-window correlation hashes.
 
 ## Distribution boundary
 

@@ -158,9 +158,13 @@ phases:
 
 ## 目前位置
 
-`V041` 已完成並發布。正式 `v0.4.1` tag 指向產品 commit `3ef3dd4`；目前 `main` / `origin/main`
-位於 `0af8fcb`，其後續差異只有 release 後的 Graphify report refresh。舊 V041 managed worktree 已是 clean + detached，
-不再作為後續開發 workspace。目前沒有 active phase；下一階段應從最新 `main` 建立新的 branch/worktree。
+`V041` 已完成並發布。正式 `v0.4.1` tag 指向產品 commit `3ef3dd4`；其後 `main` 只有非產品 commit：
+`0af8fcb`（release 後 Graphify report refresh）與 `16efcf1`（新增本檔）。`16efcf1` 的 CI run `37306101038`
+第一次在 W5 installer candidate 的 `default_uninstaller_self_copy` stage 出現 runner 端 `process_inventory_failed`，
+rerun（attempt 2）7/7 jobs success，視為 baseline 綠燈。
+
+目前 active phase 為 `V042`（branch `chore/v042-baseline-hygiene`，從 `16efcf1` 建立），範圍是文件／Graphify／CI orchestration
+與 v0.4.1 實際架構對齊，不新增產品功能、不 bump 版本、不發布。舊 V041 managed worktree 已是 clean + detached，不再作為開發 workspace。
 
 ## V041 · v0.4.1
 

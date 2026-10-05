@@ -46,7 +46,7 @@ Intel / Universal build 目前尚未完成 release-level 驗證，因此暫不�
 - 在 App 中顯示實際連線、活動與任務狀態，不以按鈕操作結果假設連線成功。
 - **Agent 設定**提供 Chadex 全域共用的 Global Instructions 與目前專案的 Skills；repository `AGENTS.md` 維持原生檔案與 nested hierarchy，Chadex 只讀取已註冊 project root 內適用的規則，不把外層 ambient `AGENTS.md` 當成全域設定。
 - Project Memory 會以受限 bootstrap summary 在任務開始時自動提供長期架構／決策／工作流程脈絡，詳細內容維持 lazy load，並可從進階 Memory Inspector 檢查。
-- **Computer Use** 支援 read-only observation、需批准或本次工作階段允許的控制、Stop、敏感內容保護與 stale/outcome-unknown recovery；Read-only / Ask 預設政策可離線設定。
+- **Computer Use** 支援 read-only observation、需批准／本次工作階段允許／持久 **Always allow** 的控制、敏感內容保護與 stale/outcome-unknown recovery；**Stop** 會持續生效（重新連線也不解除），直到明確 Resume。Read-only / Ask / Always allow 預設政策可離線設定。
 - 新增 Code Ferret 吉祥物，依已觀測到的工具與任務狀態顯示動畫；可關閉顯示或動態效果，並支援 macOS「減少動態效果」。
 
 Chadex **不是另一個聊天介面或模型 API client**；工作指令仍然在 ChatGPT 中下達。
@@ -55,7 +55,7 @@ Chadex **不是另一個聊天介面或模型 API client**；工作指令仍然�
 
 1. 開啟 Chadex。
 2. 選擇要讓 ChatGPT 存取的本機專案。
-   - 可在尚未連線 project 前先編輯 **Chadex Global Instructions**；選取專案後可在 **Agent 設定**檢視 repository instructions／管理 Skills，並在 **Computer Use** 設定離線預設政策。
+   - 可在尚未連線 project 前先編輯 **Chadex Global Instructions**；選取專案後可在 **Agent 設定**管理 Skills，並在 **Computer Use** 設定離線預設政策。Repository 自己的 `AGENTS.md` 不需要在 Chadex 中設定，runtime 會直接讀取。
 3. 完成 Chadex 顯示的 ChatGPT 連接設定。
 4. 等待目前專案顯示為已連線／已驗證。
 5. 回到 ChatGPT，直接要求它檢查、修改、測試或執行該專案。
