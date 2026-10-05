@@ -112,6 +112,12 @@ echo "==> Runtime release-critical tests"
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-runner-registry
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-engine tool_request_trace --lib
 
+echo "==> Skills (external sources, script gate, frontmatter)"
+"$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-runner-config
+"$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-core skill
+"$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-runner skill
+"$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-engine skill --lib
+
 echo "==> Computer Use acceptance"
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-computer
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-tool-contracts computer
