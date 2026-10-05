@@ -408,7 +408,7 @@ final class HelperClient: @unchecked Sendable {
 
     private static func requestTimeout(for method: String) -> TimeInterval {
         switch method {
-        case "connectChatGPT", "startTunnel", "configureLocalSetup", "resumeService", "prewarmRuntime":
+        case "connectChatGPT", "startTunnel", "configureLocalSetup", "resumeService":
             return 120
         case "switchLocalProject", "activateProject", "stopLocalService", "disconnectAI", "stopTunnel":
             return 30

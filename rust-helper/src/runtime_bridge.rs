@@ -861,22 +861,6 @@ impl Bridge {
         Ok(self.snapshot_from(current))
     }
 
-    // Launch-time warm-up: resume only a runtime the user already set up and
-    // did not explicitly stop, so a later Connect only has to start the tunnel.
-    async fn prewarm_runtime(&self) -> Result<BackendSnapshot, ErrorPayload> {
-        let current = self.runtime.snapshot();
-        let should_resume = current.runtime_configured
-            && current.runtime_autostart
-            && current.project.is_some()
-            && !current.readiness.runtime_ready
-            && current.current_operation.is_none()
-            && self.target_project().is_some();
-        if !should_resume {
-            return Ok(self.snapshot_from(current));
-        }
-        self.ensure_runtime_for_target().await
-    }
-
     async fn refreshed_snapshot(&self, include_mascot_jobs: bool) -> BackendSnapshot {
         self.tunnel.refresh().await;
         let jobs = if include_mascot_jobs { self.observe_mascot_jobs().await } else { None };
@@ -1711,7 +1695,6 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
             .ensure_runtime_for_target()
             .await
             .map(ResponseResult::Snapshot),
-        "prewarmRuntime" => bridge.prewarm_runtime().await.map(ResponseResult::Snapshot),
         "connectChatGPT" => bridge.connect_chatgpt().await.map(ResponseResult::Snapshot),
         "startTunnel" => bridge.start_tunnel().await.map(ResponseResult::Snapshot),
         "stopTunnel" | "disconnectAI" => bridge.stop_tunnel().await.map(ResponseResult::Snapshot),
@@ -2102,7 +2085,6 @@ mod tests {
     fn backend_snapshot_serializes_connection_separately_from_project_verification() {
         let desktop = RuntimeSnapshot {
             runtime_configured: true,
-            runtime_autostart: true,
             readiness: crate::chadex_core::runtime::RuntimeReadiness {
                 runtime_ready: true,
                 needs_attention: false,
