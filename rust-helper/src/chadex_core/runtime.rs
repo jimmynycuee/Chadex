@@ -45,6 +45,8 @@ pub struct RuntimeOperation {
     pub phase: RuntimeOperationPhase,
     pub started_at_ms: u64,
     pub cancellable: bool,
+    /// Launch warm-up work the user did not request; never shown as user work.
+    pub background: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +116,14 @@ impl ChadexRuntimeCore {
 
     pub async fn resume_saved_runtime(&self) -> ChadexResult<RuntimeSnapshot> {
         self.backend.resume_saved_runtime().await
+    }
+
+    pub async fn resume_saved_runtime_background(&self) -> ChadexResult<RuntimeSnapshot> {
+        self.backend.resume_saved_runtime_background().await
+    }
+
+    pub async fn cancel_background_operation(&self) {
+        self.backend.cancel_background_operation().await
     }
 
     pub async fn refresh_runtime_status(&self) -> ChadexResult<RuntimeSnapshot> {

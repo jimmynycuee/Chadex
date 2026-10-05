@@ -640,11 +640,11 @@ private struct AdvancedSettingsView: View {
                 SettingsControlBlock {
                     VStack(alignment: .leading, spacing: ChadexMetrics.settingsRowSpacing) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Toggle(L10n.string("settings.restoreService"), isOn: Binding(
-                                get: { model.preferences.restoreServiceOnLaunch },
-                                set: { model.setRestoreService($0) }
+                            Toggle(L10n.string("settings.prepareService"), isOn: Binding(
+                                get: { model.preferences.prepareServiceOnLaunchEnabled },
+                                set: { model.setPrepareServiceOnLaunch($0) }
                             ))
-                            Text(L10n.string("settings.restoreServiceNote"))
+                            Text(L10n.string("settings.prepareServiceNote"))
                                 .chadexFont(.caption)
                                 .foregroundStyle(.secondary)
                         }

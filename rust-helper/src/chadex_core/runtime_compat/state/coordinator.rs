@@ -407,6 +407,28 @@ impl RuntimeStateManager {
             .await
     }
 
+    /// Same resume as `resume_saved_runtime`, but flagged as a background
+    /// warm-up so it is not presented as a user operation.
+    pub async fn resume_saved_runtime_background(&self) -> DesktopResult<DesktopStateSnapshot> {
+        let (operation, cancellation, mut core, baseline) = self
+            .begin_operation_with(DesktopOperationKind::RuntimeResume, true, true)
+            .await?;
+        let result = core.resume_saved_runtime(&cancellation).await;
+        self.finish_operation(operation, cancellation, core, baseline, result)
+            .await
+    }
+
+    /// Cancels a background warm-up (if one is running) and waits, bounded,
+    /// for it to release the mutation slot. Never touches user operations.
+    pub async fn cancel_background_operation(&self) {
+        if let Some(id) = self.operations.cancel_background() {
+            let _ = self
+                .operations
+                .wait_until_finished(&id, tokio::time::Instant::now() + BACKGROUND_CANCEL_WAIT)
+                .await;
+        }
+    }
+
     pub async fn update_tunnel_config(
         &self,
         request: TunnelConfigRequest,
@@ -623,10 +645,28 @@ impl RuntimeStateManager {
         RuntimeCoordinator,
         ProcessBaseline,
     )> {
+        self.begin_operation_with(kind, cancellable, false).await
+    }
+
+    async fn begin_operation_with(
+        &self,
+        kind: DesktopOperationKind,
+        cancellable: bool,
+        background: bool,
+    ) -> DesktopResult<(
+        OperationAdmission,
+        CancellationContext,
+        RuntimeCoordinator,
+        ProcessBaseline,
+    )> {
         if self.shutdown_signal.is_cancelled() {
             return Err(cancelled_error());
         }
-        let operation = self.operations.admit(kind, cancellable)?;
+        let operation = if background {
+            self.operations.admit_background(kind)?
+        } else {
+            self.operations.admit(kind, cancellable)?
+        };
         let cancellation =
             CancellationContext::new(operation.cancellation.clone(), self.shutdown_signal.clone());
         let baseline = self.capture_process_baseline().await;
@@ -1020,14 +1060,16 @@ impl RuntimeCoordinator {
         cancellation.check()?;
         // A saved user stop remains stopped across refresh, while a reachable
         // external service is still observed normally. A local Server that is
-        // unreachable and not owned by this helper (e.g. after an app restart)
-        // has simply not been started yet; that is stopped, not an error.
+        // unreachable and was never spawned by this helper (e.g. after an app
+        // restart) has simply not been started yet; that is stopped, not an
+        // error. A recorded process that has since exited or failed is a crash
+        // and must keep reporting as needing attention.
         let local_server_not_started = server != ServerReadiness::Ready
             && matches!(
                 self.config.topology.as_ref().map(|topology| &topology.server),
                 Some(ServerTopology::Local)
             )
-            && !process_is_active(self.process_snapshot(ProcessKind::LocalServer).await);
+            && self.process_snapshot(ProcessKind::LocalServer).await.is_none();
         if (!runtime_autostart(&self.config) || local_server_not_started)
             && server != ServerReadiness::Ready
         {

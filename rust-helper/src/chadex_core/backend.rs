@@ -44,6 +44,14 @@ impl RuntimeBackendApi {
         self.adapter.resume_saved_runtime().await
     }
 
+    pub(crate) async fn resume_saved_runtime_background(&self) -> ChadexResult<RuntimeSnapshot> {
+        self.adapter.resume_saved_runtime_background().await
+    }
+
+    pub(crate) async fn cancel_background_operation(&self) {
+        self.adapter.cancel_background_operation().await
+    }
+
     pub(crate) async fn refresh_runtime_status(&self) -> ChadexResult<RuntimeSnapshot> {
         self.adapter.refresh_runtime_status().await
     }

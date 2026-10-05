@@ -148,6 +148,24 @@ impl RuntimeBackendAdapter {
             .map_err(map_desktop_error)
     }
 
+    /// Launch warm-up variant of `resume_saved_runtime`: the operation is
+    /// flagged background so it is not presented as user work.
+    pub(crate) async fn resume_saved_runtime_background(&self) -> ChadexResult<RuntimeSnapshot> {
+        if let Some(snapshot) = self.try_fast_runtime_observation().await {
+            return Ok(snapshot);
+        }
+        self.app
+            .resume_saved_runtime_background()
+            .await
+            .map(map_snapshot)
+            .map_err(map_desktop_error)
+    }
+
+    /// Cancels an in-flight background warm-up and waits for it to unwind.
+    pub(crate) async fn cancel_background_operation(&self) {
+        self.app.cancel_background_operation().await;
+    }
+
     pub(crate) async fn refresh_runtime_status(&self) -> ChadexResult<RuntimeSnapshot> {
         if let Some(snapshot) = self.try_fast_runtime_observation().await {
             return Ok(snapshot);
@@ -1772,6 +1790,7 @@ fn map_snapshot(snapshot: DesktopStateSnapshot) -> RuntimeSnapshot {
             },
             started_at_ms: operation.started_at_ms,
             cancellable: operation.cancellable,
+            background: operation.background,
         });
     RuntimeSnapshot {
         runtime_configured: snapshot.topology.is_some(),

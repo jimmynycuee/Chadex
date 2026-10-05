@@ -490,8 +490,8 @@
 "settings.clearAPIKeyTitle" = "Remove the saved API key?";
 "settings.clearAPIKeyMessage" = "Chadex will stop the secure Tunnel and remove the API key from Keychain and helper memory. The local runtime service and Tunnel ID will be kept.";
 "settings.restore" = "Launch & Restore";
-"settings.restoreService" = "Restore local service";
-"settings.restoreServiceNote" = "Restart the previously used local runtime when Chadex launches.";
+"settings.prepareService" = "Prepare the local service in the background at launch (faster connect)";
+"settings.prepareServiceNote" = "Starts the previously used local runtime when Chadex launches so connecting only has to open the Secure Tunnel. Turn off to start it only when you connect.";
 "settings.restoreConnection" = "Automatically restore ChatGPT connection";
 "settings.restoreConnectionNote" = "Re-establish the Secure Tunnel automatically after launch.";
 "settings.diagnostics" = "Diagnostics";

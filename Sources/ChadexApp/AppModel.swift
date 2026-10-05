@@ -78,7 +78,9 @@ final class AppModel: ObservableObject {
     private let keychainACLVersionKey = "app.chadex.keychain-acl-version"
     private let currentKeychainACLVersion = 1
     private var pollingTask: Task<Void, Never>?
-    private var runtimePrewarmTask: Task<Void, Never>?
+    private(set) var runtimePrewarmTask: Task<Void, Never>?
+    private(set) var isShuttingDown = false
+    private let pollWaker = PollWaker()
     private var refreshInFlight = false
     private var skillsRefreshProjectID: UUID?
     private var skillsLastRefreshUptime: TimeInterval?
@@ -95,7 +97,6 @@ final class AppModel: ObservableObject {
     // keep a fast poll even in the background for a bounded window.
     private var awaitingChatGPTSinceUptime: TimeInterval?
     private let awaitingChatGPTFastPollWindow: TimeInterval = 120
-    private let pollTick: TimeInterval = 0.25
     private let skillsRefreshMaxAge: TimeInterval = 5
     private let projectMemoryRefreshMaxAge: TimeInterval = 5
 
@@ -262,22 +263,27 @@ final class AppModel: ObservableObject {
         pollingTask = Task { [weak self] in
             guard let self else { return }
             await self.bootstrap()
+            var lastPollUptime = ProcessInfo.processInfo.systemUptime
             while !Task.isCancelled {
-                // Re-evaluate the interval every tick so a state change (e.g. a
-                // connect that just finished) shortens a long pending wait.
-                let waitStarted = ProcessInfo.processInfo.systemUptime
-                while !Task.isCancelled,
-                      ProcessInfo.processInfo.systemUptime - waitStarted < self.pollInterval {
-                    try? await Task.sleep(nanoseconds: UInt64(self.pollTick * 1_000_000_000))
+                // Sleep exactly until the next poll is due. State changes that
+                // shorten the interval wake this wait through `pollWaker`, so
+                // there is no fixed-rate ticking while idle.
+                let remaining = lastPollUptime + self.pollInterval
+                    - ProcessInfo.processInfo.systemUptime
+                if remaining > 0.01 {
+                    await self.pollWaker.wait(seconds: remaining)
+                    continue
                 }
-                guard !Task.isCancelled else { break }
+                guard !Task.isCancelled, !self.isShuttingDown else { break }
                 await self.refreshStatus()
+                lastPollUptime = ProcessInfo.processInfo.systemUptime
             }
         }
     }
 
     func applicationBecameActive() {
         isAppActive = true
+        pollWaker.signal()
         // A status error presented on the main window while a configuration
         // sheet is open can create a hidden macOS modal session that steals
         // keyboard and pointer events from the visible sheet.
@@ -294,8 +300,14 @@ final class AppModel: ObservableObject {
     }
 
     func shutdown() async {
+        // Stop everything that could talk to (or relaunch) the helper before
+        // asking it to quit: the poll loop and any in-flight launch warm-up.
+        isShuttingDown = true
         pollingTask?.cancel()
+        runtimePrewarmTask?.cancel()
+        pollWaker.signal()
         await helper.shutdown()
+        await runtimePrewarmTask?.value
     }
 
     func addProjectFromPanel() {
@@ -447,6 +459,9 @@ final class AppModel: ObservableObject {
     }
 
     func refreshStatus(force: Bool = false) async {
+        // After shutdown began a request would relaunch the helper that is
+        // being stopped.
+        guard !isShuttingDown else { return }
         if connectionActionInFlight && !force { return }
         if refreshInFlight && !force { return }
         guard !refreshInFlight else { return }
@@ -1314,8 +1329,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func setRestoreService(_ value: Bool) {
-        preferences.restoreServiceOnLaunch = value
+    func setPrepareServiceOnLaunch(_ value: Bool) {
+        preferences.prepareServiceOnLaunch = value
         do { try persist() } catch { present(error) }
     }
 
@@ -1674,19 +1689,11 @@ final class AppModel: ObservableObject {
                         startedUptime: connectionStarted,
                         succeeded: connectionSucceeded
                     )
-                } else if preferences.restoreServiceOnLaunch {
-                    let serviceTimestamp = Date()
-                    let serviceStarted = ProcessInfo.processInfo.systemUptime
-                    await invoke(method: "resumeService")
-                    recordAppPhase(
-                        timestamp: serviceTimestamp,
-                        operation: "bootstrap",
-                        phase: "service_restore",
-                        startedUptime: serviceStarted,
-                        succeeded: snapshot.error == nil
-                    )
                 } else {
-                    startRuntimePrewarm()
+                    // Restoring the connection already starts the local runtime
+                    // itself; only when it is off is the background warm-up the
+                    // way to prepare it (never both, so it is started once).
+                    startRuntimePrewarmIfEnabled()
                 }
             } else {
                 await refreshStatus(force: true)
@@ -1698,11 +1705,17 @@ final class AppModel: ObservableObject {
     }
 
     /// Resumes an already configured local runtime in the background so a
-    /// later Connect only has to start the tunnel. The helper skips this when
-    /// the user explicitly stopped the service. Failures stay quiet: Connect
-    /// still runs the full recovery path and reports real errors.
-    private func startRuntimePrewarm() {
-        guard runtimePrewarmTask == nil else { return }
+    /// later Connect only has to start the tunnel. Controlled by the "prepare
+    /// the local service at launch" setting. The helper skips this when the
+    /// user explicitly stopped the service, does not publish it as a user
+    /// operation (the UI keeps offering Connect), and joins/cancels it for
+    /// requests that contend with it. Failures stay quiet: Connect still runs
+    /// the full recovery path and reports real errors.
+    func startRuntimePrewarmIfEnabled() {
+        guard preferences.prepareServiceOnLaunchEnabled,
+              selectedProject != nil,
+              !isShuttingDown,
+              runtimePrewarmTask == nil else { return }
         runtimePrewarmTask = Task { [weak self] in
             guard let self else { return }
             let timestamp = Date()
@@ -1722,16 +1735,10 @@ final class AppModel: ObservableObject {
                 succeeded: succeeded
             )
             self.runtimePrewarmTask = nil
-            if !succeeded {
+            if !succeeded, !Task.isCancelled, !self.isShuttingDown {
                 await self.refreshStatus(force: true)
             }
         }
-    }
-
-    /// Runtime mutations are serialized in the helper; wait for the warm-up
-    /// instead of failing a user action with "operation busy".
-    private func waitForRuntimePrewarm() async {
-        await runtimePrewarmTask?.value
     }
 
     private func recordAppPhase(
@@ -1919,6 +1926,7 @@ final class AppModel: ObservableObject {
         } else if candidate.stateRevision < snapshot.stateRevision {
             return false
         }
+        let previousPollInterval = pollInterval
         snapshot = candidate
         snapshotFreshnessGate.markApplied(at: ProcessInfo.processInfo.systemUptime)
         if candidate.tunnelReady && !candidate.chatGPTConnected {
@@ -1927,6 +1935,9 @@ final class AppModel: ObservableObject {
             }
         } else {
             awaitingChatGPTSinceUptime = nil
+        }
+        if pollInterval < previousPollInterval {
+            pollWaker.signal()
         }
         if candidate.tunnelReady || candidate.chatGPTConnected || candidate.phase == .verified {
             connectionActionError = nil
@@ -1947,9 +1958,6 @@ final class AppModel: ObservableObject {
         method: String,
         params: Params
     ) async throws -> BackendSnapshot {
-        if !["prewarmRuntime", "getStatus", "cancelOperation"].contains(method) {
-            await waitForRuntimePrewarm()
-        }
         let requestSequence = beginSnapshotRequest()
         let candidate: BackendSnapshot = try await helper.request(method: method, params: params)
         applySnapshot(candidate, requestSequence: requestSequence)

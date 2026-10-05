@@ -490,8 +490,8 @@
 "settings.clearAPIKeyTitle" = "要移除已儲存的 API key 嗎？";
 "settings.clearAPIKeyMessage" = "Chadex 會停止安全 Tunnel，並從 Keychain 與 helper 記憶體移除 API key；本機 runtime 服務與 Tunnel ID 會保留。";
 "settings.restore" = "啟動與恢復";
-"settings.restoreService" = "恢復本機服務";
-"settings.restoreServiceNote" = "啟動 Chadex 時重新啟動上次使用的本機 runtime。";
+"settings.prepareService" = "啟動時在背景準備本機服務（更快連線）";
+"settings.prepareServiceNote" = "啟動 Chadex 時預先啟動上次使用的本機 runtime，連線時只需開啟安全 Tunnel。關閉後會等到你連線時才啟動。";
 "settings.restoreConnection" = "自動恢復 ChatGPT 連線";
 "settings.restoreConnectionNote" = "啟動後自動重新建立安全 Tunnel。";
 "settings.diagnostics" = "診斷";

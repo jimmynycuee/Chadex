@@ -106,25 +106,45 @@ struct RunningOperation {
     cancellation: CancellationSignal,
 }
 
-#[derive(Clone)]
+/// Proof that one operation owns the mutation slot. Dropping it (for example
+/// because the request future was aborted during shutdown) releases the slot as
+/// a cancelled operation, so nothing waits for an operation that can no longer
+/// finish. A normal `finish` makes the drop a no-op.
 pub(crate) struct OperationAdmission {
     pub(crate) id: String,
     pub(crate) kind: DesktopOperationKind,
     pub(crate) cancellation: CancellationSignal,
+    shared: Arc<ControllerShared>,
 }
 
-pub(crate) struct OperationController {
+// Releases the slot when a request future is aborted (only done at shutdown
+// today). The coordinator core taken by `begin_operation_with` is NOT restored
+// here, so never wrap an operation in `timeout`/`select!` without handling that.
+impl Drop for OperationAdmission {
+    fn drop(&mut self) {
+        let aborted: DesktopResult<()> = Err(cancelled_error());
+        self.shared.finish(&self.id, &aborted);
+    }
+}
+
+struct ControllerShared {
     current: Mutex<Option<RunningOperation>>,
     next_sequence: AtomicU64,
     activity: ActivityLog,
 }
 
+pub(crate) struct OperationController {
+    shared: Arc<ControllerShared>,
+}
+
 impl OperationController {
     pub(crate) fn new(activity: ActivityLog) -> Self {
         Self {
-            current: Mutex::new(None),
-            next_sequence: AtomicU64::new(0),
-            activity,
+            shared: Arc::new(ControllerShared {
+                current: Mutex::new(None),
+                next_sequence: AtomicU64::new(0),
+                activity,
+            }),
         }
     }
 
@@ -133,7 +153,27 @@ impl OperationController {
         kind: DesktopOperationKind,
         cancellable: bool,
     ) -> DesktopResult<OperationAdmission> {
+        self.admit_with(kind, cancellable, false)
+    }
+
+    /// Admits an operation the user did not ask for (launch warm-up). It holds
+    /// the mutation slot like any other, but is flagged so the UI never
+    /// presents it as user work, and only the helper can cancel it.
+    pub(crate) fn admit_background(
+        &self,
+        kind: DesktopOperationKind,
+    ) -> DesktopResult<OperationAdmission> {
+        self.admit_with(kind, true, true)
+    }
+
+    fn admit_with(
+        &self,
+        kind: DesktopOperationKind,
+        cancellable: bool,
+        background: bool,
+    ) -> DesktopResult<OperationAdmission> {
         let mut slot = self
+            .shared
             .current
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -150,7 +190,7 @@ impl OperationController {
             })));
         }
 
-        let sequence = self.next_sequence.fetch_add(1, Ordering::Relaxed) + 1;
+        let sequence = self.shared.next_sequence.fetch_add(1, Ordering::Relaxed) + 1;
         let id = format!("desktop-operation-{sequence}");
         let cancellation = CancellationSignal::new();
         let snapshot = DesktopOperationSnapshot {
@@ -159,9 +199,10 @@ impl OperationController {
             phase: DesktopOperationPhase::Running,
             started_at_ms: timestamp_ms(),
             cancellable,
+            background,
         };
 
-        self.activity.push(
+        self.shared.activity.push(
             ActivityEventKind::OperationStarted,
             "desktop",
             ActivityLevel::Info,
@@ -177,11 +218,13 @@ impl OperationController {
             id,
             kind,
             cancellation,
+            shared: Arc::clone(&self.shared),
         })
     }
 
     pub(crate) fn current(&self) -> Option<DesktopOperationSnapshot> {
-        self.current
+        self.shared
+            .current
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .as_ref()
@@ -190,6 +233,7 @@ impl OperationController {
 
     pub(crate) fn cancel(&self, observed_id: &str) -> DesktopResult<DesktopOperationSnapshot> {
         let mut slot = self
+            .shared
             .current
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -214,7 +258,7 @@ impl OperationController {
         if active.snapshot.phase != DesktopOperationPhase::Cancelling {
             active.snapshot.phase = DesktopOperationPhase::Cancelling;
             active.cancellation.cancel();
-            self.activity.push(
+            self.shared.activity.push(
                 ActivityEventKind::OperationCancelRequested,
                 "desktop",
                 ActivityLevel::Info,
@@ -228,8 +272,37 @@ impl OperationController {
         Ok(active.snapshot.clone())
     }
 
+    /// Cancels the current operation only when it is a background one. Returns
+    /// its id so the caller can wait for it to unwind.
+    pub(crate) fn cancel_background(&self) -> Option<String> {
+        let mut slot = self
+            .shared
+            .current
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let active = slot.as_mut()?;
+        if !active.snapshot.background {
+            return None;
+        }
+        if active.snapshot.phase != DesktopOperationPhase::Cancelling {
+            active.snapshot.phase = DesktopOperationPhase::Cancelling;
+            active.cancellation.cancel();
+            self.shared.activity.push(
+                ActivityEventKind::OperationCancelRequested,
+                "desktop",
+                ActivityLevel::Info,
+                format!(
+                    "Background warm-up stopped for Desktop operation: {}",
+                    active.snapshot.kind.as_str()
+                ),
+            );
+        }
+        Some(active.snapshot.id.clone())
+    }
+
     pub(crate) fn cancel_active_for_shutdown(&self) {
         let mut slot = self
+            .shared
             .current
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -239,7 +312,7 @@ impl OperationController {
 
         if active.snapshot.phase != DesktopOperationPhase::Cancelling {
             active.snapshot.phase = DesktopOperationPhase::Cancelling;
-            self.activity.push(
+            self.shared.activity.push(
                 ActivityEventKind::OperationCancelRequested,
                 "desktop",
                 ActivityLevel::Info,
@@ -253,6 +326,50 @@ impl OperationController {
     }
 
     pub(crate) fn finish<T>(&self, operation_id: &str, result: &DesktopResult<T>) {
+        self.shared.finish(operation_id, result);
+    }
+
+    /// Resolves once the operation with `operation_id` no longer holds the
+    /// slot, or `false` when the deadline passes first.
+    pub(crate) async fn wait_until_finished(&self, operation_id: &str, deadline: Instant) -> bool {
+        loop {
+            if self
+                .current()
+                .is_none_or(|active| active.id != operation_id)
+            {
+                return true;
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return false;
+            }
+            tokio::time::sleep(
+                std::time::Duration::from_millis(10).min(deadline.saturating_duration_since(now)),
+            )
+            .await;
+        }
+    }
+
+    pub(crate) async fn wait_until_idle(&self, deadline: Instant) -> bool {
+        loop {
+            if self.current().is_none() {
+                return true;
+            }
+
+            let now = Instant::now();
+            if now >= deadline {
+                return false;
+            }
+            tokio::time::sleep(
+                std::time::Duration::from_millis(20).min(deadline.saturating_duration_since(now)),
+            )
+            .await;
+        }
+    }
+}
+
+impl ControllerShared {
+    fn finish<T>(&self, operation_id: &str, result: &DesktopResult<T>) {
         let mut slot = self
             .current
             .lock()
@@ -289,23 +406,6 @@ impl OperationController {
         }
 
         *slot = None;
-    }
-
-    pub(crate) async fn wait_until_idle(&self, deadline: Instant) -> bool {
-        loop {
-            if self.current().is_none() {
-                return true;
-            }
-
-            let now = Instant::now();
-            if now >= deadline {
-                return false;
-            }
-            tokio::time::sleep(
-                std::time::Duration::from_millis(20).min(deadline.saturating_duration_since(now)),
-            )
-            .await;
-        }
     }
 }
 
@@ -372,5 +472,99 @@ mod tests {
         assert!(controller
             .admit(DesktopOperationKind::RemoteSetup, true)
             .is_ok());
+    }
+
+    #[test]
+    fn dropping_an_admission_releases_the_slot_as_cancelled() {
+        let controller = OperationController::new(ActivityLog::default());
+        let admission = controller
+            .admit(DesktopOperationKind::RuntimeResume, true)
+            .unwrap();
+        assert!(controller.current().is_some());
+        // An aborted request future drops its admission without finishing it.
+        drop(admission);
+        assert!(controller.current().is_none());
+        assert!(controller
+            .admit(DesktopOperationKind::LocalSetup, true)
+            .is_ok());
+    }
+
+    #[test]
+    fn finishing_then_dropping_does_not_release_a_newer_operation() {
+        let controller = OperationController::new(ActivityLog::default());
+        let first = controller
+            .admit(DesktopOperationKind::LocalSetup, true)
+            .unwrap();
+        let ok: DesktopResult<()> = Ok(());
+        controller.finish(&first.id, &ok);
+        let second = controller
+            .admit(DesktopOperationKind::RemoteSetup, true)
+            .unwrap();
+        drop(first);
+        assert_eq!(controller.current().unwrap().id, second.id);
+    }
+
+    #[tokio::test]
+    async fn dropped_admission_lets_shutdown_wait_return_at_once() {
+        let controller = OperationController::new(ActivityLog::default());
+        let admission = controller
+            .admit(DesktopOperationKind::RuntimeResume, true)
+            .unwrap();
+        drop(admission);
+        let started = Instant::now();
+        assert!(
+            controller
+                .wait_until_idle(Instant::now() + std::time::Duration::from_secs(5))
+                .await
+        );
+        assert!(started.elapsed() < std::time::Duration::from_millis(500));
+    }
+
+    #[test]
+    fn background_operation_is_flagged_and_only_cancel_background_stops_it() {
+        let controller = OperationController::new(ActivityLog::default());
+        assert!(controller.cancel_background().is_none());
+
+        let user = controller
+            .admit(DesktopOperationKind::LocalSetup, true)
+            .unwrap();
+        assert!(!controller.current().unwrap().background);
+        assert!(
+            controller.cancel_background().is_none(),
+            "user operations are never cancelled as background work"
+        );
+        assert!(!user.cancellation.is_cancelled());
+        let ok: DesktopResult<()> = Ok(());
+        controller.finish(&user.id, &ok);
+
+        let background = controller
+            .admit_background(DesktopOperationKind::RuntimeResume)
+            .unwrap();
+        assert!(controller.current().unwrap().background);
+        assert_eq!(controller.cancel_background().as_deref(), Some(background.id.as_str()));
+        assert!(background.cancellation.is_cancelled());
+        assert_eq!(
+            controller.current().unwrap().phase,
+            DesktopOperationPhase::Cancelling
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_until_finished_tracks_one_operation() {
+        let controller = OperationController::new(ActivityLog::default());
+        let background = controller
+            .admit_background(DesktopOperationKind::RuntimeResume)
+            .unwrap();
+        assert!(
+            !controller
+                .wait_until_finished(&background.id, Instant::now() + std::time::Duration::from_millis(30))
+                .await
+        );
+        drop(background);
+        assert!(
+            controller
+                .wait_until_finished("desktop-operation-1", Instant::now() + std::time::Duration::from_millis(30))
+                .await
+        );
     }
 }
