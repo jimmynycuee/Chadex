@@ -325,6 +325,15 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
                 return Ok(ingress_rejection(status));
             }
         };
+    // The safety gates below inspect the parsed body. A body this parser rejects
+    // could still be accepted by the runtime's laxer struct parsing (e.g. deep
+    // nesting or out-of-range numbers in unknown fields), so never forward it.
+    if parts.method == Method::POST
+        && !body.is_empty()
+        && serde_json::from_slice::<Value>(&body).is_err()
+    {
+        return Ok(ingress_rejection(StatusCode::BAD_REQUEST));
+    }
     let metadata = mcp_metadata(&body);
 
     let computer_dispatch_permit = match inspect_computer_control(&body) {

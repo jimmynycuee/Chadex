@@ -663,3 +663,19 @@ fn read_only_skill_and_memory_tools_are_not_blocked() {
         assert!(tunnel_blocked_management_call(wrapped.as_bytes()).is_none(), "{tool}");
     }
 }
+
+#[tokio::test]
+async fn bodies_the_ingress_cannot_parse_are_not_forwarded() {
+    let state = state("http://127.0.0.1:1/mcp".into());
+    let call = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"skill_install","arguments":{}}"#;
+    let deep = format!(r#"{call},"pad":{}{}}}"#, "[".repeat(200), "]".repeat(200));
+    let huge_number = format!(r#"{call},"pad":1e400}}"#);
+    for body in [deep, huge_number] {
+        let request = Request::builder()
+            .method("POST")
+            .body(Body::from(body))
+            .unwrap();
+        let response = proxy_inner(state.clone(), request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+}
