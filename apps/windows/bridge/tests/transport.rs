@@ -302,6 +302,10 @@ async fn skill_error_codes_survive_but_details_and_messages_do_not() {
         "skill_root_sensitive",
         "runner_config_restart_required",
         "runtime_not_ready",
+        "skill_management_requires_local_runtime",
+        "skill_management_credential_unavailable",
+        "skill_management_credential_rejected",
+        "runner_config_path_is_link",
     ] {
         let error = bridge
             .request("setExternalSkillRoots", json!({"mode": "backend-code", "code": code}))
@@ -309,7 +313,8 @@ async fn skill_error_codes_survive_but_details_and_messages_do_not() {
             .unwrap_err();
         assert_eq!(error.code, ErrorCode::Backend);
         assert_eq!(error.helper_code.as_deref(), Some(code));
-        let output = serde_json::to_string(&error).unwrap();
+        // The allowed code itself may contain the word; only the rest must stay clean.
+        let output = serde_json::to_string(&error).unwrap().replace(code, "");
         assert!(!output.contains("credential"));
     }
     bridge.shutdown().await.unwrap();

@@ -115,7 +115,11 @@ impl BridgeError {
             | "runner_config_invalid"
             | "runner_config_too_large"
             | "runner_config_unavailable"
-            | "runner_config_write_failed" => code,
+            | "runner_config_write_failed"
+            | "runner_config_path_is_link"
+            | "skill_management_requires_local_runtime"
+            | "skill_management_credential_unavailable"
+            | "skill_management_credential_rejected" => code,
             _ => "unclassified",
         };
         error.helper_code = Some(safe.to_owned());

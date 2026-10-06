@@ -12,6 +12,10 @@ describe('skills logic', () => {
     expect(rootsNeedReload('Chadex bridge: Backend (skill_root_sensitive)')).toBe(false);
     expect(externalSkillErrorMessage('x (skill_root_not_canonical)')).toContain('無法連接');
     expect(externalSkillErrorMessage('x (skill_root_sensitive)')).toContain('受保護');
+    expect(externalSkillErrorMessage('x (skill_management_requires_local_runtime)')).toContain('遠端 Server');
+    expect(externalSkillErrorMessage('x (skill_management_credential_unavailable)')).toContain('稍後重試');
+    expect(externalSkillErrorMessage('x (skill_management_credential_rejected)')).toContain('重新啟動本機服務');
+    expect(externalSkillErrorMessage('x (runner_config_path_is_link)')).toContain('連結');
     expect(externalSkillErrorMessage('plain failure')).toBe('plain failure');
   });
   it('strips the extended-length prefix for display only', () => {

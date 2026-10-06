@@ -21,6 +21,10 @@ export function externalSkillErrorMessage(error: unknown): string {
     case 'runtime_not_ready': return '本機 runtime 尚未就緒，請先完成設定並等到閒置。';
     case 'external_skill_roots_unverified': return '無法驗證新的 Skill 資料夾，變更未保留。';
     case 'external_skill_roots_state_unknown': return 'Runner 可能仍在使用新的資料夾。請重新載入後再套用一次。';
+    case 'skill_management_requires_local_runtime': return 'Skill 與專案記憶只能在本機 runtime 上管理。目前連線的是遠端 Server，請先連回本機 runtime。';
+    case 'skill_management_credential_unavailable': return '無法取得本機管理憑證，例如 runtime 尚未就緒。請稍後重試，或重新啟動本機服務。';
+    case 'skill_management_credential_rejected': return '本機 runtime 拒絕了管理憑證。請重新啟動本機服務後再試。';
+    case 'runner_config_path_is_link': return 'runner.toml 所在的資料夾是透過連結（junction 或 symlink）存取，Chadex 無法安全寫入。請改用不在連結之下的 runner.toml 位置。';
     default: return safeError(error);
   }
 }
