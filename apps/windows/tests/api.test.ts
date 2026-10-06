@@ -15,6 +15,7 @@ describe('Tauri 2 command contract', () => {
     const rootsParams = { roots: ['r'], script_roots: [], expected_revision: 'rev', verify_project_path: 'p' };
     await desktopApi.setExternalSkillRoots(rootsParams); expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'setExternalSkillRoots', params: rootsParams });
     await desktopApi.getSkillCatalog('p'); expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'getSkillCatalog', params: { path: 'p' } });
+    await desktopApi.getSkillDefinition('p', 's1', 'd1', 'k1'); expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'getSkillDefinition', params: { path: 'p', skill_id: 's1', definition_revision: 'd1', package_revision: 'k1' } });
     await desktopApi.getSkillInventory('p'); expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'getSkillInventory', params: { path: 'p' } });
     await desktopApi.installSkill('p', 'k', 'a/b.zip'); expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'installSkill', params: { path: 'p', skill_key: 'k', artifact_path: 'a/b.zip' } });
     const entry = { skill_id: 'i', skill_key: 'k', state_revision: 's', preferred_package_revision: 'pk', definition_revision: 'd', name: 'n', description: '', total_versions: 1 };

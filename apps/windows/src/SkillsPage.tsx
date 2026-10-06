@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { DesktopApi } from './api';
-import type { ExternalSkillRootsState, ExternalSkillSource, ExternalSkillSourceDiscovery, SkillCatalog, SkillInventory } from './contracts';
+import type { ExternalSkillRootsState, SkillDefinitionPreview, ExternalSkillSource, ExternalSkillSourceDiscovery, SkillCatalog, SkillInventory } from './contracts';
 import { safeError } from './state';
 import { filterSkills, SKILL_FILTERS, type SkillFilter } from './skillsFilter';
 import {
-  displayPath, externalSkillErrorMessage, extraRoots, hasValidSource, isProvidedElsewhere, isSkillActive, kindLabel, planRoots,
+  helperErrorCode, displayPath, externalSkillErrorMessage, extraRoots, hasValidSource, isProvidedElsewhere, isSkillActive, kindLabel, planRoots,
   providedByPaths, rootsNeedReload, skillCenterItems, sourceLabel, statusText, validSkillKey, type SkillCenterItem,
 } from './skills';
 
@@ -31,14 +31,21 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
   const [catalogInvalidOpen, setCatalogInvalidOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<SkillFilter>('all');
+  const [definitions, setDefinitions] = useState<Record<string, SkillDefinitionPreview>>({});
+  const [definitionLoading, setDefinitionLoading] = useState<Set<string>>(new Set());
+  const [definitionErrors, setDefinitionErrors] = useState<Record<string, string>>({});
+  const [remoteBlocked, setRemoteBlocked] = useState(false);
   const epoch = useRef(0);
+  const loadingRef = useRef(new Set<string>());
+  // The desktop has no topology field; a remote runtime is recognised by the helper's own refusal.
+  const noteError = (error: unknown) => { if (helperErrorCode(error) === 'skill_management_requires_local_runtime') setRemoteBlocked(true); };
 
   const roots = rootsState?.roots ?? [];
   const scriptRoots = new Set(rootsState?.script_roots ?? []);
   const sources = discovery?.sources ?? [];
   const extras = extraRoots(discovery, roots);
   const busy = applying || externalLoading;
-  const canEdit = helperReady && rootsState !== null && !busy;
+  const canEdit = helperReady && rootsState !== null && !busy && !remoteBlocked;
   const validSource = hasValidSource(discovery, roots);
   const items = skillCenterItems(catalog, inventory);
   const visible = filterSkills(items, filter, query);
@@ -49,12 +56,12 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
     try {
       const nextCatalog = await api.getSkillCatalog(project);
       let nextInventory: SkillInventory | null = null; let warning: string | null = null;
-      try { nextInventory = await api.getSkillInventory(project); } catch (error) { warning = safeError(error); }
+      try { nextInventory = await api.getSkillInventory(project); } catch (error) { noteError(error); warning = externalSkillErrorMessage(error); }
       if (mine !== epoch.current) return;
-      setCatalog(nextCatalog); setInventory(nextInventory); setSkillsError(warning);
+      setCatalog(nextCatalog); setInventory(nextInventory); setSkillsError(warning); if (!warning) setRemoteBlocked(false);
     } catch (error) {
       if (mine !== epoch.current) return;
-      setCatalog(null); setInventory(null); setSkillsError(safeError(error));
+      noteError(error); setCatalog(null); setInventory(null); setSkillsError(externalSkillErrorMessage(error));
     } finally { if (mine === epoch.current) setSkillsLoading(false); }
   }, [api, project, helperReady]);
 
@@ -63,9 +70,9 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
     const mine = epoch.current; setExternalLoading(true);
     let failure: string | null = null;
     try { const found = await api.discoverExternalSkillSources(); if (mine === epoch.current) setDiscovery(found); }
-    catch (error) { if (mine === epoch.current) setDiscovery(null); failure = externalSkillErrorMessage(error); }
+    catch (error) { noteError(error); if (mine === epoch.current) setDiscovery(null); failure = externalSkillErrorMessage(error); }
     try { const state = await api.getExternalSkillRoots(); if (mine === epoch.current) setRootsState(state); }
-    catch (error) { if (mine === epoch.current) setRootsState(null); failure = externalSkillErrorMessage(error); }
+    catch (error) { noteError(error); if (mine === epoch.current) setRootsState(null); failure = externalSkillErrorMessage(error); }
     if (mine !== epoch.current) return;
     setExternalError(failure); setExternalLoading(false);
   }, [api, helperReady]);
@@ -82,7 +89,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
       setExternalError(null);
       await loadSkills();
     } catch (error) {
-      setExternalError(externalSkillErrorMessage(error));
+      noteError(error); setExternalError(externalSkillErrorMessage(error));
       if (rootsNeedReload(error)) { try { setRootsState(await api.getExternalSkillRoots()); } catch { /* keep the error above */ } }
     } finally { setApplying(false); }
   }
@@ -93,7 +100,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
       const path = await api.chooseSkillFolder();
       if (path === null || roots.includes(path)) return;
       await applyRoots(planRoots(roots, [...scriptRoots], { connect: path, on: true }));
-    } catch (error) { setExternalError(externalSkillErrorMessage(error)); }
+    } catch (error) { noteError(error); setExternalError(externalSkillErrorMessage(error)); }
   }
   async function chooseArchive() {
     if (!project) return;
@@ -110,8 +117,29 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
       await api.installSkill(project, skillKey.trim(), archive);
       setImporting(false); setSkillKey(''); setArchive('');
       await loadSkills();
-    } catch (error) { setImportError(safeError(error)); await loadSkills(); }
+    } catch (error) { noteError(error); setImportError(externalSkillErrorMessage(error)); await loadSkills(); }
     finally { setInstalling(false); }
+  }
+  async function loadDefinition(item: SkillCenterItem) {
+    if (!project || !isSkillActive(item)) return;
+    const have = definitions[item.skill_id];
+    if (have && have.definition_revision === item.definition_revision && (have.package_revision ?? null) === (item.package_revision ?? null)) return;
+    if (loadingRef.current.has(item.skill_id)) return;
+    loadingRef.current.add(item.skill_id);
+    setDefinitionLoading((current) => new Set(current).add(item.skill_id));
+    setDefinitionErrors((current) => { const next = { ...current }; delete next[item.skill_id]; return next; });
+    try {
+      const preview = await api.getSkillDefinition(project, item.skill_id, item.definition_revision, item.package_revision);
+      if (preview.definition_revision !== item.definition_revision || (preview.package_revision ?? null) !== (item.package_revision ?? null)) { await loadSkills(); return; }
+      setDefinitions((current) => ({ ...current, [item.skill_id]: preview }));
+    } catch (error) {
+      noteError(error);
+      setDefinitionErrors((current) => ({ ...current, [item.skill_id]: externalSkillErrorMessage(error) }));
+      await loadSkills();
+    } finally {
+      loadingRef.current.delete(item.skill_id);
+      setDefinitionLoading((current) => { const next = new Set(current); next.delete(item.skill_id); return next; });
+    }
   }
   async function toggleManaged(item: SkillCenterItem) {
     if (!project || !item.managed || mutating) return;
@@ -124,7 +152,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
   }
 
   const toggleIn = (setter: typeof setExpandedSkills, key: string) => setter((current) => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next; });
-  const importButton = <button className={validSource ? '' : 'primary'} disabled={!project || !helperReady || installing} onClick={() => setImporting(true)}>匯入 Skill（ZIP）…</button>;
+  const importButton = <button className={validSource ? '' : 'primary'} disabled={!project || !helperReady || installing || remoteBlocked} onClick={() => setImporting(true)}>匯入 Skill（ZIP）…</button>;
   const toggles = (path: string) => {
     const connected = roots.includes(path);
     return <div className="skill-toggles">
@@ -153,7 +181,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
     const active = isSkillActive(item); const open = expandedSkills.has(item.skill_id);
     return <li className={`skill-item${open ? ' open' : ''}`} key={item.skill_id}>
       <div className="skill-line">
-        <button className="skill-toggle" aria-expanded={open} aria-label={`${open ? '收合' : '展開'} ${item.name}`} onClick={() => toggleIn(setExpandedSkills, item.skill_id)}>
+        <button className="skill-toggle" aria-expanded={open} aria-label={`${open ? '收合' : '展開'} ${item.name}`} onClick={() => { if (!open) void loadDefinition(item); toggleIn(setExpandedSkills, item.skill_id); }}>
           <span className="skill-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
           <strong className="skill-name">{item.name}</strong>
           <Chip>{sourceLabel(item)}</Chip><Chip>{active ? '已啟用' : '已停用'}</Chip>
@@ -167,7 +195,11 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
         <p>{item.description}</p>
         <p className="skill-meta">來源：{sourceLabel(item)}（{item.source_scope}）· ID <code>{item.skill_id}</code></p>
         <small className="skill-rev" title={item.definition_revision}>{item.definition_revision.slice(0, 12)}</small>
-        <p className="skill-meta">SKILL.md 內容只會在 Skill 被選中使用時由 runtime 讀取，此頁僅顯示 metadata。</p>
+        {!active ? <p className="skill-meta">啟用後才能預覽 SKILL.md。</p>
+          : definitionLoading.has(item.skill_id) ? <p className="skill-meta" role="status">正在載入 SKILL.md…</p>
+            : definitionErrors[item.skill_id] ? <p className="skill-meta" role="alert">無法載入 SKILL.md：{definitionErrors[item.skill_id]}</p>
+              : definitions[item.skill_id] && <><pre className="skill-definition" aria-label={`${item.name} SKILL.md`}>{definitions[item.skill_id].text}</pre>
+                {definitions[item.skill_id].has_more && <p className="skill-meta">內容過長，僅顯示前段。</p>}</>}
       </div>}
     </li>;
   };
@@ -183,7 +215,8 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
     <section className="panel"><div className="panel-heading"><h2>外部 Skill 來源</h2>
       <div className="skill-actions">{externalLoading && <span className="spinner" aria-label="載入中" />}<button disabled={!canEdit} onClick={() => { void chooseFolder(); }}>選擇資料夾…</button>{importButton}</div></div>
       <p className="panel-note">連接你已經在 Codex、Claude Code 或共用 agent 使用的 Skill 資料夾，修改原檔不需要重新匯入。匯入 ZIP 則會複製到 Chadex 自己的儲存區。腳本預設關閉，需逐一開啟；這是 run_skill_resource 的預設政策，不是沙盒：啟用 shell 工具時，ChatGPT 仍可執行指令。</p>
-      {externalError && <div className="notice error" role="alert">{externalError}</div>}
+      {remoteBlocked && <div className="notice error" role="status">遠端 runtime 不支援匯入或管理 Skill，請在 runtime 所在的機器上操作。</div>}
+      {externalError && !remoteBlocked && <div className="notice error" role="alert">{externalError}</div>}
       {!validSource && !externalLoading && <div className="skill-import-cta"><p>找不到可連接的外部 Skill 資料夾。可用「選擇資料夾…」手動連接，或直接匯入 Skill ZIP。</p></div>}
       {(sources.length > 0 || extras.length > 0) && <ul className="skill-cards">
         {sources.map(sourceCard)}
@@ -204,7 +237,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
     </section>
 
     <section className="panel"><div className="panel-heading"><h2>Skill 列表{items.length > 0 ? `（${visible.length}/${items.length}）` : ''}</h2></div>
-      {skillsError && <div className="notice error" role="alert">{skillsError}</div>}
+      {skillsError && !remoteBlocked && <div className="notice error" role="alert">{skillsError}</div>}
       {invalidWarning && <div className="skill-warning"><button className="text-button" aria-expanded={catalogInvalidOpen} onClick={() => setCatalogInvalidOpen((open) => !open)}>⚠ 有 {catalog?.invalid_count ?? 0} 個無效套件 {catalogInvalidOpen ? '▾' : '▸'}</button>
         {catalogInvalidOpen && <p className="skill-meta">{invalidWarning}</p>}</div>}
       {items.length > 0 && <div className="skill-filterbar">

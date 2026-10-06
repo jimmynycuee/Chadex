@@ -1,7 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import type {
   DesktopState, ExternalSkillRootsState, ExternalSkillSourceDiscovery, ManagedSkillEntry, Preferences, ProjectInspection,
-  RuntimeMethod, SetExternalSkillRootsParams, SkillCatalog, SkillInventory,
+  RuntimeMethod, SetExternalSkillRootsParams, SkillCatalog, SkillDefinitionPreview, SkillInventory,
 } from './contracts';
 
 export interface DesktopApi {
@@ -18,6 +18,7 @@ export interface DesktopApi {
   setExternalSkillRoots(params: SetExternalSkillRootsParams): Promise<ExternalSkillRootsState>;
   getSkillCatalog(path: string): Promise<SkillCatalog>;
   getSkillInventory(path: string): Promise<SkillInventory>;
+  getSkillDefinition(path: string, skillId: string, definitionRevision: string, packageRevision?: string | null): Promise<SkillDefinitionPreview>;
   installSkill(path: string, skillKey: string, artifactPath: string): Promise<unknown>;
   activateSkill(path: string, entry: ManagedSkillEntry): Promise<unknown>;
   deactivateSkill(path: string, entry: ManagedSkillEntry): Promise<unknown>;
@@ -71,6 +72,8 @@ export const desktopApi: DesktopApi = {
   setExternalSkillRoots: (params) => call('runtime_action', { method: 'setExternalSkillRoots', params }),
   getSkillCatalog: (path) => call('runtime_action', { method: 'getSkillCatalog', params: { path } }),
   getSkillInventory: (path) => call('runtime_action', { method: 'getSkillInventory', params: { path } }),
+  getSkillDefinition: (path, skillId, definitionRevision, packageRevision) => call('runtime_action', { method: 'getSkillDefinition',
+    params: { path, skill_id: skillId, definition_revision: definitionRevision, ...(packageRevision ? { package_revision: packageRevision } : {}) } }),
   installSkill: (path, skillKey, artifactPath) => call<unknown>('runtime_action', { method: 'installSkill', params: { path, skill_key: skillKey, artifact_path: artifactPath } }).catch(rethrowSkillArchiveError),
   activateSkill: (path, entry) => call('runtime_action', { method: 'activateSkill',
     params: { path, skill_key: entry.skill_key, package_revision: entry.preferred_package_revision, state_revision: entry.state_revision } }),

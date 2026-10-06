@@ -29,6 +29,7 @@ export function apiMock(state = desktop()): DesktopApi {
     getExternalSkillRoots: vi.fn().mockResolvedValue({ format: 'chadex.external_skill_roots.v1', roots: [], script_roots: [], revision: 'rev1' }),
     setExternalSkillRoots: vi.fn().mockImplementation(async (p) => ({ format: 'chadex.external_skill_roots.v1', roots: p.roots, script_roots: p.script_roots, revision: 'rev2', generation: 1 })),
     getSkillCatalog: vi.fn().mockResolvedValue({ project: 'C:\\work\\chadex', catalog_revision: 'c', total_count: 0, returned_count: 0, skills: [], invalid_count: 0, diagnostics: [], discovery_truncated: false }),
+    getSkillDefinition: vi.fn().mockResolvedValue({ skill_id: 'x', definition_revision: 'x', package_revision: null, text: '', has_more: false }),
     getSkillInventory: vi.fn().mockResolvedValue({ project: 'C:\\work\\chadex', total_count: 0, skills: [] }),
     installSkill: vi.fn().mockResolvedValue({}), activateSkill: vi.fn().mockResolvedValue({}), deactivateSkill: vi.fn().mockResolvedValue({}),
     chooseSkillFolder: vi.fn().mockResolvedValue(null), chooseSkillArchive: vi.fn().mockResolvedValue(null),

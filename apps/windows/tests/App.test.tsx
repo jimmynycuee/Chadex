@@ -214,6 +214,42 @@ describe('Skills page', () => {
     fireEvent.click(screen.getByRole('button', { name: '停用 Mine' }));
     await waitFor(() => expect(api.deactivateSkill).toHaveBeenCalledWith('C:\\work\\chadex', managed));
   });
+  const skillFixtures = (mock: ReturnType<typeof apiMock>, scripts = false) => {
+    vi.mocked(mock.getSkillCatalog).mockResolvedValue({ project: 'p', catalog_revision: 'c', total_count: 1, returned_count: 1, invalid_count: 0, diagnostics: [], discovery_truncated: false, skills: [
+      { skill_id: 'x1', name: 'Ext', description: 'external one', definition_revision: 'def-1', package_revision: null, source_scope: 'configured', trust: 'operator_configured_guidance', name_conflict: false, scripts_allowed: scripts }] });
+  };
+  it('loads SKILL.md only when a skill is expanded', async () => {
+    const api = await openSkills((mock) => { skillFixtures(mock);
+      vi.mocked(mock.getSkillDefinition).mockResolvedValue({ skill_id: 'x1', definition_revision: 'def-1', package_revision: null, text: '# Ext skill body', has_more: true }); });
+    const toggle = await screen.findByRole('button', { name: '展開 Ext' });
+    expect(api.getSkillDefinition).not.toHaveBeenCalled();
+    fireEvent.click(toggle);
+    expect(await screen.findByText('# Ext skill body')).toBeTruthy();
+    expect(api.getSkillDefinition).toHaveBeenCalledWith('C:\\work\\chadex', 'x1', 'def-1', null);
+    expect(screen.getByText('內容過長，僅顯示前段。')).toBeTruthy();
+  });
+  it('shows a SKILL.md load error and refreshes the list', async () => {
+    const api = await openSkills((mock) => { skillFixtures(mock);
+      vi.mocked(mock.getSkillDefinition).mockRejectedValue('Chadex bridge: Backend (tool_failure)。請查看診斷並重試。'); });
+    const before = vi.mocked(api.getSkillCatalog).mock.calls.length;
+    fireEvent.click(await screen.findByRole('button', { name: '展開 Ext' }));
+    expect(await screen.findByText(/無法載入 SKILL.md/)).toBeTruthy();
+    await waitFor(() => expect(vi.mocked(api.getSkillCatalog).mock.calls.length).toBeGreaterThan(before));
+  });
+  it('refreshes instead of showing a SKILL.md whose revision no longer matches', async () => {
+    const api = await openSkills((mock) => { skillFixtures(mock);
+      vi.mocked(mock.getSkillDefinition).mockResolvedValue({ skill_id: 'x1', definition_revision: 'other', package_revision: null, text: 'STALE', has_more: false }); });
+    const before = vi.mocked(api.getSkillCatalog).mock.calls.length;
+    fireEvent.click(await screen.findByRole('button', { name: '展開 Ext' }));
+    await waitFor(() => expect(vi.mocked(api.getSkillCatalog).mock.calls.length).toBeGreaterThan(before));
+    expect(screen.queryByText('STALE')).toBeNull();
+  });
+  it('explains a remote runtime and disables import and connecting', async () => {
+    await openSkills((mock) => { vi.mocked(mock.getSkillCatalog).mockRejectedValue('Chadex bridge: Backend (skill_management_requires_local_runtime)。請查看診斷並重試。'); });
+    expect(await screen.findByText(/遠端 runtime 不支援匯入或管理 Skill/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: '匯入 Skill（ZIP）…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '選擇資料夾…' }) as HTMLButtonElement).disabled).toBe(true);
+  });
   it('installs a ZIP from any location and surfaces helper errors', async () => {
     const api = await openSkills((mock) => { vi.mocked(mock.chooseSkillArchive).mockResolvedValue('skills/pack.zip');
       vi.mocked(mock.installSkill).mockRejectedValue('Chadex bridge: Backend (tool_failure)。請查看診斷並重試。'); });

@@ -60,7 +60,7 @@ export type RuntimeMethod = 'inspectProject' | 'activateProject' | 'switchLocalP
   | 'disconnectAI' | 'stopLocalService' | 'updateProxySettings' | 'queryActivities'
   | 'getStatus' | 'refreshRuntime' | 'prewarmRuntime' | 'observeChatGPTActivity'
   | 'discoverExternalSkillSources' | 'getExternalSkillRoots' | 'setExternalSkillRoots'
-  | 'getSkillCatalog' | 'getSkillInventory' | 'installSkill' | 'activateSkill' | 'deactivateSkill';
+  | 'getSkillCatalog' | 'getSkillInventory' | 'getSkillDefinition' | 'installSkill' | 'activateSkill' | 'deactivateSkill';
 
 // Skills (docs/BRIDGE_PROTOCOL.md "Skills" / "External Skill sources"); raw helper snake_case.
 export type ExternalSkillStatus = 'available' | 'not_found' | 'not_directory' | 'unavailable' | 'scan_limit_exceeded' | 'duplicate_source';
@@ -97,6 +97,7 @@ export interface ManagedSkillEntry {
   skill_id: string; skill_key: string; state_revision: string; active_package_revision?: string | null;
   preferred_package_revision: string; definition_revision: string; name: string; description: string; total_versions: number;
 }
+export interface SkillDefinitionPreview { skill_id: string; definition_revision: string; package_revision?: string | null; text: string; has_more: boolean }
 export interface SkillInventory { project: string; total_count: number; skills: ManagedSkillEntry[] }
 
 export const defaultPreferences: Preferences = {
