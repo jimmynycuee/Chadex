@@ -295,14 +295,32 @@ struct SkillsCenterView: View {
                 .accessibilityValue(expanded ? L10n.string("skills.row.expanded") : L10n.string("skills.row.collapsed"))
                 .accessibilityHint(expanded ? L10n.string("skills.row.collapseHint") : L10n.string("skills.row.expandHint"))
 
+                // Only Skills Chadex stored can be toggled or removed; project and external Skills are not Chadex's files.
                 if let managed = item.managed {
-                    Button(item.isActive ? L10n.string("skills.disable") : L10n.string("skills.enable")) {
-                        Task { await model.setManagedSkillEnabled(item, enabled: !item.isActive) }
+                    let inFlight = model.skillMutationInFlightIDs.contains(item.skillId)
+                    Toggle(L10n.string("skills.enable"), isOn: Binding(
+                        get: { item.isActive },
+                        set: { newValue in
+                            Task { await model.setManagedSkillEnabled(item, enabled: newValue) }
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
+                    .disabled(inFlight)
+                    .help(L10n.string("skills.managedToggleHelp", managed.skillKey))
+                    .accessibilityLabel(L10n.string("skills.enable"))
+
+                    Button(role: .destructive) {
+                        removeTarget = item
+                    } label: {
+                        Label(L10n.string("skills.remove"), systemImage: "trash")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(model.skillMutationInFlightIDs.contains(item.skillId))
-                    .help(L10n.string("skills.managedToggleHelp", managed.skillKey))
+                    .tint(.red)
+                    .disabled(inFlight)
+                    .help(L10n.string("skills.removeHelp", managed.skillKey))
                 }
             }
 
@@ -387,17 +405,6 @@ struct SkillsCenterView: View {
                 .chadexFont(.caption)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
-
-            // Only Skills Chadex stored can be removed; project and external Skills are not Chadex's files.
-            if let managed = item.managed {
-                Button(L10n.string("skills.remove"), role: .destructive) {
-                    removeTarget = item
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(model.skillMutationInFlightIDs.contains(item.skillId))
-                .help(L10n.string("skills.removeHelp", managed.skillKey))
-            }
         }
     }
 

@@ -154,7 +154,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
     // Refresh first: loadSkills resets the error, which would hide this failure.
     if (failure) setSkillsError(failure);
   }
-  /** Removes every stored version of an installed Skill after the user confirmed in the detail panel. */
+  /** Removes every stored version of an installed Skill after the user confirmed in the inline dialog. */
   async function removeManaged(item: SkillCenterItem) {
     if (!project || !item.managed || mutating) return;
     setMutating(item.skill_id); setRemoving(null);
@@ -206,8 +206,16 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
           {item.trust === 'operator_configured_guidance' && item.scripts_allowed === false && <Chip title="此 Skill 的腳本預設不允許執行。請在其資料夾開啟「允許腳本」。">腳本關閉</Chip>}
           {!open && <span className="skill-summary">{item.description}</span>}
         </button>
-        {item.managed && <button disabled={mutating !== null || !helperReady} onClick={() => { void toggleManaged(item); }} aria-label={`${active ? '停用' : '啟用'} ${item.name}`}>{active ? '停用' : '啟用'}</button>}
+        {item.managed && <>
+          <label className="skill-switch"><input type="checkbox" role="switch" checked={active} disabled={mutating !== null || !helperReady} aria-label={`啟用 ${item.name}`} onChange={() => { void toggleManaged(item); }} />啟用</label>
+          <button className="danger" disabled={mutating !== null || !helperReady} aria-label={`移除 ${item.name}…`} title={`移除已安裝的 Skill ${item.name}`} onClick={() => setRemoving(item.skill_id)}>移除…</button>
+        </>}
       </div>
+      {item.managed && removing === item.skill_id && <div className="skill-remove-confirm" role="alertdialog" aria-label={`移除 ${item.name}`}>
+        <p>要移除「{item.name}」嗎？這會刪除 Chadex 儲存的這個 Skill 的所有版本，且無法復原；使用同一個本機 runtime 的所有專案都會一起失去它。原本的 ZIP 檔不受影響；專案 Skill 與外部 Skill 資料夾也不會被更動。</p>
+        <div className="button-row"><button autoFocus onClick={() => setRemoving(null)} onKeyDown={(event) => { if (event.key === 'Escape') setRemoving(null); }}>取消</button>
+          <button className="danger" disabled={mutating !== null || !helperReady} onClick={() => { void removeManaged(item); }}>移除</button></div>
+      </div>}
       {open && <div className="skill-detail">
         <p>{item.description}</p>
         <p className="skill-meta">來源：{sourceLabel(item)}（{item.source_scope}）· ID <code>{item.skill_id}</code></p>
@@ -217,13 +225,6 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
             : definitionErrors[item.skill_id] ? <p className="skill-meta" role="alert">無法載入 SKILL.md：{definitionErrors[item.skill_id]}</p>
               : definitions[item.skill_id] && <><pre className="skill-definition" aria-label={`${item.name} SKILL.md`}>{definitions[item.skill_id].text}</pre>
                 {definitions[item.skill_id].has_more && <p className="skill-meta">內容過長，僅顯示前段。</p>}</>}
-        {item.managed && (removing === item.skill_id
-          ? <div className="skill-remove-confirm" role="alertdialog" aria-label={`移除 ${item.name}`}>
-            <p>要移除「{item.name}」嗎？這會刪除 Chadex 儲存的這個 Skill 的所有版本，且無法復原；使用同一個本機 runtime 的所有專案都會一起失去它。原本的 ZIP 檔不受影響；專案 Skill 與外部 Skill 資料夾也不會被更動。</p>
-            <div className="button-row"><button onClick={() => setRemoving(null)}>取消</button>
-              <button className="danger" disabled={mutating !== null || !helperReady} onClick={() => { void removeManaged(item); }}>移除</button></div>
-          </div>
-          : <div className="button-row"><button className="danger" disabled={mutating !== null || !helperReady} aria-label={`移除 ${item.name}…`} onClick={() => setRemoving(item.skill_id)}>移除…</button></div>)}
       </div>}
     </li>;
   };

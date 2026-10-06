@@ -211,7 +211,8 @@ describe('Skills page', () => {
       vi.mocked(mock.getSkillInventory).mockResolvedValue({ project: 'p', total_count: 1, skills: [managed] });
     });
     expect(await screen.findByText('腳本關閉')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '停用 Mine' }));
+    expect((screen.getByRole('switch', { name: '啟用 Mine' }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole('switch', { name: '啟用 Mine' }));
     await waitFor(() => expect(api.deactivateSkill).toHaveBeenCalledWith('C:\\work\\chadex', managed));
   });
   const managedFixtures = (mock: ReturnType<typeof apiMock>, active = true) => {
@@ -225,7 +226,6 @@ describe('Skills page', () => {
   it('removes an installed skill only after confirmation, then refreshes', async () => {
     let managed!: ReturnType<typeof managedFixtures>;
     const api = await openSkills((mock) => { managed = managedFixtures(mock, false); });
-    fireEvent.click(await screen.findByRole('button', { name: '展開 Mine' }));
     fireEvent.click(await screen.findByRole('button', { name: '移除 Mine…' }));
     expect(api.removeSkill).not.toHaveBeenCalled();
     expect(screen.getByText(/所有版本，且無法復原/)).toBeTruthy();
@@ -236,7 +236,6 @@ describe('Skills page', () => {
   });
   it('cancelling the removal confirmation changes nothing', async () => {
     const api = await openSkills((mock) => { managedFixtures(mock); });
-    fireEvent.click(await screen.findByRole('button', { name: '展開 Mine' }));
     fireEvent.click(await screen.findByRole('button', { name: '移除 Mine…' }));
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '取消' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -245,7 +244,6 @@ describe('Skills page', () => {
   it('shows the removal failure after the refresh instead of hiding it', async () => {
     await openSkills((mock) => { managedFixtures(mock, false);
       vi.mocked(mock.removeSkill).mockRejectedValue('Chadex bridge: Backend (skill_remove_revision_failed)。請查看診斷並重試。'); });
-    fireEvent.click(await screen.findByRole('button', { name: '展開 Mine' }));
     fireEvent.click(await screen.findByRole('button', { name: '移除 Mine…' }));
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '移除' }));
     expect(await screen.findByText(/再移除一次/)).toBeTruthy();
@@ -253,7 +251,7 @@ describe('Skills page', () => {
   it('shows an enable failure after the refresh instead of hiding it', async () => {
     await openSkills((mock) => { managedFixtures(mock, false);
       vi.mocked(mock.activateSkill).mockRejectedValue('Chadex bridge: Backend (skill_activate_failed)。請查看診斷並重試。'); });
-    fireEvent.click(await screen.findByRole('button', { name: '啟用 Mine' }));
+    fireEvent.click(await screen.findByRole('switch', { name: '啟用 Mine' }));
     expect(await screen.findByText(/啟用狀態/)).toBeTruthy();
   });
   it('offers no removal for external skills', async () => {
