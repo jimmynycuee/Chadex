@@ -83,8 +83,8 @@ final class AppModel: ObservableObject {
     private let currentKeychainACLVersion = 1
     private var pollingTask: Task<Void, Never>?
     private(set) var runtimePrewarmTask: Task<Void, Never>?
-    /// Code of the last Skill inventory failure, used to recognise a runtime
-    /// that serves another project than the selected one.
+    /// Code of the last Skill catalog or inventory failure, used to recognise a
+    /// runtime that serves another project than the selected one.
     private var skillsInventoryErrorCode: String?
     /// The selection a runtime/project realignment was already attempted for
     /// (one automatic attempt per selection, so a failure cannot loop).
@@ -92,7 +92,16 @@ final class AppModel: ObservableObject {
     private(set) var isShuttingDown = false
     private let pollWaker = PollWaker()
     private var refreshInFlight = false
-    private var skillsRefreshProjectID: UUID?
+    /// The model-owned Skills load in flight, shared by every caller. It is not
+    /// a child of the caller's task, so leaving the Skills page (which cancels
+    /// the page's `.task`) cannot cancel the load or leave it half-applied.
+    private var skillsLoadTask: Task<Void, Never>?
+    private var skillsLoadToken: UUID?
+    private var skillsLoadProjectID: UUID?
+    /// A refresh was requested while a load for the same project was already
+    /// running (for example the runtime became ready meanwhile): the running
+    /// load reads once more instead of dropping the request.
+    private var skillsReloadRequested = false
     private var skillsLastRefreshUptime: TimeInterval?
     private var projectMemoryRefreshProjectID: UUID?
     private var projectMemoryLastRefreshUptime: TimeInterval?
@@ -662,6 +671,16 @@ final class AppModel: ObservableObject {
         await loadSkills()
     }
 
+    /// After the runtime became usable in the background (launch warm-up),
+    /// loads Skills again unless they are already loaded: a load made while the
+    /// runtime was still starting only got an error, and nothing else would
+    /// retry before the next stale poll.
+    func reloadSkillsIfNotLoaded() async {
+        guard selectedProject != nil, !isShuttingDown,
+              skillCatalog == nil || skillInventory == nil else { return }
+        await refreshSkills()
+    }
+
     /// The local runtime is ready but serves another project than the
     /// selected one (for example after its saved project went stale). This is
     /// recoverable without user input: re-activate the selected project once
@@ -700,20 +719,50 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Loads the selected project's Skills. Concurrent callers share one
+    /// model-owned load (a caller arriving mid-load makes it read once more and
+    /// waits for the result), and `skillsLoading` is cleared when that load
+    /// ends, whatever happens to the callers' tasks.
     private func loadSkills() async {
         guard let selectedProject else {
             clearSkills()
             return
         }
-        let requestedProjectID = selectedProject.id
-        guard skillsRefreshProjectID != requestedProjectID else { return }
-        skillsRefreshProjectID = requestedProjectID
+        let projectID = selectedProject.id
+        if let running = skillsLoadTask, skillsLoadProjectID == projectID {
+            skillsReloadRequested = true
+            await running.value
+            return
+        }
+        let token = UUID()
+        skillsLoadToken = token
+        skillsLoadProjectID = projectID
+        skillsReloadRequested = false
         skillsLoading = true
-        defer {
-            if skillsRefreshProjectID == requestedProjectID {
-                skillsRefreshProjectID = nil
-                skillsLoading = false
+        let task = Task { [weak self] in
+            guard let self else { return }
+            repeat {
+                self.skillsReloadRequested = false
+                await self.performSkillsLoad(projectID: projectID)
+            } while self.skillsReloadRequested
+                && self.skillsLoadToken == token
+                && self.selectedProject?.id == projectID
+                && !self.isShuttingDown
+            if self.skillsLoadToken == token {
+                self.skillsLoadTask = nil
+                self.skillsLoadToken = nil
+                self.skillsLoadProjectID = nil
+                self.skillsReloadRequested = false
+                self.skillsLoading = false
             }
+        }
+        skillsLoadTask = task
+        await task.value
+    }
+
+    private func performSkillsLoad(projectID requestedProjectID: UUID) async {
+        guard let selectedProject, selectedProject.id == requestedProjectID else { return }
+        defer {
             if self.selectedProject?.id == requestedProjectID {
                 skillsLastRefreshUptime = ProcessInfo.processInfo.systemUptime
             }
@@ -755,7 +804,9 @@ final class AppModel: ObservableObject {
             skillCatalog = nil
             skillInventory = nil
             skillDefinitions.removeAll()
-            skillsInventoryErrorCode = nil
+            // The catalog checks the runtime project first, so a runtime that
+            // serves another project usually fails here, not in the inventory.
+            skillsInventoryErrorCode = helperErrorPayload(error)?.code
             skillsError = helperErrorMessage(error)
         }
     }
@@ -1847,6 +1898,9 @@ final class AppModel: ObservableObject {
             self.runtimePrewarmTask = nil
             if !succeeded, !Task.isCancelled, !self.isShuttingDown {
                 await self.refreshStatus(force: true)
+            } else if succeeded, !Task.isCancelled {
+                // Skills opened during the warm-up only saw a starting runtime.
+                await self.reloadSkillsIfNotLoaded()
             }
         }
     }
