@@ -266,6 +266,60 @@ async fn stderr_and_free_form_backend_errors_never_enter_health_or_error() {
     bridge.shutdown().await.unwrap();
 }
 
+const SKILL_METHODS: [&str; 8] = [
+    "discoverExternalSkillSources",
+    "getExternalSkillRoots",
+    "setExternalSkillRoots",
+    "getSkillCatalog",
+    "getSkillInventory",
+    "installSkill",
+    "activateSkill",
+    "deactivateSkill",
+];
+
+#[tokio::test]
+async fn skill_methods_pass_through_unmodified() {
+    let (_root, bridge) = fixture("");
+    for method in SKILL_METHODS {
+        let result = bridge
+            .request(method, json!({"tag": method, "roots": ["C:\\skills"]}))
+            .await
+            .unwrap();
+        assert_eq!(result["method"], method);
+        assert_eq!(result["tag"], method);
+    }
+    bridge.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn skill_error_codes_survive_but_details_and_messages_do_not() {
+    let (_root, bridge) = fixture("");
+    for code in [
+        "external_skill_roots_conflict",
+        "external_skill_roots_state_unknown",
+        "external_skill_roots_unverified",
+        "skill_root_not_canonical",
+        "skill_root_sensitive",
+        "runner_config_restart_required",
+        "runtime_not_ready",
+        "skill_management_requires_local_runtime",
+        "skill_management_credential_unavailable",
+        "skill_management_credential_rejected",
+        "runner_config_path_is_link",
+    ] {
+        let error = bridge
+            .request("setExternalSkillRoots", json!({"mode": "backend-code", "code": code}))
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Backend);
+        assert_eq!(error.helper_code.as_deref(), Some(code));
+        // The allowed code itself may contain the word; only the rest must stay clean.
+        let output = serde_json::to_string(&error).unwrap().replace(code, "");
+        assert!(!output.contains("credential"));
+    }
+    bridge.shutdown().await.unwrap();
+}
+
 #[tokio::test]
 async fn launch_uses_w2_environment_and_packaged_resource_resolution() {
     let (root, bridge) = fixture("");

@@ -4,6 +4,7 @@ mod global_instructions;
 mod paths;
 mod preferences;
 mod runtime_version;
+mod skills;
 #[cfg(feature = "desktop-smoke")]
 mod smoke;
 
@@ -299,6 +300,14 @@ const METHODS: &[&str] = &[
     "queryLifecyclePerformanceTraces",
     "cancelOperation",
     "cancelTask",
+    "discoverExternalSkillSources",
+    "getExternalSkillRoots",
+    "setExternalSkillRoots",
+    "getSkillCatalog",
+    "getSkillInventory",
+    "installSkill",
+    "activateSkill",
+    "deactivateSkill",
 ];
 
 #[tauri::command]
@@ -344,6 +353,43 @@ async fn choose_project(app: tauri::AppHandle) -> Result<Option<String>, String>
         });
     match receiver.await.map_err(|_| "folder_dialog_closed")? {
         Some(Ok(path)) => Ok(Some(path)),
+        Some(Err(_)) => Err("folder_path_invalid".into()),
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+async fn choose_skill_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("選擇外部 Skill 資料夾")
+        .pick_folder(move |selected| {
+            let _ = sender.send(selected.map(|file| file.into_path()));
+        });
+    match receiver.await.map_err(|_| "folder_dialog_closed")? {
+        Some(Ok(path)) => skills::canonical_skill_root(&path).map(Some),
+        Some(Err(_)) => Err("folder_path_invalid".into()),
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+async fn choose_skill_archive(
+    app: tauri::AppHandle,
+    project: String,
+) -> Result<Option<String>, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("選擇 Skill ZIP")
+        .set_directory(&project)
+        .add_filter("ZIP", &["zip"])
+        .pick_file(move |selected| {
+            let _ = sender.send(selected.map(|file| file.into_path()));
+        });
+    match receiver.await.map_err(|_| "folder_dialog_closed")? {
+        Some(Ok(path)) => skills::project_relative_archive(std::path::Path::new(&project), &path).map(Some),
         Some(Err(_)) => Err("folder_path_invalid".into()),
         None => Ok(None),
     }
@@ -575,6 +621,8 @@ fn main() {
         desktop_state,
         runtime_action,
         choose_project,
+        choose_skill_folder,
+        choose_skill_archive,
         open_project,
         save_preferences,
         get_global_instructions,
@@ -589,6 +637,8 @@ fn main() {
         desktop_state,
         runtime_action,
         choose_project,
+        choose_skill_folder,
+        choose_skill_archive,
         open_project,
         save_preferences,
         get_global_instructions,
@@ -636,6 +686,22 @@ mod tests {
             "run_process",
         ] {
             assert!(!METHODS.contains(&name));
+        }
+    }
+
+    #[test]
+    fn skill_methods_are_allowed() {
+        for name in [
+            "discoverExternalSkillSources",
+            "getExternalSkillRoots",
+            "setExternalSkillRoots",
+            "getSkillCatalog",
+            "getSkillInventory",
+            "installSkill",
+            "activateSkill",
+            "deactivateSkill",
+        ] {
+            assert!(METHODS.contains(&name), "{name}");
         }
     }
 }

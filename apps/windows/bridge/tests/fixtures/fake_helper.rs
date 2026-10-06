@@ -123,8 +123,10 @@ async fn main() {
                     }
                     stderr.flush().unwrap();
                 }
-                "backend" | "unknown-error" => {
-                    let code = if params["mode"] == "backend" {
+                "backend" | "unknown-error" | "backend-code" => {
+                    let code = if params["mode"] == "backend-code" {
+                        params["code"].as_str().unwrap_or("invalid_params")
+                    } else if params["mode"] == "backend" {
                         "invalid_params"
                     } else {
                         "credential_in_error_code"
