@@ -346,6 +346,21 @@ enum PrewarmDecision {
     NoTargetProject,
 }
 
+impl PrewarmDecision {
+    /// Trace completion for a warm-up that did not run. Fixed vocabulary only.
+    fn skip_completion(self) -> &'static str {
+        match self {
+            PrewarmDecision::Resume => "completed",
+            PrewarmDecision::NotConfigured => "skipped:not_configured",
+            PrewarmDecision::ExplicitlyStopped => "skipped:explicit_stop",
+            PrewarmDecision::NoRuntimeProject => "skipped:no_runtime_project",
+            PrewarmDecision::AlreadyReady => "skipped:already_ready",
+            PrewarmDecision::OperationInFlight => "skipped:operation_in_flight",
+            PrewarmDecision::NoTargetProject => "skipped:no_project",
+        }
+    }
+}
+
 /// Launch warm-up resumes only a runtime the user already set up and did not
 /// explicitly stop, when nothing else is mutating it.
 fn prewarm_decision(current: &RuntimeSnapshot, has_target_project: bool) -> PrewarmDecision {
@@ -499,6 +514,7 @@ struct Bridge {
     project_switch_lifecycle: Mutex<()>,
     mascot_jobs_refresh: Mutex<()>,
     prewarm: PrewarmTracker,
+    started_at: Instant,
 }
 
 impl Bridge {
@@ -540,6 +556,7 @@ impl Bridge {
             project_switch_lifecycle: Mutex::new(()),
             mascot_jobs_refresh: Mutex::new(()),
             prewarm: PrewarmTracker::new(),
+            started_at: Instant::now(),
         })
     }
 
@@ -670,6 +687,15 @@ impl Bridge {
     }
 
     async fn discover_external_skill_sources(&self) -> Result<Value, ErrorPayload> {
+        let started_at_ms = now_ms();
+        let started = Instant::now();
+        let result = self.discover_external_skill_sources_inner().await;
+        let completion = if result.is_ok() { "completed" } else { "error" };
+        self.push_lifecycle("skill_discovery", "total", started_at_ms, started, completion);
+        result
+    }
+
+    async fn discover_external_skill_sources_inner(&self) -> Result<Value, ErrorPayload> {
         let env = DiscoveryEnv::from_process().ok_or_else(|| {
             ErrorPayload::new(
                 "home_directory_unavailable",
@@ -1052,25 +1078,78 @@ impl Bridge {
     // The resume runs as a background operation: it is never published as the
     // current user operation, so the UI keeps offering Connect while it runs.
     async fn prewarm_runtime(&self) -> Result<BackendSnapshot, ErrorPayload> {
+        let started_at_ms = now_ms();
+        let started = Instant::now();
         let current = self.runtime.snapshot();
-        if prewarm_decision(&current, self.target_project().is_some()) != PrewarmDecision::Resume {
+        let decision = prewarm_decision(&current, self.target_project().is_some());
+        if decision != PrewarmDecision::Resume {
+            self.record_prewarm(started_at_ms, started, None, decision.skip_completion());
             return Ok(self.snapshot_from(current));
         }
         let Some(run) = self.prewarm.begin() else {
+            self.record_prewarm(started_at_ms, started, None, "skipped:already_running");
             return Ok(self.snapshot_from(current));
         };
         if run.cancel_requested() {
+            self.record_prewarm(started_at_ms, started, None, "cancelled");
             return Ok(self.snapshot_from(current));
         }
+        let resume_started_at_ms = now_ms();
+        let resume_started = Instant::now();
         let result = self.runtime.resume_saved_runtime_background().await;
+        let cancelled = run.cancel_requested();
         drop(run);
+        let completion = match (&result, cancelled) {
+            (Ok(_), _) => "completed",
+            (Err(_), true) => "cancelled",
+            (Err(_), false) => "failed",
+        };
+        self.record_prewarm(
+            started_at_ms,
+            started,
+            Some((resume_started_at_ms, resume_started)),
+            completion,
+        );
         result
             .map(|snapshot| self.snapshot_from(snapshot))
             .map_err(ErrorPayload::from)
     }
 
-    async fn join_prewarm(&self) {
+    /// Records the prewarm phases plus the launch-to-ready benchmark. Carries
+    /// only fixed strings and durations: no paths, tokens or project names.
+    fn record_prewarm(
+        &self,
+        started_at_ms: u64,
+        started: Instant,
+        resume: Option<(u64, Instant)>,
+        completion: &str,
+    ) {
+        if let Some((resume_started_at_ms, resume_started)) = resume {
+            self.push_lifecycle("prewarm", "runtime_resume", resume_started_at_ms, resume_started, completion);
+        }
+        self.push_lifecycle("prewarm", "total", started_at_ms, started, completion);
+        let launch_started_at_ms = now_ms().saturating_sub(duration_us(self.started_at.elapsed()) / 1000);
+        self.push_lifecycle("launch", "helper_start_to_runtime_ready", launch_started_at_ms, self.started_at, completion);
+    }
+
+    fn push_lifecycle(&self, operation: &str, phase: &str, started_at_ms: u64, started: Instant, completion: &str) {
+        self.performance.push_lifecycle(LifecyclePerformanceTrace {
+            sequence: 0,
+            started_at_ms,
+            operation: operation.to_string(),
+            phase: phase.to_string(),
+            total_us: duration_us(started.elapsed()),
+            completion: completion.to_string(),
+        });
+    }
+
+    /// Waits for an in-flight warm-up; returns how long it waited when there was one.
+    async fn join_prewarm(&self) -> Option<(u64, Instant)> {
+        let started_at_ms = now_ms();
+        let started = Instant::now();
+        self.prewarm.receiver()?;
         self.prewarm.join().await;
+        Some((started_at_ms, started))
     }
 
     async fn cancel_prewarm(&self) {
@@ -1601,7 +1680,13 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
 
     let request_id = request.request_id.clone();
     match prewarm_interaction(&request.method) {
-        PrewarmInteraction::Join => bridge.join_prewarm().await,
+        PrewarmInteraction::Join => {
+            if let Some((started_at_ms, started)) = bridge.join_prewarm().await {
+                if request.method == "connectChatGPT" {
+                    bridge.push_lifecycle("connect", "prewarm_join_wait", started_at_ms, started, "completed");
+                }
+            }
+        }
         PrewarmInteraction::Cancel => bridge.cancel_prewarm().await,
         PrewarmInteraction::Ignore => {}
     }
@@ -2623,6 +2708,94 @@ mod tests {
         assert!(snapshot.current_operation.is_none());
         assert_ne!(snapshot.phase, ConnectionPhase::Preparing);
         assert!(bridge.prewarm.receiver().is_none());
+        let traces = bridge.performance.lifecycle_snapshot(100);
+        let seen: Vec<(&str, &str, &str)> = traces
+            .iter()
+            .map(|t| (t.operation.as_str(), t.phase.as_str(), t.completion.as_str()))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("prewarm", "total", "skipped:not_configured"),
+                ("launch", "helper_start_to_runtime_ready", "skipped:not_configured"),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn temp_bridge(tag: &str) -> (Bridge, PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "chadex-bridge-{tag}-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let bridge = Bridge::with_dirs(root.join("data"), root.join("resources")).unwrap();
+        (bridge, root)
+    }
+
+    #[test]
+    fn prewarm_skip_reasons_use_a_fixed_vocabulary() {
+        assert_eq!(PrewarmDecision::ExplicitlyStopped.skip_completion(), "skipped:explicit_stop");
+        assert_eq!(PrewarmDecision::AlreadyReady.skip_completion(), "skipped:already_ready");
+        assert_eq!(PrewarmDecision::NoTargetProject.skip_completion(), "skipped:no_project");
+        assert_eq!(
+            PrewarmDecision::OperationInFlight.skip_completion(),
+            "skipped:operation_in_flight"
+        );
+    }
+
+    #[test]
+    fn prewarm_records_resume_total_and_launch_traces_for_each_outcome() {
+        let (bridge, root) = temp_bridge("prewarm-trace");
+        for completion in ["completed", "cancelled", "failed"] {
+            bridge.record_prewarm(now_ms(), Instant::now(), Some((now_ms(), Instant::now())), completion);
+        }
+        let traces = bridge.performance.lifecycle_snapshot(100);
+        assert_eq!(traces.len(), 9);
+        for (index, completion) in ["completed", "cancelled", "failed"].iter().enumerate() {
+            let group = &traces[index * 3..index * 3 + 3];
+            let phases: Vec<(&str, &str)> =
+                group.iter().map(|t| (t.operation.as_str(), t.phase.as_str())).collect();
+            assert_eq!(
+                phases,
+                vec![
+                    ("prewarm", "runtime_resume"),
+                    ("prewarm", "total"),
+                    ("launch", "helper_start_to_runtime_ready"),
+                ]
+            );
+            assert!(group.iter().all(|t| t.completion == *completion));
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn join_prewarm_reports_wait_only_when_a_prewarm_is_running() {
+        let (bridge, root) = temp_bridge("join-wait");
+        assert!(bridge.join_prewarm().await.is_none());
+        let run = bridge.prewarm.begin().expect("prewarm starts");
+        let (joined, ()) = tokio::join!(bridge.join_prewarm(), async {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            drop(run);
+        });
+        let (started_at_ms, started) = joined.expect("a running prewarm is joined");
+        bridge.push_lifecycle("connect", "prewarm_join_wait", started_at_ms, started, "completed");
+        let traces = bridge.performance.lifecycle_snapshot(10);
+        let last = traces.last().expect("join wait trace");
+        assert_eq!((last.operation.as_str(), last.phase.as_str()), ("connect", "prewarm_join_wait"));
+        assert!(last.total_us >= 15_000);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn skill_discovery_records_a_total_trace() {
+        let (bridge, root) = temp_bridge("skill-discovery");
+        let result = bridge.discover_external_skill_sources().await;
+        let traces = bridge.performance.lifecycle_snapshot(10);
+        assert_eq!(traces.len(), 1);
+        assert_eq!(traces[0].operation, "skill_discovery");
+        assert_eq!(traces[0].phase, "total");
+        assert_eq!(traces[0].completion, if result.is_ok() { "completed" } else { "error" });
         let _ = std::fs::remove_dir_all(root);
     }
 
