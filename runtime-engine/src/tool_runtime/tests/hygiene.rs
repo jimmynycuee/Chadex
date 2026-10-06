@@ -138,22 +138,39 @@ fn workspace_hygiene_check_is_known_and_in_specs() {
         .is_some_and(|description| description.contains("Sparse non-zero")));
 
     let openapi_spec = crate::openapi::build_openapi_spec();
-    let action = &openapi_spec["paths"]["/api/actions/workspace_hygiene_check"]["post"];
-    assert_eq!(action["operationId"], "workspace_hygiene_check");
+    // Outside the bounded Phase 16B direct core there is no direct GPT Action
+    // operation; the tool is reached through the Adaptive gateway operation.
+    assert!(openapi_spec["paths"]
+        .get("/api/actions/workspace_hygiene_check")
+        .is_none());
+    assert_eq!(
+        openapi_spec["paths"]["/api/actions/call_runtime_tool"]["post"]["operationId"],
+        crate::model_surface::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME
+    );
 
     // tool_manifest category: cleanup.
     assert_eq!(tool_manifest_category("workspace_hygiene_check"), "cleanup");
 }
 
 #[test]
-fn workspace_hygiene_check_is_direct_on_the_derived_action_surface() {
+fn workspace_hygiene_check_is_gateway_routed_on_the_derived_action_surface() {
+    // finish_coding_task(summary_only=true) is the normal closeout; standalone
+    // hygiene stays outside the bounded Phase 16B direct core but is still
+    // GPT-Action compatible and executable through the Adaptive gateway.
     assert!(
         webcodex_tool_contracts::runtime_tool_adaptive_direct_rank("workspace_hygiene_check")
-            .is_some()
+            .is_none()
     );
     assert!(webcodex_tool_contracts::gpt_action_tool_supported(
         "workspace_hygiene_check"
     ));
+    assert_eq!(
+        crate::model_surface::adaptive_runtime_tool_invocation_route("workspace_hygiene_check"),
+        (
+            crate::model_surface::TOOL_SURFACE_AVAILABILITY_GATEWAY,
+            Some(crate::model_surface::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME)
+        )
+    );
 }
 
 // =========================================================================

@@ -517,6 +517,7 @@ fn read_files_output_schema() -> Value {
         "additionalProperties": false,
         "properties": {
             "project": schema_type("string", "Resolved runtime project id."),
+            "project_path": schema_type("string", "Server-resolved canonical project root, kept as identity evidence for the native verification boundary."),
             "requested_count": {"type": "integer", "minimum": 1, "maximum": 8},
             "returned_count": {"type": "integer", "minimum": 0, "maximum": 8},
             "succeeded_count": {"type": "integer", "minimum": 0, "maximum": 8},
@@ -552,6 +553,7 @@ fn read_files_output_schema() -> Value {
         "type": "object",
         "additionalProperties": false,
         "properties": {
+            "project_path": schema_type("string", "Server-resolved canonical project root, kept as identity evidence for the native verification boundary even when the sparse form omits the project id."),
             "items": {"type": "array", "minItems": 1, "maxItems": 8, "items": sparse_complete_item},
             "session_hint": session_hint_schema(),
             "permission": permission_decision_schema()

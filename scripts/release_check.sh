@@ -112,6 +112,14 @@ echo "==> Runtime release-critical tests"
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-runner-registry
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-engine tool_request_trace --lib
 
+echo "==> Runtime engine lib tests"
+# Full runtime-engine lib suite. stdin is closed so no test (e.g. one that runs
+# `git mktree`) can block on the caller's stdin. The one historically
+# load-sensitive test (session_tools_stay_registered_and_follow_adaptive_routes)
+# now serializes env access with TestEnvGuard; phase13_silent_cpu_progress_can_cross_soft_timeout
+# lives in chadex-runtime-runner and is not part of this suite.
+"$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-engine --lib </dev/null
+
 echo "==> Skills (external sources, script gate, frontmatter)"
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-runner-config
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-core skill

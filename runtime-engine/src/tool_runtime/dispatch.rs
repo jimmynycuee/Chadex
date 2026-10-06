@@ -3289,7 +3289,7 @@ mod sparse_read_projection_tests {
     }
 
     #[test]
-    fn sparse_read_batch_requires_read_revision_before_hiding_digest() {
+    fn sparse_read_batch_never_exposes_digest_and_keeps_only_requested_read_revision() {
         let mut without_revision = complete_batch_item(Some("a.rs"), "a.rs");
         let mut result = ToolResult::ok(json!({
             "project": "demo",
@@ -3302,10 +3302,13 @@ mod sparse_read_projection_tests {
             "next_index": null
         }));
         sparsify_complete_read_success("read_files", &mut result);
-        assert_eq!(result.output["requested_count"], 1);
-        assert!(result.output["items"][0]["output"]["sha256"]
-            .as_str()
-            .is_some());
+        // Lazy read_revision: a complete default read stays sparse without a
+        // revision, and the internal digest is never model-facing.
+        assert!(result.output.get("requested_count").is_none());
+        assert!(result.output["items"][0]["output"].get("sha256").is_none());
+        assert!(result.output["items"][0]["output"]
+            .get("read_revision")
+            .is_none());
 
         without_revision["output"]["read_revision"] = json!(42);
         let mut result = ToolResult::ok(json!({

@@ -2149,13 +2149,18 @@ async fn mcp_validation_run_and_summary_use_real_canonical_contracts() {
                 rpc(
                     "tools/call",
                     Some(json!(3220)),
+                    // cargo_check is outside the bounded Phase 16B direct core, so
+                    // MCP reaches it through the Adaptive gateway.
                     mcp_2026_ui_params(json!({
-                        "name": "cargo_check",
+                        "name": crate::mcp::tools::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME,
                         "arguments": {
-                            "project": project,
-                            "session_id": session_id,
-                            "timeout_secs": 60,
-                            "sync_wait_secs": 1
+                            "tool": "cargo_check",
+                            "arguments": {
+                                "project": project,
+                                "session_id": session_id,
+                                "timeout_secs": 60,
+                                "sync_wait_secs": 1
+                            }
                         }
                     })),
                 ),

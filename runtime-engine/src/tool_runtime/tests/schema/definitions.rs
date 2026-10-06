@@ -104,6 +104,9 @@ fn tool_call_parser_name_gate_matches_tool_definitions() {
         "skill_install",
         "skill_activate",
         "skill_remove_revision",
+        // Skills Center management tools: admin-scoped operator extensions kept ModelHidden like skill_list/skill_install.
+        "skill_inventory",
+        "skill_deactivate",
         "memory_search",
         "memory_read",
         "memory_set",

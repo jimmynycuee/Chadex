@@ -248,6 +248,12 @@ pub(in crate::tool_runtime::tests) fn run_runner_shell_request_locally(
     }
     if stdin_payload.is_some() {
         command.stdin(std::process::Stdio::piped());
+    } else {
+        // Mirror the production Runner (execute_configured_command): a request
+        // with no stdin contract gets a closed input, never the test process's own
+        // stdin. Otherwise stdin-reading plumbing such as `git mktree` blocks
+        // forever whenever the harness runs with an open stdin.
+        command.stdin(std::process::Stdio::null());
     }
     let mut child = command
         .stdout(std::process::Stdio::piped())

@@ -251,7 +251,6 @@ fn read_files_input_schema_enforces_batch_and_item_bounds() {
         json!(0),
         json!(9_007_199_254_740_992_u64),
         json!("1"),
-        Value::Null,
     ] {
         let value = json!({
             "project": "demo",
@@ -260,6 +259,18 @@ fn read_files_input_schema_enforces_batch_and_item_bounds() {
         assert!(!validates(&value));
         assert!(ToolCall::from_tool_name("read_files", value).is_err());
     }
+    // The strict schema rejects an explicit null, but the parser stays lenient
+    // and treats it as absent so a model filling optional fields with null is
+    // not refused at dispatch.
+    let null_revision = json!({
+        "project": "demo",
+        "items": [{"path": "a.rs", "expected_read_revision": null}]
+    });
+    assert!(!validates(&null_revision));
+    assert!(matches!(
+        ToolCall::from_tool_name("read_files", null_revision),
+        Ok(ToolCall::ReadFiles { items, .. }) if items[0].expected_read_revision.is_none()
+    ));
     assert!(!validates(&json!({
         "project": "demo",
         "items": [{"path": "a.rs", "unexpected": true}]
@@ -1360,7 +1371,15 @@ async fn read_files_isolates_mixed_failures_without_leaking_absolute_paths() {
     assert_eq!(items[1]["output"]["reason_code"], "not_found");
     assert_eq!(items[2]["output"]["reason_code"], "sensitive_path");
     assert_eq!(items[3]["output"]["reason_code"], "invalid_utf8");
-    let serialized = serde_json::to_string(&result).unwrap();
+    // The batch deliberately carries the server-resolved project root as
+    // `project_path` identity evidence; no other field may expose an absolute path.
+    assert!(result.output["project_path"].is_string());
+    let mut redacted = serde_json::to_value(&result).unwrap();
+    redacted["output"]
+        .as_object_mut()
+        .unwrap()
+        .remove("project_path");
+    let serialized = serde_json::to_string(&redacted).unwrap();
     assert!(!serialized.contains(&root.path().to_string_lossy().to_string()));
     assert!(!serialized.contains("os error"));
 }

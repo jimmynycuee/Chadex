@@ -52,14 +52,17 @@ fn validate_schema_instance_at(instance: &Value, schema: &Value, path: &str) -> 
         });
     }
     if let Some(variants) = schema.get("anyOf").and_then(Value::as_array) {
-        return variants
-            .iter()
-            .find_map(|variant| {
-                validate_schema_instance_at(instance, variant, path)
-                    .ok()
-                    .map(|_| ())
-            })
-            .ok_or_else(|| format!("{path}: no anyOf variant matched"));
+        let mut errors = Vec::new();
+        for (index, variant) in variants.iter().enumerate() {
+            match validate_schema_instance_at(instance, variant, path) {
+                Ok(()) => return Ok(()),
+                Err(error) => errors.push(format!("variant {index}: {error}")),
+            }
+        }
+        return Err(format!(
+            "{path}: no anyOf variant matched; {}",
+            errors.join("; ")
+        ));
     }
     if let Some(expected) = schema.get("const") {
         if instance != expected {

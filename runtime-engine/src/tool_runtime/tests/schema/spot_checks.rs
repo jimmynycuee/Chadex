@@ -164,14 +164,18 @@ fn tool_specs_structured_validation_schema_and_output() {
             "incomplete_stream"
         ])
     );
+    // cargo_test is outside the bounded Phase 16B direct core, so GPT Actions
+    // reach it through call_runtime_tool instead of a direct operation; the
+    // canonical input schema still carries the test-count assertion fields.
     let openapi = crate::openapi::build_openapi_spec();
-    let action_properties = &openapi["paths"]["/api/actions/cargo_test"]["post"]["requestBody"]
-        ["content"]["application/json"]["schema"]["properties"];
-    assert_eq!(action_properties["require_tests"]["type"], "boolean");
-    assert_eq!(action_properties["min_tests"]["type"], "integer");
-    assert_eq!(action_properties["min_tests"]["minimum"], 1);
+    assert!(openapi["paths"].get("/api/actions/cargo_test").is_none());
+    assert!(openapi["paths"]["/api/actions/call_runtime_tool"]["post"].is_object());
+    let input_properties = &cargo_test.input_schema["properties"];
+    assert_eq!(input_properties["require_tests"]["type"], "boolean");
+    assert_eq!(input_properties["min_tests"]["type"], "integer");
+    assert_eq!(input_properties["min_tests"]["minimum"], 1);
     assert_eq!(
-        action_properties["min_tests"]["maximum"],
+        input_properties["min_tests"]["maximum"],
         crate::runner_protocol::CARGO_TEST_MIN_TESTS_MAX
     );
     let go_props = spec_named(&specs, "go_test").input_schema["properties"]

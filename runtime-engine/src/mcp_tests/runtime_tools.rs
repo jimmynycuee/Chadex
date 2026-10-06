@@ -11,7 +11,9 @@ use super::*;
 #[tokio::test]
 async fn mcp_tools_list_exposes_canonical_coding_bootstrap_and_runtime_status_ux_flags() {
     let mut env = crate::test_support::TestEnvGuard::new();
-    env.remove("WEBCODEX_MCP_COMPACT_SCHEMAS");
+    // Compact discovery is the Adaptive default and shortens direct tool
+    // descriptions; this test asserts the full canonical copy, so opt out.
+    env.set("WEBCODEX_MCP_COMPACT_SCHEMAS", "false");
     let runtime = test_runtime();
     let outcome = handle_mcp_request(
         &runtime,

@@ -1463,7 +1463,8 @@ async fn run_process_slow_handoff_is_queryable_once_and_keeps_the_original_budge
         "progress already available\n"
     );
     assert_eq!(handoff.output["stdout_lines"], 1);
-    assert_eq!(handoff.output["stdout_truncated"], false);
+    // Sparse projection omits default-false truncation flags.
+    assert!(handoff.output.get("stdout_truncated").is_none());
     assert_eq!(handoff.output["detected_summary"]["outcome"], "in_progress");
     assert_eq!(
         handoff.output["activity"],
