@@ -57,8 +57,9 @@ fn builtin_coding_workflow_defaults_cover_unnamed_tasks_without_granting_authori
     for boundary in [
         "concrete, reviewable completion",
         "guidance grants no authority",
-        "Recovery/compaction/exact Session resume is continuation",
-        "reuse still-current Git/read/validation/Job facts",
+        "precedence is current user > nested repo AGENTS > root repo AGENTS > Global Instructions > built-in baseline",
+        "Blank Global is a no-op",
+        "Verify Project/branch/HEAD and nested rules after recovery",
         "explicit action/target",
         "user answer/Job/validation/result",
         "continue independent work",

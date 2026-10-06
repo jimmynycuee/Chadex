@@ -5448,9 +5448,15 @@ fn show_changes_diff_respects_max_hunks() {
         DEFAULT_GIT_DIFF_HUNKS_PAGE_BYTES
     );
     assert_git_diff_hunks_recovery_call_parses(next_call);
-    assert!(
-        crate::tool_runtime::tool_definition::is_adaptive_runtime_direct_tool(
+    // The recovery target must stay executable on the Adaptive surface. It is
+    // outside the bounded Phase 16B direct core, so it routes via the gateway.
+    assert_eq!(
+        crate::model_surface::adaptive_runtime_tool_invocation_route(
             next_call["tool"].as_str().unwrap()
+        ),
+        (
+            crate::model_surface::TOOL_SURFACE_AVAILABILITY_GATEWAY,
+            Some(crate::model_surface::ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME)
         )
     );
     let actions = output["suggested_next_actions"].as_array().unwrap();

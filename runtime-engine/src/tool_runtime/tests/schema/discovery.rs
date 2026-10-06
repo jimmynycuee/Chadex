@@ -937,7 +937,18 @@ async fn tool_manifest_intent_coding_returns_ranked_compact_tools() {
             "coding intent should not recommend {compatibility_or_overlap}: {names:?}"
         );
     }
-    for gateway_specialist in ["apply_patch", "run_script", "cargo_fmt", "go_test"] {
+    // Phase 16B keeps only the bounded core direct; validation, Git-diff review
+    // and hygiene specialists are reached through call_runtime_tool.
+    for gateway_specialist in [
+        "apply_patch",
+        "run_script",
+        "cargo_fmt",
+        "go_test",
+        "cargo_check",
+        "cargo_test",
+        "git_diff_hunks",
+        "workspace_hygiene_check",
+    ] {
         let tool = result.output["tools"]
             .as_array()
             .unwrap()
@@ -959,11 +970,7 @@ async fn tool_manifest_intent_coding_returns_ranked_compact_tools() {
         "run_process",
         "run_shell",
         "observe_jobs",
-        "cargo_check",
-        "cargo_test",
         "show_changes",
-        "git_diff_hunks",
-        "workspace_hygiene_check",
         "finish_coding_task",
     ] {
         let tool = result.output["tools"]
@@ -1550,12 +1557,12 @@ async fn tool_manifest_exact_tool_returns_input_contract_without_output_schema()
             "tool_manifest exact contract output_schema must require {key}"
         );
     }
-    assert_eq!(contract["availability"], "direct");
-    assert!(contract["gateway_tool"].is_null());
+    assert_eq!(contract["availability"], "gateway");
+    assert_eq!(contract["gateway_tool"], "call_runtime_tool");
     assert!(contract.get("output_schema").is_none());
     assert_eq!(result.output["tools"][0]["name"], "cargo_test");
-    assert_eq!(result.output["tools"][0]["availability"], "direct");
-    assert!(result.output["tools"][0]["gateway_tool"].is_null());
+    assert_eq!(result.output["tools"][0]["availability"], "gateway");
+    assert_eq!(result.output["tools"][0]["gateway_tool"], "call_runtime_tool");
     assert!(result.output["tools"][0].get("input_schema").is_none());
 }
 
@@ -1791,9 +1798,13 @@ async fn tool_manifest_routing_metadata_uses_canonical_adaptive_routes() {
             "gateway",
             Some("call_runtime_tool"),
         ),
-        ("session_discussion_summary", "direct", None),
-        ("list_jobs", "direct", None),
-        ("git_diff_hunks", "direct", None),
+        (
+            "session_discussion_summary",
+            "gateway",
+            Some("call_runtime_tool"),
+        ),
+        ("list_jobs", "gateway", Some("call_runtime_tool")),
+        ("git_diff_hunks", "gateway", Some("call_runtime_tool")),
         ("run_script", "gateway", Some("call_runtime_tool")),
         (
             "save_project_artifact",

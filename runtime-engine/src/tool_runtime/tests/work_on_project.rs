@@ -861,6 +861,16 @@ fn valid_work_on_project_projection_input() -> serde_json::Value {
             "conflicts": 0,
         },
         "workflow": crate::tool_runtime::startup_brief::builtin_coding_workflow_projection(),
+        "global_instructions": crate::tool_runtime::global_instructions::global_instructions_projection(
+            &crate::tool_runtime::global_instructions::GlobalInstructionsSnapshot {
+                status: "empty".to_string(),
+                fingerprint: None,
+                content: String::new(),
+                truncated: false,
+                total_chars: 0,
+            },
+            true,
+        ),
         "instructions": {
             "status": "loaded",
             "sources": [],
@@ -4238,24 +4248,27 @@ async fn work_on_project_sizes_and_runner_request_reduction_are_stable() {
     assert!(reused_bytes < standard_bytes);
     assert!(workflow_omitted_bytes < fresh_bytes);
     // With the same repository observations and instruction body retained, the
-    // workflow-omitted projection stays below 1 KiB in this fixture. Keep enough
-    // headroom for small projection growth while preserving the context win.
+    // workflow-omitted projection stays near 1.2 KiB in this fixture: the typed
+    // Global Instructions block (about 460 bytes of status/scope/precedence/note,
+    // emitted even when no Global file is configured) is part of every startup.
+    // Keep enough headroom for small projection growth while preserving the
+    // context win.
     assert!(
-        workflow_omitted_bytes <= 1000,
+        workflow_omitted_bytes <= 1350,
         "workflow-omitted projection regressed above the context budget: {workflow_omitted_bytes} bytes"
     );
-    // The sparse projection itself remains below 1 KiB when static workflow
+    // The sparse projection itself stays close to 1 KiB when static workflow
     // guidance is omitted. With Session ACK/recording/sidecar guidance plus the
     // current validation/finalization guidance included, this fixture stays within
     // the dedicated sparse budgets below. Keep the default tightly
     // bounded and still far below the standard startup hard cap while leaving
     // only modest protocol headroom.
     assert!(
-        fresh_bytes <= 4800,
+        fresh_bytes <= 5650,
         "fresh work_on_project projection regressed above the sparse context budget: {fresh_bytes} bytes"
     );
     assert!(
-        reused_bytes <= 4900,
+        reused_bytes <= 5750,
         "unchanged work_on_project projection regressed above the sparse continuation budget: {reused_bytes} bytes"
     );
 }

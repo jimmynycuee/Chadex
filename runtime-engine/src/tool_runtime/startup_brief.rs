@@ -2330,7 +2330,16 @@ mod tests {
                 .collect()
         );
         assert_eq!(first["global_instructions"]["status"], "loaded");
-        assert_eq!(first["global_instructions"]["content"], global_content);
+        // This worst case is still far over the hard cap after repository
+        // metadata trimming, and lower-precedence Global content is the first
+        // prose reduced: it is dropped entirely while keeping its identity,
+        // truncation flag and original size.
+        assert_eq!(first["global_instructions"]["content"], "");
+        assert_eq!(first["global_instructions"]["truncated"], true);
+        assert_eq!(
+            first["global_instructions"]["total_chars"],
+            global_content.chars().count()
+        );
         assert_eq!(first["global_instructions"]["scope"], "all_chadex_projects");
         assert_eq!(
             first["global_instructions"]["precedence"]["safety_envelope"],

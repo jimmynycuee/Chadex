@@ -65,18 +65,20 @@ async fn final_changes_descriptor_is_explicit_v3_and_lazy_diff_is_app_only() {
         json!(["project", "session_id", "snapshot_id", "path"])
     );
 
-    for name in [
-        "show_changes",
-        "finish_coding_task",
-        "list_jobs",
-        "observe_jobs",
-        "cargo_check",
-        "cargo_test",
-    ] {
+    // Phase 16B keeps only the bounded core direct; list_jobs/cargo_check/
+    // cargo_test are reached through call_runtime_tool, so they have no direct
+    // descriptor at all (and therefore cannot carry a Final Changes card).
+    for name in ["show_changes", "finish_coding_task", "observe_jobs"] {
         let descriptor = tool(&ui["result"], name).unwrap_or_else(|| panic!("missing {name}"));
         assert!(
             descriptor.pointer("/_meta/ui/resourceUri").is_none(),
             "{name} must not create a Final Changes card"
+        );
+    }
+    for name in ["list_jobs", "cargo_check", "cargo_test"] {
+        assert!(
+            tool(&ui["result"], name).is_none(),
+            "{name} is gateway-routed and must not be a direct descriptor"
         );
     }
 

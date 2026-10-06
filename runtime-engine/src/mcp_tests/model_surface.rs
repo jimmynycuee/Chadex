@@ -192,14 +192,16 @@ async fn phase16b_ui_surface_stays_bounded_and_preserves_presentation_tools() {
         .filter(|tool| tool.pointer("/_meta/ui/visibility") == Some(&json!(["app"])))
         .count();
     assert!(app_only_count >= 6, "expected app-only tool projection");
+    // 22 Adaptive direct tools (including the Computer observe/control pair), the
+    // gateway, six operator-extension Skill/Memory tools and eleven app-only tools.
     let max_tools = if cfg!(feature = "experimental-code-mode") {
-        42
+        43
     } else {
-        39
+        40
     };
     assert!(
         names.len() <= max_tools,
-        "Phase 16B UI startup surface regressed to {} direct callables",
+        "Phase 16B UI startup surface regressed to {} direct callables: {names:?}",
         names.len()
     );
     let surface_bytes = serde_json::to_vec(&value["result"]["tools"])

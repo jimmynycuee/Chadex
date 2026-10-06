@@ -546,8 +546,11 @@ mod tests {
 
         assert_eq!(
             adaptive_runtime_tool_invocation_route("session_discussion_summary"),
-            (TOOL_SURFACE_AVAILABILITY_DIRECT, None),
-            "session_hint.suggested_next_tool remains a non-parser-ready direct-only hint"
+            (
+                TOOL_SURFACE_AVAILABILITY_GATEWAY,
+                Some(ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME)
+            ),
+            "session_hint.suggested_next_tool is a non-parser-ready hint; outside the bounded Phase 16B direct core it is still reachable through the gateway"
         );
         assert_eq!(
             adaptive_runtime_tool_invocation_route("apply_patch"),
@@ -699,17 +702,32 @@ mod tests {
             }
         });
 
+        // A direct route preserves the canonical nested call unchanged.
+        let mut direct_route = canonical_value.clone();
+        project_suggested_tool_calls_in_value(&mut direct_route, &canonical_schema, &|_| {
+            SuggestedToolCallRoute::Direct
+        });
+        assert_eq!(
+            direct_route["output"]["changes"]["show_changes"]["diff_review_handoff"]["next_call"],
+            canonical_call,
+            "a direct route must preserve the canonical nested call"
+        );
+
+        // git_diff_hunks is outside the bounded Phase 16B direct core, so the real
+        // Adaptive routing wraps it through the gateway.
         let mut current_adaptive = canonical_value.clone();
         project_suggested_tool_calls_in_value(
             &mut current_adaptive,
             &canonical_schema,
             &|target| suggested_tool_call_route(target, false),
         );
+        let adaptive_call = &current_adaptive["output"]["changes"]["show_changes"]
+            ["diff_review_handoff"]["next_call"];
+        assert_eq!(adaptive_call["tool"], ADAPTIVE_RUNTIME_GATEWAY_TOOL_NAME);
+        assert_eq!(adaptive_call["arguments"]["tool"], "git_diff_hunks");
         assert_eq!(
-            current_adaptive["output"]["changes"]["show_changes"]["diff_review_handoff"]
-                ["next_call"],
-            canonical_call,
-            "current Adaptive direct routing must preserve the canonical nested call"
+            adaptive_call["arguments"]["arguments"],
+            canonical_call["arguments"]
         );
 
         let synthetic_gateway_route = |target: &str| {

@@ -213,8 +213,9 @@ fn assert_builtin_workflow(output: &Value) {
         .join("\n");
     for phrase in [
         "concrete, reviewable completion",
-        "Recovery/compaction/exact Session resume is continuation",
-        "reuse still-current Git/read/validation/Job facts",
+        "precedence is current user > nested repo AGENTS > root repo AGENTS > Global Instructions > built-in baseline",
+        "Blank Global is a no-op",
+        "Verify Project/branch/HEAD and nested rules after recovery",
         "continue independent work",
         "Ordinary implementation is default",
         "map cross-layer changes end to end",

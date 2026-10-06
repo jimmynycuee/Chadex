@@ -2486,8 +2486,13 @@ async fn mcp_tools_call_still_returns_structured_content_under_compact_flag() {
     assert!(value["result"]["structuredContent"]["success"].is_boolean());
 }
 
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn session_tools_stay_registered_and_follow_adaptive_routes() {
+    // The direct description assertion below targets the default compact
+    // discovery projection; pin it so env-mutating tests cannot flip it.
+    let mut env = crate::test_support::TestEnvGuard::new();
+    env.remove("WEBCODEX_MCP_COMPACT_SCHEMAS");
     let runtime = test_runtime();
     let specs = registered_tool_specs();
     let registry_names: Vec<&str> = specs.iter().map(|spec| spec.name.as_str()).collect();
