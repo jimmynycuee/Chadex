@@ -179,7 +179,7 @@
 "skills.remove" = "Remove…";
 "skills.removeHelp" = "Remove installed Skill %@";
 "skills.remove.confirmTitle" = "Remove “%@”?";
-"skills.remove.confirmMessage" = "This deletes every version of this Skill that Chadex stored and cannot be undone. The original ZIP file is not affected. Project Skills and external Skill folders are never changed.";
+"skills.remove.confirmMessage" = "This deletes every version of this Skill that Chadex stored and cannot be undone; every project using this local runtime loses it. The original ZIP file is not affected. Project Skills and external Skill folders are never changed.";
 "skills.remove.confirmAction" = "Remove";
 "skills.invalidCount" = "%d invalid Skill package(s) were excluded from the catalog.";
 "skills.discoveryTruncated" = "Skill discovery reached its bound; %d invalid package(s) were also excluded.";
@@ -649,3 +649,4 @@
 "skills.row.collapsed" = "Collapsed";
 "skills.row.expandHint" = "Shows the full description and SKILL.md";
 "skills.row.collapseHint" = "Hides the details";
+"skills.error.replayCapacity" = "Too many Skill changes in a short time; the local runtime is refusing new changes for now. Try again later (up to about a day).";

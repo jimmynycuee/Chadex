@@ -32,6 +32,7 @@ const SKILL_INSTALL_MESSAGES: Array<[string[], string]> = [
   [['skill_remove_failed', 'skill_remove_revision_failed', 'skill_remove_cleanup_failed', 'skill_remove_incomplete', 'skill_remove_invalid',
     'skill_active_revision_remove_forbidden'], '無法完整移除這個 Skill，它可能已停用且只剩部分版本。已重新整理，請再移除一次以完成。'],
   [['skill_activate_failed', 'skill_deactivate_failed', 'skill_package_not_found'], '無法變更這個 Skill 的啟用狀態。已重新整理，請確認目前狀態後再試一次。'],
+  [['skill_store_replay_capacity_exceeded'], '短時間內的 Skill 變更次數過多，本機 runner 暫時拒絕新的變更。請稍後（最多約一天）再試。'],
   [['skill_store_capability_unavailable', 'skill_store_unavailable', 'skill_store_lock_unavailable'],
     '本機 runner 目前無法管理 Skill（可能尚未就緒或版本不支援）。請稍後重試，或重新啟動本機服務。'],
 ];

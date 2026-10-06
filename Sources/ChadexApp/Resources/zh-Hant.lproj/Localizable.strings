@@ -179,7 +179,7 @@
 "skills.remove" = "移除…";
 "skills.removeHelp" = "移除已安裝的 Skill %@";
 "skills.remove.confirmTitle" = "要移除「%@」嗎？";
-"skills.remove.confirmMessage" = "這會刪除 Chadex 儲存的這個 Skill 的所有版本，且無法復原。原本的 ZIP 檔不受影響；專案 Skill 與外部 Skill 資料夾也不會被更動。";
+"skills.remove.confirmMessage" = "這會刪除 Chadex 儲存的這個 Skill 的所有版本，且無法復原；使用同一個本機 runtime 的所有專案都會一起失去它。原本的 ZIP 檔不受影響；專案 Skill 與外部 Skill 資料夾也不會被更動。";
 "skills.remove.confirmAction" = "移除";
 "skills.invalidCount" = "有 %d 個無效 Skill 套件未納入 catalog。";
 "skills.discoveryTruncated" = "Skill 探索已達上限；另有 %d 個無效套件未納入 catalog。";
@@ -649,3 +649,4 @@
 "skills.row.collapsed" = "已收合";
 "skills.row.expandHint" = "顯示完整描述與 SKILL.md";
 "skills.row.collapseHint" = "隱藏細節";
+"skills.error.replayCapacity" = "短時間內的 Skill 變更次數過多，本機 runtime 暫時拒絕新的變更。請稍後（最多約一天）再試。";

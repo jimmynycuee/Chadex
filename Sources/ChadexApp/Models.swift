@@ -360,6 +360,7 @@ enum SkillManagementErrorMessage {
             return L10n.string("skills.error.removeFailed")
         case "skill_activate_failed", "skill_deactivate_failed", "skill_package_not_found":
             return L10n.string("skills.error.toggleFailed")
+        case "skill_store_replay_capacity_exceeded": return L10n.string("skills.error.replayCapacity")
         case "skill_store_capability_unavailable", "skill_store_unavailable", "skill_store_lock_unavailable":
             return L10n.string("skills.error.storeUnavailable")
         default: return nil

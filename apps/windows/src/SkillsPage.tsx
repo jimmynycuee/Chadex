@@ -219,7 +219,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
                 {definitions[item.skill_id].has_more && <p className="skill-meta">內容過長，僅顯示前段。</p>}</>}
         {item.managed && (removing === item.skill_id
           ? <div className="skill-remove-confirm" role="alertdialog" aria-label={`移除 ${item.name}`}>
-            <p>要移除「{item.name}」嗎？這會刪除 Chadex 儲存的這個 Skill 的所有版本，且無法復原。原本的 ZIP 檔不受影響；專案 Skill 與外部 Skill 資料夾也不會被更動。</p>
+            <p>要移除「{item.name}」嗎？這會刪除 Chadex 儲存的這個 Skill 的所有版本，且無法復原；使用同一個本機 runtime 的所有專案都會一起失去它。原本的 ZIP 檔不受影響；專案 Skill 與外部 Skill 資料夾也不會被更動。</p>
             <div className="button-row"><button onClick={() => setRemoving(null)}>取消</button>
               <button className="danger" disabled={mutating !== null || !helperReady} onClick={() => { void removeManaged(item); }}>移除</button></div>
           </div>
