@@ -481,6 +481,7 @@ async fn crashed_owned_local_server_reports_needs_attention_not_stopped() {
         runner_client_id: Some("desktop-runner".to_string()),
         project_id: Some("project".to_string()),
         runtime_project_id: Some("agent:desktop:project".to_string()),
+        admin_token_file: None,
     });
     let cancellation = CancellationContext::never();
 
