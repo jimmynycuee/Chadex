@@ -189,8 +189,14 @@
 "skills.installMessage" = "Install an immutable Skill ZIP into the local Runner store, then enable that revision.";
 "skills.noArchive" = "No ZIP selected";
 "skills.chooseArchive" = "Choose ZIP…";
-"skills.archiveBoundary" = "For this local runtime, the ZIP must be inside the selected project. Installed revisions are copied into the managed store.";
-"skills.archiveOutsideProject" = "Choose a ZIP inside the selected project folder.";
+"skills.archiveBoundary" = "You can choose a ZIP from anywhere. To install it, Chadex briefly copies it into .chadex/skill-imports/ in this project (added to .gitignore) and deletes the copy right after. ZIPs up to 8 MB.";
+"skills.archive.error.notZip" = "Choose a .zip file.";
+"skills.archive.error.notRegularFile" = "The selected item is not a regular file (links and folders are not supported). Choose the ZIP file itself.";
+"skills.archive.error.tooLarge" = "This ZIP is larger than the %d MB limit for a Skill package.";
+"skills.archive.error.unreadable" = "Chadex could not read the selected ZIP. Check that it still exists and that you can open it.";
+"skills.archive.error.projectUnavailable" = "The selected project folder is unavailable. Refresh the project and try again.";
+"skills.archive.error.unsafeDirectory" = "The project's .chadex folder is a link or not a folder, so Chadex cannot copy the ZIP into it safely. Remove or fix .chadex/skill-imports and try again.";
+"skills.archive.error.copyFailed" = "Chadex could not copy the ZIP into the project. Check that the project folder is writable and has free space, then try again.";
 "skills.installEnable" = "Install & Enable";
 
 "memory.title" = "PROJECT MEMORY";

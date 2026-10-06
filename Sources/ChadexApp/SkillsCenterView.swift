@@ -390,7 +390,7 @@ private struct SkillInstallSheet: View {
     let project: ProjectRecord
 
     @State private var skillKey = ""
-    @State private var artifactPath = ""
+    @State private var archiveURL: URL?
     @State private var localError: String?
 
     private var validKey: Bool {
@@ -420,9 +420,9 @@ private struct SkillInstallSheet: View {
                 .textFieldStyle(.roundedBorder)
 
             HStack(spacing: 10) {
-                Text(artifactPath.isEmpty ? L10n.string("skills.noArchive") : artifactPath)
+                Text(archiveURL.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? L10n.string("skills.noArchive"))
                     .chadexFont(.callout, design: .monospaced)
-                    .foregroundStyle(artifactPath.isEmpty ? .tertiary : .secondary)
+                    .foregroundStyle(archiveURL == nil ? .tertiary : .secondary)
                     .lineLimit(2)
                     .textSelection(.enabled)
                 Spacer(minLength: 12)
@@ -446,14 +446,16 @@ private struct SkillInstallSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Button(L10n.string("skills.installEnable")) {
                     Task {
-                        if await model.installSkill(skillKey: skillKey, artifactPath: artifactPath) {
+                        guard let archiveURL else { return }
+                        localError = nil
+                        if await model.installSkill(skillKey: skillKey, archiveURL: archiveURL) {
                             dismiss()
                         }
                     }
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(!validKey || artifactPath.isEmpty || model.skillInstallInFlight)
+                .disabled(!validKey || archiveURL == nil || model.skillInstallInFlight)
             }
         }
         .frame(width: 600)
@@ -466,19 +468,17 @@ private struct SkillInstallSheet: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.zip]
-        panel.directoryURL = URL(fileURLWithPath: project.path, isDirectory: true)
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         panel.prompt = L10n.string("skills.chooseArchive")
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        let root = URL(fileURLWithPath: project.path, isDirectory: true).standardizedFileURL.path
-        let chosen = url.standardizedFileURL.path
-        let prefix = root.hasSuffix("/") ? root : root + "/"
-        guard chosen.hasPrefix(prefix) else {
-            artifactPath = ""
-            localError = L10n.string("skills.archiveOutsideProject")
-            return
+        do {
+            try SkillArchiveStaging.preflight(url)
+            archiveURL = url
+            localError = nil
+        } catch {
+            archiveURL = nil
+            localError = error.localizedDescription
         }
-        artifactPath = String(chosen.dropFirst(prefix.count))
-        localError = nil
     }
 }

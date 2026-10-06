@@ -771,18 +771,31 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Installs a Skill ZIP from any location. The runtime only reads project-relative artifacts,
+    /// so the ZIP is copied into `.chadex/skill-imports/` for the call and removed afterwards,
+    /// whether the install succeeds or fails.
     @discardableResult
-    func installSkill(skillKey: String, artifactPath: String) async -> Bool {
+    func installSkill(skillKey: String, archiveURL: URL) async -> Bool {
         guard !skillInstallInFlight, let selectedProject else { return false }
         let key = skillKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let artifact = artifactPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty, !artifact.isEmpty else { return false }
+        guard !key.isEmpty else { return false }
         skillInstallInFlight = true
         defer { skillInstallInFlight = false }
+        let staged: StagedSkillArchive
+        do {
+            staged = try SkillArchiveStaging.stage(
+                source: archiveURL,
+                projectRoot: URL(fileURLWithPath: selectedProject.path, isDirectory: true)
+            )
+        } catch {
+            skillsError = error.localizedDescription
+            return false
+        }
+        defer { staged.remove() }
         do {
             let _: SkillOperationResult = try await helper.request(
                 method: "installSkill",
-                params: InstallSkillParams(path: selectedProject.path, skillKey: key, artifactPath: artifact)
+                params: InstallSkillParams(path: selectedProject.path, skillKey: key, artifactPath: staged.relativePath)
             )
             skillsError = nil
             await refreshSkills()

@@ -189,8 +189,14 @@
 "skills.installMessage" = "將 immutable Skill ZIP 安裝到本機 Runner store，接著啟用該版本。";
 "skills.noArchive" = "尚未選擇 ZIP";
 "skills.chooseArchive" = "選擇 ZIP…";
-"skills.archiveBoundary" = "目前本機 runtime 要求 ZIP 位於已選專案內；安裝後 immutable revision 會複製進 managed store。";
-"skills.archiveOutsideProject" = "請選擇位於目前專案資料夾內的 ZIP。";
+"skills.archiveBoundary" = "可選擇任何位置的 ZIP。安裝時 Chadex 會暫時複製到專案的 .chadex/skill-imports/（並加入 .gitignore），完成後立即刪除。ZIP 上限 8 MB。";
+"skills.archive.error.notZip" = "請選擇 .zip 檔案。";
+"skills.archive.error.notRegularFile" = "所選項目不是一般檔案（不支援連結或資料夾），請直接選擇 ZIP 檔。";
+"skills.archive.error.tooLarge" = "這個 ZIP 超過 Skill 套件的 %d MB 上限。";
+"skills.archive.error.unreadable" = "Chadex 無法讀取所選的 ZIP。請確認檔案仍存在且你有權限開啟。";
+"skills.archive.error.projectUnavailable" = "找不到目前專案的資料夾。請重新整理專案後再試。";
+"skills.archive.error.unsafeDirectory" = "專案內的 .chadex 資料夾是連結或不是資料夾，Chadex 無法安全地複製 ZIP 進去。請移除或修正 .chadex/skill-imports 後再試。";
+"skills.archive.error.copyFailed" = "Chadex 無法把 ZIP 複製到專案內。請確認專案資料夾可寫入且仍有可用空間後再試。";
 "skills.installEnable" = "安裝並啟用";
 
 "memory.title" = "PROJECT MEMORY";

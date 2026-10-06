@@ -336,6 +336,17 @@ async fn runtime_action(
     if ["connectChatGPT", "startTunnel"].contains(&method.as_str()) {
         state.provision(&bridge).await?;
     }
+    // installSkill: a ZIP picked from anywhere is copied into the project for the call. The guard
+    // deletes the copy when this function returns, on success, error, or cancellation.
+    let (params, _staged_archive) = if method == "installSkill" {
+        tauri::async_runtime::spawn_blocking(move || {
+            skills::stage_install_params(params, skills::MAX_SKILL_ARCHIVE_BYTES)
+        })
+        .await
+        .map_err(|_| "skill_archive_copy_failed".to_string())??
+    } else {
+        (params, None)
+    };
     let result = bridge.request(&method, params).await.map_err(bridge_error);
     log_event(&method, result.is_ok());
     let result = result?;
@@ -386,19 +397,19 @@ async fn choose_skill_folder(app: tauri::AppHandle) -> Result<Option<String>, St
 #[tauri::command]
 async fn choose_skill_archive(
     app: tauri::AppHandle,
-    project: String,
+    // Kept for the IPC contract: the ZIP may now live anywhere, so it no longer picks the start folder.
+    #[allow(unused_variables)] project: String,
 ) -> Result<Option<String>, String> {
     let (sender, receiver) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
         .set_title("選擇 Skill ZIP")
-        .set_directory(&project)
         .add_filter("ZIP", &["zip"])
         .pick_file(move |selected| {
             let _ = sender.send(selected.map(|file| file.into_path()));
         });
     match receiver.await.map_err(|_| "folder_dialog_closed")? {
-        Some(Ok(path)) => skills::project_relative_archive(std::path::Path::new(&project), &path).map(Some),
+        Some(Ok(path)) => skills::chosen_skill_archive(&path).map(Some),
         Some(Err(_)) => Err("folder_path_invalid".into()),
         None => Ok(None),
     }

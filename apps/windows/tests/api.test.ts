@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 const core = vi.hoisted(() => ({ invoke: vi.fn().mockResolvedValue(undefined), isTauri: vi.fn().mockReturnValue(true) }));
 vi.mock('@tauri-apps/api/core', () => core);
-import { desktopApi } from '../src/api';
+import { desktopApi, skillArchiveError } from '../src/api';
 import { desktop } from './fixtures';
 
 describe('Tauri 2 command contract', () => {
@@ -33,5 +33,24 @@ describe('Tauri 2 command contract', () => {
   it('fails honestly outside Tauri instead of substituting a demo-ready state', async () => {
     core.isTauri.mockReturnValueOnce(false);
     await expect(desktopApi.desktopState()).rejects.toThrow('需要 Chadex 桌面環境');
+  });
+  it('passes an absolute ZIP path to installSkill and turns skill_archive_* codes into readable messages', async () => {
+    await desktopApi.installSkill('C:\\work\\p', 'k', 'C:\\Users\\a\\Downloads\\s.zip');
+    expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'installSkill', params: { path: 'C:\\work\\p', skill_key: 'k', artifact_path: 'C:\\Users\\a\\Downloads\\s.zip' } });
+    core.invoke.mockRejectedValueOnce('skill_archive_too_large');
+    await expect(desktopApi.installSkill('p', 'k', 'C:\\a.zip')).rejects.toThrow('8 MB');
+    core.invoke.mockRejectedValueOnce('skill_archive_not_zip');
+    await expect(desktopApi.chooseSkillArchive('p')).rejects.toThrow('.zip');
+    core.invoke.mockRejectedValueOnce('Chadex bridge: Backend (tool_failure)。請查看診斷並重試。');
+    await expect(desktopApi.installSkill('p', 'k', 'C:\\a.zip')).rejects.toBe('Chadex bridge: Backend (tool_failure)。請查看診斷並重試。');
+  });
+  it('maps every skill_archive_* code the Rust side can return', () => {
+    for (const code of ['skill_archive_not_zip', 'skill_archive_not_regular_file', 'skill_archive_too_large', 'skill_archive_unreadable',
+      'skill_archive_project_unavailable', 'skill_archive_unsafe_directory', 'skill_archive_copy_failed']) {
+      const mapped = skillArchiveError(code);
+      expect(mapped).toBeInstanceOf(Error);
+      expect((mapped as Error).message).not.toContain('skill_archive_');
+    }
+    expect(skillArchiveError(new Error('other'))).toEqual(new Error('other'));
   });
 });
