@@ -33,6 +33,13 @@ impl RuntimeBackendApi {
         self.adapter.activate_local_project(path).await
     }
 
+    pub(crate) async fn activate_local_project_background(
+        &self,
+        path: &str,
+    ) -> ChadexResult<RuntimeSnapshot> {
+        self.adapter.activate_local_project_background(path).await
+    }
+
     pub(crate) async fn configure_local_setup(
         &self,
         project_path: Option<&str>,

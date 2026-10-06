@@ -381,6 +381,25 @@ fn prewarm_decision(current: &RuntimeSnapshot, has_target_project: bool) -> Prew
     }
 }
 
+/// After a launch warm-up resumed the runtime, the project it must still
+/// activate: the selected project, when the runtime came up serving another
+/// one. `None` when there is no selection, the runtime is not ready, or it
+/// already serves the selection.
+fn prewarm_activation_path<'a>(
+    runtime: &RuntimeSnapshot,
+    target: Option<&'a ProjectInspection>,
+) -> Option<&'a str> {
+    let target = target?;
+    if !runtime.readiness.runtime_ready {
+        return None;
+    }
+    let serves_target = runtime
+        .project
+        .as_ref()
+        .is_some_and(|project| project.path == target.path);
+    (!serves_target).then_some(target.path.as_str())
+}
+
 /// The operation the UI may present. Background warm-up is not user work: it
 /// is never surfaced as an operation (and so never as Preparing / Cancel).
 fn visible_operation(desktop: &RuntimeSnapshot) -> Option<OperationSnapshot> {
@@ -1096,7 +1115,35 @@ impl Bridge {
         }
         let resume_started_at_ms = now_ms();
         let resume_started = Instant::now();
-        let result = self.runtime.resume_saved_runtime_background().await;
+        let mut result = self.runtime.resume_saved_runtime_background().await;
+        if result.is_ok() && !run.cancel_requested() {
+            // The resume restores the last *activated* project, which can lag
+            // the selected one (a switch while the runtime was stopped only
+            // moves the selection). Align it before the warm-up finishes so
+            // the runtime never serves a stale project. Serialised with
+            // project switches; a switch cancels this warm-up first.
+            let _switch = self.project_switch_lifecycle.lock().await;
+            let target = self.target_project();
+            let path = prewarm_activation_path(&self.runtime.snapshot(), target.as_ref())
+                .map(str::to_string);
+            if let Some(path) = path.filter(|_| !run.cancel_requested()) {
+                let activation_started_at_ms = now_ms();
+                let activation_started = Instant::now();
+                result = self.runtime.activate_local_project_background(&path).await;
+                let completion = match (&result, run.cancel_requested()) {
+                    (Ok(_), _) => "completed",
+                    (Err(_), true) => "cancelled",
+                    (Err(_), false) => "failed",
+                };
+                self.push_lifecycle(
+                    "prewarm",
+                    "project_activation",
+                    activation_started_at_ms,
+                    activation_started,
+                    completion,
+                );
+            }
+        }
         let cancelled = run.cancel_requested();
         drop(run);
         let completion = match (&result, cancelled) {
@@ -2503,6 +2550,43 @@ mod tests {
             cancellable: true,
             background,
         }
+    }
+
+    fn selected_project(path: &str) -> ProjectInspection {
+        ProjectInspection {
+            path: path.to_string(),
+            allowed_root: path.to_string(),
+            is_git_repository: false,
+            readable: true,
+            writable: true,
+        }
+    }
+
+    #[test]
+    fn prewarm_activates_the_selection_when_the_resumed_runtime_serves_a_stale_project() {
+        // Reproduces the launch where the saved runtime project (the last one
+        // activated) lags the selection: the resume brings up "/project" while
+        // the App selected "/selected". The warm-up must activate the selection.
+        let mut resumed = prewarm_runtime_snapshot();
+        resumed.readiness.runtime_ready = true;
+        let selected = selected_project("/selected");
+        assert_eq!(
+            prewarm_activation_path(&resumed, Some(&selected)),
+            Some("/selected")
+        );
+    }
+
+    #[test]
+    fn prewarm_skips_activation_when_aligned_not_ready_or_unselected() {
+        let mut resumed = prewarm_runtime_snapshot();
+        resumed.readiness.runtime_ready = true;
+        let same = selected_project("/project");
+        assert_eq!(prewarm_activation_path(&resumed, Some(&same)), None);
+        assert_eq!(prewarm_activation_path(&resumed, None), None);
+
+        let other = selected_project("/selected");
+        let stopped = prewarm_runtime_snapshot();
+        assert_eq!(prewarm_activation_path(&stopped, Some(&other)), None);
     }
 
     #[test]

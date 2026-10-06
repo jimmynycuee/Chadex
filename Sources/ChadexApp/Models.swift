@@ -319,6 +319,7 @@ enum SkillManagementErrorMessage {
     static func message(forCode code: String) -> String? {
         switch code {
         case "skill_management_requires_local_runtime": return L10n.string("skills.error.requiresLocalRuntime")
+        case "project_runtime_mismatch": return L10n.string("skills.error.projectRuntimeMismatch")
         case "skill_management_credential_unavailable": return L10n.string("skills.error.credentialUnavailable")
         case "skill_management_credential_rejected": return L10n.string("skills.error.credentialRejected")
         case "runner_config_path_is_link": return L10n.string("skills.error.runnerConfigPathIsLink")

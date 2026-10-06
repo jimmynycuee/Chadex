@@ -609,8 +609,39 @@ impl RuntimeStateManager {
         F: FnOnce(ChadexProjectActivationTarget, CancellationContext) -> Fut,
         Fut: Future<Output = DesktopResult<Option<ChadexProjectActivationObservation>>>,
     {
+        self.activate_local_project_with_chadex_fast_path_as(project_path, fast_path, false)
+            .await
+    }
+
+    /// Launch warm-up variant: the activation that aligns a resumed runtime
+    /// with the selected project is flagged background, like the resume it
+    /// follows, so it is not presented as user work and contending requests
+    /// can cancel it.
+    pub(crate) async fn activate_local_project_with_chadex_fast_path_background<F, Fut>(
+        &self,
+        project_path: &str,
+        fast_path: F,
+    ) -> DesktopResult<DesktopStateSnapshot>
+    where
+        F: FnOnce(ChadexProjectActivationTarget, CancellationContext) -> Fut,
+        Fut: Future<Output = DesktopResult<Option<ChadexProjectActivationObservation>>>,
+    {
+        self.activate_local_project_with_chadex_fast_path_as(project_path, fast_path, true)
+            .await
+    }
+
+    async fn activate_local_project_with_chadex_fast_path_as<F, Fut>(
+        &self,
+        project_path: &str,
+        fast_path: F,
+        background: bool,
+    ) -> DesktopResult<DesktopStateSnapshot>
+    where
+        F: FnOnce(ChadexProjectActivationTarget, CancellationContext) -> Fut,
+        Fut: Future<Output = DesktopResult<Option<ChadexProjectActivationObservation>>>,
+    {
         let (operation, cancellation, mut core, baseline) = self
-            .begin_operation(DesktopOperationKind::LocalProjectActivate, true)
+            .begin_operation_with(DesktopOperationKind::LocalProjectActivate, true, background)
             .await?;
         let result = async {
             let target = core

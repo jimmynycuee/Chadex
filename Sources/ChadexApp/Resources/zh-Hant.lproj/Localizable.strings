@@ -597,6 +597,7 @@
 "ferret.live" = "實際執行狀態";
 "ferret.previewHint" = "僅預覽動作，不影響實際執行狀態。";
 "skills.error.requiresLocalRuntime" = "Skill 與專案記憶只能在本機 runtime 上管理。目前連線的是遠端 Server，請先連回本機 runtime。";
+"skills.error.projectRuntimeMismatch" = "本機 runtime 目前仍在服務另一個專案。請按「連接 ChatGPT」啟用目前選取的專案，再重新整理。";
 "skills.error.credentialUnavailable" = "無法取得本機管理憑證，例如 runtime 尚未就緒。請稍後重試，或重新啟動本機服務。";
 "skills.error.credentialRejected" = "本機 runtime 拒絕了管理憑證。請重新啟動本機服務後再試。";
 "skills.error.runnerConfigPathIsLink" = "runner.toml 所在的資料夾是透過連結（junction 或 symlink）存取，Chadex 無法安全寫入。請改用不在連結之下的 runner.toml 位置。";

@@ -127,6 +127,23 @@ impl RuntimeBackendAdapter {
             .map_err(map_desktop_error)
     }
 
+    /// Launch warm-up variant of `activate_local_project`: flagged background
+    /// so it is not presented as user work and contending requests cancel it.
+    pub(crate) async fn activate_local_project_background(
+        &self,
+        path: &str,
+    ) -> ChadexResult<RuntimeSnapshot> {
+        let client = self.probe_client.clone();
+        self.app
+            .activate_local_project_with_chadex_fast_path_background(path, move |target, cancellation| {
+                let client = client.clone();
+                async move { fast_activate_project(&client, &target, &cancellation).await }
+            })
+            .await
+            .map(map_snapshot)
+            .map_err(map_desktop_error)
+    }
+
     pub(crate) async fn configure_local_setup(
         &self,
         project_path: Option<&str>,

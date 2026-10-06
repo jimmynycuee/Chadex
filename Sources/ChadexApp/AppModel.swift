@@ -79,6 +79,12 @@ final class AppModel: ObservableObject {
     private let currentKeychainACLVersion = 1
     private var pollingTask: Task<Void, Never>?
     private(set) var runtimePrewarmTask: Task<Void, Never>?
+    /// Code of the last Skill inventory failure, used to recognise a runtime
+    /// that serves another project than the selected one.
+    private var skillsInventoryErrorCode: String?
+    /// The selection a runtime/project realignment was already attempted for
+    /// (one automatic attempt per selection, so a failure cannot loop).
+    private(set) var runtimeProjectRealignAttemptedID: UUID?
     private(set) var isShuttingDown = false
     private let pollWaker = PollWaker()
     private var refreshInFlight = false
@@ -645,6 +651,40 @@ final class AppModel: ObservableObject {
     }
 
     func refreshSkills() async {
+        await loadSkills()
+        guard skillsInventoryErrorCode == "project_runtime_mismatch",
+              await realignRuntimeProjectIfNeeded() else { return }
+        await loadSkills()
+    }
+
+    /// The local runtime is ready but serves another project than the
+    /// selected one (for example after its saved project went stale). This is
+    /// recoverable without user input: re-activate the selected project once
+    /// per selection. Skipped while other work owns the runtime (launch,
+    /// warm-up — which aligns the project itself — switching, connecting).
+    @discardableResult
+    func realignRuntimeProjectIfNeeded() async -> Bool {
+        guard let selectedProject,
+              runtimeProjectRealignAttemptedID != selectedProject.id,
+              !isBootstrapping,
+              !isSwitchingProject,
+              !connectionActionInFlight,
+              runtimePrewarmTask == nil,
+              !isShuttingDown else { return false }
+        runtimeProjectRealignAttemptedID = selectedProject.id
+        do {
+            _ = try await requestSnapshot(
+                method: "switchLocalProject",
+                params: ActivateProjectParams(path: selectedProject.path)
+            )
+            await refreshActivities()
+            return self.selectedProject?.id == selectedProject.id
+        } catch {
+            return false
+        }
+    }
+
+    private func loadSkills() async {
         guard let selectedProject else {
             clearSkills()
             return
@@ -671,6 +711,7 @@ final class AppModel: ObservableObject {
 
             var inventory: SkillInventoryInspection?
             var inventoryWarning: String?
+            var inventoryErrorCode: String?
             do {
                 inventory = try await helper.request(
                     method: "getSkillInventory",
@@ -678,8 +719,10 @@ final class AppModel: ObservableObject {
                 )
             } catch {
                 inventoryWarning = helperErrorMessage(error)
+                inventoryErrorCode = helperErrorPayload(error)?.code
             }
             guard self.selectedProject?.id == requestedProjectID else { return }
+            skillsInventoryErrorCode = inventoryErrorCode
 
             skillCatalog = catalog
             skillInventory = inventory
@@ -696,6 +739,7 @@ final class AppModel: ObservableObject {
             skillCatalog = nil
             skillInventory = nil
             skillDefinitions.removeAll()
+            skillsInventoryErrorCode = nil
             skillsError = helperErrorMessage(error)
         }
     }
@@ -1100,6 +1144,7 @@ final class AppModel: ObservableObject {
         skillInventory = nil
         skillDefinitions.removeAll()
         skillsError = nil
+        skillsInventoryErrorCode = nil
         skillDefinitionLoadingIDs.removeAll()
         skillMutationInFlightIDs.removeAll()
         skillsLastRefreshUptime = nil
