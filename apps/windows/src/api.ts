@@ -22,6 +22,8 @@ export interface DesktopApi {
   installSkill(path: string, skillKey: string, artifactPath: string): Promise<unknown>;
   activateSkill(path: string, entry: ManagedSkillEntry): Promise<unknown>;
   deactivateSkill(path: string, entry: ManagedSkillEntry): Promise<unknown>;
+  /** Removes every stored version of an installed Skill (the helper disables it first); fenced by `entry.state_revision`. */
+  removeSkill(path: string, entry: ManagedSkillEntry): Promise<unknown>;
   /** Native folder picker; resolves the exact canonical path the helper requires, or null on cancel. */
   chooseSkillFolder(): Promise<string | null>;
   /**
@@ -78,6 +80,7 @@ export const desktopApi: DesktopApi = {
   activateSkill: (path, entry) => call('runtime_action', { method: 'activateSkill',
     params: { path, skill_key: entry.skill_key, package_revision: entry.preferred_package_revision, state_revision: entry.state_revision } }),
   deactivateSkill: (path, entry) => call('runtime_action', { method: 'deactivateSkill', params: { path, skill_key: entry.skill_key, state_revision: entry.state_revision } }),
+  removeSkill: (path, entry) => call('runtime_action', { method: 'removeSkill', params: { path, skill_key: entry.skill_key, state_revision: entry.state_revision } }),
   chooseSkillFolder: () => call('choose_skill_folder'),
   chooseSkillArchive: (project) => call<string | null>('choose_skill_archive', { project }).catch(rethrowSkillArchiveError),
   savePreferences: (preferences) => call('save_preferences', { preferences }),

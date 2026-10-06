@@ -922,6 +922,18 @@ impl Bridge {
             .map_err(ErrorPayload::from)
     }
 
+    async fn remove_skill(
+        &self,
+        path: &str,
+        skill_key: &str,
+        state_revision: &str,
+    ) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .remove_skill(path, skill_key, state_revision)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
     async fn memory_catalog(&self, path: &str) -> Result<Value, ErrorPayload> {
         self.runtime
             .memory_catalog(path)
@@ -1993,6 +2005,18 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
             match (path, skill_key, state_revision) {
                 (Ok(path), Ok(skill_key), Ok(state_revision)) => bridge
                     .deactivate_skill(path, skill_key, state_revision)
+                    .await
+                    .map(ResponseResult::Json),
+                (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => Err(error),
+            }
+        }
+        "removeSkill" => {
+            let path = param_str(&request.params, "path");
+            let skill_key = param_str(&request.params, "skill_key");
+            let state_revision = param_str(&request.params, "state_revision");
+            match (path, skill_key, state_revision) {
+                (Ok(path), Ok(skill_key), Ok(state_revision)) => bridge
+                    .remove_skill(path, skill_key, state_revision)
                     .await
                     .map(ResponseResult::Json),
                 (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => Err(error),

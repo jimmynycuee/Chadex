@@ -310,6 +310,7 @@ const METHODS: &[&str] = &[
     "installSkill",
     "activateSkill",
     "deactivateSkill",
+    "removeSkill",
 ];
 
 #[tauri::command]
@@ -727,6 +728,7 @@ mod tests {
             "installSkill",
             "activateSkill",
             "deactivateSkill",
+            "removeSkill",
         ] {
             assert!(METHODS.contains(&name), "{name}");
         }

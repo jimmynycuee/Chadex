@@ -60,7 +60,7 @@ export type RuntimeMethod = 'inspectProject' | 'activateProject' | 'switchLocalP
   | 'disconnectAI' | 'stopLocalService' | 'updateProxySettings' | 'queryActivities'
   | 'getStatus' | 'refreshRuntime' | 'prewarmRuntime' | 'observeChatGPTActivity'
   | 'discoverExternalSkillSources' | 'getExternalSkillRoots' | 'setExternalSkillRoots'
-  | 'getSkillCatalog' | 'getSkillInventory' | 'getSkillDefinition' | 'installSkill' | 'activateSkill' | 'deactivateSkill';
+  | 'getSkillCatalog' | 'getSkillInventory' | 'getSkillDefinition' | 'installSkill' | 'activateSkill' | 'deactivateSkill' | 'removeSkill';
 
 // Skills (docs/BRIDGE_PROTOCOL.md "Skills" / "External Skill sources"); raw helper snake_case.
 export type ExternalSkillStatus = 'available' | 'not_found' | 'not_directory' | 'unavailable' | 'scan_limit_exceeded' | 'duplicate_source';

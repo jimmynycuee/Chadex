@@ -50,7 +50,7 @@ protocol version 不相容時 fail closed，不嘗試猜測欄位。
 
 ## v1 Methods
 
-下表與 `rust-helper/src/runtime_bridge.rs` 的 `handle_request` dispatch 一一對應；未列出的 method 回 `method_not_found`。App 與 helper 必須同版本一起更新。macOS 由 Swift `HelperClient` 呼叫全部 method；Windows 的 Tauri whitelisted IPC（`apps/windows/src-tauri`）經 `apps/windows/bridge` 只轉送 Runtime / connection、`queryActivities` 與 Skills（`discoverExternalSkillSources`、`getExternalSkillRoots`、`setExternalSkillRoots`、`getSkillCatalog`、`getSkillInventory`、`installSkill`、`activateSkill`、`deactivateSkill`）子集，目前沒有 Project Memory 或 Computer safety 的 desktop RPC。
+下表與 `rust-helper/src/runtime_bridge.rs` 的 `handle_request` dispatch 一一對應；未列出的 method 回 `method_not_found`。App 與 helper 必須同版本一起更新。macOS 由 Swift `HelperClient` 呼叫全部 method；Windows 的 Tauri whitelisted IPC（`apps/windows/src-tauri`）經 `apps/windows/bridge` 只轉送 Runtime / connection、`queryActivities` 與 Skills（`discoverExternalSkillSources`、`getExternalSkillRoots`、`setExternalSkillRoots`、`getSkillCatalog`、`getSkillInventory`、`installSkill`、`activateSkill`、`deactivateSkill`、`removeSkill`）子集，目前沒有 Project Memory 或 Computer safety 的 desktop RPC。
 
 ### Runtime / connection
 
@@ -95,6 +95,11 @@ protocol version 不相容時 fail closed，不嘗試猜測欄位。
 | `installSkill` | `path`, `skill_key`, `artifact_path` | 從 artifact 安裝 skill |
 | `activateSkill` | `path`, `skill_key`, `package_revision`, `state_revision` | Revision-fenced 啟用 |
 | `deactivateSkill` | `path`, `skill_key`, `state_revision` | Revision-fenced 停用 |
+| `removeSkill` | `path`, `skill_key`, `state_revision` | 移除 installed skill 的所有已安裝 revision（見下），回 `{skill_key, removed_revisions}` |
+
+`removeSkill` 只適用 installed（`operator_installed_guidance`）skill；project 與 external／configured 來源的原檔不歸 Chadex 管，不提供。runtime 的 `skill_remove_revision` 一次只刪一個 revision，且拒絕刪除目前啟用的 revision（`skill_active_revision_remove_forbidden`），所以 helper 在內部依序：讀 `skill_versions`、若啟用中先 `skill_deactivate`、再逐一 `skill_remove_revision`。第一個變更以呼叫端帶的 `state_revision` 作 fence，之後每一步改用上一步回傳的 `state_revision`；fence 不符回 `skill_state_changed` 且不會動任何東西。最後一個 revision 移除後該 skill 即從 `getSkillInventory` 消失。中途失敗時 skill 會停用且剩下較少的 revision，runtime 的錯誤碼原樣帶出，重新整理後可直接再移除一次。僅走本機 admin token；遠端 runtime 回 `skill_management_requires_local_runtime`。
+
+所有 skill 變更（`installSkill` 的啟用步驟、`activateSkill`、`deactivateSkill`、`removeSkill`）每次呼叫都用新的 idempotency key：runtime 會把首次結果依 key 保留 7 天並「無作用地重播」，而 `state_revision` 只由（啟用 revision, 已安裝 revision）決定，啟用→停用→再啟用若沿用同一 key 會被重播而靜默無效。
 
 Catalog descriptor 的 `scripts_allowed`（bool）表示該 Skill 的腳本資源是否被預設政策允許：configured／external root 依 root 的 `script_roots` opt-in；installed skill 為 `true`；project skill 為 `false`。舊版 helper 可能不帶此欄位，client 必須視為「未回報」。
 

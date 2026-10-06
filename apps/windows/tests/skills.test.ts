@@ -23,6 +23,8 @@ describe('skills logic', () => {
     const wrapped = 'Chadex could not install the Skill (skill_definition_missing)。請查看診斷並重試。';
     expect(externalSkillErrorMessage(wrapped)).toContain('ZIP 最上層找不到 SKILL.md');
     expect(externalSkillErrorMessage('x (skill_frontmatter_missing)')).toContain('frontmatter');
+    expect(externalSkillErrorMessage('x (skill_remove_revision_failed)')).toContain('再移除一次');
+    expect(externalSkillErrorMessage('x (skill_activate_failed)')).toContain('啟用狀態');
     expect(externalSkillErrorMessage('x (skill_install_archive_malformed)')).toContain('不是有效的 ZIP');
     expect(externalSkillErrorMessage('x (skill_install_total_too_large)')).toContain('上限');
     expect(externalSkillErrorMessage('x (skill_install_artifact_changed)')).toContain('重新選擇 ZIP');

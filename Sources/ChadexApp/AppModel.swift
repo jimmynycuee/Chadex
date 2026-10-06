@@ -984,8 +984,40 @@ final class AppModel: ObservableObject {
             skillsError = nil
             await refreshSkills()
         } catch {
-            skillsError = helperErrorMessage(error)
+            // Refresh first: it resets `skillsError`, which would hide this failure.
+            let toggleError = helperErrorMessage(error)
             await refreshSkills()
+            skillsError = toggleError
+        }
+    }
+
+    /// Removes every stored version of an installed Skill. Project and external Skills have no
+    /// `managed` entry and are never removed. The helper disables an enabled Skill first.
+    @discardableResult
+    func removeManagedSkill(_ item: SkillCenterItem) async -> Bool {
+        guard let selectedProject, let managed = item.managed else { return false }
+        guard !skillMutationInFlightIDs.contains(item.skillId) else { return false }
+        skillMutationInFlightIDs.insert(item.skillId)
+        defer { skillMutationInFlightIDs.remove(item.skillId) }
+        do {
+            let _: SkillRemoveResult = try await helper.request(
+                method: "removeSkill",
+                params: RemoveSkillParams(
+                    path: selectedProject.path,
+                    skillKey: managed.skillKey,
+                    stateRevision: managed.stateRevision
+                )
+            )
+            skillDefinitions.removeValue(forKey: item.skillId)
+            skillsError = nil
+            await refreshSkills()
+            return true
+        } catch {
+            let removeError = helperErrorMessage(error)
+            skillDefinitions.removeValue(forKey: item.skillId)
+            await refreshSkills()
+            skillsError = removeError
+            return false
         }
     }
 

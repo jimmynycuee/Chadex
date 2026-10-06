@@ -176,6 +176,11 @@
 "skills.external.error.unverified" = "無法驗證新的 Skill 資料夾，變更未保留。";
 "skills.external.error.stateUnknown" = "Runner 可能仍在使用新的資料夾。請重新載入後再套用一次。";
 "skills.managedToggleHelp" = "切換已安裝 Skill %@ 的啟用狀態";
+"skills.remove" = "移除…";
+"skills.removeHelp" = "移除已安裝的 Skill %@";
+"skills.remove.confirmTitle" = "要移除「%@」嗎？";
+"skills.remove.confirmMessage" = "這會刪除 Chadex 儲存的這個 Skill 的所有版本，且無法復原。原本的 ZIP 檔不受影響；專案 Skill 與外部 Skill 資料夾也不會被更動。";
+"skills.remove.confirmAction" = "移除";
 "skills.invalidCount" = "有 %d 個無效 Skill 套件未納入 catalog。";
 "skills.discoveryTruncated" = "Skill 探索已達上限；另有 %d 個無效套件未納入 catalog。";
 "skills.createTitle" = "建立 Project Skill";
@@ -617,6 +622,8 @@
 "skills.error.stateChanged" = "這個 Skill 的狀態已在其他地方變更，已重新整理，請再試一次。";
 "skills.error.storeUnavailable" = "本機 runner 目前無法管理 Skill（可能尚未就緒或版本不支援）。請稍後重試，或重新啟動本機服務。";
 "skills.error.installFailed" = "無法安裝 Skill（%@）。請查看診斷後重試。";
+"skills.error.removeFailed" = "無法完整移除這個 Skill，它可能已停用且只剩部分版本。已重新整理，請再移除一次以完成。";
+"skills.error.toggleFailed" = "無法變更這個 Skill 的啟用狀態。已重新整理，請確認目前狀態後再試一次。";
 "skills.external.import" = "匯入 Skill";
 "skills.external.noneUsable" = "找不到可連接的 Skill 資料夾。可以改為匯入 Skill 檔案，或用「選擇資料夾…」連接資料夾。";
 

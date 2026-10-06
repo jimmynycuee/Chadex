@@ -21,6 +21,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [mutating, setMutating] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [skillKey, setSkillKey] = useState('');
   const [archive, setArchive] = useState('');
@@ -144,11 +145,27 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
   async function toggleManaged(item: SkillCenterItem) {
     if (!project || !item.managed || mutating) return;
     setMutating(item.skill_id);
+    let failure: string | null = null;
     try {
       await (isSkillActive(item) ? api.deactivateSkill(project, item.managed) : api.activateSkill(project, item.managed));
       setSkillsError(null);
-    } catch (error) { setSkillsError(safeError(error)); }
+    } catch (error) { failure = externalSkillErrorMessage(error); noteError(error); }
     finally { setMutating(null); await loadSkills(); }
+    // Refresh first: loadSkills resets the error, which would hide this failure.
+    if (failure) setSkillsError(failure);
+  }
+  /** Removes every stored version of an installed Skill after the user confirmed in the detail panel. */
+  async function removeManaged(item: SkillCenterItem) {
+    if (!project || !item.managed || mutating) return;
+    setMutating(item.skill_id); setRemoving(null);
+    let failure: string | null = null;
+    try {
+      await api.removeSkill(project, item.managed);
+      setSkillsError(null);
+      setDefinitions((current) => { const next = { ...current }; delete next[item.skill_id]; return next; });
+    } catch (error) { failure = externalSkillErrorMessage(error); noteError(error); }
+    finally { setMutating(null); await loadSkills(); }
+    if (failure) setSkillsError(failure);
   }
 
   const toggleIn = (setter: typeof setExpandedSkills, key: string) => setter((current) => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next; });
@@ -200,6 +217,13 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
             : definitionErrors[item.skill_id] ? <p className="skill-meta" role="alert">無法載入 SKILL.md：{definitionErrors[item.skill_id]}</p>
               : definitions[item.skill_id] && <><pre className="skill-definition" aria-label={`${item.name} SKILL.md`}>{definitions[item.skill_id].text}</pre>
                 {definitions[item.skill_id].has_more && <p className="skill-meta">內容過長，僅顯示前段。</p>}</>}
+        {item.managed && (removing === item.skill_id
+          ? <div className="skill-remove-confirm" role="alertdialog" aria-label={`移除 ${item.name}`}>
+            <p>要移除「{item.name}」嗎？這會刪除 Chadex 儲存的這個 Skill 的所有版本，且無法復原。原本的 ZIP 檔不受影響；專案 Skill 與外部 Skill 資料夾也不會被更動。</p>
+            <div className="button-row"><button onClick={() => setRemoving(null)}>取消</button>
+              <button className="danger" disabled={mutating !== null || !helperReady} onClick={() => { void removeManaged(item); }}>移除</button></div>
+          </div>
+          : <div className="button-row"><button className="danger" disabled={mutating !== null || !helperReady} aria-label={`移除 ${item.name}…`} onClick={() => setRemoving(item.skill_id)}>移除…</button></div>)}
       </div>}
     </li>;
   };

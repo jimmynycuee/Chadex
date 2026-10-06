@@ -227,6 +227,17 @@ impl ChadexRuntimeCore {
             .await
     }
 
+    pub async fn remove_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        state_revision: &str,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .remove_skill(project_path, skill_key, state_revision)
+            .await
+    }
+
     pub async fn memory_catalog(&self, project_path: &str) -> ChadexResult<Value> {
         self.backend.memory_catalog(project_path).await
     }

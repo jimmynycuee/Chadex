@@ -111,7 +111,7 @@ v0.4.1 移除 project-detail 的 repository instructions 面板後，原本只�
 
 ## Skills
 
-Skills 是可重用的程序，與 instructions 分開。Project skill 位於 repository `.agents/skills/<key>/SKILL.md`；另有 configured 與 managed 來源，catalog 中以 `source_scope` 與 trust 區分，同名衝突明確標示。Catalog 只帶 descriptor，`SKILL.md` 內容依 `definition_revision`／`package_revision` lazy load；activate／deactivate 需帶目前 `state_revision`，stale revision 會被拒絕，避免把舊定義當成目前定義。macOS desktop 透過 `getSkillCatalog`、`getSkillInventory`、`getSkillDefinition`、`createProjectSkill`、`installSkill`、`activateSkill`、`deactivateSkill` 操作（見 [Bridge Protocol](BRIDGE_PROTOCOL.md)）。
+Skills 是可重用的程序，與 instructions 分開。Project skill 位於 repository `.agents/skills/<key>/SKILL.md`；另有 configured 與 managed 來源，catalog 中以 `source_scope` 與 trust 區分，同名衝突明確標示。Catalog 只帶 descriptor，`SKILL.md` 內容依 `definition_revision`／`package_revision` lazy load；activate／deactivate 需帶目前 `state_revision`，stale revision 會被拒絕，避免把舊定義當成目前定義。macOS desktop 透過 `getSkillCatalog`、`getSkillInventory`、`getSkillDefinition`、`createProjectSkill`、`installSkill`、`activateSkill`、`deactivateSkill`、`removeSkill` 操作（見 [Bridge Protocol](BRIDGE_PROTOCOL.md)）。
 
 ### External Skill sources
 

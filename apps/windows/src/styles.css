@@ -193,6 +193,7 @@ button.skill-toggle:hover:not(:disabled) { background: none; }
 .skill-line > button:not(.skill-toggle) { padding: 4px 11px; flex: none; }
 .skill-detail { padding: 0 0 12px 18px; font-size: 13px; }
 .skill-detail p { margin: 4px 0; line-height: 1.6; }
+.skill-remove-confirm { margin-top: 8px; padding: 8px 12px; border: 1px solid var(--warn); border-radius: 6px; }
 .skill-filterbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 4px 0 12px; }
 .skill-filterbar input { flex: 1; min-width: 180px; width: auto; padding: 7px 11px; }
 .skill-segments { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }

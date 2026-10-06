@@ -266,7 +266,7 @@ async fn stderr_and_free_form_backend_errors_never_enter_health_or_error() {
     bridge.shutdown().await.unwrap();
 }
 
-const SKILL_METHODS: [&str; 8] = [
+const SKILL_METHODS: [&str; 9] = [
     "discoverExternalSkillSources",
     "getExternalSkillRoots",
     "setExternalSkillRoots",
@@ -275,6 +275,7 @@ const SKILL_METHODS: [&str; 8] = [
     "installSkill",
     "activateSkill",
     "deactivateSkill",
+    "removeSkill",
 ];
 
 #[tokio::test]

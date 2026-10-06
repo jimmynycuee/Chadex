@@ -247,6 +247,11 @@ struct SkillDefinitionPreview: Codable, Equatable, Sendable {
 
 struct SkillOperationResult: Codable, Equatable, Sendable {}
 
+struct SkillRemoveResult: Codable, Equatable, Sendable {
+    var skillKey: String?
+    var removedRevisions: Int?
+}
+
 struct ExternalSkillPackage: Codable, Equatable, Identifiable, Sendable {
     var package: String
     var state: String
@@ -350,6 +355,11 @@ enum SkillManagementErrorMessage {
             return L10n.string("skills.error.limitReached")
         case "skill_state_changed", "skill_expected_state_required", "skill_install_reconcile_required":
             return L10n.string("skills.error.stateChanged")
+        case "skill_remove_failed", "skill_remove_revision_failed", "skill_remove_cleanup_failed",
+             "skill_remove_incomplete", "skill_remove_invalid", "skill_active_revision_remove_forbidden":
+            return L10n.string("skills.error.removeFailed")
+        case "skill_activate_failed", "skill_deactivate_failed", "skill_package_not_found":
+            return L10n.string("skills.error.toggleFailed")
         case "skill_store_capability_unavailable", "skill_store_unavailable", "skill_store_lock_unavailable":
             return L10n.string("skills.error.storeUnavailable")
         default: return nil
@@ -894,6 +904,12 @@ struct ActivateSkillParams: Codable, Sendable {
 }
 
 struct DeactivateSkillParams: Codable, Sendable {
+    var path: String
+    var skillKey: String
+    var stateRevision: String
+}
+
+struct RemoveSkillParams: Codable, Sendable {
     var path: String
     var skillKey: String
     var stateRevision: String

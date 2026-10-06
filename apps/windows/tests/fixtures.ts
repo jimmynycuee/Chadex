@@ -31,7 +31,7 @@ export function apiMock(state = desktop()): DesktopApi {
     getSkillCatalog: vi.fn().mockResolvedValue({ project: 'C:\\work\\chadex', catalog_revision: 'c', total_count: 0, returned_count: 0, skills: [], invalid_count: 0, diagnostics: [], discovery_truncated: false }),
     getSkillDefinition: vi.fn().mockResolvedValue({ skill_id: 'x', definition_revision: 'x', package_revision: null, text: '', has_more: false }),
     getSkillInventory: vi.fn().mockResolvedValue({ project: 'C:\\work\\chadex', total_count: 0, skills: [] }),
-    installSkill: vi.fn().mockResolvedValue({}), activateSkill: vi.fn().mockResolvedValue({}), deactivateSkill: vi.fn().mockResolvedValue({}),
+    installSkill: vi.fn().mockResolvedValue({}), activateSkill: vi.fn().mockResolvedValue({}), deactivateSkill: vi.fn().mockResolvedValue({}), removeSkill: vi.fn().mockResolvedValue({}),
     chooseSkillFolder: vi.fn().mockResolvedValue(null), chooseSkillArchive: vi.fn().mockResolvedValue(null),
     restartHelper: vi.fn().mockResolvedValue(undefined), quitApp: vi.fn().mockResolvedValue(undefined) };
 }

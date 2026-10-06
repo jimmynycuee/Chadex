@@ -176,6 +176,11 @@
 "skills.external.error.unverified" = "The new Skill folders could not be verified, so the change was not kept.";
 "skills.external.error.stateUnknown" = "The Runner may still be using the new folders. Reload and apply again.";
 "skills.managedToggleHelp" = "Change active state for installed Skill %@";
+"skills.remove" = "Remove…";
+"skills.removeHelp" = "Remove installed Skill %@";
+"skills.remove.confirmTitle" = "Remove “%@”?";
+"skills.remove.confirmMessage" = "This deletes every version of this Skill that Chadex stored and cannot be undone. The original ZIP file is not affected. Project Skills and external Skill folders are never changed.";
+"skills.remove.confirmAction" = "Remove";
 "skills.invalidCount" = "%d invalid Skill package(s) were excluded from the catalog.";
 "skills.discoveryTruncated" = "Skill discovery reached its bound; %d invalid package(s) were also excluded.";
 "skills.createTitle" = "Create Project Skill";
@@ -617,6 +622,8 @@
 "skills.error.stateChanged" = "This Skill changed elsewhere. Skills were refreshed; try again.";
 "skills.error.storeUnavailable" = "The local runner cannot manage Skills right now (it may not be ready or may not support it). Retry shortly or restart the local service.";
 "skills.error.installFailed" = "Chadex could not install the Skill (%@). Check the diagnostics and retry.";
+"skills.error.removeFailed" = "The Skill could not be fully removed. It may now be disabled with fewer versions. Skills were refreshed; remove it again to finish.";
+"skills.error.toggleFailed" = "Chadex could not change whether this Skill is enabled. Skills were refreshed; check its state and try again.";
 "skills.external.import" = "Import a Skill";
 "skills.external.noneUsable" = "No Skill folders were found to connect. Import a Skill file instead, or use Choose Folder… to connect a folder.";
 

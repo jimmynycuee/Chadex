@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from '../src/App';
 import { DesktopStore } from '../src/state';
 import { apiMock, deferred, desktop, skillSource, snapshot } from './fixtures';
@@ -213,6 +213,53 @@ describe('Skills page', () => {
     expect(await screen.findByText('腳本關閉')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '停用 Mine' }));
     await waitFor(() => expect(api.deactivateSkill).toHaveBeenCalledWith('C:\\work\\chadex', managed));
+  });
+  const managedFixtures = (mock: ReturnType<typeof apiMock>, active = true) => {
+    const managed = { skill_id: 'm1', skill_key: 'mine', state_revision: 'st1', active_package_revision: active ? 'pk1' : null, preferred_package_revision: 'pk1', definition_revision: 'def-managed-1', name: 'Mine', description: 'managed one', total_versions: 2 };
+    vi.mocked(mock.getSkillCatalog).mockResolvedValue({ project: 'p', catalog_revision: 'c', total_count: 2, returned_count: 2, invalid_count: 0, diagnostics: [], discovery_truncated: false, skills: [
+      { skill_id: 'm1', name: 'Mine', description: 'managed one', definition_revision: 'def-managed-1', package_revision: 'pk1', source_scope: 'runner', trust: 'operator_installed_guidance', name_conflict: false, scripts_allowed: true },
+      { skill_id: 'x1', name: 'Ext', description: 'external', definition_revision: 'def-ext', source_scope: 'configured', trust: 'operator_configured_guidance', name_conflict: false, scripts_allowed: false }] });
+    vi.mocked(mock.getSkillInventory).mockResolvedValue({ project: 'p', total_count: 1, skills: [managed] });
+    return managed;
+  };
+  it('removes an installed skill only after confirmation, then refreshes', async () => {
+    let managed!: ReturnType<typeof managedFixtures>;
+    const api = await openSkills((mock) => { managed = managedFixtures(mock, false); });
+    fireEvent.click(await screen.findByRole('button', { name: '展開 Mine' }));
+    fireEvent.click(await screen.findByRole('button', { name: '移除 Mine…' }));
+    expect(api.removeSkill).not.toHaveBeenCalled();
+    expect(screen.getByText(/所有版本，且無法復原/)).toBeTruthy();
+    const before = vi.mocked(api.getSkillCatalog).mock.calls.length;
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '移除' }));
+    await waitFor(() => expect(api.removeSkill).toHaveBeenCalledWith('C:\\work\\chadex', managed));
+    await waitFor(() => expect(vi.mocked(api.getSkillCatalog).mock.calls.length).toBeGreaterThan(before));
+  });
+  it('cancelling the removal confirmation changes nothing', async () => {
+    const api = await openSkills((mock) => { managedFixtures(mock); });
+    fireEvent.click(await screen.findByRole('button', { name: '展開 Mine' }));
+    fireEvent.click(await screen.findByRole('button', { name: '移除 Mine…' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(api.removeSkill).not.toHaveBeenCalled();
+  });
+  it('shows the removal failure after the refresh instead of hiding it', async () => {
+    await openSkills((mock) => { managedFixtures(mock, false);
+      vi.mocked(mock.removeSkill).mockRejectedValue('Chadex bridge: Backend (skill_remove_revision_failed)。請查看診斷並重試。'); });
+    fireEvent.click(await screen.findByRole('button', { name: '展開 Mine' }));
+    fireEvent.click(await screen.findByRole('button', { name: '移除 Mine…' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '移除' }));
+    expect(await screen.findByText(/再移除一次/)).toBeTruthy();
+  });
+  it('shows an enable failure after the refresh instead of hiding it', async () => {
+    await openSkills((mock) => { managedFixtures(mock, false);
+      vi.mocked(mock.activateSkill).mockRejectedValue('Chadex bridge: Backend (skill_activate_failed)。請查看診斷並重試。'); });
+    fireEvent.click(await screen.findByRole('button', { name: '啟用 Mine' }));
+    expect(await screen.findByText(/啟用狀態/)).toBeTruthy();
+  });
+  it('offers no removal for external skills', async () => {
+    await openSkills((mock) => { managedFixtures(mock); });
+    fireEvent.click(await screen.findByRole('button', { name: '展開 Ext' }));
+    expect(screen.queryByRole('button', { name: '移除 Ext…' })).toBeNull();
   });
   const skillFixtures = (mock: ReturnType<typeof apiMock>, scripts = false) => {
     vi.mocked(mock.getSkillCatalog).mockResolvedValue({ project: 'p', catalog_revision: 'c', total_count: 1, returned_count: 1, invalid_count: 0, diagnostics: [], discovery_truncated: false, skills: [

@@ -13,6 +13,7 @@ struct SkillsCenterView: View {
     @State private var showingSkillInstall = false
     @State private var query = ""
     @State private var scope: SkillListScope = .all
+    @State private var removeTarget: SkillCenterItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: layout.spacing(ChadexMetrics.compactSectionSpacing)) {
@@ -38,6 +39,16 @@ struct SkillsCenterView: View {
         .sheet(isPresented: $showingSkillInstall) {
             SkillInstallSheet(project: project)
                 .environmentObject(model)
+        }
+        .alert(item: $removeTarget) { item in
+            Alert(
+                title: Text(L10n.string("skills.remove.confirmTitle", item.name)),
+                message: Text(L10n.string("skills.remove.confirmMessage")),
+                primaryButton: .destructive(Text(L10n.string("skills.remove.confirmAction"))) {
+                    Task { await model.removeManagedSkill(item) }
+                },
+                secondaryButton: .cancel()
+            )
         }
     }
 
@@ -376,6 +387,17 @@ struct SkillsCenterView: View {
                 .chadexFont(.caption)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // Only Skills Chadex stored can be removed; project and external Skills are not Chadex's files.
+            if let managed = item.managed {
+                Button(L10n.string("skills.remove"), role: .destructive) {
+                    removeTarget = item
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(model.skillMutationInFlightIDs.contains(item.skillId))
+                .help(L10n.string("skills.removeHelp", managed.skillKey))
+            }
         }
     }
 

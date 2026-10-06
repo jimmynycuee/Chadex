@@ -46,6 +46,10 @@ const RUNTIME_ACTIVATION_CONFIG_MAX_BYTES: u64 = 256 * 1024;
 const FRESH_RUNTIME_READY_WINDOW: Duration = Duration::from_millis(150);
 const FRESH_RUNTIME_READY_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const MASCOT_JOBS_MAX: usize = 100;
+/// The runtime's `MAX_SKILL_STORE_VERSIONS_LIMIT`; one page of revisions per remove round.
+const SKILL_VERSIONS_PAGE_LIMIT: usize = 64;
+/// Bounds the remove loop; each round removes up to one full page of revisions.
+const MAX_SKILL_REMOVE_ROUNDS: usize = 8;
 
 #[derive(Debug, Default, Deserialize)]
 struct FastActivationPolicy {
@@ -667,6 +671,100 @@ impl RuntimeBackendAdapter {
             "Chadex could not disable the Skill",
         )
         .await
+    }
+
+    /// Removes every installed revision of one managed Skill. The runtime
+    /// refuses to remove the active revision and removes one revision per
+    /// call, so an active Skill is disabled first and the revisions are then
+    /// removed in turn. `state_revision` fences the first mutation; each later
+    /// one is fenced by the revision the previous one returned. The Skill
+    /// leaves the inventory with its last revision. A failure part-way leaves
+    /// the Skill disabled with fewer revisions and can simply be retried.
+    pub(crate) async fn remove_skill(
+        &self,
+        project_path: &str,
+        skill_key: &str,
+        state_revision: &str,
+    ) -> ChadexResult<Value> {
+        if !valid_desktop_skill_key(skill_key) {
+            return Err(ChadexError::new(
+                "skill_key_invalid",
+                "The Skill package key is invalid",
+                "Use only letters, numbers, dot, underscore, or hyphen.",
+            ));
+        }
+        let mut fence = state_revision.to_string();
+        let mut removed = 0usize;
+        for _ in 0..MAX_SKILL_REMOVE_ROUNDS {
+            let page = self
+                .call_project_operator_tool(
+                    project_path,
+                    "skill_versions",
+                    json!({"skill_key": skill_key, "offset": 0, "limit": SKILL_VERSIONS_PAGE_LIMIT}),
+                    "skill_remove_failed",
+                    "Chadex could not read the installed Skill versions",
+                )
+                .await?;
+            let revisions: Vec<String> = page
+                .get("versions")
+                .and_then(Value::as_array)
+                .map(|versions| {
+                    versions
+                        .iter()
+                        .filter_map(|version| version.get("package_revision").and_then(Value::as_str))
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            if revisions.is_empty() {
+                return Ok(json!({"skill_key": skill_key, "removed_revisions": removed}));
+            }
+            if page
+                .get("active_package_revision")
+                .and_then(Value::as_str)
+                .is_some()
+            {
+                let key = desktop_skill_idempotency_key("deactivate", &[skill_key, &fence]);
+                let result = self
+                    .call_project_operator_tool(
+                        project_path,
+                        "skill_deactivate",
+                        json!({
+                            "skill_key": skill_key,
+                            "expected_state_revision": fence,
+                            "idempotency_key": key
+                        }),
+                        "skill_deactivate_failed",
+                        "Chadex could not disable the Skill before removing it",
+                    )
+                    .await?;
+                fence = next_skill_state_revision(&result)?;
+            }
+            for revision in &revisions {
+                let key = desktop_skill_idempotency_key("remove", &[skill_key, revision, &fence]);
+                let result = self
+                    .call_project_operator_tool(
+                        project_path,
+                        "skill_remove_revision",
+                        json!({
+                            "skill_key": skill_key,
+                            "package_revision": revision,
+                            "expected_state_revision": fence,
+                            "idempotency_key": key
+                        }),
+                        "skill_remove_failed",
+                        "Chadex could not remove the Skill",
+                    )
+                    .await?;
+                fence = next_skill_state_revision(&result)?;
+                removed += 1;
+            }
+        }
+        Err(ChadexError::new(
+            "skill_remove_incomplete",
+            "Chadex removed some Skill versions but not all of them",
+            "Refresh Skills and remove the Skill again.",
+        ))
     }
 
     pub(crate) async fn memory_catalog(&self, project_path: &str) -> ChadexResult<Value> {
@@ -2013,15 +2111,46 @@ fn valid_desktop_skill_key(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
+fn next_skill_state_revision(result: &Value) -> ChadexResult<String> {
+    result
+        .get("state_revision")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            ChadexError::new(
+                "skill_remove_invalid",
+                "The runtime returned an invalid Skill state",
+                "Refresh Skills and try again.",
+            )
+        })
+}
+
+/// One key per user action. The runtime stores the first result under a key
+/// for days and replays it without effect, while its `state_revision` is a pure
+/// function of (active revision, installed revisions): enable, disable and
+/// enable again would otherwise repeat the first key and silently do nothing.
+/// Retrying one action still reuses the key, because it is built once per call.
 fn desktop_skill_idempotency_key(operation: &str, fields: &[&str]) -> String {
     use sha2::Digest;
+    let mut nonce = [0u8; 16];
+    if getrandom::fill(&mut nonce).is_err() {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos());
+        let count = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        nonce[..8].copy_from_slice(&(now as u64).to_be_bytes());
+        nonce[8..].copy_from_slice(&count.to_be_bytes());
+    }
     let mut hasher = sha2::Sha256::new();
-    hasher.update(b"chadex-desktop-skill-mutation-v1\0");
+    hasher.update(b"chadex-desktop-skill-mutation-v2\0");
     hasher.update(operation.as_bytes());
     for field in fields {
         hasher.update(b"\0");
         hasher.update(field.as_bytes());
     }
+    hasher.update(b"\0");
+    hasher.update(nonce);
     format!("chadex-{operation}-{:x}", hasher.finalize())
 }
 
@@ -2649,6 +2778,81 @@ mod tests {
             project_root: Option<PathBuf>,
             /// (entry names, SHA matches `expected_artifact_sha256`) per install.
             installed_archives: Vec<(Vec<String>, bool)>,
+            /// When set, the Skill tools behave like the runtime's skill store.
+            skill_store: Option<FakeSkillStore>,
+        }
+
+        /// One logical Skill with the runtime's rules: `state_revision` is a pure
+        /// function of (active revision, installed revisions), a completed
+        /// idempotency key replays its first result without effect, and the
+        /// active revision cannot be removed.
+        #[derive(Default)]
+        struct FakeSkillStore {
+            active: Option<String>,
+            versions: Vec<String>,
+            replays: std::collections::HashMap<String, Value>,
+            /// Fail `skill_remove_revision` for this package revision.
+            fail_remove: Option<String>,
+        }
+
+        impl FakeSkillStore {
+            fn with_versions(active: Option<&str>, versions: &[&str]) -> Self {
+                Self {
+                    active: active.map(str::to_string),
+                    versions: versions.iter().map(|v| v.to_string()).collect(),
+                    ..Self::default()
+                }
+            }
+
+            fn revision(&self) -> String {
+                format!("state[{}|{}]", self.active.clone().unwrap_or_default(), self.versions.join(","))
+            }
+
+            fn call(&mut self, tool: &str, args: &Value) -> Result<Value, String> {
+                if matches!(tool, "skill_activate" | "skill_deactivate" | "skill_remove_revision") {
+                    let key = args["idempotency_key"].as_str().unwrap().to_string();
+                    if let Some(first) = self.replays.get(&key) {
+                        return Ok(first.clone());
+                    }
+                    if args["expected_state_revision"] != self.revision() {
+                        return Err("skill_state_changed".to_string());
+                    }
+                    let output = match tool {
+                        "skill_activate" => {
+                            let pkg = args["package_revision"].as_str().unwrap().to_string();
+                            if !self.versions.contains(&pkg) {
+                                return Err("skill_package_not_found".to_string());
+                            }
+                            self.active = Some(pkg);
+                            json!({"state_revision": self.revision()})
+                        }
+                        "skill_deactivate" => {
+                            self.active = None;
+                            json!({"state_revision": self.revision()})
+                        }
+                        _ => {
+                            let pkg = args["package_revision"].as_str().unwrap().to_string();
+                            if self.active.as_deref() == Some(pkg.as_str()) {
+                                return Err("skill_active_revision_remove_forbidden".to_string());
+                            }
+                            if self.fail_remove.as_deref() == Some(pkg.as_str()) {
+                                return Err("skill_remove_revision_failed".to_string());
+                            }
+                            self.versions.retain(|v| *v != pkg);
+                            json!({"state_revision": self.revision(), "removed": true})
+                        }
+                    };
+                    self.replays.insert(key, output.clone());
+                    return Ok(output);
+                }
+                Ok(json!({
+                    "state_revision": self.revision(),
+                    "active_package_revision": self.active,
+                    "total_count": self.versions.len(),
+                    "versions": self.versions.iter()
+                        .map(|v| json!({"package_revision": v})).collect::<Vec<_>>(),
+                }))
+            }
         }
         type Shared = Arc<StdMutex<Fake>>;
 
@@ -2736,6 +2940,24 @@ mod tests {
                                         .collect();
                                     let sha_matches = arguments["expected_artifact_sha256"] == sha;
                                     fake.installed_archives.push((names, sha_matches));
+                                }
+                            }
+                            if tool.starts_with("skill_") && tool != "skill_install" {
+                                if let Some(store) = fake.skill_store.as_mut() {
+                                    return match store.call(&tool, &arguments) {
+                                        Ok(output) => (
+                                            StatusCode::OK,
+                                            AxumJson(json!({"result": {"structuredContent": {
+                                                "success": true, "output": output}}})),
+                                        ),
+                                        Err(kind) => (
+                                            StatusCode::OK,
+                                            AxumJson(json!({"result": {"structuredContent": {
+                                                "success": false,
+                                                "output": {"error_kind": kind, "state_changed": false},
+                                                "error": kind}}})),
+                                        ),
+                                    };
                                 }
                             }
                             let install_error = (tool == "skill_install")
@@ -3196,6 +3418,155 @@ mod tests {
             server.abort();
         }
 
+        fn tools(shared: &Shared) -> Vec<String> {
+            shared.lock().unwrap().mcp_calls.iter().map(|(tool, _)| tool.clone()).collect()
+        }
+
+        #[tokio::test]
+        async fn enable_disable_enable_really_enables_again() {
+            let shared: Shared = Arc::default();
+            shared.lock().unwrap().skill_store = Some(FakeSkillStore::with_versions(None, &["pkg1"]));
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            let revision = |shared: &Shared| shared.lock().unwrap().skill_store.as_ref().unwrap().revision();
+            let active = |shared: &Shared| shared.lock().unwrap().skill_store.as_ref().unwrap().active.clone();
+
+            fx.adapter.activate_skill(&fx.project, "demo", "pkg1", &revision(&shared)).await.unwrap();
+            assert_eq!(active(&shared).as_deref(), Some("pkg1"));
+            fx.adapter.deactivate_skill(&fx.project, "demo", &revision(&shared)).await.unwrap();
+            assert_eq!(active(&shared), None);
+            // Same (skill, package, state) as the first enable: a deterministic
+            // idempotency key would be replayed without effect.
+            fx.adapter.activate_skill(&fx.project, "demo", "pkg1", &revision(&shared)).await.unwrap();
+            assert_eq!(active(&shared).as_deref(), Some("pkg1"));
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn remove_skill_disables_then_removes_every_revision() {
+            let shared: Shared = Arc::default();
+            shared.lock().unwrap().skill_store =
+                Some(FakeSkillStore::with_versions(Some("pkg2"), &["pkg1", "pkg2", "pkg3"]));
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            let fence = shared.lock().unwrap().skill_store.as_ref().unwrap().revision();
+
+            let result = fx.adapter.remove_skill(&fx.project, "demo", &fence).await.unwrap();
+            assert_eq!(result["removed_revisions"], 3);
+            let fake = shared.lock().unwrap();
+            let store = fake.skill_store.as_ref().unwrap();
+            assert!(store.versions.is_empty());
+            assert_eq!(store.active, None);
+            let names: Vec<&str> = fake.mcp_calls.iter().map(|(tool, _)| tool.as_str()).collect();
+            assert_eq!(
+                names,
+                vec![
+                    "skill_versions",
+                    "skill_deactivate",
+                    "skill_remove_revision",
+                    "skill_remove_revision",
+                    "skill_remove_revision",
+                    "skill_versions",
+                ]
+            );
+            // Every mutation went through the admin credential, never the user token.
+            assert!(fake.mcp_calls.iter().all(|(_, token)| token != USER_TOKEN));
+            drop(fake);
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn remove_skill_skips_the_disable_step_for_an_inactive_skill() {
+            let shared: Shared = Arc::default();
+            shared.lock().unwrap().skill_store =
+                Some(FakeSkillStore::with_versions(None, &["pkg1"]));
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            let fence = shared.lock().unwrap().skill_store.as_ref().unwrap().revision();
+
+            fx.adapter.remove_skill(&fx.project, "demo", &fence).await.unwrap();
+            assert_eq!(
+                tools(&shared),
+                vec!["skill_versions", "skill_remove_revision", "skill_versions"]
+            );
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn remove_skill_with_a_stale_state_revision_changes_nothing() {
+            let shared: Shared = Arc::default();
+            shared.lock().unwrap().skill_store =
+                Some(FakeSkillStore::with_versions(Some("pkg1"), &["pkg1", "pkg2"]));
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+
+            let error = fx
+                .adapter
+                .remove_skill(&fx.project, "demo", "state[old|pkg1]")
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, "skill_state_changed");
+            let fake = shared.lock().unwrap();
+            let store = fake.skill_store.as_ref().unwrap();
+            assert_eq!(store.active.as_deref(), Some("pkg1"));
+            assert_eq!(store.versions, vec!["pkg1", "pkg2"]);
+            drop(fake);
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn remove_skill_failure_part_way_keeps_the_runtime_code_and_can_be_retried() {
+            let shared: Shared = Arc::default();
+            {
+                let mut store = FakeSkillStore::with_versions(Some("pkg1"), &["pkg1", "pkg2"]);
+                store.fail_remove = Some("pkg2".to_string());
+                shared.lock().unwrap().skill_store = Some(store);
+            }
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            let fence = shared.lock().unwrap().skill_store.as_ref().unwrap().revision();
+
+            let error = fx.adapter.remove_skill(&fx.project, "demo", &fence).await.unwrap_err();
+            assert_eq!(error.code, "skill_remove_revision_failed");
+            let (active, versions, fence) = {
+                let mut fake = shared.lock().unwrap();
+                let store = fake.skill_store.as_mut().unwrap();
+                store.fail_remove = None;
+                (store.active.clone(), store.versions.clone(), store.revision())
+            };
+            assert_eq!(active, None, "the Skill stays disabled");
+            assert_eq!(versions, vec!["pkg2"]);
+
+            let result = fx.adapter.remove_skill(&fx.project, "demo", &fence).await.unwrap();
+            assert_eq!(result["removed_revisions"], 1);
+            assert!(shared.lock().unwrap().skill_store.as_ref().unwrap().versions.is_empty());
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn remove_skill_of_an_already_removed_skill_is_a_no_op_success() {
+            let shared: Shared = Arc::default();
+            shared.lock().unwrap().skill_store = Some(FakeSkillStore::with_versions(None, &[]));
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+
+            let result = fx.adapter.remove_skill(&fx.project, "demo", "state[|]").await.unwrap();
+            assert_eq!(result["removed_revisions"], 0);
+            assert_eq!(tools(&shared), vec!["skill_versions"]);
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn remove_skill_rejects_an_invalid_key_before_calling_the_runtime() {
+            let shared: Shared = Arc::default();
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            let error = fx.adapter.remove_skill(&fx.project, "../x", "s").await.unwrap_err();
+            assert_eq!(error.code, "skill_key_invalid");
+            assert!(shared.lock().unwrap().mcp_calls.is_empty());
+            server.abort();
+        }
+
         #[tokio::test]
         async fn remote_topology_reports_that_skill_management_needs_the_local_runtime() {
             let shared: Shared = Arc::default();
@@ -3214,6 +3585,10 @@ mod tests {
                     .unwrap_err(),
                 fx.adapter
                     .deactivate_skill(&fx.project, "demo", "state")
+                    .await
+                    .unwrap_err(),
+                fx.adapter
+                    .remove_skill(&fx.project, "demo", "state")
                     .await
                     .unwrap_err(),
             ] {

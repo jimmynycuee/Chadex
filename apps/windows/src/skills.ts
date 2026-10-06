@@ -29,6 +29,9 @@ const SKILL_INSTALL_MESSAGES: Array<[string[], string]> = [
   [['skill_key_invalid', 'skill_install_invalid_arguments'], 'Skill 代號只能使用英文字母、數字、點、底線或連字號，最多 96 個字元。'],
   [['skill_store_skill_limit_exceeded', 'skill_store_revision_limit_exceeded'], '已達可安裝的 Skill 或版本數量上限，請先移除不需要的版本。'],
   [['skill_state_changed', 'skill_expected_state_required', 'skill_install_reconcile_required'], '這個 Skill 的狀態已在其他地方變更，已重新整理，請再試一次。'],
+  [['skill_remove_failed', 'skill_remove_revision_failed', 'skill_remove_cleanup_failed', 'skill_remove_incomplete', 'skill_remove_invalid',
+    'skill_active_revision_remove_forbidden'], '無法完整移除這個 Skill，它可能已停用且只剩部分版本。已重新整理，請再移除一次以完成。'],
+  [['skill_activate_failed', 'skill_deactivate_failed', 'skill_package_not_found'], '無法變更這個 Skill 的啟用狀態。已重新整理，請確認目前狀態後再試一次。'],
   [['skill_store_capability_unavailable', 'skill_store_unavailable', 'skill_store_lock_unavailable'],
     '本機 runner 目前無法管理 Skill（可能尚未就緒或版本不支援）。請稍後重試，或重新啟動本機服務。'],
 ];

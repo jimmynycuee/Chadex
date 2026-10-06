@@ -21,6 +21,7 @@ describe('Tauri 2 command contract', () => {
     const entry = { skill_id: 'i', skill_key: 'k', state_revision: 's', preferred_package_revision: 'pk', definition_revision: 'd', name: 'n', description: '', total_versions: 1 };
     await desktopApi.activateSkill('p', entry); expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'activateSkill', params: { path: 'p', skill_key: 'k', package_revision: 'pk', state_revision: 's' } });
     await desktopApi.deactivateSkill('p', entry); expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'deactivateSkill', params: { path: 'p', skill_key: 'k', state_revision: 's' } });
+    await desktopApi.removeSkill('p', entry); expect(core.invoke).toHaveBeenLastCalledWith('runtime_action', { method: 'removeSkill', params: { path: 'p', skill_key: 'k', state_revision: 's' } });
     await desktopApi.chooseSkillFolder(); expect(core.invoke).toHaveBeenLastCalledWith('choose_skill_folder', undefined);
     await desktopApi.chooseSkillArchive('p'); expect(core.invoke).toHaveBeenLastCalledWith('choose_skill_archive', { project: 'p' });
     await desktopApi.savePreferences(desktop().preferences); expect(core.invoke).toHaveBeenLastCalledWith('save_preferences', { preferences: desktop().preferences });
