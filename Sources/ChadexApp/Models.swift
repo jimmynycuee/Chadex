@@ -649,6 +649,13 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
     var error: HelperErrorPayload?
     var activitySequence: UInt64
     var stateRevision: UInt64
+    /// Whether the local runtime is ready (from the helper's `runtime_status`);
+    /// `nil` when the helper did not report it.
+    var runtimeReady: Bool?
+
+    private struct RuntimeStatusSummary: Codable, Equatable, Sendable {
+        var runtimeReady: Bool
+    }
 
     private enum CodingKeys: String, CodingKey {
         case phase
@@ -664,6 +671,7 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
         case error
         case activitySequence
         case stateRevision
+        case runtimeStatus
     }
 
     init(
@@ -679,7 +687,8 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
         mascotJobs: [FerretJobSnapshot]? = nil,
         error: HelperErrorPayload?,
         activitySequence: UInt64,
-        stateRevision: UInt64 = 0
+        stateRevision: UInt64 = 0,
+        runtimeReady: Bool? = nil
     ) {
         self.phase = phase
         self.graphify = graphify
@@ -694,6 +703,7 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
         self.error = error
         self.activitySequence = activitySequence
         self.stateRevision = stateRevision
+        self.runtimeReady = runtimeReady
     }
 
     init(from decoder: Decoder) throws {
@@ -711,6 +721,7 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
         error = try container.decodeIfPresent(HelperErrorPayload.self, forKey: .error)
         activitySequence = try container.decode(UInt64.self, forKey: .activitySequence)
         stateRevision = try container.decodeIfPresent(UInt64.self, forKey: .stateRevision) ?? 0
+        runtimeReady = try container.decodeIfPresent(RuntimeStatusSummary.self, forKey: .runtimeStatus)?.runtimeReady
     }
 
     func encode(to encoder: Encoder) throws {
@@ -728,6 +739,7 @@ struct BackendSnapshot: Codable, Equatable, Sendable {
         try container.encodeIfPresent(error, forKey: .error)
         try container.encode(activitySequence, forKey: .activitySequence)
         try container.encode(stateRevision, forKey: .stateRevision)
+        try container.encodeIfPresent(runtimeReady.map(RuntimeStatusSummary.init), forKey: .runtimeStatus)
     }
 
     func isAtLeastAsFresh(as current: BackendSnapshot) -> Bool {

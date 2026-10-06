@@ -416,7 +416,7 @@ final class HelperClient: @unchecked Sendable {
         switch method {
         case "connectChatGPT", "startTunnel", "configureLocalSetup", "resumeService", "prewarmRuntime":
             return 120
-        case "switchLocalProject", "activateProject", "stopLocalService", "disconnectAI", "stopTunnel":
+        case "switchLocalProject", "realignLocalProject", "activateProject", "stopLocalService", "disconnectAI", "stopTunnel":
             return 30
         case "shutdown":
             return shutdownRPCTimeout

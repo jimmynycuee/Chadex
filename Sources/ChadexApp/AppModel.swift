@@ -23,6 +23,10 @@ final class AppModel: ObservableObject {
     @Published var showingConnectionSettings = false
     @Published private(set) var launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
     @Published private(set) var isSwitchingProject = false
+    /// Re-activating the selected project in a runtime that serves another
+    /// one. Counts as connection work so Connect, Disconnect and project
+    /// switches wait for it instead of contending for the runtime.
+    @Published private(set) var isRealigningRuntimeProject = false
     @Published private(set) var switchingProjectName: String?
     @Published private(set) var hasStoredAPIKey = false
     @Published private(set) var connectionAction: ConnectionAction?
@@ -230,7 +234,7 @@ final class AppModel: ObservableObject {
     }
 
     var connectionActionInFlight: Bool {
-        connectionAction != nil
+        connectionAction != nil || isRealigningRuntimeProject
     }
 
     var hasUpdateBlockingWork: Bool {
@@ -395,6 +399,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func selectProject(_ id: UUID) async -> Bool {
+        guard !isRealigningRuntimeProject else { return false }
         guard projectSwitchGate.begin(id) else { return false }
         defer { projectSwitchGate.finish(id) }
         if id == preferences.selectedProjectID {
@@ -661,22 +666,33 @@ final class AppModel: ObservableObject {
     /// selected one (for example after its saved project went stale). This is
     /// recoverable without user input: re-activate the selected project once
     /// per selection. Skipped while other work owns the runtime (launch,
-    /// warm-up — which aligns the project itself — switching, connecting).
+    /// warm-up — which aligns the project itself — switching, connecting) and
+    /// while the runtime is not ready, which does not use up the attempt. The
+    /// helper's `realignLocalProject` only activates: it never touches the
+    /// tunnel or the selection, so a failure leaves the connection as it was.
     @discardableResult
     func realignRuntimeProjectIfNeeded() async -> Bool {
         guard let selectedProject,
               runtimeProjectRealignAttemptedID != selectedProject.id,
+              snapshot.runtimeReady == true,
               !isBootstrapping,
               !isSwitchingProject,
               !connectionActionInFlight,
               runtimePrewarmTask == nil,
               !isShuttingDown else { return false }
         runtimeProjectRealignAttemptedID = selectedProject.id
+        isRealigningRuntimeProject = true
+        defer { isRealigningRuntimeProject = false }
         do {
-            _ = try await requestSnapshot(
-                method: "switchLocalProject",
+            let realigned = try await requestSnapshot(
+                method: "realignLocalProject",
                 params: ActivateProjectParams(path: selectedProject.path)
             )
+            if realigned.runtimeReady != true {
+                // Nothing was attempted: keep the chance for a ready runtime.
+                runtimeProjectRealignAttemptedID = nil
+                return false
+            }
             await refreshActivities()
             return self.selectedProject?.id == selectedProject.id
         } catch {

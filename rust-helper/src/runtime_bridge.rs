@@ -327,7 +327,7 @@ enum PrewarmInteraction {
 fn prewarm_interaction(method: &str) -> PrewarmInteraction {
     match method {
         "connectChatGPT" | "startTunnel" | "configureLocalSetup" | "resumeService"
-        | "updateProxySettings" => PrewarmInteraction::Join,
+        | "updateProxySettings" | "realignLocalProject" => PrewarmInteraction::Join,
         "stopLocalService" | "stopTunnel" | "disconnectAI" | "switchLocalProject" => {
             PrewarmInteraction::Cancel
         }
@@ -398,6 +398,115 @@ fn prewarm_activation_path<'a>(
         .as_ref()
         .is_some_and(|project| project.path == target.path);
     (!serves_target).then_some(target.path.as_str())
+}
+
+/// What a launch warm-up needs from the runtime. Implemented by the real
+/// runtime core; tests drive the same orchestration against a fake.
+trait PrewarmPort {
+    async fn resume(&self) -> Result<RuntimeSnapshot, ChadexError>;
+    fn runtime_snapshot(&self) -> RuntimeSnapshot;
+    async fn activate(&self, path: &str) -> Result<RuntimeSnapshot, ChadexError>;
+}
+
+impl PrewarmPort for ChadexRuntimeCore {
+    async fn resume(&self) -> Result<RuntimeSnapshot, ChadexError> {
+        self.resume_saved_runtime_background().await
+    }
+
+    fn runtime_snapshot(&self) -> RuntimeSnapshot {
+        self.snapshot()
+    }
+
+    async fn activate(&self, path: &str) -> Result<RuntimeSnapshot, ChadexError> {
+        self.activate_local_project_background(path).await
+    }
+}
+
+struct PrewarmSteps {
+    resume_started: (u64, Instant),
+    resume_completion: &'static str,
+    /// Start and completion of the alignment activation, when one ran.
+    activation: Option<(u64, Instant, &'static str)>,
+    result: Result<RuntimeSnapshot, ChadexError>,
+}
+
+impl PrewarmSteps {
+    fn total_completion(&self) -> &'static str {
+        match self.activation {
+            Some((_, _, completion)) if self.resume_completion == "completed" => completion,
+            _ => self.resume_completion,
+        }
+    }
+}
+
+fn step_completion<T, E>(result: &Result<T, E>, cancelled: bool) -> &'static str {
+    match (result, cancelled) {
+        (Ok(_), _) => "completed",
+        (Err(_), true) => "cancelled",
+        (Err(_), false) => "failed",
+    }
+}
+
+/// Resume the saved runtime, then align it with the selected project. The
+/// resume restores the last *activated* project, which can lag the selection
+/// (a switch while the runtime was stopped only moves the selection), so the
+/// warm-up must never finish with the runtime serving a stale project. The
+/// alignment is serialised with project switches through `switch_lock`; a
+/// switch cancels the warm-up before it takes that lock, so it cannot deadlock.
+async fn run_prewarm_steps<P, T>(
+    port: &P,
+    run: &PrewarmRun<'_>,
+    switch_lock: &Mutex<()>,
+    target: T,
+) -> PrewarmSteps
+where
+    P: PrewarmPort,
+    T: Fn() -> Option<ProjectInspection>,
+{
+    let resume_started = (now_ms(), Instant::now());
+    let mut result = port.resume().await;
+    let resume_completion = step_completion(&result, run.cancel_requested());
+    let mut activation = None;
+    if result.is_ok() && !run.cancel_requested() {
+        let _switch = switch_lock.lock().await;
+        let selected = target();
+        let path = prewarm_activation_path(&port.runtime_snapshot(), selected.as_ref())
+            .map(str::to_string);
+        if let Some(path) = path.filter(|_| !run.cancel_requested()) {
+            let activation_started_at_ms = now_ms();
+            let activation_started = Instant::now();
+            result = port.activate(&path).await;
+            activation = Some((
+                activation_started_at_ms,
+                activation_started,
+                step_completion(&result, run.cancel_requested()),
+            ));
+        }
+    }
+    PrewarmSteps {
+        resume_started,
+        resume_completion,
+        activation,
+        result,
+    }
+}
+
+/// The project a requested realignment must activate. Only the current
+/// selection may be realigned (a stale request never moves the runtime); a
+/// runtime that is not ready, or already serves it, needs nothing.
+fn realign_activation_path<'a>(
+    runtime: &RuntimeSnapshot,
+    target: Option<&'a ProjectInspection>,
+    requested_path: &str,
+) -> Result<Option<&'a str>, ErrorPayload> {
+    let target = target.filter(|target| target.path == requested_path).ok_or_else(|| {
+        ErrorPayload::new(
+            "project_realign_stale",
+            "The project to realign is no longer the selected project",
+            "Refresh and retry with the current project.",
+        )
+    })?;
+    Ok(prewarm_activation_path(runtime, Some(target)))
 }
 
 /// The operation the UI may present. Background warm-up is not user work: it
@@ -1041,6 +1150,33 @@ impl Bridge {
         runtime_matches_previous
     }
 
+    /// Re-activates the selected project in a ready runtime that serves
+    /// another one. Unlike a project switch it never touches the tunnel or the
+    /// selection: on failure everything stays as it was.
+    async fn realign_local_project(&self, path: &str) -> Result<BackendSnapshot, ErrorPayload> {
+        let _switch = self.project_switch_lifecycle.lock().await;
+        let target = self.target_project();
+        let current = self.runtime.snapshot();
+        let Some(path) = realign_activation_path(&current, target.as_ref(), path)? else {
+            return Ok(self.snapshot_from(current));
+        };
+        let started_at_ms = now_ms();
+        let started = Instant::now();
+        let result = self.runtime.activate_local_project(path).await;
+        self.push_lifecycle(
+            "realign",
+            "project_activation",
+            started_at_ms,
+            started,
+            step_completion(&result, false),
+        );
+        let activated = result.map_err(ErrorPayload::from)?;
+        // Any verification observed while the runtime served another project
+        // does not count for the selection.
+        self.reset_verification_for_target();
+        Ok(self.snapshot_from(activated))
+    }
+
     async fn ensure_runtime_for_target(&self) -> Result<BackendSnapshot, ErrorPayload> {
         let target = self.target_project().ok_or_else(|| {
             ErrorPayload::new(
@@ -1113,53 +1249,48 @@ impl Bridge {
             self.record_prewarm(started_at_ms, started, None, "cancelled");
             return Ok(self.snapshot_from(current));
         }
-        let resume_started_at_ms = now_ms();
-        let resume_started = Instant::now();
-        let mut result = self.runtime.resume_saved_runtime_background().await;
-        if result.is_ok() && !run.cancel_requested() {
-            // The resume restores the last *activated* project, which can lag
-            // the selected one (a switch while the runtime was stopped only
-            // moves the selection). Align it before the warm-up finishes so
-            // the runtime never serves a stale project. Serialised with
-            // project switches; a switch cancels this warm-up first.
-            let _switch = self.project_switch_lifecycle.lock().await;
-            let target = self.target_project();
-            let path = prewarm_activation_path(&self.runtime.snapshot(), target.as_ref())
-                .map(str::to_string);
-            if let Some(path) = path.filter(|_| !run.cancel_requested()) {
-                let activation_started_at_ms = now_ms();
-                let activation_started = Instant::now();
-                result = self.runtime.activate_local_project_background(&path).await;
-                let completion = match (&result, run.cancel_requested()) {
-                    (Ok(_), _) => "completed",
-                    (Err(_), true) => "cancelled",
-                    (Err(_), false) => "failed",
-                };
-                self.push_lifecycle(
-                    "prewarm",
-                    "project_activation",
-                    activation_started_at_ms,
-                    activation_started,
-                    completion,
-                );
-            }
-        }
-        let cancelled = run.cancel_requested();
+        let steps = run_prewarm_steps(&self.runtime, &run, &self.project_switch_lifecycle, || {
+            self.target_project()
+        })
+        .await;
         drop(run);
-        let completion = match (&result, cancelled) {
-            (Ok(_), _) => "completed",
-            (Err(_), true) => "cancelled",
-            (Err(_), false) => "failed",
-        };
-        self.record_prewarm(
-            started_at_ms,
-            started,
-            Some((resume_started_at_ms, resume_started)),
-            completion,
-        );
-        result
+        self.record_prewarm_steps(started_at_ms, started, &steps);
+        steps
+            .result
             .map(|snapshot| self.snapshot_from(snapshot))
             .map_err(ErrorPayload::from)
+    }
+
+    /// Records a warm-up that ran: the resume and the launch-to-ready benchmark
+    /// report the resume itself; an alignment activation is reported on its own
+    /// and only the overall total reflects it. Fixed strings and durations only.
+    fn record_prewarm_steps(&self, started_at_ms: u64, started: Instant, steps: &PrewarmSteps) {
+        let (resume_started_at_ms, resume_started) = steps.resume_started;
+        self.push_lifecycle(
+            "prewarm",
+            "runtime_resume",
+            resume_started_at_ms,
+            resume_started,
+            steps.resume_completion,
+        );
+        if let Some((activation_started_at_ms, activation_started, completion)) = steps.activation {
+            self.push_lifecycle(
+                "prewarm",
+                "project_activation",
+                activation_started_at_ms,
+                activation_started,
+                completion,
+            );
+        }
+        self.push_lifecycle("prewarm", "total", started_at_ms, started, steps.total_completion());
+        let launch_started_at_ms = now_ms().saturating_sub(duration_us(self.started_at.elapsed()) / 1000);
+        self.push_lifecycle(
+            "launch",
+            "helper_start_to_runtime_ready",
+            launch_started_at_ms,
+            self.started_at,
+            steps.resume_completion,
+        );
     }
 
     /// Records the prewarm phases plus the launch-to-ready benchmark. Carries
@@ -1929,6 +2060,13 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
                 .map(ResponseResult::Snapshot),
             Err(error) => Err(error),
         },
+        "realignLocalProject" => match param_str(&request.params, "path") {
+            Ok(path) => bridge
+                .realign_local_project(path)
+                .await
+                .map(ResponseResult::Snapshot),
+            Err(error) => Err(error),
+        },
         "switchLocalProject" => match param_str(&request.params, "path") {
             Ok(path) => bridge
                 .switch_local_project(path)
@@ -2587,6 +2725,248 @@ mod tests {
         let other = selected_project("/selected");
         let stopped = prewarm_runtime_snapshot();
         assert_eq!(prewarm_activation_path(&stopped, Some(&other)), None);
+    }
+
+    /// In-memory runtime for the warm-up orchestration: `resume` brings the
+    /// saved ("/old") project up; `activate` takes `activation_delay` and
+    /// honours `cancel_background` like the real background operation.
+    struct FakeRuntime {
+        project: StdMutex<String>,
+        ready: std::sync::atomic::AtomicBool,
+        cancelled: std::sync::atomic::AtomicBool,
+        activation_started: std::sync::atomic::AtomicBool,
+        activation_delay: std::time::Duration,
+    }
+
+    impl FakeRuntime {
+        fn new(saved_project: &str, activation_delay_ms: u64) -> Self {
+            Self {
+                project: StdMutex::new(saved_project.to_string()),
+                ready: std::sync::atomic::AtomicBool::new(false),
+                cancelled: std::sync::atomic::AtomicBool::new(false),
+                activation_started: std::sync::atomic::AtomicBool::new(false),
+                activation_delay: std::time::Duration::from_millis(activation_delay_ms),
+            }
+        }
+
+        fn project(&self) -> String {
+            self.project.lock().unwrap().clone()
+        }
+
+        fn cancel_background(&self) {
+            self.cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        async fn wait_for_activation(&self) {
+            while !self.activation_started.load(std::sync::atomic::Ordering::SeqCst) {
+                tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+            }
+        }
+    }
+
+    impl PrewarmPort for FakeRuntime {
+        async fn resume(&self) -> Result<RuntimeSnapshot, ChadexError> {
+            self.ready.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(self.runtime_snapshot())
+        }
+
+        fn runtime_snapshot(&self) -> RuntimeSnapshot {
+            let mut snapshot = prewarm_runtime_snapshot();
+            snapshot.readiness.runtime_ready = self.ready.load(std::sync::atomic::Ordering::SeqCst);
+            snapshot.project.as_mut().unwrap().path = self.project();
+            snapshot
+        }
+
+        async fn activate(&self, path: &str) -> Result<RuntimeSnapshot, ChadexError> {
+            self.activation_started.store(true, std::sync::atomic::Ordering::SeqCst);
+            let deadline = tokio::time::Instant::now() + self.activation_delay;
+            while tokio::time::Instant::now() < deadline {
+                if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+                    return Err(ChadexError::new("desktop_operation_cancelled", "cancelled", "retry"));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+            }
+            *self.project.lock().unwrap() = path.to_string();
+            Ok(self.runtime_snapshot())
+        }
+    }
+
+    /// What the dispatcher does for a contending request (switch / stop):
+    /// cancel the warm-up first, and only then take the switch lock.
+    async fn cancel_like_dispatch(tracker: &PrewarmTracker, fake: &FakeRuntime) {
+        tracker
+            .cancel(
+                std::time::Duration::from_secs(5),
+                std::time::Duration::from_millis(10),
+                || {
+                    fake.cancel_background();
+                    std::future::ready(())
+                },
+            )
+            .await;
+    }
+
+    #[tokio::test]
+    async fn prewarm_aligns_a_stale_resumed_project_with_the_selection() {
+        let fake = FakeRuntime::new("/old", 0);
+        let tracker = PrewarmTracker::new();
+        let lock = Mutex::new(());
+        let run = tracker.begin().unwrap();
+        let steps = run_prewarm_steps(&fake, &run, &lock, || Some(selected_project("/selected"))).await;
+        drop(run);
+        assert_eq!(fake.project(), "/selected");
+        assert_eq!(steps.resume_completion, "completed");
+        assert_eq!(steps.activation.map(|(_, _, c)| c), Some("completed"));
+        assert_eq!(steps.total_completion(), "completed");
+        assert!(steps.result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn prewarm_skips_activation_when_the_resumed_project_is_selected() {
+        let fake = FakeRuntime::new("/selected", 0);
+        let tracker = PrewarmTracker::new();
+        let lock = Mutex::new(());
+        let run = tracker.begin().unwrap();
+        let steps = run_prewarm_steps(&fake, &run, &lock, || Some(selected_project("/selected"))).await;
+        assert!(steps.activation.is_none());
+        assert!(!fake.activation_started.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn switch_during_prewarm_activation_cancels_it_without_deadlock_and_wins() {
+        let fake = FakeRuntime::new("/old", 5_000);
+        let tracker = PrewarmTracker::new();
+        let lock = Mutex::new(());
+        let target = RwLock::new(Some(selected_project("/selected")));
+        let prewarm = async {
+            let run = tracker.begin().unwrap();
+            let steps = run_prewarm_steps(&fake, &run, &lock, || target.read().unwrap().clone()).await;
+            drop(run);
+            steps
+        };
+        let switch = async {
+            fake.wait_for_activation().await;
+            cancel_like_dispatch(&tracker, &fake).await;
+            // switch_local_project: under the lock, select and activate.
+            let _switch = lock.lock().await;
+            *target.write().unwrap() = Some(selected_project("/other"));
+            *fake.project.lock().unwrap() = "/other".to_string();
+        };
+        let (steps, ()) = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            tokio::join!(prewarm, switch)
+        })
+        .await
+        .expect("switching during the warm-up must not deadlock");
+        assert_eq!(fake.project(), "/other", "the switch decides the final project");
+        assert_eq!(steps.resume_completion, "completed", "the resume itself succeeded");
+        assert_eq!(steps.activation.map(|(_, _, c)| c), Some("cancelled"));
+        assert_eq!(steps.total_completion(), "cancelled");
+        assert!(tracker.receiver().is_none());
+    }
+
+    #[tokio::test]
+    async fn stop_during_prewarm_activation_cancels_it_promptly() {
+        let fake = FakeRuntime::new("/old", 5_000);
+        let tracker = PrewarmTracker::new();
+        let lock = Mutex::new(());
+        let prewarm = async {
+            let run = tracker.begin().unwrap();
+            let steps = run_prewarm_steps(&fake, &run, &lock, || Some(selected_project("/selected"))).await;
+            drop(run);
+            steps
+        };
+        let stop = async {
+            fake.wait_for_activation().await;
+            cancel_like_dispatch(&tracker, &fake).await;
+            fake.ready.store(false, std::sync::atomic::Ordering::SeqCst);
+        };
+        let (steps, ()) = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            tokio::join!(prewarm, stop)
+        })
+        .await
+        .expect("stopping during the warm-up must not deadlock");
+        assert_eq!(fake.project(), "/old");
+        assert_eq!(steps.resume_completion, "completed");
+        assert_eq!(steps.activation.map(|(_, _, c)| c), Some("cancelled"));
+        assert!(steps.result.is_err());
+    }
+
+    #[tokio::test]
+    async fn connect_join_waits_until_the_prewarm_activation_finished() {
+        let fake = FakeRuntime::new("/old", 150);
+        let tracker = PrewarmTracker::new();
+        let lock = Mutex::new(());
+        let prewarm = async {
+            let run = tracker.begin().unwrap();
+            let steps = run_prewarm_steps(&fake, &run, &lock, || Some(selected_project("/selected"))).await;
+            drop(run);
+            steps
+        };
+        let connect = async {
+            fake.wait_for_activation().await;
+            tracker.join().await;
+            fake.project()
+        };
+        let (steps, seen_by_connect) = tokio::join!(prewarm, connect);
+        assert_eq!(seen_by_connect, "/selected", "Connect must not start before the alignment ends");
+        assert_eq!(steps.activation.map(|(_, _, c)| c), Some("completed"));
+    }
+
+    #[test]
+    fn prewarm_traces_keep_the_resume_result_when_the_activation_fails() {
+        let (bridge, root) = temp_bridge("prewarm-activation-trace");
+        let steps = PrewarmSteps {
+            resume_started: (now_ms(), Instant::now()),
+            resume_completion: "completed",
+            activation: Some((now_ms(), Instant::now(), "failed")),
+            result: Err(ChadexError::new("x", "y", "z")),
+        };
+        bridge.record_prewarm_steps(now_ms(), Instant::now(), &steps);
+        let traces = bridge.performance.lifecycle_snapshot(10);
+        let seen: Vec<(&str, &str, &str)> = traces
+            .iter()
+            .map(|t| (t.operation.as_str(), t.phase.as_str(), t.completion.as_str()))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("prewarm", "runtime_resume", "completed"),
+                ("prewarm", "project_activation", "failed"),
+                ("prewarm", "total", "failed"),
+                ("launch", "helper_start_to_runtime_ready", "completed"),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn realign_only_activates_the_current_selection_in_a_ready_runtime() {
+        let mut ready = prewarm_runtime_snapshot();
+        ready.readiness.runtime_ready = true;
+        let selected = selected_project("/selected");
+
+        let stale = realign_activation_path(&ready, Some(&selected), "/elsewhere").unwrap_err();
+        assert_eq!(stale.code, "project_realign_stale");
+        assert_eq!(
+            realign_activation_path(&ready, None, "/selected").unwrap_err().code,
+            "project_realign_stale"
+        );
+        assert_eq!(
+            realign_activation_path(&ready, Some(&selected), "/selected").unwrap(),
+            Some("/selected")
+        );
+        assert_eq!(
+            realign_activation_path(&prewarm_runtime_snapshot(), Some(&selected), "/selected").unwrap(),
+            None,
+            "a runtime that is not ready is left alone"
+        );
+        let aligned = selected_project("/project");
+        assert_eq!(realign_activation_path(&ready, Some(&aligned), "/project").unwrap(), None);
+    }
+
+    #[test]
+    fn realign_joins_a_running_prewarm_instead_of_cancelling_it() {
+        assert_eq!(prewarm_interaction("realignLocalProject"), PrewarmInteraction::Join);
     }
 
     #[test]
