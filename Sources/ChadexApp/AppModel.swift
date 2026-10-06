@@ -718,7 +718,7 @@ final class AppModel: ObservableObject {
             skillsError = nil
         } catch {
             guard self.selectedProject?.id == requestedProjectID else { return }
-            skillsError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
+            skillsError = helperErrorMessage(error)
             await refreshSkills()
         }
     }
@@ -749,7 +749,7 @@ final class AppModel: ObservableObject {
             await refreshSkills()
             return true
         } catch {
-            let writeError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
+            let writeError = helperErrorMessage(error)
             await refreshSkills()
             skillsError = writeError
             return false
@@ -773,7 +773,7 @@ final class AppModel: ObservableObject {
             await refreshSkills()
             return true
         } catch {
-            let installError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
+            let installError = helperErrorMessage(error)
             await refreshSkills()
             skillsError = installError
             return false
@@ -859,7 +859,7 @@ final class AppModel: ObservableObject {
         case "runtime_not_ready": return L10n.string("skills.external.error.notReady")
         case "external_skill_roots_unverified": return L10n.string("skills.external.error.unverified")
         case "external_skill_roots_state_unknown": return L10n.string("skills.external.error.stateUnknown")
-        default: return payload.message
+        default: return SkillManagementErrorMessage.message(forCode: payload.code) ?? payload.message
         }
     }
 
@@ -893,7 +893,7 @@ final class AppModel: ObservableObject {
             skillsError = nil
             await refreshSkills()
         } catch {
-            skillsError = (error as? HelperErrorPayload)?.message ?? error.localizedDescription
+            skillsError = helperErrorMessage(error)
             await refreshSkills()
         }
     }
@@ -1083,7 +1083,8 @@ final class AppModel: ObservableObject {
     }
 
     private func helperErrorMessage(_ error: Error) -> String {
-        helperErrorPayload(error)?.message ?? error.localizedDescription
+        guard let payload = helperErrorPayload(error) else { return error.localizedDescription }
+        return SkillManagementErrorMessage.message(forCode: payload.code) ?? payload.message
     }
 
     private static func yamlQuoted(_ value: String) -> String {

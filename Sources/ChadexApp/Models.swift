@@ -284,6 +284,49 @@ struct ExternalSkillSourceDiscovery: Codable, Equatable, Sendable {
     var recommendedRoots: [String]
 }
 
+/// Whether the user already has somewhere to pick Skills from. Mirrors the Windows `hasValidSource`.
+enum ExternalSkillAvailability: Equatable {
+    /// Discovery has not finished (or failed), so "nothing found" must not be shown yet.
+    case unknown
+    case none
+    case available
+
+    static func isProvidedElsewhere(_ source: ExternalSkillSource) -> Bool {
+        source.status == "duplicate_source" || (!source.providedBy.isEmpty && source.validCount == 0)
+    }
+
+    static func isConnectable(_ source: ExternalSkillSource) -> Bool {
+        source.status == "available" && source.canonicalPath != nil && !isProvidedElsewhere(source)
+    }
+
+    /// A usable source is a connectable source holding at least one Skill, or any connected root.
+    static func evaluate(
+        discovery: ExternalSkillSourceDiscovery?,
+        roots: ExternalSkillRootsState?,
+        loading: Bool
+    ) -> ExternalSkillAvailability {
+        if let roots, !roots.roots.isEmpty { return .available }
+        if let discovery, discovery.sources.contains(where: { isConnectable($0) && $0.validCount > 0 }) {
+            return .available
+        }
+        guard !loading, discovery != nil, roots != nil else { return .unknown }
+        return .none
+    }
+}
+
+/// User-facing text for helper error codes that the Skills and Project Memory pages can hit.
+enum SkillManagementErrorMessage {
+    static func message(forCode code: String) -> String? {
+        switch code {
+        case "skill_management_requires_local_runtime": return L10n.string("skills.error.requiresLocalRuntime")
+        case "skill_management_credential_unavailable": return L10n.string("skills.error.credentialUnavailable")
+        case "skill_management_credential_rejected": return L10n.string("skills.error.credentialRejected")
+        case "runner_config_path_is_link": return L10n.string("skills.error.runnerConfigPathIsLink")
+        default: return nil
+        }
+    }
+}
+
 struct ExternalSkillRootsState: Codable, Equatable, Sendable {
     var format: String
     var roots: [String]

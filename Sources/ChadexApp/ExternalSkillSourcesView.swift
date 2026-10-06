@@ -6,6 +6,9 @@ struct ExternalSkillSourcesView: View {
     @Environment(\.chadexLayout) private var layout
     @EnvironmentObject private var model: AppModel
 
+    var availability: ExternalSkillAvailability = .unknown
+    var onImport: () -> Void = {}
+
     @State private var expandedInvalid: Set<String> = []
 
     private var roots: [String] { model.externalSkillRoots?.roots ?? [] }
@@ -67,9 +70,23 @@ struct ExternalSkillSourcesView: View {
                     .accessibilityIdentifier("skills.external.error")
             }
 
+            if availability == .none {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.string("skills.external.noneUsable"))
+                        .chadexFont(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(L10n.string("skills.external.import")) { onImport() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                        .disabled(model.skillInstallInFlight || model.isSwitchingProject)
+                        .accessibilityIdentifier("skills.external.import")
+                }
+            }
+
             let extras = extraRoots
             if sources.isEmpty && extras.isEmpty {
-                if !model.externalSkillsLoading {
+                if !model.externalSkillsLoading && availability != .none {
                     Text(L10n.string("skills.external.none"))
                         .chadexFont(.callout)
                         .foregroundStyle(.secondary)
@@ -101,13 +118,11 @@ struct ExternalSkillSourcesView: View {
     // MARK: Rows
 
     private func isConnectable(_ source: ExternalSkillSource) -> Bool {
-        source.status == "available"
-            && source.canonicalPath != nil
-            && !isProvidedElsewhere(source)
+        ExternalSkillAvailability.isConnectable(source)
     }
 
     private func isProvidedElsewhere(_ source: ExternalSkillSource) -> Bool {
-        source.status == "duplicate_source" || (!source.providedBy.isEmpty && source.validCount == 0)
+        ExternalSkillAvailability.isProvidedElsewhere(source)
     }
 
     private func kindLabel(_ kind: String) -> String {

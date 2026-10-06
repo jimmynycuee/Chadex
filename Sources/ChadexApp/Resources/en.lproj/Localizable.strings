@@ -590,3 +590,9 @@
 "ferret.preview" = "Motion preview";
 "ferret.live" = "Live runtime";
 "ferret.previewHint" = "Preview only. Runtime activity is unchanged.";
+"skills.error.requiresLocalRuntime" = "Skills and Project Memory can only be managed on the local runtime. You are connected to a remote Server, so connect to the local runtime first.";
+"skills.error.credentialUnavailable" = "Chadex could not get the local management credential, for example because the runtime is not ready yet. Wait a moment and retry, or restart the local service.";
+"skills.error.credentialRejected" = "The local runtime rejected the management credential. Restart the local service and try again.";
+"skills.error.runnerConfigPathIsLink" = "The folder holding runner.toml is reached through a link (junction or symlink), so Chadex cannot write to it safely. Use a runner.toml location that is not behind a link.";
+"skills.external.import" = "Import a Skill";
+"skills.external.noneUsable" = "No Skill folders were found to connect. Import a Skill file instead, or use Choose Folder… to connect a folder.";
