@@ -591,3 +591,75 @@ fn connection_nominated_headers_are_not_forwarded() {
         "56"
     );
 }
+
+fn tool_call(id: i64, name: &str, arguments: Value) -> Value {
+    json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":name,"arguments":arguments}})
+}
+
+async fn post(state: IngressState, body: Value) -> Value {
+    let request = Request::builder()
+        .method("POST")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    response_json(proxy_inner(state, request).await.unwrap()).await
+}
+
+#[tokio::test]
+async fn skill_and_memory_management_tools_are_refused_over_the_tunnel() {
+    // Backend is unreachable: any forwarded request would come back as a proxy error.
+    let state = state("http://127.0.0.1:1/mcp".into());
+    for tool in [
+        "skill_install",
+        "skill_activate",
+        "skill_deactivate",
+        "skill_remove_revision",
+        "memory_scope_purge",
+    ] {
+        for body in [
+            tool_call(7, tool, json!({"project":"p","skill_key":"k"})),
+            tool_call(
+                7,
+                "call_runtime_tool",
+                json!({"tool": tool, "arguments": {"project":"p"}}),
+            ),
+        ] {
+            let response = post(state.clone(), body).await;
+            assert_eq!(response["id"], 7, "{tool}");
+            let output = &response["result"]["structuredContent"]["output"];
+            assert_eq!(
+                output["error_kind"], "management_tool_not_available_over_tunnel",
+                "{tool}"
+            );
+            assert_eq!(output["dispatch_certainty"], "not_started");
+        }
+    }
+    let batch = json!([
+        {"jsonrpc":"2.0","id":1,"method":"tools/list"},
+        tool_call(2, "skill_install", json!({}))
+    ]);
+    let response = post(state.clone(), batch).await;
+    assert_eq!(
+        response["result"]["structuredContent"]["output"]["error_kind"],
+        "management_tool_not_available_over_tunnel"
+    );
+}
+
+#[test]
+fn read_only_skill_and_memory_tools_are_not_blocked() {
+    for tool in [
+        "skill_list",
+        "skill_load",
+        "skill_read_file",
+        "skill_inventory",
+        "skill_versions",
+        "run_skill_resource",
+        "memory_search",
+        "memory_set",
+        "memory_scope_list",
+    ] {
+        let body = tool_call(1, tool, json!({})).to_string();
+        assert!(tunnel_blocked_management_call(body.as_bytes()).is_none(), "{tool}");
+        let wrapped = tool_call(1, "call_runtime_tool", json!({"tool": tool})).to_string();
+        assert!(tunnel_blocked_management_call(wrapped.as_bytes()).is_none(), "{tool}");
+    }
+}

@@ -351,6 +351,15 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
         }
     };
 
+    if let Some(id) = tunnel_blocked_management_call(&body) {
+        return Ok(computer_safety_response(
+            id,
+            "management_tool_not_available_over_tunnel",
+            "Installing or changing managed Skills and purging memory scopes is only available from the Chadex desktop app.",
+            false,
+        ));
+    }
+
     let mut url = state.backend_url.clone();
     if let Some(query) = parts.uri.query() {
         url.push('?');
@@ -688,6 +697,54 @@ fn inspect_computer_control(body: &[u8]) -> ComputerControlInspection {
             .map(|(id, action)| ComputerControlInspection::Single { id, action })
             .unwrap_or(ComputerControlInspection::None),
         _ => ComputerControlInspection::None,
+    }
+}
+
+/// Store-mutating management tools. The desktop app calls them directly on the
+/// local runtime with its own admin credential, never through this ingress, so
+/// ChatGPT (which reaches the runtime only through here) cannot invoke them.
+const TUNNEL_BLOCKED_MANAGEMENT_TOOLS: &[&str] = &[
+    "skill_install",
+    "skill_activate",
+    "skill_deactivate",
+    "skill_remove_revision",
+    "memory_scope_purge",
+];
+
+/// Returns the JSON-RPC id to answer with when the body calls a blocked tool,
+/// directly or through `call_runtime_tool`; a batch containing one is refused whole.
+fn tunnel_blocked_management_call(body: &[u8]) -> Option<Value> {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return None;
+    };
+    let blocked = |object: &serde_json::Map<String, Value>| {
+        if object.get("method").and_then(Value::as_str) != Some("tools/call") {
+            return false;
+        }
+        let Some(params) = object.get("params") else {
+            return false;
+        };
+        let name = params.get("name").and_then(Value::as_str);
+        let target = if name == Some("call_runtime_tool") {
+            params
+                .get("arguments")
+                .and_then(|arguments| arguments.get("tool"))
+                .and_then(Value::as_str)
+        } else {
+            name
+        };
+        target.is_some_and(|tool| TUNNEL_BLOCKED_MANAGEMENT_TOOLS.contains(&tool.trim()))
+    };
+    match value {
+        Value::Object(object) => {
+            blocked(&object).then(|| object.get("id").cloned().unwrap_or(Value::Null))
+        }
+        Value::Array(items) => items
+            .iter()
+            .filter_map(Value::as_object)
+            .any(blocked)
+            .then_some(Value::Null),
+        _ => None,
     }
 }
 
