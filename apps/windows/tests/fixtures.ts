@@ -21,7 +21,7 @@ export function task(overrides: Partial<TaskProgress> = {}): TaskProgress {
 }
 export function apiMock(state = desktop()): DesktopApi {
   return { desktopState: vi.fn().mockResolvedValue(state), chooseProject: vi.fn().mockResolvedValue(null), openProject: vi.fn().mockResolvedValue(undefined),
-    inspectProject: vi.fn().mockResolvedValue(state.runtime?.selected_project), runtimeAction: vi.fn().mockResolvedValue(snapshot()),
+    inspectProject: vi.fn().mockResolvedValue(state.runtime?.selected_project), runtimeAction: vi.fn().mockResolvedValue(snapshot()), prewarmRuntime: vi.fn().mockResolvedValue(snapshot()),
     savePreferences: vi.fn().mockImplementation(async (preferences) => preferences),
     getGlobalInstructions: vi.fn().mockResolvedValue(''), saveGlobalInstructions: vi.fn().mockImplementation(async (content) => content),
     storeCredential: vi.fn().mockResolvedValue(undefined), forgetCredential: vi.fn().mockResolvedValue(undefined),

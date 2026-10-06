@@ -226,3 +226,47 @@ describe('Skills page', () => {
     expect(await screen.findByText(/tool_failure/)).toBeTruthy();
   });
 });
+describe('launch runtime prewarm', () => {
+  const prefs = (extra: object) => ({ ...desktop().preferences, ...extra });
+  it('prewarms once on start, refreshes status afterwards and shows no busy UI', async () => {
+    const api = apiMock(desktop({ runtime: snapshot({ phase: 'stopped', tunnel_ready: false, chat_gpt_connected: false }) }));
+    const pending = deferred<unknown>(); vi.mocked(api.prewarmRuntime).mockReturnValue(pending.promise);
+    const store = new DesktopStore(api); render(<App api={api} store={store} />);
+    await waitFor(() => expect(api.prewarmRuntime).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('status')).toBeNull();
+    const before = vi.mocked(api.desktopState).mock.calls.length;
+    pending.resolve({}); await waitFor(() => expect(vi.mocked(api.desktopState).mock.calls.length).toBeGreaterThan(before));
+    await store.refresh(); expect(api.prewarmRuntime).toHaveBeenCalledTimes(1);
+    expect(api.runtimeAction).not.toHaveBeenCalled();
+  });
+  it('does not prewarm when the setting is off', async () => {
+    const { api } = await mount(desktop({ preferences: prefs({ prepare_service_on_launch: false }) }));
+    await new Promise((resolve) => setTimeout(resolve, 20)); expect(api.prewarmRuntime).not.toHaveBeenCalled();
+  });
+  it('treats a missing setting as on', async () => {
+    const { prepare_service_on_launch: _omit, ...legacy } = desktop().preferences;
+    const { api } = await mount(desktop({ preferences: legacy }));
+    await waitFor(() => expect(api.prewarmRuntime).toHaveBeenCalledTimes(1));
+  });
+  it('does not prewarm without a project or a configured runtime', async () => {
+    const none = await mount(desktop({ runtime: snapshot({ selected_project: null }) }));
+    await new Promise((resolve) => setTimeout(resolve, 20)); expect(none.api.prewarmRuntime).not.toHaveBeenCalled();
+    cleanup();
+    const unconfigured = await mount(desktop({ runtime: snapshot({ runtime_status: { ...snapshot().runtime_status!, runtime_configured: false } }) }));
+    await new Promise((resolve) => setTimeout(resolve, 20)); expect(unconfigured.api.prewarmRuntime).not.toHaveBeenCalled();
+  });
+  it('swallows prewarm errors without a banner', async () => {
+    const api = apiMock(); vi.mocked(api.prewarmRuntime).mockRejectedValue(new Error('prewarm boom'));
+    const store = new DesktopStore(api); render(<App api={api} store={store} />);
+    await waitFor(() => expect(api.prewarmRuntime).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole('alert')).toBeNull(); expect(screen.queryByText(/prewarm boom/)).toBeNull();
+  });
+  it('persists the prewarm toggle from settings', async () => {
+    const { api } = await mount();
+    fireEvent.click(screen.getByRole('button', { name: '設定' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /啟動時在背景準備本機服務/ }));
+    fireEvent.click(screen.getByRole('button', { name: '儲存偏好' }));
+    await waitFor(() => expect(api.savePreferences).toHaveBeenCalledWith(expect.objectContaining({ prepare_service_on_launch: false })));
+  });
+});

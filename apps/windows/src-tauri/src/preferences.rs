@@ -13,6 +13,7 @@ pub struct Preferences {
     pub recent_projects: Vec<String>,
     pub last_project: Option<String>,
     pub tunnel_id: String,
+    pub prepare_service_on_launch: bool,
 }
 
 impl Default for Preferences {
@@ -27,6 +28,7 @@ impl Default for Preferences {
             recent_projects: Vec::new(),
             last_project: None,
             tunnel_id: String::new(),
+            prepare_service_on_launch: true,
         }
     }
 }
@@ -101,6 +103,12 @@ impl Preferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn prewarm_setting_defaults_on_for_older_preference_files() {
+        let old: Preferences = serde_json::from_str(r#"{"theme":"dark"}"#).unwrap();
+        assert!(old.prepare_service_on_launch);
+        assert!(Preferences::default().prepare_service_on_launch);
+    }
     #[test]
     fn credentials_cannot_enter_preferences() {
         assert!(serde_json::from_str::<Preferences>(r#"{"api_key":"value"}"#).is_err());
