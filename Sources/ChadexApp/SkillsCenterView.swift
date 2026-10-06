@@ -59,7 +59,7 @@ struct SkillsCenterView: View {
                 }
             }
 
-            ExternalSkillSourcesView()
+            ExternalSkillSourcesView(availability: availability) { showingSkillInstall = true }
                 .chadexPadding(.top, 6)
 
             Label(L10n.string("skills.authorityNote"), systemImage: "lock.shield")
@@ -75,6 +75,14 @@ struct SkillsCenterView: View {
             SkillInstallSheet(project: project)
                 .environmentObject(model)
         }
+    }
+
+    private var availability: ExternalSkillAvailability {
+        ExternalSkillAvailability.evaluate(
+            discovery: model.externalSkillSources,
+            roots: model.externalSkillRoots,
+            loading: model.externalSkillsLoading
+        )
     }
 
     private var header: some View {
@@ -99,12 +107,15 @@ struct SkillsCenterView: View {
             .controlSize(.small)
             .disabled(model.projectSkillWriteInFlight || model.isSwitchingProject)
 
-            Button(L10n.string("skills.install")) {
-                showingSkillInstall = true
+            // With no usable external source the import action moves into the sources block as the primary action.
+            if availability != .none {
+                Button(L10n.string("skills.install")) {
+                    showingSkillInstall = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(model.skillInstallInFlight || model.isSwitchingProject)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(model.skillInstallInFlight || model.isSwitchingProject)
         }
     }
 

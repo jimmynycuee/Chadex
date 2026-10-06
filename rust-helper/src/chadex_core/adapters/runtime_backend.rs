@@ -15,8 +15,8 @@ use crate::chadex_core::runtime_compat::operation::{
     cancelled_error, CancellationContext, CancellationSignal,
 };
 use crate::chadex_core::runtime_compat::state::{
-    ChadexProjectActivationObservation, ChadexProjectActivationTarget, ChadexRuntimeProbeTarget,
-    RuntimeStateManager,
+    ChadexAdminCredentialTarget, ChadexProjectActivationObservation,
+    ChadexProjectActivationTarget, ChadexRuntimeProbeTarget, RuntimeStateManager,
 };
 use reqwest::Client;
 use serde::Deserialize;
@@ -28,7 +28,13 @@ use std::time::Duration;
 use url::Url;
 use zeroize::Zeroizing;
 
+mod admin_credential;
 mod external_skill_roots;
+
+use admin_credential::{
+    admin_token_path, credential_rejected_error, requires_local_runtime_error, tool_credential,
+    AdminCredentialSource, AdminCredentialStore, ToolCredential,
+};
 
 const RUNTIME_PROBE_CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 const RUNTIME_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -65,6 +71,7 @@ struct OperatorToolResult {
 pub(crate) struct RuntimeBackendAdapter {
     app: Arc<RuntimeStateManager>,
     probe_client: Client,
+    admin_credentials: AdminCredentialStore,
 }
 
 impl RuntimeBackendAdapter {
@@ -86,6 +93,7 @@ impl RuntimeBackendAdapter {
         Ok(Self {
             app: Arc::new(app),
             probe_client,
+            admin_credentials: AdminCredentialStore::default(),
         })
     }
 
@@ -780,16 +788,26 @@ impl RuntimeBackendAdapter {
         fallback_code: &'static str,
         message: &'static str,
     ) -> ChadexResult<Value> {
+        let credential = tool_credential(tool_name);
+        // A remote Server has no bootstrap credential to mint an admin token
+        // with; say so plainly before anything else can fail confusingly.
+        let admin_target = match credential {
+            ToolCredential::Admin => {
+                match self
+                    .app
+                    .chadex_admin_credential_target()
+                    .await
+                    .map_err(map_desktop_error)?
+                {
+                    Some(ChadexAdminCredentialTarget::RemoteServer) => {
+                        return Err(requires_local_runtime_error());
+                    }
+                    other => other,
+                }
+            }
+            ToolCredential::User => None,
+        };
         let target = self.exact_runtime_probe_target(project_path).await?;
-        let token = read_probe_token(&target.user_token_file)
-            .await
-            .ok_or_else(|| {
-                ChadexError::new(
-                    fallback_code,
-                    "The local runtime credential is unavailable",
-                    "Restore the local runtime and retry.",
-                )
-            })?;
         let object = arguments.as_object_mut().ok_or_else(|| {
             ChadexError::new(
                 fallback_code,
@@ -799,20 +817,81 @@ impl RuntimeBackendAdapter {
         })?;
         object.insert(
             "project".to_string(),
-            Value::String(target.runtime_project_id),
+            Value::String(target.runtime_project_id.clone()),
         );
         let cancellation =
             CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
-        let result = call_local_runtime_extension_tool(
-            &self.probe_client,
-            &target.server_url,
-            token.as_str(),
-            tool_name,
-            arguments,
-            &cancellation,
-        )
-        .await
-        .map_err(map_desktop_error)?
+        let result = match credential {
+            ToolCredential::User => {
+                let token = read_probe_token(&target.user_token_file)
+                    .await
+                    .ok_or_else(|| {
+                        ChadexError::new(
+                            fallback_code,
+                            "The local runtime credential is unavailable",
+                            "Restore the local runtime and retry.",
+                        )
+                    })?;
+                call_local_runtime_extension_tool(
+                    &self.probe_client,
+                    &target.server_url,
+                    token.as_str(),
+                    tool_name,
+                    arguments,
+                    &cancellation,
+                )
+                .await
+                .map_err(map_desktop_error)?
+            }
+            ToolCredential::Admin => {
+                let unavailable = || {
+                    ChadexError::new(
+                        fallback_code,
+                        "The local runtime credential is unavailable",
+                        "Restore the local runtime and retry.",
+                    )
+                };
+                let Some(ChadexAdminCredentialTarget::Local {
+                    server_url: admin_server_url,
+                    server_env_file,
+                    ..
+                }) = admin_target
+                else {
+                    return Err(unavailable());
+                };
+                // The admin and probe targets are read under separate locks; if
+                // the runtime was switched in between, never mint or send a
+                // credential for a Server the probe target does not describe.
+                if admin_server_url != target.server_url {
+                    return Err(unavailable());
+                }
+                // Always the fixed file beside the env file: a path recorded in
+                // the saved config is never trusted.
+                let admin_token_file = admin_token_path(&server_env_file).ok_or_else(unavailable)?;
+                let source = AdminCredentialSource {
+                    server_url: target.server_url.clone(),
+                    server_env_file: server_env_file.clone(),
+                    admin_token_file: admin_token_file.clone(),
+                    username: crate::chadex_core::runtime_compat::platform::current_username(),
+                };
+                let result = call_extension_tool_as_admin(
+                    &self.probe_client,
+                    &self.admin_credentials,
+                    &source,
+                    tool_name,
+                    arguments,
+                    &cancellation,
+                )
+                .await?;
+                // Remember where the token lives so later launches reuse it.
+                // Best effort: the default path is derived when this fails.
+                let _ = self
+                    .app
+                    .chadex_record_admin_token_file(&server_env_file, &admin_token_file)
+                    .await;
+                result
+            }
+        }
         .ok_or_else(|| {
             ChadexError::new(
                 fallback_code,
@@ -1389,9 +1468,77 @@ async fn call_local_runtime_tool_with_context(
     era: McpEra,
     cancellation: &CancellationContext,
 ) -> DesktopResult<Option<OperatorToolResult>> {
+    call_local_runtime_tool_with_status(
+        client,
+        server_url,
+        token,
+        tool,
+        arguments,
+        context_request,
+        era,
+        cancellation,
+    )
+    .await
+    .map(|(result, _unauthorized)| result)
+}
+
+/// Run a Skill-management / admin Memory tool with the local admin credential.
+/// A 401 (the token file was deleted from the Server, the database was reset,
+/// the token was revoked) mints a replacement and retries exactly once; the
+/// rejected request never executed, so the retry cannot repeat a mutation.
+async fn call_extension_tool_as_admin(
+    client: &Client,
+    credentials: &AdminCredentialStore,
+    source: &AdminCredentialSource,
+    tool: &str,
+    arguments: Value,
+    cancellation: &CancellationContext,
+) -> ChadexResult<Option<OperatorToolResult>> {
+    if let Some(error) = credentials.recent_failure() {
+        return Err(error);
+    }
+    let mut rejected: Option<Zeroizing<String>> = None;
+    for _attempt in 0..2 {
+        let token = credentials
+            .token(client, source, rejected.as_ref().map(|token| token.as_str()))
+            .await?;
+        let (result, unauthorized) = call_local_runtime_tool_with_status(
+            client,
+            &source.server_url,
+            token.as_str(),
+            tool,
+            arguments.clone(),
+            &[],
+            McpEra::Stateless2026,
+            cancellation,
+        )
+        .await
+        .map_err(map_desktop_error)?;
+        if !unauthorized {
+            credentials.record_success();
+            return Ok(result);
+        }
+        rejected = Some(token);
+    }
+    // A freshly minted token was refused too: stop re-minting on every call.
+    let error = credential_rejected_error();
+    credentials.record_failure(&error);
+    Err(error)
+}
+
+async fn call_local_runtime_tool_with_status(
+    client: &Client,
+    server_url: &str,
+    token: &str,
+    tool: &str,
+    arguments: Value,
+    context_request: &[&str],
+    era: McpEra,
+    cancellation: &CancellationContext,
+) -> DesktopResult<(Option<OperatorToolResult>, bool)> {
     cancellation.check()?;
     let Some(url) = local_mcp_url(server_url) else {
-        return Ok(None);
+        return Ok((None, false));
     };
     let body = serde_json::to_vec(&local_runtime_tool_request_body(
         tool,
@@ -1418,23 +1565,28 @@ async fn call_local_runtime_tool_with_context(
     }
     .map_err(|_| project_activation_reconcile_error())?;
     cancellation.check()?;
+    // 401 means the Server rejected the bearer before running anything, so the
+    // caller may safely retry with a fresh credential.
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Ok((None, true));
+    }
     if !response.status().is_success()
         || response
             .content_length()
             .is_some_and(|length| length > RUNTIME_PROBE_MAX_RESPONSE_BYTES as u64)
     {
-        return Ok(None);
+        return Ok((None, false));
     }
     let Some(value) = bounded_json_response(response).await else {
-        return Ok(None);
+        return Ok((None, false));
     };
     if value.get("error").is_some() {
-        return Ok(None);
+        return Ok((None, false));
     }
     let Some(structured) = value.pointer("/result/structuredContent") else {
-        return Ok(None);
+        return Ok((None, false));
     };
-    Ok(serde_json::from_value(structured.clone()).ok())
+    Ok((serde_json::from_value(structured.clone()).ok(), false))
 }
 
 async fn post_local_operator_json(
@@ -2332,5 +2484,364 @@ mod tests {
         let symlink_path = temp.path().join("user-token-link");
         symlink(&token_path, &symlink_path).unwrap();
         assert!(read_probe_token(&symlink_path).await.is_none());
+    }
+
+    // ---- Desktop admin credential, exercised through the real adapter ----
+
+    mod admin_credential_flow {
+        use super::*;
+        use crate::chadex_core::runtime_compat::models::{
+            Enrollment, Experience, Exposure, RunnerTopology, RuntimeTopology, ServerTopology,
+            StoredDesktopConfig, StoredRuntime, TunnelProxyConfig,
+        };
+        use axum::{
+            extract::{Json as AxumJson, State},
+            http::{HeaderMap, StatusCode},
+            routing::post,
+            Router,
+        };
+        use std::sync::Mutex as StdMutex;
+
+        const BOOTSTRAP: &str = "wc_boot_adapter_bootstrap";
+        const USER_TOKEN: &str = "wc_pat_user_token_without_admin";
+
+        #[derive(Default)]
+        struct Fake {
+            registered_hashes: Vec<String>,
+            registrations: usize,
+            /// (tool, bearer) for every /mcp request, in order.
+            mcp_calls: Vec<(String, String)>,
+            always_unauthorized: bool,
+        }
+        type Shared = Arc<StdMutex<Fake>>;
+
+        fn bearer(headers: &HeaderMap) -> String {
+            headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.strip_prefix("Bearer "))
+                .unwrap_or_default()
+                .to_string()
+        }
+
+        async fn spawn(shared: Shared) -> (String, tokio::task::JoinHandle<()>) {
+            let router = Router::new()
+                .route(
+                    "/api/tokens/register_hash",
+                    post(
+                        |State(state): State<Shared>,
+                         headers: HeaderMap,
+                         AxumJson(body): AxumJson<Value>| async move {
+                            if bearer(&headers) != BOOTSTRAP
+                                || body["scopes"] != json!(["admin"])
+                            {
+                                return (StatusCode::FORBIDDEN, AxumJson(json!({})));
+                            }
+                            let mut fake = state.lock().unwrap();
+                            fake.registrations += 1;
+                            let hash = body["token_hash"]
+                                .as_str()
+                                .unwrap()
+                                .trim_start_matches("sha256:")
+                                .to_string();
+                            fake.registered_hashes.push(hash);
+                            let id = format!("tok-{}", fake.registrations);
+                            (
+                                StatusCode::OK,
+                                AxumJson(json!({"success": true, "token": {"id": id}})),
+                            )
+                        },
+                    ),
+                )
+                .route(
+                    "/api/tokens/list",
+                    post(|| async { AxumJson(json!({"success": true, "tokens": []})) }),
+                )
+                .route(
+                    "/mcp",
+                    post(
+                        |State(state): State<Shared>,
+                         headers: HeaderMap,
+                         AxumJson(body): AxumJson<Value>| async move {
+                            let token = bearer(&headers);
+                            let tool = body["params"]["arguments"]["tool"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_string();
+                            let mut fake = state.lock().unwrap();
+                            fake.mcp_calls.push((tool.clone(), token.clone()));
+                            let hash = format!("{:x}", sha2::Sha256::digest(token.as_bytes()));
+                            let is_admin = fake.registered_hashes.contains(&hash);
+                            let accepted = !fake.always_unauthorized
+                                && (token == USER_TOKEN || is_admin);
+                            if !accepted {
+                                return (StatusCode::UNAUTHORIZED, AxumJson(json!({})));
+                            }
+                            (
+                                StatusCode::OK,
+                                AxumJson(json!({"result": {"structuredContent": {
+                                    "success": true,
+                                    "output": {"tool": tool, "catalog_revision": "r1",
+                                        "total_count": 0, "memories": []}
+                                }}})),
+                            )
+                        },
+                    ),
+                )
+                .with_state(shared);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let handle = tokio::spawn(async move {
+                axum::serve(listener, router).await.unwrap();
+            });
+            (url, handle)
+        }
+
+        struct Fixture {
+            _dir: tempfile::TempDir,
+            adapter: RuntimeBackendAdapter,
+            project: String,
+            admin_file: PathBuf,
+        }
+
+        /// A saved Desktop state describing a ready local (or remote) Full runtime.
+        fn fixture(server_url: &str, remote: bool) -> Fixture {
+            fixture_with_hint(server_url, remote, None)
+        }
+
+        /// `admin_hint` is a file name (inside the env directory) recorded as the
+        /// saved `admin_token_file`, to prove a recorded path is never trusted.
+        fn fixture_with_hint(server_url: &str, remote: bool, admin_hint: Option<&str>) -> Fixture {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().canonicalize().unwrap();
+            let data_dir = root.join("data");
+            let local_dir = data_dir.join("runtime").join("local");
+            std::fs::create_dir_all(&local_dir).unwrap();
+            let project = root.join("project");
+            std::fs::create_dir_all(&project).unwrap();
+            let env_file = local_dir.join("webcodex.env");
+            std::fs::write(&env_file, format!("WEBCODEX_TOKEN={BOOTSTRAP}\n")).unwrap();
+            let runner_config = local_dir.join("runner.toml");
+            std::fs::write(&runner_config, "fixture").unwrap();
+            let user_token_file = local_dir.join("webcodex-user-token");
+            std::fs::write(&user_token_file, format!("{USER_TOKEN}\n")).unwrap();
+            let project_path = project.to_string_lossy().to_string();
+            let config = StoredDesktopConfig {
+                topology: Some(RuntimeTopology {
+                    experience: Experience::Full,
+                    server: if remote {
+                        ServerTopology::Remote {
+                            url: "https://example.test".to_string(),
+                        }
+                    } else {
+                        ServerTopology::Local
+                    },
+                    runner: RunnerTopology::Local,
+                    exposure: Exposure::None,
+                    enrollment: Enrollment::ManagedPairing,
+                }),
+                project: Some(ProjectSelection {
+                    path: project_path.clone(),
+                    allowed_root: project_path.clone(),
+                    is_git_repository: false,
+                    runtime_project_id: Some("agent:runner-a:repo".to_string()),
+                }),
+                runtime: Some(StoredRuntime {
+                    server_url: server_url.to_string(),
+                    server_env_file: Some(env_file.clone()),
+                    runner_config: Some(runner_config),
+                    user_token_file: Some(user_token_file),
+                    admin_token_file: admin_hint.map(|name| local_dir.join(name)),
+                    runner_client_id: Some("runner-a".to_string()),
+                    project_id: Some("repo".to_string()),
+                    runtime_project_id: Some("agent:runner-a:repo".to_string()),
+                }),
+                runtime_autostart: Some(true),
+                preferred_connection: None,
+                tunnel_proxy: TunnelProxyConfig::default(),
+            };
+            std::fs::write(
+                data_dir.join("desktop-state.json"),
+                serde_json::to_vec(&config).unwrap(),
+            )
+            .unwrap();
+            let adapter =
+                RuntimeBackendAdapter::new(data_dir, root.join("resources")).unwrap();
+            Fixture {
+                admin_file: local_dir.join("chadex-desktop-admin-token"),
+                _dir: dir,
+                adapter,
+                project: project_path,
+            }
+        }
+
+        #[tokio::test]
+        async fn skill_and_memory_tools_use_the_admin_token_and_everything_else_the_user_token() {
+            let shared: Shared = Arc::default();
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+
+            fx.adapter.skill_inventory(&fx.project).await.unwrap();
+            fx.adapter.skill_inventory(&fx.project).await.unwrap();
+            fx.adapter
+                .memory_read(&fx.project, "notes", None)
+                .await
+                .unwrap();
+
+            let admin = std::fs::read_to_string(&fx.admin_file).unwrap();
+            let admin = admin.trim();
+            assert!(admin.starts_with("wc_pat_"));
+            assert_ne!(admin, USER_TOKEN);
+            assert_ne!(admin, BOOTSTRAP);
+            let fake = shared.lock().unwrap();
+            assert_eq!(
+                fake.mcp_calls,
+                vec![
+                    ("skill_inventory".to_string(), admin.to_string()),
+                    ("skill_inventory".to_string(), admin.to_string()),
+                    ("memory_read".to_string(), admin.to_string()),
+                ],
+                "admin token for skill management and Project Memory; one mint, then reuse"
+            );
+            assert_eq!(fake.registrations, 1);
+            drop(fake);
+
+            // The path is persisted in the saved config, never the token.
+            let saved = std::fs::read_to_string(
+                fx.admin_file
+                    .parent()
+                    .unwrap()
+                    .join("../../desktop-state.json"),
+            )
+            .unwrap();
+            assert!(saved.contains("chadex-desktop-admin-token"));
+            assert!(!saved.contains(admin));
+            assert!(!saved.contains(BOOTSTRAP));
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn rejected_admin_token_is_reminted_and_retried_exactly_once() {
+            let shared: Shared = Arc::default();
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            // A leftover token the Server has never heard of (e.g. database reset).
+            std::fs::write(&fx.admin_file, "wc_pat_stale_unknown_token\n").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&fx.admin_file, std::fs::Permissions::from_mode(0o600))
+                    .unwrap();
+            }
+
+            fx.adapter.skill_inventory(&fx.project).await.unwrap();
+
+            let fresh = std::fs::read_to_string(&fx.admin_file).unwrap();
+            let fresh = fresh.trim().to_string();
+            assert_ne!(fresh, "wc_pat_stale_unknown_token");
+            let fake = shared.lock().unwrap();
+            assert_eq!(
+                fake.mcp_calls,
+                vec![
+                    ("skill_inventory".to_string(), "wc_pat_stale_unknown_token".to_string()),
+                    ("skill_inventory".to_string(), fresh),
+                ]
+            );
+            assert_eq!(fake.registrations, 1);
+            drop(fake);
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn persistent_rejection_fails_after_one_retry_without_minting_in_a_loop() {
+            let shared: Shared = Arc::default();
+            shared.lock().unwrap().always_unauthorized = true;
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+
+            let error = fx.adapter.skill_inventory(&fx.project).await.unwrap_err();
+            assert_eq!(error.code, "skill_management_credential_rejected");
+            let fake = shared.lock().unwrap();
+            assert_eq!(fake.mcp_calls.len(), 2);
+            assert_eq!(fake.registrations, 2);
+            drop(fake);
+
+            // Backoff: the next calls fail fast with the same error and neither
+            // mint, revoke, nor reach /mcp again.
+            for _ in 0..2 {
+                let again = fx.adapter.skill_inventory(&fx.project).await.unwrap_err();
+                assert_eq!(again.code, "skill_management_credential_rejected");
+            }
+            let fake = shared.lock().unwrap();
+            assert_eq!(fake.mcp_calls.len(), 2);
+            assert_eq!(fake.registrations, 2);
+            drop(fake);
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn a_recorded_admin_token_path_is_never_trusted_or_overwritten() {
+            for hint in ["webcodex.env", "webcodex-user-token"] {
+                let shared: Shared = Arc::default();
+                let (url, server) = spawn(shared.clone()).await;
+                let fx = fixture_with_hint(&url, false, Some(hint));
+                let local_dir = fx.admin_file.parent().unwrap().to_path_buf();
+                let before_env = std::fs::read(local_dir.join("webcodex.env")).unwrap();
+                let before_user = std::fs::read(local_dir.join("webcodex-user-token")).unwrap();
+
+                fx.adapter.skill_inventory(&fx.project).await.unwrap();
+
+                // Neither file was read as, or overwritten with, the admin token.
+                assert_eq!(std::fs::read(local_dir.join("webcodex.env")).unwrap(), before_env);
+                assert_eq!(
+                    std::fs::read(local_dir.join("webcodex-user-token")).unwrap(),
+                    before_user
+                );
+                let admin = std::fs::read_to_string(&fx.admin_file).unwrap();
+                let fake = shared.lock().unwrap();
+                assert_eq!(fake.mcp_calls.len(), 1, "{hint}");
+                assert_eq!(fake.mcp_calls[0].1, admin.trim(), "{hint}");
+                assert_ne!(fake.mcp_calls[0].1, USER_TOKEN, "{hint}");
+                drop(fake);
+                server.abort();
+            }
+        }
+
+        #[tokio::test]
+        async fn remote_topology_reports_that_skill_management_needs_the_local_runtime() {
+            let shared: Shared = Arc::default();
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, true);
+
+            for error in [
+                fx.adapter.skill_inventory(&fx.project).await.unwrap_err(),
+                fx.adapter
+                    .install_skill(&fx.project, "demo", "demo.zip")
+                    .await
+                    .unwrap_err(),
+                fx.adapter
+                    .activate_skill(&fx.project, "demo", "pkg", "state")
+                    .await
+                    .unwrap_err(),
+                fx.adapter
+                    .deactivate_skill(&fx.project, "demo", "state")
+                    .await
+                    .unwrap_err(),
+            ] {
+                // install_skill validates the artifact first; everything else
+                // reaches the credential check.
+                assert!(
+                    error.code == "skill_management_requires_local_runtime"
+                        || error.code == "skill_artifact_invalid",
+                    "{}",
+                    error.code
+                );
+            }
+            let error = fx.adapter.skill_inventory(&fx.project).await.unwrap_err();
+            assert_eq!(error.code, "skill_management_requires_local_runtime");
+            assert!(shared.lock().unwrap().mcp_calls.is_empty());
+            assert!(!fx.admin_file.exists());
+            server.abort();
+        }
     }
 }

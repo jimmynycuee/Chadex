@@ -519,6 +519,12 @@ pub struct StoredRuntime {
     pub server_env_file: Option<PathBuf>,
     pub runner_config: Option<PathBuf>,
     pub user_token_file: Option<PathBuf>,
+    /// Path (never the contents) of the local-only Desktop admin token file
+    /// that backs Skill management and admin Memory tools. Absent in configs
+    /// written before the admin credential existed; the file itself is
+    /// created lazily on first use.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admin_token_file: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runner_client_id: Option<String>,
     pub project_id: Option<String>,
@@ -592,6 +598,7 @@ mod tests {
             server_env_file: Some(PathBuf::from("/tmp/server.env")),
             runner_config: Some(PathBuf::from("/tmp/runner.toml")),
             user_token_file: Some(PathBuf::from("/tmp/token")),
+            admin_token_file: Some(PathBuf::from("/tmp/admin-token")),
             runner_client_id: Some("runner-a".to_string()),
             project_id: Some("repo".to_string()),
             runtime_project_id: Some("agent:runner-a:repo".to_string()),
@@ -599,5 +606,25 @@ mod tests {
         let json = serde_json::to_string(&stored).unwrap();
         let decoded: StoredRuntime = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, stored);
+    }
+
+    #[test]
+    fn stored_runtime_without_admin_token_file_still_deserializes() {
+        // Shape written by Chadex v0.4.1, before the admin credential existed.
+        let legacy = r#"{
+            "server_url": "http://127.0.0.1:8765",
+            "server_env_file": "/tmp/server.env",
+            "runner_config": "/tmp/runner.toml",
+            "user_token_file": "/tmp/token",
+            "runner_client_id": "runner-a",
+            "project_id": "repo",
+            "runtime_project_id": "agent:runner-a:repo"
+        }"#;
+        let decoded: StoredRuntime = serde_json::from_str(legacy).unwrap();
+        assert_eq!(decoded.admin_token_file, None);
+        // An absent path is not serialised back as `null`.
+        assert!(!serde_json::to_string(&decoded)
+            .unwrap()
+            .contains("admin_token_file"));
     }
 }

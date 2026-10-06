@@ -2049,6 +2049,81 @@ async fn skill_management_surface_and_admin_authority_are_independent() {
 }
 
 #[tokio::test]
+async fn pairing_user_token_is_denied_skill_management_and_a_local_admin_token_is_not() {
+    let runtime = ToolRuntime::new_for_tests();
+    // Exactly the scopes `pairing enroll` grants the `chatgpt-action` user token.
+    let pairing = crate::auth::AuthContext {
+        scopes: crate::pairing_http::ENROLL_USER_SCOPES
+            .iter()
+            .map(|scope| scope.to_string())
+            .collect(),
+        ..crate::auth::AuthContext::new(crate::auth::AuthKind::ApiToken)
+    };
+    assert!(!pairing.has_scope(crate::auth::SCOPE_ADMIN));
+    // The separate Desktop admin token: a managed `wc_pat_*` with only `admin`.
+    let desktop_admin = crate::auth::AuthContext {
+        scopes: vec![crate::auth::SCOPE_ADMIN.to_string()],
+        ..crate::auth::AuthContext::new(crate::auth::AuthKind::ApiToken)
+    };
+    let call = |tool: &str, auth: &crate::auth::AuthContext| {
+        let runtime = &runtime;
+        let tool = tool.to_string();
+        let auth = auth.clone();
+        async move {
+            runtime
+                .call_tool_with_protocol_capabilities(
+                    ToolCallRequest {
+                        tool_name: tool,
+                        arguments: json!({"project": "agent:missing:demo", "skill_key": "demo"}),
+                    },
+                    ToolCallContext {
+                        transport: ToolTransport::Mcp,
+                        session_id: None,
+                        auth: Some(&auth),
+                        window: None,
+                        record_oauth_scope_denials: false,
+                        host_file_import_trust: HostFileImportTrust::Untrusted,
+                    },
+                    ToolProtocolCapabilities {
+                        skill_management: true,
+                        ..Default::default()
+                    },
+                )
+                .await
+        }
+    };
+    for tool in [
+        "skill_inventory",
+        "skill_versions",
+        "skill_install",
+        "skill_activate",
+        "skill_deactivate",
+        "skill_remove_revision",
+    ] {
+        let denied = call(tool, &pairing).await;
+        assert!(!denied.success, "{tool}");
+        assert!(
+            matches!(
+                denied.error_status,
+                Some(super::super::kernel::ToolCallErrorStatus::InsufficientScope {
+                    required_scope: Some(crate::auth::SCOPE_ADMIN),
+                    ..
+                })
+            ),
+            "{tool}: pairing user token must be denied for lack of the admin scope"
+        );
+        let allowed = call(tool, &desktop_admin).await;
+        assert!(
+            !matches!(
+                allowed.error_status,
+                Some(super::super::kernel::ToolCallErrorStatus::InsufficientScope { .. })
+            ),
+            "{tool}: admin-scoped token must pass the scope gate"
+        );
+    }
+}
+
+#[tokio::test]
 async fn skill_surface_sidecar_privacy_and_authority_are_fenced() {
     let root = tempfile::tempdir().unwrap();
     write_skill(

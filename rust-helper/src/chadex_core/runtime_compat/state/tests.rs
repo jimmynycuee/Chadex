@@ -130,6 +130,7 @@ fn chatgpt_activity_observation_is_fenced_to_the_captured_project_identity() {
         server_env_file: None,
         runner_config: Some(runner_config),
         user_token_file: Some(user_token_file),
+        admin_token_file: None,
         runner_client_id: Some("desktop".to_string()),
         project_id: Some("project-b".to_string()),
         runtime_project_id: Some("agent:desktop:project-b".to_string()),
@@ -226,6 +227,7 @@ fn legacy_runtime_project_identity_recovers_runner_client_id_without_project_cou
         server_env_file: None,
         runner_config: None,
         user_token_file: None,
+        admin_token_file: None,
         runner_client_id: None,
         project_id: Some("repo".to_string()),
         runtime_project_id: Some("agent:desktop:runner:repo".to_string()),
@@ -255,6 +257,7 @@ fn local_enrollment_preserves_saved_files_and_reuses_only_the_inactive_slot() {
         server_env_file: None,
         runner_config: Some(saved_runner.clone()),
         user_token_file: None,
+        admin_token_file: None,
         runner_client_id: None,
         project_id: None,
         runtime_project_id: None,
@@ -377,6 +380,7 @@ fn stored_runtime_contains_paths_not_credentials() {
         server_env_file: Some(PathBuf::from("webcodex.env")),
         runner_config: Some(PathBuf::from("runner.toml")),
         user_token_file: Some(PathBuf::from("user-token")),
+        admin_token_file: None,
         runner_client_id: Some("desktop-runner".to_string()),
         project_id: Some("project".to_string()),
         runtime_project_id: Some("agent:desktop:project".to_string()),
@@ -542,6 +546,7 @@ fn legacy_full_runtime_defaults_to_autostart_but_explicit_stop_is_preserved() {
         server_env_file: None,
         runner_config: None,
         user_token_file: None,
+        admin_token_file: None,
         runner_client_id: None,
         project_id: None,
         runtime_project_id: None,
@@ -650,6 +655,7 @@ fn invalid_stored_identity_is_not_advertised_for_reuse() {
             server_env_file: None,
             runner_config: Some(PathBuf::from("missing-runner.toml")),
             user_token_file: Some(PathBuf::from("missing-user-token")),
+            admin_token_file: None,
             runner_client_id: Some("desktop".to_string()),
             project_id: Some("repo".to_string()),
             runtime_project_id: Some("agent:desktop:repo".to_string()),
@@ -1520,4 +1526,122 @@ fn regular_tunnel_selection_is_ephemeral_and_local_only() {
         effective_topology(Some(&remote), true).unwrap().exposure,
         remote.exposure
     );
+}
+
+
+fn full_topology(server: ServerTopology) -> RuntimeTopology {
+    RuntimeTopology {
+        experience: Experience::Full,
+        server,
+        runner: RunnerTopology::Local,
+        exposure: Exposure::None,
+        enrollment: Enrollment::ManagedPairing,
+    }
+}
+
+fn stored_runtime_with_env(env_file: &Path, admin: Option<PathBuf>) -> StoredRuntime {
+    StoredRuntime {
+        server_url: "http://127.0.0.1:8080".to_string(),
+        server_env_file: Some(env_file.to_path_buf()),
+        runner_config: None,
+        user_token_file: None,
+        admin_token_file: admin,
+        runner_client_id: None,
+        project_id: None,
+        runtime_project_id: None,
+    }
+}
+
+#[tokio::test]
+async fn admin_credential_target_distinguishes_remote_from_local_full() {
+    let data_dir = unique_state_dir("admin-credential-target");
+    let state = RuntimeStateManager::new(data_dir.clone(), data_dir.join("resources")).unwrap();
+    // Nothing configured yet: unavailable, not "remote".
+    assert_eq!(state.chadex_admin_credential_target().await.unwrap(), None);
+
+    let env_file = data_dir.join("webcodex.env");
+    {
+        let mut slot = state.core.lock().await;
+        let core = slot.as_mut().unwrap();
+        core.config.topology = Some(full_topology(ServerTopology::Remote {
+            url: "https://example.test".to_string(),
+        }));
+        core.config.runtime = Some(stored_runtime_with_env(&env_file, None));
+    }
+    assert_eq!(
+        state.chadex_admin_credential_target().await.unwrap(),
+        Some(ChadexAdminCredentialTarget::RemoteServer),
+        "a remote Server never exposes a local bootstrap credential"
+    );
+
+    {
+        let mut slot = state.core.lock().await;
+        slot.as_mut().unwrap().config.topology = Some(full_topology(ServerTopology::Local));
+    }
+    assert_eq!(
+        state.chadex_admin_credential_target().await.unwrap(),
+        Some(ChadexAdminCredentialTarget::Local {
+            server_url: "http://127.0.0.1:8080".to_string(),
+            server_env_file: env_file,
+            admin_token_file: None,
+        })
+    );
+    let _ = std::fs::remove_dir_all(data_dir);
+}
+
+#[tokio::test]
+async fn recording_the_admin_token_file_persists_only_its_path_and_is_idempotent() {
+    let data_dir = unique_state_dir("admin-credential-record");
+    std::fs::create_dir_all(&data_dir).unwrap();
+    let state = RuntimeStateManager::new(data_dir.clone(), data_dir.join("resources")).unwrap();
+    let env_file = data_dir.join("webcodex.env");
+    let admin_file = data_dir.join("chadex-desktop-admin-token");
+    {
+        let mut slot = state.core.lock().await;
+        let core = slot.as_mut().unwrap();
+        core.config.topology = Some(full_topology(ServerTopology::Local));
+        core.config.runtime = Some(stored_runtime_with_env(&env_file, None));
+    }
+
+    // A different env file (the runtime was rewritten meanwhile) is ignored.
+    state
+        .chadex_record_admin_token_file(&data_dir.join("other.env"), &admin_file)
+        .await
+        .unwrap();
+    assert!(!data_dir.join("desktop-state.json").exists());
+
+    state
+        .chadex_record_admin_token_file(&env_file, &admin_file)
+        .await
+        .unwrap();
+    let saved = std::fs::read_to_string(data_dir.join("desktop-state.json")).unwrap();
+    assert!(saved.contains("admin_token_file"));
+    assert!(saved.contains("chadex-desktop-admin-token"));
+    let reloaded: StoredDesktopConfig = serde_json::from_str(&saved).unwrap();
+    assert_eq!(
+        reloaded.runtime.unwrap().admin_token_file,
+        Some(admin_file.clone())
+    );
+    match state.chadex_admin_credential_target().await.unwrap() {
+        Some(ChadexAdminCredentialTarget::Local {
+            admin_token_file, ..
+        }) => assert_eq!(admin_token_file, Some(admin_file)),
+        other => panic!("unexpected target {other:?}"),
+    }
+    let _ = std::fs::remove_dir_all(data_dir);
+}
+
+#[test]
+fn admin_token_file_is_carried_only_while_it_stays_beside_the_server_env_file() {
+    let env = PathBuf::from("/data/local/webcodex.env");
+    let admin = PathBuf::from("/data/local/chadex-desktop-admin-token");
+    let mut config = StoredDesktopConfig::default();
+    assert_eq!(carried_admin_token_file(&config, Some(&env)), None);
+    config.runtime = Some(stored_runtime_with_env(&env, Some(admin.clone())));
+    assert_eq!(carried_admin_token_file(&config, Some(&env)), Some(admin));
+    assert_eq!(
+        carried_admin_token_file(&config, Some(Path::new("/elsewhere/webcodex.env"))),
+        None
+    );
+    assert_eq!(carried_admin_token_file(&config, None), None);
 }

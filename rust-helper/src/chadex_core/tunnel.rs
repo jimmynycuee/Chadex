@@ -652,7 +652,7 @@ fn runtime_target_error() -> ChadexError {
     )
 }
 
-fn read_bootstrap_token(path: &Path, bootstrap_token_env: &str) -> ChadexResult<Zeroizing<String>> {
+pub(crate) fn read_bootstrap_token(path: &Path, bootstrap_token_env: &str) -> ChadexResult<Zeroizing<String>> {
     let metadata = fs::symlink_metadata(path).map_err(|_| runtime_target_error())?;
     if !metadata.file_type().is_file() || metadata.len() > MAX_ENV_BYTES {
         return Err(runtime_target_error());
@@ -1151,6 +1151,78 @@ fn write_private_file(path: &Path, bytes: &[u8]) -> ChadexResult<()> {
     Err(tunnel_runtime_error("Unsupported platform"))
 }
 
+/// Create or atomically replace a private (owner-only) secret file. The bytes
+/// are written to a fresh sibling file that is private from its first byte and
+/// then renamed over `path`, so a concurrent reader sees the old or the new
+/// content and a symlink planted at `path` is replaced, never followed.
+pub(crate) fn write_private_secret_file_atomic(path: &Path, bytes: &[u8]) -> Result<(), ()> {
+    let name = path.file_name().and_then(|name| name.to_str()).ok_or(())?;
+    remove_stale_secret_temporaries(path, name);
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = path.with_file_name(format!(".{name}.{}-{nonce}.tmp", std::process::id()));
+    let installed = write_private_file(&temporary, bytes)
+        .map_err(|_| ())
+        .and_then(|()| sync_private_secret_file(&temporary))
+        .and_then(|()| install_private_secret_file(&temporary, path));
+    if installed.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    installed
+}
+
+/// Remove leftovers of an interrupted earlier write (`.<name>.<pid>-<nonce>.tmp`
+/// next to `path`). Best effort; only matches this exact naming scheme.
+fn remove_stale_secret_temporaries(path: &Path, name: &str) {
+    let Some(directory) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) else {
+        return;
+    };
+    let prefix = format!(".{name}.");
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            continue;
+        };
+        if file_name.starts_with(&prefix) && file_name.ends_with(".tmp") {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// Flush the freshly written secret to disk before it is renamed into place so
+/// a crash cannot leave an empty or partial token file at the final path.
+#[cfg(unix)]
+fn sync_private_secret_file(temporary: &Path) -> Result<(), ()> {
+    fs::File::open(temporary)
+        .and_then(|file| file.sync_all())
+        .map_err(|_| ())
+}
+
+#[cfg(not(unix))]
+fn sync_private_secret_file(_temporary: &Path) -> Result<(), ()> {
+    Ok(())
+}
+
+#[cfg(windows)]
+fn install_private_secret_file(temporary: &Path, destination: &Path) -> Result<(), ()> {
+    windows_support::replace_file(temporary, destination).map_err(|_| ())
+}
+
+#[cfg(not(windows))]
+fn install_private_secret_file(temporary: &Path, destination: &Path) -> Result<(), ()> {
+    fs::rename(temporary, destination).map_err(|_| ())?;
+    // Best effort: persist the rename itself.
+    if let Some(directory) = destination.parent().filter(|dir| !dir.as_os_str().is_empty()) {
+        let _ = fs::File::open(directory).and_then(|dir| dir.sync_all());
+    }
+    Ok(())
+}
+
 fn make_private_executable(path: &Path) -> ChadexResult<()> {
     #[cfg(unix)]
     {
@@ -1225,6 +1297,22 @@ mod tests {
         .unwrap();
         let token = read_bootstrap_token(&env, "CHADEX_TEST_BOOTSTRAP_TOKEN").unwrap();
         assert_eq!(token.as_str(), "wc_test_secret");
+    }
+
+    #[test]
+    fn tunnel_authorization_carries_only_the_bootstrap_token_never_the_admin_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = dir.path().join("webcodex.env");
+        fs::write(&env, "WEBCODEX_TOKEN=wc_boot_secret\n").unwrap();
+        // The Desktop admin token sits beside the env file but is out of scope here.
+        let admin = dir.path().join("chadex-desktop-admin-token");
+        fs::write(&admin, "wc_pat_admin_secret_value\n").unwrap();
+
+        let bootstrap = read_bootstrap_token(&env, "WEBCODEX_TOKEN").unwrap();
+        let session = TunnelSession::create(&dir.path().join("managed"), bootstrap.as_str()).unwrap();
+        let authorization = fs::read_to_string(&session.authorization_file).unwrap();
+        assert_eq!(authorization, "Bearer wc_boot_secret");
+        assert!(!authorization.contains("wc_pat_admin_secret_value"));
     }
 
     #[test]
