@@ -424,6 +424,8 @@ impl PrewarmPort for ChadexRuntimeCore {
 
 struct PrewarmSteps {
     resume_started: (u64, Instant),
+    /// When resume returned, so its trace does not include the lock wait and activation.
+    resume_finished: Instant,
     resume_completion: &'static str,
     /// Start and completion of the alignment activation, when one ran.
     activation: Option<(u64, Instant, &'static str)>,
@@ -465,6 +467,7 @@ where
 {
     let resume_started = (now_ms(), Instant::now());
     let mut result = port.resume().await;
+    let resume_finished = Instant::now();
     let resume_completion = step_completion(&result, run.cancel_requested());
     let mut activation = None;
     if result.is_ok() && !run.cancel_requested() {
@@ -485,6 +488,7 @@ where
     }
     PrewarmSteps {
         resume_started,
+        resume_finished,
         resume_completion,
         activation,
         result,
@@ -1266,11 +1270,12 @@ impl Bridge {
     /// and only the overall total reflects it. Fixed strings and durations only.
     fn record_prewarm_steps(&self, started_at_ms: u64, started: Instant, steps: &PrewarmSteps) {
         let (resume_started_at_ms, resume_started) = steps.resume_started;
-        self.push_lifecycle(
+        self.push_lifecycle_until(
             "prewarm",
             "runtime_resume",
             resume_started_at_ms,
             resume_started,
+            steps.resume_finished,
             steps.resume_completion,
         );
         if let Some((activation_started_at_ms, activation_started, completion)) = steps.activation {
@@ -1284,11 +1289,12 @@ impl Bridge {
         }
         self.push_lifecycle("prewarm", "total", started_at_ms, started, steps.total_completion());
         let launch_started_at_ms = now_ms().saturating_sub(duration_us(self.started_at.elapsed()) / 1000);
-        self.push_lifecycle(
+        self.push_lifecycle_until(
             "launch",
             "helper_start_to_runtime_ready",
             launch_started_at_ms,
             self.started_at,
+            steps.resume_finished,
             steps.resume_completion,
         );
     }
@@ -1311,12 +1317,25 @@ impl Bridge {
     }
 
     fn push_lifecycle(&self, operation: &str, phase: &str, started_at_ms: u64, started: Instant, completion: &str) {
+        self.push_lifecycle_until(operation, phase, started_at_ms, started, Instant::now(), completion);
+    }
+
+    /// Like `push_lifecycle`, for a phase that ended at `finished` rather than now.
+    fn push_lifecycle_until(
+        &self,
+        operation: &str,
+        phase: &str,
+        started_at_ms: u64,
+        started: Instant,
+        finished: Instant,
+        completion: &str,
+    ) {
         self.performance.push_lifecycle(LifecyclePerformanceTrace {
             sequence: 0,
             started_at_ms,
             operation: operation.to_string(),
             phase: phase.to_string(),
-            total_us: duration_us(started.elapsed()),
+            total_us: duration_us(finished.saturating_duration_since(started)),
             completion: completion.to_string(),
         });
     }
@@ -2915,14 +2934,18 @@ mod tests {
     #[test]
     fn prewarm_traces_keep_the_resume_result_when_the_activation_fails() {
         let (bridge, root) = temp_bridge("prewarm-activation-trace");
+        let resume_started = Instant::now() - std::time::Duration::from_millis(500);
         let steps = PrewarmSteps {
-            resume_started: (now_ms(), Instant::now()),
+            resume_started: (now_ms(), resume_started),
+            resume_finished: resume_started + std::time::Duration::from_millis(10),
             resume_completion: "completed",
             activation: Some((now_ms(), Instant::now(), "failed")),
             result: Err(ChadexError::new("x", "y", "z")),
         };
         bridge.record_prewarm_steps(now_ms(), Instant::now(), &steps);
         let traces = bridge.performance.lifecycle_snapshot(10);
+        let resume = traces.iter().find(|t| t.phase == "runtime_resume").unwrap();
+        assert_eq!(resume.total_us, 10_000, "resume time excludes the lock wait and activation");
         let seen: Vec<(&str, &str, &str)> = traces
             .iter()
             .map(|t| (t.operation.as_str(), t.phase.as_str(), t.completion.as_str()))

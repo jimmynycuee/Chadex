@@ -762,6 +762,7 @@ private struct AdvancedSettingsView: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .disabled(model.connectionActionInFlight)
                     }
                 }
             }
