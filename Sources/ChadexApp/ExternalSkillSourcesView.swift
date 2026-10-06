@@ -92,24 +92,24 @@ struct ExternalSkillSourcesView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(sources.enumerated()), id: \.element.id) { index, source in
-                        sourceRow(source)
-                        if index < sources.count - 1 || !extras.isEmpty {
-                            Divider().padding(.leading, layout.spacing(12))
-                        }
+                LazyVGrid(
+                    columns: [
+                        GridItem(
+                            .adaptive(minimum: layout.control(250), maximum: layout.control(440)),
+                            spacing: layout.spacing(12),
+                            alignment: .top
+                        )
+                    ],
+                    alignment: .leading,
+                    spacing: layout.spacing(12)
+                ) {
+                    ForEach(sources) { source in
+                        sourceCard(source)
                     }
-                    ForEach(Array(extras.enumerated()), id: \.element.path) { index, extra in
-                        extraRow(path: extra.path, configured: extra.configured)
-                        if index < extras.count - 1 {
-                            Divider().padding(.leading, layout.spacing(12))
-                        }
+                    ForEach(extras, id: \.path) { extra in
+                        extraCard(path: extra.path, configured: extra.configured)
                     }
                 }
-                .background(
-                    .quaternary.opacity(0.16),
-                    in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous)
-                )
             }
         }
         .task { await model.refreshExternalSkillSources() }
@@ -155,19 +155,33 @@ struct ExternalSkillSourcesView: View {
         return text
     }
 
-    private func sourceRow(_ source: ExternalSkillSource) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(kindLabel(source.kind))
-                    .chadexFont(.callout, weight: .medium)
-                Text(Self.displayPath(source.path))
-                    .chadexFont(.caption, design: .monospaced)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(source.path)
-                Spacer(minLength: 8)
-            }
+    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: layout.spacing(8)) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .chadexPadding(12)
+        .background(
+            .quaternary.opacity(0.16),
+            in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous)
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    private func pathLabel(_ path: String) -> some View {
+        Text(Self.displayPath(path))
+            .chadexFont(.caption, design: .monospaced)
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(path)
+    }
+
+    private func sourceCard(_ source: ExternalSkillSource) -> some View {
+        card {
+            Text(kindLabel(source.kind))
+                .chadexFont(.callout, weight: .semibold)
+            pathLabel(source.path)
 
             if isProvidedElsewhere(source) {
                 Label(
@@ -176,6 +190,7 @@ struct ExternalSkillSourcesView: View {
                 )
                 .chadexFont(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             } else if source.status == "available", let canonical = source.canonicalPath {
                 Text(countsText(source))
                     .chadexFont(.caption)
@@ -184,6 +199,7 @@ struct ExternalSkillSourcesView: View {
                     Label(L10n.string("skills.external.truncated"), systemImage: "exclamationmark.triangle")
                         .chadexFont(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 toggles(for: canonical)
                 invalidDisclosure(source)
@@ -193,22 +209,13 @@ struct ExternalSkillSourcesView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .chadexPadding(.horizontal, 10)
-        .chadexPadding(.vertical, 8)
-        .accessibilityElement(children: .contain)
     }
 
-    private func extraRow(path: String, configured: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private func extraCard(path: String, configured: Bool) -> some View {
+        card {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(L10n.string(configured ? "skills.external.custom" : "skills.external.linked"))
-                    .chadexFont(.callout, weight: .medium)
-                Text(Self.displayPath(path))
-                    .chadexFont(.caption, design: .monospaced)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(path)
+                    .chadexFont(.callout, weight: .semibold)
                 Spacer(minLength: 8)
                 if configured {
                     Button(L10n.string("skills.external.remove")) { setConnected(path, false) }
@@ -218,32 +225,46 @@ struct ExternalSkillSourcesView: View {
                         .accessibilityLabel(L10n.string("skills.external.removeLabel", Self.displayPath(path)))
                 }
             }
+            pathLabel(path)
             toggles(for: path)
         }
-        .chadexPadding(.horizontal, 10)
-        .chadexPadding(.vertical, 8)
-        .accessibilityElement(children: .contain)
     }
 
+    /// "Connect" is the primary setting (regular switch). "Allow scripts" depends on it, so it sits below,
+    /// indented, as a mini switch (HIG Toggles: secondary settings use a smaller control).
     private func toggles(for path: String) -> some View {
         let connected = roots.contains(path)
-        return HStack(spacing: 18) {
-            Toggle(L10n.string("skills.external.connect"), isOn: Binding(
-                get: { connected },
-                set: { setConnected(path, $0) }
-            ))
-            .disabled(!canEdit)
+        let scriptsOn = connected && scriptRoots.contains(path)
+        return VStack(alignment: .leading, spacing: layout.spacing(6)) {
+            HStack(spacing: 8) {
+                Text(L10n.string("skills.external.connect"))
+                    .chadexFont(.callout, weight: .medium)
+                Spacer(minLength: 8)
+                Toggle(L10n.string("skills.external.connect"), isOn: Binding(
+                    get: { connected },
+                    set: { setConnected(path, $0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .disabled(!canEdit)
+            }
 
-            Toggle(L10n.string("skills.external.allowScripts"), isOn: Binding(
-                get: { connected && scriptRoots.contains(path) },
-                set: { setScripts(path, $0) }
-            ))
-            .disabled(!canEdit || !connected)
-            Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                Text(L10n.string("skills.external.allowScripts"))
+                    .chadexFont(.caption)
+                    .foregroundStyle(connected ? .secondary : .tertiary)
+                Spacer(minLength: 8)
+                Toggle(L10n.string("skills.external.allowScripts"), isOn: Binding(
+                    get: { scriptsOn },
+                    set: { setScripts(path, $0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .disabled(!canEdit || !connected)
+            }
+            .chadexPadding(.leading, 14)
         }
-        .toggleStyle(.switch)
-        .controlSize(.small)
-        .chadexFont(.caption)
     }
 
     @ViewBuilder

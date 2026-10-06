@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// The Skills page: external source cards on top, then a searchable, filterable, one-line-per-Skill list.
 struct SkillsCenterView: View {
     @Environment(\.chadexLayout) private var layout
     @EnvironmentObject private var model: AppModel
@@ -10,62 +11,25 @@ struct SkillsCenterView: View {
     @State private var expandedSkillIDs: Set<String> = []
     @State private var showingSkillDraft = false
     @State private var showingSkillInstall = false
+    @State private var query = ""
+    @State private var scope: SkillListScope = .all
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: layout.spacing(ChadexMetrics.compactSectionSpacing)) {
             header
 
-            Text(L10n.string("skills.subtitle"))
-                .chadexFont(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if model.skillsLoading && model.skillCatalog == nil {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(L10n.string("skills.loading"))
-                        .chadexFont(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .chadexPadding(.vertical, 8)
-            } else {
-                if let error = model.skillsError {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .chadexFont(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                catalogWarnings
-
-                if model.skillCenterItems.isEmpty {
-                    Label(L10n.string("skills.none"), systemImage: "square.stack.3d.up.badge.a")
-                        .chadexFont(.callout)
-                        .foregroundStyle(.secondary)
-                        .chadexPadding(.vertical, 6)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(model.skillCenterItems) { item in
-                            skillRow(item)
-                            if item.id != model.skillCenterItems.last?.id {
-                                Divider().padding(.leading, layout.spacing(12))
-                            }
-                        }
-                    }
-                    .background(
-                        .quaternary.opacity(0.16),
-                        in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous)
-                    )
-                }
-            }
-
             ExternalSkillSourcesView(availability: availability) { showingSkillInstall = true }
-                .chadexPadding(.top, 6)
+
+            skillListSection
 
             Label(L10n.string("skills.authorityNote"), systemImage: "lock.shield")
                 .chadexFont(.caption)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+        .task(id: project.id) {
+            guard model.selectedProject?.id == project.id else { return }
+            await model.refreshSkills()
         }
         .sheet(isPresented: $showingSkillDraft) {
             SkillDraftSheet(project: project)
@@ -85,11 +49,13 @@ struct SkillsCenterView: View {
         )
     }
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            SectionEyebrow(title: L10n.string("skills.title"))
-            Spacer(minLength: 12)
+    // MARK: Header
 
+    private var header: some View {
+        ChadexPageHeader(
+            title: L10n.string("skills.title"),
+            subtitle: L10n.string("skills.subtitle")
+        ) {
             Button {
                 Task { await model.refreshSkills() }
             } label: {
@@ -119,67 +85,204 @@ struct SkillsCenterView: View {
         }
     }
 
+    // MARK: List
+
+    private var visibleItems: [SkillCenterItem] {
+        SkillListFilter.filter(model.skillCenterItems, scope: scope, query: query)
+    }
+
+    @ViewBuilder
+    private var skillListSection: some View {
+        let items = model.skillCenterItems
+        let visible = visibleItems
+
+        VStack(alignment: .leading, spacing: 10) {
+            SectionEyebrow(
+                title: items.isEmpty
+                    ? L10n.string("skills.list.title")
+                    : L10n.string("skills.list.titleCount", visible.count, items.count)
+            )
+
+            if model.skillsLoading && model.skillCatalog == nil {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(L10n.string("skills.loading"))
+                        .chadexFont(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .chadexPadding(.vertical, 8)
+            } else {
+                if let error = model.skillsError {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .chadexFont(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                catalogWarnings
+
+                if items.isEmpty {
+                    Label(L10n.string("skills.none"), systemImage: "square.stack.3d.up.badge.a")
+                        .chadexFont(.callout)
+                        .foregroundStyle(.secondary)
+                        .chadexPadding(.vertical, 6)
+                } else {
+                    filterBar
+
+                    if visible.isEmpty {
+                        Label(L10n.string("skills.noMatches"), systemImage: "magnifyingglass")
+                            .chadexFont(.callout)
+                            .foregroundStyle(.secondary)
+                            .chadexPadding(.vertical, 6)
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(visible) { item in
+                                skillRow(item)
+                                if item.id != visible.last?.id {
+                                    Divider().padding(.leading, layout.spacing(12))
+                                }
+                            }
+                        }
+                        .background(
+                            .quaternary.opacity(0.16),
+                            in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /// Search field plus a segmented scope bar; the scope bar wraps below the field in a narrow column.
+    private var filterBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: layout.spacing(12)) {
+                searchField.frame(minWidth: layout.control(160))
+                scopePicker.fixedSize()
+            }
+            VStack(alignment: .leading, spacing: layout.spacing(8)) {
+                searchField
+                scopePicker
+            }
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField(L10n.string("skills.search.placeholder"), text: $query)
+                .textFieldStyle(.plain)
+                .accessibilityLabel(L10n.string("skills.search.label"))
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(L10n.string("skills.search.clear"))
+                .accessibilityLabel(L10n.string("skills.search.clear"))
+            }
+        }
+        .chadexFont(.callout)
+        .chadexPadding(.horizontal, 8)
+        .chadexPadding(.vertical, 5)
+        .background(
+            .quaternary.opacity(0.3),
+            in: RoundedRectangle(cornerRadius: layout.control(7), style: .continuous)
+        )
+    }
+
+    private var scopePicker: some View {
+        Picker(L10n.string("skills.scope.label"), selection: $scope) {
+            ForEach(SkillListScope.allCases) { scope in
+                Text(L10n.string(scope.titleKey)).tag(scope)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+    }
+
+    /// Collapsible one-line warning; the longer explanation only shows when opened.
     @ViewBuilder
     private var catalogWarnings: some View {
         if let catalog = model.skillCatalog, catalog.invalidCount > 0 || catalog.discoveryTruncated {
-            Label(
-                catalog.discoveryTruncated
-                    ? L10n.string("skills.discoveryTruncated", catalog.invalidCount)
-                    : L10n.string("skills.invalidCount", catalog.invalidCount),
-                systemImage: "exclamationmark.triangle"
-            )
-            .chadexFont(.caption)
-            .foregroundStyle(.secondary)
+            DisclosureGroup {
+                Text(
+                    catalog.discoveryTruncated
+                        ? L10n.string("skills.discoveryTruncated", catalog.invalidCount)
+                        : L10n.string("skills.invalidCount", catalog.invalidCount)
+                )
+                .chadexFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .chadexPadding(.top, 2)
+            } label: {
+                Label(
+                    catalog.invalidCount > 0
+                        ? L10n.string("skills.invalidSummary", catalog.invalidCount)
+                        : L10n.string("skills.truncatedSummary"),
+                    systemImage: "exclamationmark.triangle"
+                )
+                .chadexFont(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func toggleExpanded(_ item: SkillCenterItem) {
+        if expandedSkillIDs.contains(item.skillId) {
+            expandedSkillIDs.remove(item.skillId)
+        } else {
+            expandedSkillIDs.insert(item.skillId)
+            Task { await model.loadSkillDefinition(item) }
         }
     }
 
     private func skillRow(_ item: SkillCenterItem) -> some View {
-        DisclosureGroup(
-            isExpanded: Binding(
-                get: { expandedSkillIDs.contains(item.skillId) },
-                set: { expanded in
-                    if expanded {
-                        expandedSkillIDs.insert(item.skillId)
-                        Task { await model.loadSkillDefinition(item) }
-                    } else {
-                        expandedSkillIDs.remove(item.skillId)
-                    }
-                }
-            )
-        ) {
-            skillDetails(item)
-                .chadexPadding(.leading, 22)
-                .chadexPadding(.top, 8)
-                .chadexPadding(.bottom, 4)
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 7) {
+        let expanded = expandedSkillIDs.contains(item.skillId)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Button {
+                    toggleExpanded(item)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chevron.right")
+                            .chadexFont(.caption2, weight: .semibold)
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(expanded ? 90 : 0))
+                            .frame(width: layout.control(10))
+                            .accessibilityHidden(true)
+
                         Text(item.name)
                             .chadexFont(.callout, weight: .medium)
-                        badge(sourceLabel(item))
-                        badge(item.isActive ? L10n.string("skills.enabled") : L10n.string("skills.disabled"))
-                        if item.nameConflict {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                                .help(L10n.string("skills.nameConflict"))
-                        }
-                        if item.trust == "operator_configured_guidance", item.scriptsAllowed == false {
-                            badge(L10n.string("skills.external.scriptsOff"))
-                                .help(L10n.string("skills.external.scriptsOffHelp"))
-                        }
-                    }
-                    Text(item.description)
-                        .chadexFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(String(item.definitionRevision.prefix(12)))
-                        .chadexFont(.caption2, design: .monospaced)
-                        .foregroundStyle(.tertiary)
-                        .help(item.definitionRevision)
-                }
+                            .lineLimit(1)
+                            .layoutPriority(2)
 
-                Spacer(minLength: 10)
+                        skillBadges(item)
+                            .layoutPriority(1)
+
+                        if !expanded {
+                            Text(item.description)
+                                .chadexFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.name)
+                .accessibilityValue(expanded ? L10n.string("skills.row.expanded") : L10n.string("skills.row.collapsed"))
+                .accessibilityHint(expanded ? L10n.string("skills.row.collapseHint") : L10n.string("skills.row.expandHint"))
 
                 if let managed = item.managed {
                     Button(item.isActive ? L10n.string("skills.disable") : L10n.string("skills.enable")) {
@@ -191,17 +294,50 @@ struct SkillsCenterView: View {
                     .help(L10n.string("skills.managedToggleHelp", managed.skillKey))
                 }
             }
-            .contentShape(Rectangle())
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(item.description)
+                        .chadexFont(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    skillDetails(item)
+                }
+                .chadexPadding(.leading, 20)
+                .chadexPadding(.top, 8)
+                .chadexPadding(.bottom, 4)
+            }
         }
         .chadexPadding(.horizontal, 10)
-        .chadexPadding(.vertical, 8)
+        .chadexPadding(.vertical, 7)
+    }
+
+    private func skillBadges(_ item: SkillCenterItem) -> some View {
+        HStack(spacing: 5) {
+            badge(item.sourceDisplayLabel)
+            if !item.isActive {
+                badge(L10n.string("skills.disabled"))
+            }
+            if item.nameConflict {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .help(L10n.string("skills.nameConflict"))
+                    .accessibilityLabel(L10n.string("skills.nameConflict"))
+            }
+            if item.trust == "operator_configured_guidance", item.scriptsAllowed == false {
+                badge(L10n.string("skills.external.scriptsOff"))
+                    .help(L10n.string("skills.external.scriptsOffHelp"))
+            }
+        }
+        .fixedSize()
     }
 
     @ViewBuilder
     private func skillDetails(_ item: SkillCenterItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 5) {
-                detailRow(L10n.string("skills.source"), sourceLabel(item))
+                detailRow(L10n.string("skills.source"), item.sourceDisplayLabel)
                 detailRow(L10n.string("skills.trust"), trustLabel(item.trust))
                 detailRow(L10n.string("skills.definitionRevision"), item.definitionRevision)
                 if let packageRevision = item.packageRevision {
@@ -259,18 +395,10 @@ struct SkillsCenterView: View {
         Text(text)
             .chadexFont(.caption2, weight: .medium)
             .foregroundStyle(.secondary)
+            .lineLimit(1)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(.quaternary.opacity(0.35), in: Capsule())
-    }
-
-    private func sourceLabel(_ item: SkillCenterItem) -> String {
-        switch item.trust {
-        case "project_content": return L10n.string("skills.projectSource")
-        case "operator_configured_guidance": return L10n.string("skills.configuredSource")
-        case "operator_installed_guidance": return L10n.string("skills.installedSource")
-        default: return item.sourceScope
-        }
     }
 
     private func trustLabel(_ trust: String) -> String {

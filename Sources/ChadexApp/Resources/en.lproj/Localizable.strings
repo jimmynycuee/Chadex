@@ -31,7 +31,7 @@
 "project.emptyTitle" = "No Project Selected";
 "project.emptyMessage" = "Add a local folder to prepare it for ChatGPT access.";
 
-"agentSettings.subtitle" = "Configure Chadex-wide behavior and inspect the selected project’s native repository instructions and Skills.";
+"agentSettings.subtitle" = "Configure Chadex-wide behavior that applies to every project’s agent.";
 "agentSettings.currentProject" = "Current project: %@";
 
 "computer.title" = "COMPUTER USE";
@@ -112,13 +112,13 @@
 "globalInstructions.storageNote" = "Stored in Chadex app data, outside every repository (maximum 8 KiB).";
 "globalInstructions.precedence" = "Behavior precedence: current request → nested/repository AGENTS.md → Global Instructions → built-in baseline. System/platform safety, authority, approvals, and sensitive-content protections remain non-overridable. Blank Global Instructions are safe.";
 
-"skills.title" = "SKILLS";
-"skills.subtitle" = "Reusable procedures available to this project. Chadex discovers and matches metadata first, then loads SKILL.md only when a Skill is opened or selected for use.";
+"skills.title" = "Skills";
+"skills.subtitle" = "Reusable procedures for this project. Chadex matches metadata first and reads SKILL.md only when a Skill is opened or used.";
 "skills.refresh" = "Refresh Skills";
 "skills.loading" = "Discovering Skills…";
 "skills.none" = "No Skills are available yet. Project Skills live under .agents/skills/<skill>/SKILL.md.";
 "skills.create" = "Create…";
-"skills.install" = "Upload Skill…";
+"skills.install" = "Import ZIP…";
 "skills.enabled" = "Enabled";
 "skills.disabled" = "Disabled";
 "skills.enable" = "Enable";
@@ -142,7 +142,7 @@
 "skills.authorityNote" = "Skills are procedures, not authority. Project Instructions and Chadex permission boundaries still apply.";
 "skills.external.title" = "EXTERNAL SKILL SOURCES";
 "skills.external.subtitle" = "Connect Skill folders you already use with Codex, Claude Code, or shared agents. Connected folders are followed live, so edits to the originals apply without re-importing.";
-"skills.external.uploadVsConnect" = "Upload Skill… copies a ZIP into Chadex's own store, independent of the original. Connect follows the original folder.";
+"skills.external.uploadVsConnect" = "Import ZIP… copies a ZIP into Chadex's own store, independent of the original. Connect follows the original folder.";
 "skills.external.scriptsNote" = "Scripts are off by default. This is a default policy for run_skill_resource, not a sandbox: ChatGPT can still run commands through shell tools when those are enabled.";
 "skills.external.chooseFolder" = "Choose Folder…";
 "skills.external.chooseFolderPrompt" = "Connect";
@@ -602,3 +602,26 @@
 "skills.error.runnerConfigPathIsLink" = "The folder holding runner.toml is reached through a link (junction or symlink), so Chadex cannot write to it safely. Use a runner.toml location that is not behind a link.";
 "skills.external.import" = "Import a Skill";
 "skills.external.noneUsable" = "No Skill folders were found to connect. Import a Skill file instead, or use Choose Folder… to connect a folder.";
+
+/* Skills page (standalone) */
+"sidebar.skills" = "Skills";
+"agentSettings.skillsLink.title" = "Skills";
+"agentSettings.skillsLink.message" = "Reusable procedures, external Skill folders and ZIP imports are managed on their own page.";
+"agentSettings.manageSkills" = "Manage Skills →";
+"skills.list.title" = "SKILL LIST";
+"skills.list.titleCount" = "SKILL LIST · %d of %d";
+"skills.search.placeholder" = "Search name or description";
+"skills.search.label" = "Search Skills";
+"skills.search.clear" = "Clear search";
+"skills.scope.label" = "Filter Skills";
+"skills.scope.all" = "All";
+"skills.scope.enabled" = "Enabled";
+"skills.scope.external" = "External";
+"skills.scope.installed" = "Installed";
+"skills.noMatches" = "No Skills match the search or filter.";
+"skills.invalidSummary" = "%d invalid package(s)";
+"skills.truncatedSummary" = "Skill discovery was truncated";
+"skills.row.expanded" = "Expanded";
+"skills.row.collapsed" = "Collapsed";
+"skills.row.expandHint" = "Shows the full description and SKILL.md";
+"skills.row.collapseHint" = "Hides the details";

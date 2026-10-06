@@ -7,28 +7,23 @@ struct ProjectDetailView: View {
     let project: ProjectRecord
     let destination: ProjectWorkspaceDestination
     let onShowAllActivity: () -> Void
+    /// Navigates to the Skills page; Agent Settings only links to it.
+    var onManageSkills: () -> Void = {}
     @State private var showingErrorDetails = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: layout.spacing(ChadexMetrics.sectionSpacing)) {
-                workspaceContent
-            }
-            .frame(maxWidth: layout.control(ChadexMetrics.detailMaxWidth), alignment: .leading)
-            .chadexPadding(.horizontal, ChadexMetrics.detailHorizontalPadding)
-            .chadexPadding(.vertical, ChadexMetrics.detailVerticalPadding)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+        ChadexPageColumn {
+            workspaceContent
         }
         .navigationTitle(navigationTitle)
         .task(id: "\(project.id.uuidString):\(destination.rawValue)") {
             guard model.selectedProject?.id == project.id else { return }
 
             switch destination {
-            case .agentSettings:
-                await model.refreshSkills()
             case .computerUse:
                 await model.refreshComputerSafety()
-            case .overview:
+            case .overview, .agentSettings, .skills:
+                // The Skills page refreshes its own catalog.
                 break
             }
         }
@@ -59,6 +54,9 @@ struct ProjectDetailView: View {
         case .agentSettings:
             agentSettingsSection
 
+        case .skills:
+            SkillsCenterView(project: project)
+
         case .computerUse:
             computerControlSection
         }
@@ -70,6 +68,8 @@ struct ProjectDetailView: View {
             return project.name
         case .agentSettings:
             return L10n.string("sidebar.agentSettings")
+        case .skills:
+            return L10n.string("sidebar.skills")
         case .computerUse:
             return L10n.string("sidebar.computerUse")
         }
@@ -100,7 +100,29 @@ struct ProjectDetailView: View {
             Divider()
             GlobalInstructionsEditor()
             Divider()
-            SkillsCenterView(project: project)
+            skillsLink
+        }
+    }
+
+    private var skillsLink: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Label {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.string("agentSettings.skillsLink.title"))
+                        .chadexFont(.callout, weight: .semibold)
+                    Text(L10n.string("agentSettings.skillsLink.message"))
+                        .chadexFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } icon: {
+                Image(systemName: "puzzlepiece.extension")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            Button(L10n.string("agentSettings.manageSkills")) { onManageSkills() }
+                .buttonStyle(.link)
+                .chadexFont(.callout)
         }
     }
 
@@ -742,15 +764,9 @@ struct GlobalInstructionsEditor: View {
 }
 
 struct GlobalInstructionsStandaloneView: View {
-    @Environment(\.chadexLayout) private var layout
-
     var body: some View {
-        ScrollView {
+        ChadexPageColumn {
             GlobalInstructionsEditor()
-                .frame(maxWidth: layout.control(ChadexMetrics.detailMaxWidth), alignment: .leading)
-                .chadexPadding(.horizontal, ChadexMetrics.detailHorizontalPadding)
-                .chadexPadding(.vertical, ChadexMetrics.detailVerticalPadding)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .navigationTitle(L10n.string("sidebar.agentSettings"))
     }

@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 
 enum ChadexMetrics {
-    static let detailMaxWidth: CGFloat = 1040
+    /// Width of the centered content column shared by Skills, Agent Settings and the project pages.
+    static let detailMaxWidth: CGFloat = 960
     static let detailHorizontalPadding: CGFloat = 28
     static let detailVerticalPadding: CGFloat = 24
     static let sectionSpacing: CGFloat = 24
@@ -266,6 +267,80 @@ struct TechnicalMetadataItem: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Scrolling page container shared by the Skills, Agent Settings and project pages.
+///
+/// The content column is capped at `ChadexMetrics.detailMaxWidth` and centered in the detail pane, while the
+/// scroll view (and the window background behind it) still extends to the window edges. Page-level actions
+/// belong in a `ChadexPageHeader` inside the column so they stay aligned with the content on wide windows.
+struct ChadexPageColumn<Content: View>: View {
+    @Environment(\.chadexLayout) private var layout
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: layout.spacing(ChadexMetrics.sectionSpacing)) {
+                content
+            }
+            .frame(maxWidth: layout.control(ChadexMetrics.detailMaxWidth), alignment: .leading)
+            .chadexPadding(.horizontal, ChadexMetrics.detailHorizontalPadding)
+            .chadexPadding(.vertical, ChadexMetrics.detailVerticalPadding)
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+    }
+}
+
+/// Title, one-line description and page-level actions for a `ChadexPageColumn`.
+/// The actions sit trailing the title and drop below it when the column is too narrow.
+struct ChadexPageHeader<Actions: View>: View {
+    let title: String
+    var subtitle: String?
+    private let actions: Actions
+
+    init(title: String, subtitle: String? = nil, @ViewBuilder actions: () -> Actions) {
+        self.title = title
+        self.subtitle = subtitle
+        self.actions = actions()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    titleText
+                    Spacer(minLength: 12)
+                    actionRow
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    titleText
+                    actionRow
+                }
+            }
+
+            if let subtitle {
+                Text(subtitle)
+                    .chadexFont(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var titleText: some View {
+        Text(title)
+            .chadexFont(.title2, weight: .semibold)
+            .tracking(-0.2)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 8) { actions }
     }
 }
 

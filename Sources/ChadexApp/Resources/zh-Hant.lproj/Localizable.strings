@@ -31,7 +31,7 @@
 "project.emptyTitle" = "尚未選擇專案";
 "project.emptyMessage" = "加入一個本機資料夾，準備讓 ChatGPT 存取。";
 
-"agentSettings.subtitle" = "設定 Chadex 全域行為，並檢視目前專案原生的 Repository Instructions 與 Skills。";
+"agentSettings.subtitle" = "設定套用於每個專案 agent 的 Chadex 全域行為。";
 "agentSettings.currentProject" = "目前專案：%@";
 
 "computer.title" = "COMPUTER USE";
@@ -112,13 +112,13 @@
 "globalInstructions.storageNote" = "儲存在 Chadex App 資料中，不屬於任何 repository（上限 8 KiB）。";
 "globalInstructions.precedence" = "行為偏好優先序：目前要求 → nested／repository AGENTS.md → Global Instructions → built-in baseline。System／platform safety、authority、approval 與 sensitive-content 保護永遠不可被覆寫；Global Instructions 留白也不影響安全運作。";
 
-"skills.title" = "SKILLS";
-"skills.subtitle" = "目前專案可用的重複使用流程。Chadex 會先只探索與比對 metadata，只有在 Skill 被展開或實際選中使用時才讀取 SKILL.md。";
+"skills.title" = "Skills";
+"skills.subtitle" = "目前專案可用的重複使用流程。Chadex 先比對 metadata，Skill 被展開或實際使用時才讀取 SKILL.md。";
 "skills.refresh" = "重新整理 Skills";
 "skills.loading" = "正在探索 Skills…";
 "skills.none" = "目前沒有可用的 Skill。Project Skill 放在 .agents/skills/<skill>/SKILL.md。";
 "skills.create" = "建立…";
-"skills.install" = "上傳 Skill…";
+"skills.install" = "匯入 ZIP…";
 "skills.enabled" = "已啟用";
 "skills.disabled" = "已停用";
 "skills.enable" = "啟用";
@@ -142,7 +142,7 @@
 "skills.authorityNote" = "Skills 是流程，不是權限來源；Project Instructions 與 Chadex 的授權邊界仍然有效。";
 "skills.external.title" = "外部 Skill 來源";
 "skills.external.subtitle" = "連接你已經在 Codex、Claude Code 或共用 agent 使用的 Skill 資料夾。已連接的資料夾會即時沿用，修改原檔不需要重新匯入。";
-"skills.external.uploadVsConnect" = "「上傳 Skill…」會把 ZIP 複製進 Chadex 自己的儲存區，與原檔無關；「連接」則會持續沿用原本的資料夾。";
+"skills.external.uploadVsConnect" = "「匯入 ZIP…」會把 ZIP 複製進 Chadex 自己的儲存區，與原檔無關；「連接」則會持續沿用原本的資料夾。";
 "skills.external.scriptsNote" = "腳本預設關閉。這是 run_skill_resource 的預設政策，不是沙盒：啟用 shell 工具時，ChatGPT 仍可執行指令。";
 "skills.external.chooseFolder" = "選擇資料夾…";
 "skills.external.chooseFolderPrompt" = "連接";
@@ -602,3 +602,26 @@
 "skills.error.runnerConfigPathIsLink" = "runner.toml 所在的資料夾是透過連結（junction 或 symlink）存取，Chadex 無法安全寫入。請改用不在連結之下的 runner.toml 位置。";
 "skills.external.import" = "匯入 Skill";
 "skills.external.noneUsable" = "找不到可連接的 Skill 資料夾。可以改為匯入 Skill 檔案，或用「選擇資料夾…」連接資料夾。";
+
+/* Skills page (standalone) */
+"sidebar.skills" = "Skills";
+"agentSettings.skillsLink.title" = "Skills";
+"agentSettings.skillsLink.message" = "重複使用流程、外部 Skill 資料夾與 ZIP 匯入都在獨立的頁面管理。";
+"agentSettings.manageSkills" = "管理 Skills →";
+"skills.list.title" = "SKILL 列表";
+"skills.list.titleCount" = "SKILL 列表 · %d／%d";
+"skills.search.placeholder" = "搜尋名稱或描述";
+"skills.search.label" = "搜尋 Skills";
+"skills.search.clear" = "清除搜尋";
+"skills.scope.label" = "篩選 Skills";
+"skills.scope.all" = "全部";
+"skills.scope.enabled" = "已啟用";
+"skills.scope.external" = "外部來源";
+"skills.scope.installed" = "已安裝";
+"skills.noMatches" = "沒有符合搜尋或篩選的 Skill。";
+"skills.invalidSummary" = "有 %d 個無效套件";
+"skills.truncatedSummary" = "Skill 探索已達上限";
+"skills.row.expanded" = "已展開";
+"skills.row.collapsed" = "已收合";
+"skills.row.expandHint" = "顯示完整描述與 SKILL.md";
+"skills.row.collapseHint" = "隱藏細節";

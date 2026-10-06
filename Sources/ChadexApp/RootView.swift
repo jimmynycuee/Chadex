@@ -4,6 +4,7 @@ import SwiftUI
 private enum SidebarSelection: Hashable {
     case project(UUID)
     case agentSettings
+    case skills
     case computerUse
     case activity
     case guide
@@ -87,6 +88,12 @@ struct RootView: View {
                             systemImage: "person.crop.circle"
                         )
                         .tag(SidebarSelection.agentSettings)
+
+                        SidebarNavigationRow(
+                            title: L10n.string("sidebar.skills"),
+                            systemImage: "puzzlepiece.extension"
+                        )
+                        .tag(SidebarSelection.skills)
 
                         SidebarNavigationRow(
                             title: L10n.string("sidebar.computerUse"),
@@ -191,7 +198,7 @@ struct RootView: View {
                     ProgressView()
                         .controlSize(.small)
                         .help(model.switchingProjectName.map { L10n.string("project.switching", $0) } ?? L10n.string("status.preparing"))
-                } else if selection != .guide {
+                } else if selection != .guide && selection != .skills {
                     Button {
                         Task { await model.refreshStatus(force: true) }
                     } label: {
@@ -289,7 +296,7 @@ struct RootView: View {
                     Task {
                         if await model.removeProject(project.id) {
                             switch selection {
-                            case .agentSettings, .computerUse:
+                            case .agentSettings, .skills, .computerUse:
                                 if model.selectedProject == nil {
                                     selection = .activity
                                 }
@@ -312,7 +319,7 @@ struct RootView: View {
         switch selection {
         case .project(let id):
             return model.projects.first(where: { $0.id == id })
-        case .agentSettings, .computerUse:
+        case .agentSettings, .skills, .computerUse:
             return model.selectedProject
         case .activity, .guide, .none:
             return nil
@@ -341,8 +348,10 @@ struct RootView: View {
             return .guide
         case "activity":
             return .activity
-        case "agent", "project.instructions", "project.skills":
+        case "agent", "project.instructions":
             return .agentSettings
+        case "skills", "project.skills":
+            return .skills
         case "computer", "project.computer":
             return .computerUse
         default:
@@ -361,6 +370,8 @@ struct RootView: View {
             lastSidebarDestination = "activity"
         case .agentSettings:
             lastSidebarDestination = "agent"
+        case .skills:
+            lastSidebarDestination = "skills"
         case .computerUse:
             lastSidebarDestination = "computer"
         case .project:
@@ -379,12 +390,17 @@ struct RootView: View {
             GuideView()
         case .agentSettings:
             if let project = model.selectedProject {
-                ProjectDetailView(project: project, destination: .agentSettings) {
-                    selection = .activity
-                }
+                ProjectDetailView(
+                    project: project,
+                    destination: .agentSettings,
+                    onShowAllActivity: { selection = .activity },
+                    onManageSkills: { selection = .skills }
+                )
             } else {
                 GlobalInstructionsStandaloneView()
             }
+        case .skills:
+            selectedProjectDetail(destination: .skills)
         case .computerUse:
             selectedProjectDetail(destination: .computerUse)
         case .project(let id):
