@@ -70,7 +70,7 @@ final class ExternalSkillAvailabilityTests: XCTestCase {
             "skill_definition_invalid_utf8", "skill_install_archive_malformed",
             "skill_install_archive_path_invalid", "skill_install_duplicate_path",
             "skill_install_total_too_large", "skill_install_artifact_changed", "skill_artifact_invalid",
-            "skill_install_source_project_forbidden", "skill_key_invalid",
+            "skill_install_source_project_forbidden", "skill_key_invalid", "skill_archive_flatten_failed",
             "skill_store_skill_limit_exceeded", "skill_state_changed", "skill_store_capability_unavailable",
         ] {
             let message = SkillManagementErrorMessage.installMessage(forCode: code)

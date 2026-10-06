@@ -609,6 +609,7 @@
 "skills.error.archiveDuplicatePath" = "ZIP 內有重複的檔名（只差大小寫也算重複），無法安裝。";
 "skills.error.archiveTooLarge" = "Skill 套件超過檔案數量或大小上限。";
 "skills.error.artifactUnavailable" = "安裝過程中無法讀取暫存的 ZIP，或它已被變更。請重新選擇 ZIP 再試一次。";
+"skills.error.archiveFlattenFailed" = "這個 ZIP 把 Skill 包在一個資料夾裡，Chadex 需要在專案的 .chadex/skill-imports 寫入整理後的副本，但寫入失敗。請確認專案資料夾可寫入且有可用空間後再試。";
 "skills.error.projectForbidden" = "目前專案不在本機 runner 允許的範圍內，無法從這裡安裝 Skill。";
 "skills.error.keyInvalid" = "Skill 代號只能使用英文字母、數字、點、底線或連字號，最多 96 個字元。";
 "skills.error.limitReached" = "已達可安裝的 Skill 或版本數量上限，請先移除不需要的版本。";

@@ -31,6 +31,7 @@ use zeroize::Zeroizing;
 
 mod admin_credential;
 mod external_skill_roots;
+mod skill_archive_flatten;
 
 use admin_credential::{
     admin_token_path, credential_rejected_error, requires_local_runtime_error, tool_credential,
@@ -518,6 +519,29 @@ impl RuntimeBackendAdapter {
                 "Check the file and retry.",
             )
         })?;
+        // A package wrapped in one folder is rewritten with SKILL.md at the
+        // root; the copy lives only for the install call.
+        let flattened = tokio::task::spawn_blocking(move || {
+            skill_archive_flatten::flatten_single_folder_archive(&bytes).map(|flat| (flat, bytes))
+        })
+        .await
+        .map_err(|_| {
+            ChadexError::new(
+                "skill_artifact_invalid",
+                "The Skill ZIP could not be read",
+                "Check the file and retry.",
+            )
+        })??;
+        let (bytes, flat_copy) = match flattened {
+            (skill_archive_flatten::Flatten::Unchanged, bytes) => (bytes, None),
+            (skill_archive_flatten::Flatten::Flattened(flat), _) => {
+                let copy = write_flattened_skill_archive(&root, &flat).await?;
+                (flat, Some(copy))
+            }
+        };
+        let artifact_path = flat_copy
+            .as_ref()
+            .map_or(artifact_path, |copy| copy.relative.as_str());
         let artifact_sha256 = format!("{:x}", sha2::Sha256::digest(&bytes));
         let install_key =
             desktop_skill_idempotency_key("install", &[skill_key, artifact_path, &artifact_sha256]);
@@ -535,7 +559,11 @@ impl RuntimeBackendAdapter {
                 "skill_install_failed",
                 "Chadex could not install the Skill",
             )
-            .await?;
+            .await;
+        // The runtime has copied (or refused) the package: remove the
+        // flattened copy whatever happened. The App removes its own staging.
+        drop(flat_copy);
+        let installed = installed?;
         let package_revision = installed
             .get("package_revision")
             .and_then(Value::as_str)
@@ -1721,6 +1749,86 @@ fn activation_observation(
     })
 }
 
+/// The directory the Desktop apps stage Skill ZIPs in, relative to the project.
+const SKILL_IMPORTS_DIR: [&str; 2] = [".chadex", "skill-imports"];
+
+/// A flattened Skill ZIP written next to the App's staged copy; deleted on drop.
+struct FlattenedSkillArchive {
+    path: PathBuf,
+    relative: String,
+}
+
+impl Drop for FlattenedSkillArchive {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+fn skill_archive_flatten_failed() -> ChadexError {
+    ChadexError::new(
+        "skill_archive_flatten_failed",
+        "Chadex could not prepare the Skill ZIP",
+        "Make sure the project folder is writable and retry.",
+    )
+}
+
+/// Writes `bytes` to a new, uniquely named file in `<root>/.chadex/skill-imports/`
+/// (never following a link, never replacing an existing file).
+async fn write_flattened_skill_archive(
+    root: &Path,
+    bytes: &[u8],
+) -> ChadexResult<FlattenedSkillArchive> {
+    let root = root.to_path_buf();
+    let bytes = bytes.to_vec();
+    tokio::task::spawn_blocking(move || {
+        let mut directory = root;
+        for component in SKILL_IMPORTS_DIR {
+            directory.push(component);
+            match std::fs::symlink_metadata(&directory) {
+                Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {}
+                Ok(_) => return Err(skill_archive_flatten_failed()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    std::fs::create_dir(&directory).map_err(|_| skill_archive_flatten_failed())?
+                }
+                Err(_) => return Err(skill_archive_flatten_failed()),
+            }
+        }
+        for attempt in 0u32..8 {
+            let seed = format!(
+                "{:?}:{}:{attempt}:{}",
+                std::time::SystemTime::now(),
+                std::process::id(),
+                bytes.len()
+            );
+            let digest = format!("{:x}", sha2::Sha256::digest(seed.as_bytes()));
+            let name = format!("flat-{}.zip", &digest[..24]);
+            let path = directory.join(&name);
+            let mut file = match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(file) => file,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(_) => return Err(skill_archive_flatten_failed()),
+            };
+            // From here on the guard owns the file and removes it on any failure.
+            let copy = FlattenedSkillArchive {
+                path,
+                relative: format!("{}/{}/{name}", SKILL_IMPORTS_DIR[0], SKILL_IMPORTS_DIR[1]),
+            };
+            use std::io::Write;
+            file.write_all(&bytes)
+                .and_then(|()| file.sync_all())
+                .map_err(|_| skill_archive_flatten_failed())?;
+            return Ok(copy);
+        }
+        Err(skill_archive_flatten_failed())
+    })
+    .await
+    .map_err(|_| skill_archive_flatten_failed())?
+}
+
 fn operator_error_code(result: &OperatorToolResult) -> Option<&str> {
     result
         .output
@@ -2519,6 +2627,11 @@ mod tests {
             always_unauthorized: bool,
             /// When set, `skill_install` fails with this runtime `error_kind`.
             skill_install_error_kind: Option<String>,
+            /// When set, `skill_install` opens the artifact under this root the
+            /// way the runtime does and records its entry names.
+            project_root: Option<PathBuf>,
+            /// (entry names, SHA matches `expected_artifact_sha256`) per install.
+            installed_archives: Vec<(Vec<String>, bool)>,
         }
         type Shared = Arc<StdMutex<Fake>>;
 
@@ -2594,6 +2707,20 @@ mod tests {
                                     .is_none_or(|limit| {
                                         limit == 0 || limit > MAX_MEMORY_SEARCH_LIMIT as u64
                                     });
+                            if tool == "skill_install" {
+                                if let Some(root) = fake.project_root.clone() {
+                                    let path = root.join(arguments["artifact_path"].as_str().unwrap());
+                                    let bytes = std::fs::read(path).unwrap();
+                                    let sha = format!("{:x}", sha2::Sha256::digest(&bytes));
+                                    let mut archive =
+                                        zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+                                    let names = (0..archive.len())
+                                        .map(|i| archive.by_index(i).unwrap().name().to_string())
+                                        .collect();
+                                    let sha_matches = arguments["expected_artifact_sha256"] == sha;
+                                    fake.installed_archives.push((names, sha_matches));
+                                }
+                            }
                             let install_error = (tool == "skill_install")
                                 .then(|| fake.skill_install_error_kind.clone())
                                 .flatten();
@@ -2615,7 +2742,8 @@ mod tests {
                                 AxumJson(json!({"result": {"structuredContent": {
                                     "success": true,
                                     "output": {"tool": tool, "catalog_revision": "r1",
-                                        "total_count": 0, "memories": []}
+                                        "total_count": 0, "memories": [],
+                                        "package_revision": "pkg1", "state_revision": "s1"}
                                 }}})),
                             )
                         },
@@ -2888,6 +3016,166 @@ mod tests {
                 ".chadex/skill-imports/wrapped.zip"
             );
             drop(fake);
+            server.abort();
+        }
+
+        fn imports_dir(project: &str) -> PathBuf {
+            Path::new(project).join(".chadex/skill-imports")
+        }
+
+        fn imports_listing(project: &str) -> Vec<String> {
+            let mut names: Vec<String> = std::fs::read_dir(imports_dir(project))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+                .collect();
+            names.sort();
+            names
+        }
+
+        fn stage(project: &str, bytes: &[u8]) -> &'static str {
+            std::fs::create_dir_all(imports_dir(project)).unwrap();
+            std::fs::write(imports_dir(project).join("staged.zip"), bytes).unwrap();
+            ".chadex/skill-imports/staged.zip"
+        }
+
+        const DEFINITION: &[u8] = b"---\nname: english-tv-coach\ndescription: demo\n---\n";
+
+        fn wrapped_user_zip(extra: &[(&str, &[u8])]) -> Vec<u8> {
+            let mut entries: Vec<(&str, &[u8])> = vec![
+                ("english-tv-coach/SKILL.md", DEFINITION),
+                ("english-tv-coach/agents/openai.yaml", b"interface: {}\n"),
+                ("english-tv-coach/assets/icon.svg", b"<svg/>"),
+            ];
+            entries.extend_from_slice(extra);
+            skill_archive_flatten::tests::zip_with(&entries)
+        }
+
+        #[tokio::test]
+        async fn wrapped_skill_zip_is_flattened_installed_and_the_copy_removed() {
+            let shared: Shared = Arc::default();
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            shared.lock().unwrap().project_root = Some(PathBuf::from(&fx.project));
+            let staged = stage(&fx.project, &wrapped_user_zip(&[]));
+
+            fx.adapter
+                .install_skill(&fx.project, "Eng_TV_Coach", staged)
+                .await
+                .unwrap();
+
+            let fake = shared.lock().unwrap();
+            let tools: Vec<&str> = fake.mcp_calls.iter().map(|(tool, _)| tool.as_str()).collect();
+            assert_eq!(tools, vec!["skill_install", "skill_activate"]);
+            let artifact = fake.mcp_arguments[0]["artifact_path"].as_str().unwrap();
+            assert!(artifact.starts_with(".chadex/skill-imports/flat-"), "{artifact}");
+            assert_eq!(
+                fake.installed_archives,
+                vec![(
+                    vec![
+                        "SKILL.md".to_string(),
+                        "agents/openai.yaml".to_string(),
+                        "assets/icon.svg".to_string()
+                    ],
+                    true
+                )]
+            );
+            drop(fake);
+            // Only the App's staged copy is left; it deletes that itself.
+            assert_eq!(imports_listing(&fx.project), vec!["staged.zip"]);
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn finder_compressed_skill_zip_is_flattened_without_finder_artifacts() {
+            let shared: Shared = Arc::default();
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            shared.lock().unwrap().project_root = Some(PathBuf::from(&fx.project));
+            let staged = stage(
+                &fx.project,
+                &wrapped_user_zip(&[
+                    ("english-tv-coach/.DS_Store", b"finder"),
+                    ("__MACOSX/english-tv-coach/._SKILL.md", b"fork"),
+                ]),
+            );
+
+            fx.adapter
+                .install_skill(&fx.project, "english-tv-coach", staged)
+                .await
+                .unwrap();
+            let fake = shared.lock().unwrap();
+            assert_eq!(
+                fake.installed_archives[0].0,
+                vec!["SKILL.md", "agents/openai.yaml", "assets/icon.svg"]
+            );
+            drop(fake);
+            assert_eq!(imports_listing(&fx.project), vec!["staged.zip"]);
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn flattened_copy_is_removed_when_the_runtime_refuses_it() {
+            let shared: Shared = Arc::default();
+            shared.lock().unwrap().skill_install_error_kind =
+                Some("skill_frontmatter_missing".to_string());
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            shared.lock().unwrap().project_root = Some(PathBuf::from(&fx.project));
+            let staged = stage(&fx.project, &wrapped_user_zip(&[]));
+
+            let error = fx
+                .adapter
+                .install_skill(&fx.project, "Eng_TV_Coach", staged)
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, "skill_frontmatter_missing");
+            assert_eq!(shared.lock().unwrap().installed_archives.len(), 1);
+            assert_eq!(imports_listing(&fx.project), vec!["staged.zip"]);
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn two_top_level_folders_are_sent_to_the_runtime_unchanged() {
+            let shared: Shared = Arc::default();
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            shared.lock().unwrap().project_root = Some(PathBuf::from(&fx.project));
+            let zip = skill_archive_flatten::tests::zip_with(&[
+                ("a/SKILL.md", DEFINITION),
+                ("b/SKILL.md", DEFINITION),
+            ]);
+            let staged = stage(&fx.project, &zip);
+
+            fx.adapter
+                .install_skill(&fx.project, "demo", staged)
+                .await
+                .unwrap();
+            let fake = shared.lock().unwrap();
+            assert_eq!(fake.mcp_arguments[0]["artifact_path"], staged);
+            assert_eq!(fake.installed_archives[0].0, vec!["a/SKILL.md", "b/SKILL.md"]);
+            drop(fake);
+            assert_eq!(imports_listing(&fx.project), vec!["staged.zip"]);
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn unsafe_wrapped_zip_is_refused_before_the_runtime_is_called() {
+            let shared: Shared = Arc::default();
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            let staged = stage(
+                &fx.project,
+                &wrapped_user_zip(&[("english-tv-coach/../escape.md", b"x")]),
+            );
+
+            let error = fx
+                .adapter
+                .install_skill(&fx.project, "Eng_TV_Coach", staged)
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, "skill_install_archive_path_invalid");
+            assert!(shared.lock().unwrap().mcp_calls.is_empty());
+            assert_eq!(imports_listing(&fx.project), vec!["staged.zip"]);
             server.abort();
         }
 

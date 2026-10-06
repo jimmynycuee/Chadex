@@ -609,6 +609,7 @@
 "skills.error.archiveDuplicatePath" = "The ZIP contains duplicate file names (names that differ only in case count as duplicates) and cannot be installed.";
 "skills.error.archiveTooLarge" = "The Skill package exceeds the file count or size limits.";
 "skills.error.artifactUnavailable" = "The staged ZIP could not be read during installation, or it changed. Choose the ZIP again and retry.";
+"skills.error.archiveFlattenFailed" = "This ZIP wraps the Skill in a folder, and Chadex could not write the unwrapped copy to .chadex/skill-imports in the project. Make sure the project folder is writable and has free space, then retry.";
 "skills.error.projectForbidden" = "The current project is outside what the local runner allows, so a Skill cannot be installed from it.";
 "skills.error.keyInvalid" = "The Skill key may only use letters, numbers, dot, underscore or hyphen, up to 96 characters.";
 "skills.error.limitReached" = "The maximum number of installed Skills or versions has been reached. Remove versions you no longer need first.";

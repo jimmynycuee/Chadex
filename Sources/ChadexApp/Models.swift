@@ -341,6 +341,7 @@ enum SkillManagementErrorMessage {
         case "skill_artifact_invalid", "skill_install_artifact_not_found", "skill_install_artifact_path_invalid",
              "skill_install_artifact_unavailable", "skill_install_artifact_changed":
             return L10n.string("skills.error.artifactUnavailable")
+        case "skill_archive_flatten_failed": return L10n.string("skills.error.archiveFlattenFailed")
         case "skill_install_source_project_unavailable", "skill_install_source_project_forbidden":
             return L10n.string("skills.error.projectForbidden")
         case "skill_key_invalid", "skill_install_invalid_arguments": return L10n.string("skills.error.keyInvalid")

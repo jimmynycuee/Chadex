@@ -27,6 +27,7 @@ describe('skills logic', () => {
     expect(externalSkillErrorMessage('x (skill_install_total_too_large)')).toContain('上限');
     expect(externalSkillErrorMessage('x (skill_install_artifact_changed)')).toContain('重新選擇 ZIP');
     expect(externalSkillErrorMessage('x (skill_key_invalid)')).toContain('Skill 代號');
+    expect(externalSkillErrorMessage('x (skill_archive_flatten_failed)')).toContain('skill-imports');
     // An unmapped code keeps the bridge text, which already carries the code.
     expect(externalSkillErrorMessage('Chadex could not install the Skill (skill_future_failure)。'))
       .toContain('skill_future_failure');

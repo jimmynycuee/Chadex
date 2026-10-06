@@ -24,6 +24,7 @@ const SKILL_INSTALL_MESSAGES: Array<[string[], string]> = [
     'Skill 套件超過檔案數量或大小上限。'],
   [['skill_artifact_invalid', 'skill_install_artifact_not_found', 'skill_install_artifact_path_invalid', 'skill_install_artifact_unavailable',
     'skill_install_artifact_changed'], '安裝過程中無法讀取暫存的 ZIP，或它已被變更。請重新選擇 ZIP 再試一次。'],
+  [['skill_archive_flatten_failed'], '這個 ZIP 把 Skill 包在一個資料夾裡，Chadex 需要在專案的 .chadex\\skill-imports 寫入整理後的副本，但寫入失敗。請確認專案資料夾可寫入且有可用空間後再試。'],
   [['skill_install_source_project_unavailable', 'skill_install_source_project_forbidden'], '目前專案不在本機 runner 允許的範圍內，無法從這裡安裝 Skill。'],
   [['skill_key_invalid', 'skill_install_invalid_arguments'], 'Skill 代號只能使用英文字母、數字、點、底線或連字號，最多 96 個字元。'],
   [['skill_store_skill_limit_exceeded', 'skill_store_revision_limit_exceeded'], '已達可安裝的 Skill 或版本數量上限，請先移除不需要的版本。'],
