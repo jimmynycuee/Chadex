@@ -2,9 +2,9 @@
 schema_version: 1
 project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
-updated: 2026-10-06T00:10+08:00
+updated: 2026-10-06T13:04+08:00
 updated_by: claude           # codex | webcodex | chadex | claude | human
-current_phase: AP5
+current_phase: LS1
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -169,7 +169,58 @@ phases:
     owner: claude-code
     depends_on: [V042]
     # 決策（2026-10-05）：外部來源 script 預設不可執行，閘門對所有 configured roots 一律預設關閉；
-    # 連結範圍為 Runner 層級（所有專案共用）。AP5.1 偵測完成；AP5.2–AP5.5 待做。
+    # 連結範圍為 Runner 層級（所有專案共用）。
+    # 2026-10-06：實作完成 @ 5103954；CI run 37355667286 = 9/9 success；release_check.sh 通過。
+    # 待使用者手動驗收與合併（合併順序：AP5 → LS1 → 其餘）。
+    closed_commit: null
+  - id: LS1
+    name: Runtime launch/connect speed (macOS prewarm)
+    branch: feature/runtime-launch-speed
+    status: in_progress
+    owner: claude-code
+    depends_on: [AP5]
+    # review 修正在 feature/runtime-launch-speed-fixes（0a10a3a、b881a39），reviewer 複查無 blocking；
+    # 「還原本機服務」改為預設開啟的背景預熱開關（使用者決定）。合併時一併帶入。
+    closed_commit: null
+  - id: AP6a
+    name: Windows helper fixes for external skill sources
+    branch: feature/ap6a-windows-helper
+    status: in_progress
+    owner: claude-code
+    depends_on: [LS1]
+    # e81694c + review 修正 a04f28a；等 reviewer 複查與 Windows CI。
+    closed_commit: null
+  - id: AP6b
+    name: Local admin token for skill/memory management
+    branch: feature/ap6b-admin-token
+    status: in_progress
+    owner: claude-code
+    depends_on: [LS1]
+    # 決策：獨立本機 admin token（chadex-desktop-admin），Project Memory 也改走它；tunnel token 縮權另案。
+    # 78ac710、2b676a8、d61caeb；reviewer 複查無 blocking。
+    closed_commit: null
+  - id: AP6c
+    name: Windows Skills UI parity
+    branch: feature/ap6c-windows-skills-ui
+    status: in_progress
+    owner: claude-code
+    depends_on: [LS1]
+    # e304401；CI 失敗為無關 flaky，已 rerun。
+    closed_commit: null
+  - id: LS2
+    name: Windows runtime prewarm at launch
+    branch: feature/w-runtime-prewarm
+    status: in_progress
+    owner: claude-code
+    depends_on: [AP6c, LS1]
+    # 7b2907f（建在 AP6c + speed fixes 之上）。
+    closed_commit: null
+  - id: V043
+    name: Runtime-engine test cleanup
+    branch: chore/v043-runtime-test-cleanup
+    status: in_progress
+    owner: claude-code
+    depends_on: [LS1]
     closed_commit: null
 ---
 
