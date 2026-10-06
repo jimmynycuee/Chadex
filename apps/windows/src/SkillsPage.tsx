@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { DesktopApi } from './api';
 import type { ExternalSkillRootsState, ExternalSkillSource, ExternalSkillSourceDiscovery, SkillCatalog, SkillInventory } from './contracts';
 import { safeError } from './state';
+import { filterSkills, SKILL_FILTERS, type SkillFilter } from './skillsFilter';
 import {
   displayPath, externalSkillErrorMessage, extraRoots, hasValidSource, isProvidedElsewhere, isSkillActive, kindLabel, planRoots,
   providedByPaths, rootsNeedReload, skillCenterItems, sourceLabel, statusText, validSkillKey, type SkillCenterItem,
@@ -26,6 +27,10 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
   const [installing, setInstalling] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [expandedInvalid, setExpandedInvalid] = useState<Set<string>>(new Set());
+  const [expandedSkills, setExpandedSkills] = useState<Set<string>>(new Set());
+  const [catalogInvalidOpen, setCatalogInvalidOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<SkillFilter>('all');
   const epoch = useRef(0);
 
   const roots = rootsState?.roots ?? [];
@@ -36,6 +41,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
   const canEdit = helperReady && rootsState !== null && !busy;
   const validSource = hasValidSource(discovery, roots);
   const items = skillCenterItems(catalog, inventory);
+  const visible = filterSkills(items, filter, query);
 
   const loadSkills = useCallback(async () => {
     if (!project || !helperReady) { setCatalog(null); setInventory(null); setSkillsError(null); return; }
@@ -95,7 +101,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
       const chosen = await api.chooseSkillArchive(project);
       if (chosen === null) return;
       setArchive(chosen); setImportError(null);
-    } catch (error) { setArchive(''); setImportError(/skill_archive_outside_project/.test(safeError(error)) ? '請選擇位於目前專案資料夾內的 ZIP。' : safeError(error)); }
+    } catch (error) { setArchive(''); setImportError(safeError(error)); }
   }
   async function install() {
     if (!project || installing || !validSkillKey(skillKey) || !archive) return;
@@ -117,6 +123,7 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
     finally { setMutating(null); await loadSkills(); }
   }
 
+  const toggleIn = (setter: typeof setExpandedSkills, key: string) => setter((current) => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next; });
   const importButton = <button className={validSource ? '' : 'primary'} disabled={!project || !helperReady || installing} onClick={() => setImporting(true)}>匯入 Skill（ZIP）…</button>;
   const toggles = (path: string) => {
     const connected = roots.includes(path);
@@ -125,10 +132,11 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
       <label><input type="checkbox" checked={connected && scriptRoots.has(path)} disabled={!canEdit || !connected} onChange={(event) => { void setScripts(path, event.target.checked); }} />允許腳本</label>
     </div>;
   };
-  function sourceRow(source: ExternalSkillSource) {
+  function sourceCard(source: ExternalSkillSource) {
     const key = `${source.kind}|${source.path}`; const invalid = source.packages.filter((pkg) => pkg.state === 'invalid');
-    return <li className="skill-row" key={key}>
-      <div className="skill-title"><strong>{kindLabel(source.kind)}</strong><code title={source.path}>{displayPath(source.path)}</code></div>
+    return <li className="skill-card" key={key}>
+      <div className="skill-title"><strong>{kindLabel(source.kind)}</strong></div>
+      <code className="skill-path" title={source.path}>{displayPath(source.path)}</code>
       {isProvidedElsewhere(source) ? <p className="skill-meta">由 {providedByPaths(source, sources).join('、')} 提供{source.root_is_link ? '（此資料夾為連結）' : ''}</p>
         : source.status === 'available' && source.canonical_path ? <>
           <p className="skill-meta">{source.valid_count} 個 Skill · {source.script_count} 個含腳本{source.invalid_count > 0 ? ` · ${source.invalid_count} 個無效` : ''}{source.symlink_count > 0 ? ` · ${source.symlink_count} 個符號連結` : ''}</p>
@@ -136,35 +144,57 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
           {!source.root_is_link && source.canonical_path !== source.path && <p className="skill-meta">實際路徑：<code>{displayPath(source.canonical_path)}</code></p>}
           {source.truncated && <p className="skill-meta">掃描已達上限，部分 Skill 可能未列出。</p>}
           {toggles(source.canonical_path)}
-          {invalid.length > 0 && <div className="skill-invalid"><button className="text-button" aria-expanded={expandedInvalid.has(key)} onClick={() => setExpandedInvalid((current) => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next; })}>{expandedInvalid.has(key) ? '收合' : '檢視'} {invalid.length} 個無效套件</button>
+          {invalid.length > 0 && <div className="skill-invalid"><button className="text-button" aria-expanded={expandedInvalid.has(key)} onClick={() => toggleIn(setExpandedInvalid, key)}>{expandedInvalid.has(key) ? '收合' : '檢視'} {invalid.length} 個無效套件</button>
             {expandedInvalid.has(key) && <ul>{invalid.map((pkg) => <li key={pkg.package}><code>{pkg.package} — {pkg.invalid_reason ?? 'invalid'}</code></li>)}</ul>}</div>}
         </> : <p className="skill-meta">{statusText(source.status)}</p>}
     </li>;
   }
   const skillRow = (item: SkillCenterItem) => {
-    const active = isSkillActive(item);
-    return <li className="skill-row" key={item.skill_id}>
-      <div className="skill-title"><strong>{item.name}</strong><Chip>{sourceLabel(item)}</Chip><Chip>{active ? '已啟用' : '已停用'}</Chip>
-        {item.name_conflict && <Chip title="有多個 Skill 解析成相同名稱；在衝突移除前，名稱比對會安全失敗。">名稱衝突</Chip>}
-        {item.trust === 'operator_configured_guidance' && item.scripts_allowed === false && <Chip title="此 Skill 的腳本預設不允許執行。請在其資料夾開啟「允許腳本」。">腳本關閉</Chip>}
-        {item.managed && <button disabled={mutating !== null || !helperReady} onClick={() => { void toggleManaged(item); }} aria-label={`${active ? '停用' : '啟用'} ${item.name}`}>{active ? '停用' : '啟用'}</button>}</div>
-      <p className="skill-meta">{item.description}</p>
-      <small className="skill-rev" title={item.definition_revision}>{item.definition_revision.slice(0, 12)}</small>
+    const active = isSkillActive(item); const open = expandedSkills.has(item.skill_id);
+    return <li className={`skill-item${open ? ' open' : ''}`} key={item.skill_id}>
+      <div className="skill-line">
+        <button className="skill-toggle" aria-expanded={open} aria-label={`${open ? '收合' : '展開'} ${item.name}`} onClick={() => toggleIn(setExpandedSkills, item.skill_id)}>
+          <span className="skill-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          <strong className="skill-name">{item.name}</strong>
+          <Chip>{sourceLabel(item)}</Chip><Chip>{active ? '已啟用' : '已停用'}</Chip>
+          {item.name_conflict && <Chip title="有多個 Skill 解析成相同名稱；在衝突移除前，名稱比對會安全失敗。">名稱衝突</Chip>}
+          {item.trust === 'operator_configured_guidance' && item.scripts_allowed === false && <Chip title="此 Skill 的腳本預設不允許執行。請在其資料夾開啟「允許腳本」。">腳本關閉</Chip>}
+          {!open && <span className="skill-summary">{item.description}</span>}
+        </button>
+        {item.managed && <button disabled={mutating !== null || !helperReady} onClick={() => { void toggleManaged(item); }} aria-label={`${active ? '停用' : '啟用'} ${item.name}`}>{active ? '停用' : '啟用'}</button>}
+      </div>
+      {open && <div className="skill-detail">
+        <p>{item.description}</p>
+        <p className="skill-meta">來源：{sourceLabel(item)}（{item.source_scope}）· ID <code>{item.skill_id}</code></p>
+        <small className="skill-rev" title={item.definition_revision}>{item.definition_revision.slice(0, 12)}</small>
+        <p className="skill-meta">SKILL.md 內容只會在 Skill 被選中使用時由 runtime 讀取，此頁僅顯示 metadata。</p>
+      </div>}
     </li>;
   };
+  const invalidWarning = catalog && (catalog.invalid_count > 0 || catalog.discovery_truncated)
+    ? (catalog.discovery_truncated ? `Skill 探索已達上限；另有 ${catalog.invalid_count} 個無效套件未納入 catalog。` : `有 ${catalog.invalid_count} 個無效 Skill 套件未納入 catalog。`) : null;
 
-  return <>
-    <section className="panel"><div className="panel-heading"><h2>Skills</h2>
-      <div className="skill-actions"><button className="text-button" disabled={skillsLoading || !helperReady} onClick={() => { void loadSkills(); }}>重新整理 ↻</button>{validSource && importButton}</div></div>
-      <p className="panel-note">目前專案可用的重複使用流程。Chadex 只探索與比對 metadata，被選中使用時才讀取 SKILL.md。</p>
-      {!project && <p className="panel-note">請先到「專案」選擇資料夾，才能查看 Skills 與匯入 ZIP。</p>}
-      {skillsError && <div className="notice error" role="alert">{skillsError}</div>}
-      {catalog && (catalog.invalid_count > 0 || catalog.discovery_truncated) && <p className="panel-note">{catalog.discovery_truncated ? `Skill 探索已達上限；另有 ${catalog.invalid_count} 個無效套件未納入 catalog。` : `有 ${catalog.invalid_count} 個無效 Skill 套件未納入 catalog。`}</p>}
-      {skillsLoading && !catalog ? <p className="panel-note">正在探索 Skills…</p>
-        : project && items.length === 0 ? <p className="panel-note">目前沒有可用的 Skill。Project Skill 放在 .agents/skills/&lt;skill&gt;/SKILL.md。</p>
-          : items.length > 0 && <ul className="skill-list">{items.map(skillRow)}</ul>}
+  return <div className="skills-page">
+    <div className="skills-header"><h2>Skills</h2>
+      <div className="skill-actions"><button className="text-button" disabled={skillsLoading || !helperReady} onClick={() => { void loadSkills(); }}>重新整理 ↻</button></div></div>
+    <p className="panel-note">目前專案可用的重複使用流程。Chadex 只探索與比對 metadata，被選中使用時才讀取 SKILL.md。Skills 是流程，不是權限來源；Project Instructions 與 Chadex 的授權邊界仍然有效。</p>
+    {!project && <p className="panel-note">請先到「專案」選擇資料夾，才能查看 Skills 與匯入 ZIP。</p>}
+
+    <section className="panel"><div className="panel-heading"><h2>外部 Skill 來源</h2>
+      <div className="skill-actions">{externalLoading && <span className="spinner" aria-label="載入中" />}<button disabled={!canEdit} onClick={() => { void chooseFolder(); }}>選擇資料夾…</button>{importButton}</div></div>
+      <p className="panel-note">連接你已經在 Codex、Claude Code 或共用 agent 使用的 Skill 資料夾，修改原檔不需要重新匯入。匯入 ZIP 則會複製到 Chadex 自己的儲存區。腳本預設關閉，需逐一開啟；這是 run_skill_resource 的預設政策，不是沙盒：啟用 shell 工具時，ChatGPT 仍可執行指令。</p>
+      {externalError && <div className="notice error" role="alert">{externalError}</div>}
+      {!validSource && !externalLoading && <div className="skill-import-cta"><p>找不到可連接的外部 Skill 資料夾。可用「選擇資料夾…」手動連接，或直接匯入 Skill ZIP。</p></div>}
+      {(sources.length > 0 || extras.length > 0) && <ul className="skill-cards">
+        {sources.map(sourceCard)}
+        {extras.map(({ path, configured }) => <li className="skill-card" key={`extra|${path}`}>
+          <div className="skill-title"><strong>{configured ? '自訂資料夾' : '連結的資料夾'}</strong>
+            {configured && <button className="text-button" disabled={!canEdit} aria-label={`移除 ${displayPath(path)}`} onClick={() => { void setConnected(path, false); }}>移除</button>}</div>
+          <code className="skill-path" title={path}>{displayPath(path)}</code>
+          {toggles(path)}</li>)}
+      </ul>}
       {importing && <form className="skill-import" onSubmit={(event) => { event.preventDefault(); void install(); }} aria-label="匯入 Skill">
-        <h3>安裝 Managed Skill</h3><p className="panel-note">將 immutable Skill ZIP 安裝到本機 Runner store，接著啟用該版本。ZIP 必須位於目前專案資料夾內。</p>
+        <h3>安裝 Managed Skill</h3><p className="panel-note">將 immutable Skill ZIP 安裝到本機 Runner store，接著啟用該版本。可選擇任何位置的 ZIP，安裝時會暫時複製到專案的 .chadex/skill-imports/。</p>
         <label className="field">Skill key<input value={skillKey} onChange={(event) => setSkillKey(event.target.value)} placeholder="my-skill" /></label>
         <div className="skill-archive"><code>{archive || '尚未選擇 ZIP'}</code><button type="button" onClick={() => { void chooseArchive(); }}>選擇 ZIP…</button></div>
         {importError && <div className="notice error" role="alert">{importError}</div>}
@@ -172,21 +202,18 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
           <button className="primary" type="submit" disabled={!validSkillKey(skillKey) || !archive || installing}>安裝並啟用</button></div>
       </form>}
     </section>
-    <section className="panel"><div className="panel-heading"><h2>外部 Skill 來源</h2>
-      <div className="skill-actions">{externalLoading && <span className="spinner" aria-label="載入中" />}<button disabled={!canEdit} onClick={() => { void chooseFolder(); }}>選擇資料夾…</button></div></div>
-      <p className="panel-note">連接你已經在 Codex、Claude Code 或共用 agent 使用的 Skill 資料夾。已連接的資料夾會即時沿用，修改原檔不需要重新匯入。</p>
-      <p className="panel-note">匯入 ZIP 會複製到 Chadex 自己的儲存區，與原檔無關；連接則持續沿用原本的資料夾。</p>
-      <p className="panel-note">腳本預設關閉。這是 run_skill_resource 的預設政策，不是沙盒：啟用 shell 工具時，ChatGPT 仍可執行指令。</p>
-      {externalError && <div className="notice error" role="alert">{externalError}</div>}
-      {!validSource && !externalLoading && <div className="skill-import-cta"><p>找不到可連接的外部 Skill 資料夾。可用「選擇資料夾…」手動連接，或直接匯入 Skill ZIP。</p>{importButton}</div>}
-      {(sources.length > 0 || extras.length > 0) && <ul className="skill-list">
-        {sources.map(sourceRow)}
-        {extras.map(({ path, configured }) => <li className="skill-row" key={`extra|${path}`}>
-          <div className="skill-title"><strong>{configured ? '自訂資料夾' : '連結的資料夾'}</strong><code title={path}>{displayPath(path)}</code>
-            {configured && <button className="text-button" disabled={!canEdit} aria-label={`移除 ${displayPath(path)}`} onClick={() => { void setConnected(path, false); }}>移除</button>}</div>
-          {toggles(path)}</li>)}
-      </ul>}
+
+    <section className="panel"><div className="panel-heading"><h2>Skill 列表{items.length > 0 ? `（${visible.length}/${items.length}）` : ''}</h2></div>
+      {skillsError && <div className="notice error" role="alert">{skillsError}</div>}
+      {invalidWarning && <div className="skill-warning"><button className="text-button" aria-expanded={catalogInvalidOpen} onClick={() => setCatalogInvalidOpen((open) => !open)}>⚠ 有 {catalog?.invalid_count ?? 0} 個無效套件 {catalogInvalidOpen ? '▾' : '▸'}</button>
+        {catalogInvalidOpen && <p className="skill-meta">{invalidWarning}</p>}</div>}
+      {items.length > 0 && <div className="skill-filterbar">
+        <input type="search" aria-label="搜尋 Skill" placeholder="搜尋名稱或描述…" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <div className="skill-segments" role="group" aria-label="篩選">{SKILL_FILTERS.map((entry) => <button key={entry.id} className={filter === entry.id ? 'selected' : ''} aria-pressed={filter === entry.id} onClick={() => setFilter(entry.id)}>{entry.label}</button>)}</div>
+      </div>}
+      {skillsLoading && !catalog ? <p className="panel-note">正在探索 Skills…</p>
+        : project && items.length === 0 ? <p className="panel-note">目前沒有可用的 Skill。Project Skill 放在 .agents/skills/&lt;skill&gt;/SKILL.md。</p>
+          : items.length > 0 && (visible.length === 0 ? <p className="panel-note">沒有符合的 Skill。</p> : <ul className="skill-list">{visible.map(skillRow)}</ul>)}
     </section>
-    <p className="panel-note">Skills 是流程，不是權限來源；Project Instructions 與 Chadex 的授權邊界仍然有效。</p>
-  </>;
+  </div>;
 }

@@ -214,7 +214,7 @@ describe('Skills page', () => {
     fireEvent.click(screen.getByRole('button', { name: '停用 Mine' }));
     await waitFor(() => expect(api.deactivateSkill).toHaveBeenCalledWith('C:\\work\\chadex', managed));
   });
-  it('installs a ZIP through the project-relative archive and surfaces helper errors', async () => {
+  it('installs a ZIP from any location and surfaces helper errors', async () => {
     const api = await openSkills((mock) => { vi.mocked(mock.chooseSkillArchive).mockResolvedValue('skills/pack.zip');
       vi.mocked(mock.installSkill).mockRejectedValue('Chadex bridge: Backend (tool_failure)。請查看診斷並重試。'); });
     fireEvent.click(await screen.findByRole('button', { name: '匯入 Skill（ZIP）…' }));
