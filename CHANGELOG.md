@@ -2,6 +2,17 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.5.0
+
+- Added **External Skill sources**: connect Agents, Claude Code or Codex Skill folders at the Runner level; external scripts are not executable by default and are enabled one source at a time.
+- Added a standalone macOS **Skills** page with a compact list, search and filters, per-Skill enable switch and Remove (with confirmation); Windows reaches Skills UI parity.
+- Skill ZIPs can be imported from any location (staged under `.chadex/skill-imports/` and deleted afterwards), single-top-level-folder ZIPs are flattened automatically, and failures give concrete messages.
+- Added a local admin token (`chadex-desktop-admin`) for Skill and Project Memory management; the tunnel ingress refuses management tools.
+- Prepare the local runtime in the background at launch (on by default) on macOS and Windows, align the prewarmed runtime to the selected project, and speed up connect feedback; baseline in `docs/performance/v050-launch-connect-baseline.md`.
+- Fixed the Project Memory catalog limit, activation replay idempotency, errors swallowed by refresh, and Skills loading around launch.
+- Known limitations: a ChatGPT session with the bootstrap token still has full permissions and ingress filtering is not a permission boundary (tunnel token scoping is a separate task); hidden `$` shares cannot be Skill sources and a few local UNC aliases are not yet blocked; Windows is CI-verified only; removing a Skill affects every project on the local runtime; `credential_push` may log an error at startup (under investigation).
+- Public distribution remains the macOS Apple Silicon DMG; Windows stays an unsigned CI candidate. See `docs/releases/0.5.0.md`.
+
 ## 0.4.1
 
 - Added **Chadex Global Instructions** as app-managed behavior preferences shared across projects, editable even without an active project; repository `AGENTS.md` files remain repository-native and are no longer duplicated as a Chadex-managed project-instructions UI.

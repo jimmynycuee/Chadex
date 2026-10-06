@@ -8,7 +8,7 @@
 
 `macOS 14+` · `Apple Silicon` · `Free & Open Source`
 
-**Latest stable release: v0.4.1** — Chadex now separates app-managed Global Instructions from repository-native `AGENTS.md`, refines Computer Use with persistent **Always allow** and explicit Stop/Resume semantics, and closes the automatable Windows W5 release-engineering track while keeping public distribution macOS-only.
+**Latest stable release: v0.5.0** — Chadex adds External Skill sources (Agents, Claude Code and Codex folders), a standalone Skills page with search, enable switches and removal, easier Skill ZIP import, a local admin token that keeps Skill/Memory management off the tunnel, and background launch prewarm for faster connection, while keeping public distribution macOS-only.
 
 > On the Releases page, expand **Assets** and download the latest `Chadex-...-macos-arm64.dmg`.
 
@@ -116,6 +116,7 @@ Release profile、簽署、DMG、GitHub Actions 與 distribution boundary 的完
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime、project isolation、execution lifecycle 與安全邊界
 - [`docs/BRIDGE_PROTOCOL.md`](docs/BRIDGE_PROTOCOL.md) — Swift ↔ Rust bridge protocol
 - [`docs/RELEASE.md`](docs/RELEASE.md) — release gate、簽署、DMG 與 GitHub 發佈流程
+- [`docs/releases/0.5.0.md`](docs/releases/0.5.0.md) — External Skill sources、Skills 頁、本機 admin token、啟動預熱與已知限制
 - [`docs/releases/0.4.1.md`](docs/releases/0.4.1.md) — Windows W5 自動化 release-readiness 收斂、歷史版本升級與卸載驗證邊界
 - [`docs/releases/0.4.0.md`](docs/releases/0.4.0.md) — Agent Settings、Skills、Project Memory、Computer Use 與離線設定
 - [`docs/releases/0.3.3.md`](docs/releases/0.3.3.md) — ChatGPT 檔案匯入橋接、自動更新偵測與 Windows W5 source 狀態
