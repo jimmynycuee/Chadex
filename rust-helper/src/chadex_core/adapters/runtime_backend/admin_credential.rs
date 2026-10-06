@@ -188,16 +188,34 @@ impl AdminCredentialStore {
 async fn read_admin_token(path: &Path) -> Option<Zeroizing<String>> {
     // A token file readable by group/others may already have been read by
     // someone else: treat it as unusable so it is replaced (and revoked).
+    // On filesystems that ignore POSIX modes (exFAT, noperm SMB) the mode can
+    // never be tightened, so replacing it would only re-mint on every call.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let metadata = tokio::fs::symlink_metadata(path).await.ok()?;
-        if metadata.permissions().mode() & 0o077 != 0 {
+        if metadata.permissions().mode() & 0o077 != 0 && modes_are_enforced(path).await {
             return None;
         }
     }
     let token = read_probe_token(path).await?;
     (token.starts_with(ADMIN_TOKEN_PREFIX) && token.is_ascii()).then_some(token)
+}
+
+/// Tries to tighten the file to 0600 and reports whether the filesystem kept it.
+#[cfg(unix)]
+async fn modes_are_enforced(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    if tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .await
+        .is_err()
+    {
+        return true;
+    }
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata.permissions().mode() & 0o077 == 0,
+        Err(_) => true,
+    }
 }
 
 async fn mint_admin_token(
