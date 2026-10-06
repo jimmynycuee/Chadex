@@ -111,28 +111,63 @@ fn is_reserved_device_name(component: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Comparisons: case-insensitive on Windows, byte-exact elsewhere.
+// Comparisons: Windows identity (case-insensitive, verbatim prefix ignored),
+// byte-exact elsewhere.
 // ---------------------------------------------------------------------------
 
-fn components_match(a: std::path::Component<'_>, b: std::path::Component<'_>, fold: bool) -> bool {
-    a == b
-        || (fold
-            && a.as_os_str().to_string_lossy().to_lowercase()
-                == b.as_os_str().to_string_lossy().to_lowercase())
-}
-
-fn strip_prefix_with(path: &Path, base: &Path, fold: bool) -> Option<PathBuf> {
-    let mut remaining = path.components();
-    for expected in base.components() {
-        if !components_match(remaining.next()?, expected, fold) {
-            return None;
-        }
+/// Windows path identity as lowercase components: `\\?\C:\a`, `C:\a` and
+/// `c:/A` are the same; `\\?\UNC\s\sh` and `\\s\sh` are the same and start
+/// with a `\\` marker so a UNC share never looks like a local path. This is
+/// textual (like the Runner's `normalize_path_identity`) so it also works for
+/// verbatim paths that `simplify_verbatim` had to leave alone, and it can be
+/// tested on any platform.
+fn windows_identity_components(path: &Path) -> Vec<OsString> {
+    let text = path.to_string_lossy().replace('/', "\\");
+    let (unc, rest) = if let Some(rest) = strip_prefix_ignore_case(&text, r"\\?\UNC\") {
+        (true, rest)
+    } else if let Some(rest) = strip_prefix_ignore_case(&text, r"\\?\") {
+        (false, rest)
+    } else if let Some(rest) = text.strip_prefix(r"\\") {
+        (true, rest)
+    } else {
+        (false, text.as_str())
+    };
+    let mut components = Vec::new();
+    if unc {
+        components.push(OsString::from(r"\\"));
     }
-    Some(remaining.as_path().to_path_buf())
+    components.extend(
+        rest.split('\\')
+            .filter(|part| !part.is_empty() && *part != ".")
+            .map(|part| OsString::from(part.to_lowercase())),
+    );
+    components
 }
 
-/// Component-wise `strip_prefix`.
-pub(super) fn strip_prefix(path: &Path, base: &Path) -> Option<PathBuf> {
+fn strip_prefix_ignore_case<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    text.get(..prefix.len())
+        .filter(|head| head.eq_ignore_ascii_case(prefix))
+        .map(|_| &text[prefix.len()..])
+}
+
+fn identity_components(path: &Path, windows: bool) -> Vec<OsString> {
+    if windows {
+        windows_identity_components(path)
+    } else {
+        path.components()
+            .map(|component| component.as_os_str().to_owned())
+            .collect()
+    }
+}
+
+fn strip_prefix_with(path: &Path, base: &Path, windows: bool) -> Option<Vec<OsString>> {
+    let path = identity_components(path, windows);
+    let base = identity_components(base, windows);
+    path.starts_with(&base).then(|| path[base.len()..].to_vec())
+}
+
+/// Component-wise `strip_prefix`; the remaining components.
+pub(super) fn strip_prefix(path: &Path, base: &Path) -> Option<Vec<OsString>> {
     strip_prefix_with(path, base, cfg!(windows))
 }
 
@@ -143,11 +178,12 @@ pub(super) fn starts_with(path: &Path, base: &Path) -> bool {
 
 /// Component-wise equality.
 pub(super) fn same_path(a: &Path, b: &Path) -> bool {
-    strip_prefix(a, b).is_some_and(|rest| rest.as_os_str().is_empty())
+    strip_prefix(a, b).is_some_and(|rest| rest.is_empty())
 }
 
 /// Spelling equality: like `a.as_os_str() == b.as_os_str()` on Unix; on
-/// Windows the same text ignoring case.
+/// Windows the same text ignoring case (the verbatim prefix is part of the
+/// spelling).
 pub(super) fn same_text(a: &Path, b: &Path) -> bool {
     same_text_with(a, b, cfg!(windows))
 }
@@ -155,6 +191,56 @@ pub(super) fn same_text(a: &Path, b: &Path) -> bool {
 fn same_text_with(a: &Path, b: &Path, fold: bool) -> bool {
     a.as_os_str() == b.as_os_str()
         || (fold && a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase())
+}
+
+// ---------------------------------------------------------------------------
+// Windows aliases of local disks
+// ---------------------------------------------------------------------------
+
+/// True when `path` can name a local directory through a spelling the system
+/// tree checks cannot classify: a UNC path to this machine (`\\localhost\C$`,
+/// `\\127.0.0.1\c$`, `\\<COMPUTERNAME>\...`, IPv6 literal servers), any
+/// administrative share (`C$`, `ADMIN$`), or a device/volume namespace
+/// (`\\.\`, `\\?\Volume{...}`, `\\?\GLOBALROOT`). Such roots are refused
+/// outright rather than resolved. Always false on Unix.
+pub(super) fn is_local_alias_or_device_path(path: &Path) -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+    let computer = std::env::var("COMPUTERNAME").ok();
+    local_alias_or_device_text(&path.to_string_lossy(), computer.as_deref())
+}
+
+fn local_alias_or_device_text(text: &str, computer_name: Option<&str>) -> bool {
+    let text = text.replace('/', "\\");
+    let after_unc_marker = strip_prefix_ignore_case(&text, r"\\?\UNC\");
+    if after_unc_marker.is_none() {
+        let is_drive = |rest: &str| {
+            let bytes = rest.as_bytes();
+            bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+        };
+        if let Some(rest) = strip_prefix_ignore_case(&text, r"\\?\") {
+            // `\\?\C:\...` is an ordinary local path; every other verbatim
+            // namespace is a device or volume spelling.
+            return !is_drive(rest);
+        }
+        if text.starts_with(r"\\.\") {
+            return true;
+        }
+    }
+    let Some(rest) = after_unc_marker.or_else(|| text.strip_prefix(r"\\")) else {
+        return false;
+    };
+    let mut parts = rest.split('\\');
+    let server = parts.next().unwrap_or("").to_lowercase();
+    let share = parts.next().unwrap_or("");
+    server.is_empty()
+        || matches!(server.as_str(), "localhost" | "127.0.0.1" | "::1" | "." | "?")
+        || server.contains(':')
+        || server.ends_with(".ipv6-literal.net")
+        || server.starts_with("127.")
+        || computer_name.is_some_and(|name| !name.is_empty() && server == name.to_lowercase())
+        || share.ends_with('$')
 }
 
 // ---------------------------------------------------------------------------
@@ -294,22 +380,87 @@ mod tests {
         assert!(canonicalize(&dir.path().join("missing")).is_err());
     }
 
+    fn os(parts: &[&str]) -> Vec<OsString> {
+        parts.iter().map(OsString::from).collect()
+    }
+
     #[test]
-    fn folded_comparisons_ignore_case_only_when_asked() {
+    fn windows_identity_ignores_case_separators_and_verbatim_prefix() {
+        let rest = |path: &str, base: &str| {
+            strip_prefix_with(Path::new(path), Path::new(base), true)
+        };
+        assert_eq!(
+            rest(r"\\?\C:\ProgramData\deep\x", r"C:\programdata"),
+            Some(os(&["deep", "x"]))
+        );
+        assert_eq!(rest(r"c:/Users/Me", r"\\?\C:\users\me"), Some(os(&[])));
+        assert_eq!(
+            rest(r"\\?\UNC\Srv\Share\a", r"\\srv\share"),
+            Some(os(&["a"]))
+        );
+        assert_eq!(rest(r"\\srv\share\a", r"\\?\unc\srv\share"), Some(os(&["a"])));
+        // A UNC share is never a local path with the same-looking components.
+        assert_eq!(rest(r"\\srv\share\a", r"srv\share"), None);
+        assert_eq!(rest(r"C:\ProgramDataX", r"C:\ProgramData"), None);
+        assert_eq!(rest(r"C:\Users", r"C:\Users\me"), None);
+        assert_eq!(rest(r"D:\ProgramData", r"C:\ProgramData"), None);
+    }
+
+    #[test]
+    fn unix_identity_is_case_sensitive_and_prefix_blind() {
         let upper = Path::new("/Users/Me/Skills");
         let lower = Path::new("/users/me/skills");
         assert_eq!(strip_prefix_with(upper, lower, false), None);
         assert_eq!(
-            strip_prefix_with(Path::new("/Users/Me/Skills/a"), Path::new("/users/me"), true),
-            Some(PathBuf::from("Skills/a"))
-        );
-        assert_eq!(
-            strip_prefix_with(Path::new("/Users/Me"), Path::new("/users/me/skills"), true),
-            None
+            strip_prefix_with(Path::new("/Users/Me/Skills/a"), Path::new("/Users/Me"), false),
+            Some(os(&["Skills", "a"]))
         );
         assert!(!same_text_with(upper, lower, false));
         assert!(same_text_with(upper, lower, true));
         assert!(!same_text_with(Path::new("/a/b"), Path::new("/a/b/"), true));
+    }
+
+    #[test]
+    fn local_aliases_and_device_namespaces_are_detected() {
+        let alias = |text: &str| local_alias_or_device_text(text, Some("BUILD-PC"));
+        for text in [
+            r"\\localhost\C$\Windows\System32",
+            r"\\127.0.0.1\c$\Users\me\.ssh",
+            r"\\?\UNC\localhost\c$\x",
+            r"\\LOCALHOST\share\x",
+            r"\\build-pc\share\x",
+            r"\\BUILD-PC\Users\x",
+            r"\\fileserver\ADMIN$\x",
+            r"\\fileserver\C$",
+            r"//localhost/c$/x",
+            r"\\::1\c$\x",
+            r"\\fe80--1.ipv6-literal.net\share",
+            r"\\.\C:\Windows",
+            r"\\?\Volume{01234567-89ab-cdef-0123-456789abcdef}\x",
+            r"\\?\GLOBALROOT\Device\x",
+            r"\\?\UNC\.\share",
+            r"\\",
+        ] {
+            assert!(alias(text), "{text}");
+        }
+        for text in [
+            r"C:\Users\me",
+            r"\\?\C:\Users\me",
+            r"\\fileserver\team\skills",
+            r"\\?\UNC\fileserver\team\skills",
+            r"/unix/path",
+        ] {
+            assert!(!alias(text), "{text}");
+        }
+        assert!(!local_alias_or_device_text(r"\\fileserver\team", None));
+        assert!(!local_alias_or_device_text(r"\\fileserver\team", Some("")));
+    }
+
+    #[test]
+    fn alias_check_is_inert_on_unix() {
+        if !cfg!(windows) {
+            assert!(!is_local_alias_or_device_path(Path::new(r"\\localhost\C$\x")));
+        }
     }
 
     #[test]
@@ -321,7 +472,7 @@ mod tests {
         assert!(!starts_with(Path::new("/tmp"), a));
         assert_eq!(
             strip_prefix(Path::new("/tmp/skills/x/y"), a),
-            Some(PathBuf::from("x/y"))
+            Some(os(&["x", "y"]))
         );
         if !cfg!(windows) {
             assert!(!same_path(a, Path::new("/TMP/skills")));

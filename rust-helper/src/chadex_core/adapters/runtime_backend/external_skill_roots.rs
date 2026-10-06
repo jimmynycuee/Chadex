@@ -402,6 +402,13 @@ fn revision_conflict(current: &str) -> ChadexError {
 }
 
 fn config_error(code: &'static str) -> ChadexError {
+    if code == "runner_config_path_is_link" {
+        return ChadexError::new(
+            code,
+            "Chadex will not write runner.toml because its folder is reached through a link",
+            "Use a runner.toml location that is not behind a junction or symbolic link, then retry.",
+        );
+    }
     ChadexError::new(
         code,
         "Chadex could not read or update the local Runner configuration",

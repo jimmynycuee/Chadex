@@ -170,7 +170,10 @@ fn windows_runner_config_is_not_written_through_a_junction_directory() {
     // runner.toml cannot be read through the link, so nothing may be written.
     fs::write(target.join("runner.toml"), "a = 1\n").unwrap();
     let before = fs::read_dir(&target).unwrap().count();
-    assert!(persist_if_unchanged(&config, "a = 1\n", "a = 2\n").is_err());
+    assert_eq!(
+        persist_if_unchanged(&config, "a = 1\n", "a = 2\n"),
+        Err("runner_config_path_is_link")
+    );
     assert_eq!(fs::read_to_string(target.join("runner.toml")).unwrap(), "a = 1\n");
     assert_eq!(fs::read_dir(&target).unwrap().count(), before);
 }

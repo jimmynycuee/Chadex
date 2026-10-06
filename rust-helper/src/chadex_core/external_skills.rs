@@ -244,12 +244,15 @@ fn bounded_root_entries(root: &Path) -> Result<Vec<(String, bool)>, &'static str
         }
         let entry = entry.map_err(|_| "unavailable")?;
         let file_type = entry.file_type().map_err(|_| "unavailable")?;
-        let is_link = file_type.is_symlink() || entry_is_reparse_point(&entry);
-        if !file_type.is_dir() && !is_link {
+        // Same filter as the Runner's scanner. On Windows `is_symlink` covers
+        // symlinked directories and junctions (name-surrogate reparse tags);
+        // other reparse points (e.g. OneDrive placeholders) stay plain
+        // entries and are rejected in `inspect_package`.
+        if !file_type.is_dir() && !file_type.is_symlink() {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        candidates.push((name, is_link));
+        candidates.push((name, file_type.is_symlink()));
     }
     candidates.sort();
     Ok(candidates)
@@ -276,6 +279,15 @@ fn inspect_package(root: &Path, (package_name, is_link): &(String, bool)) -> Ext
         return package;
     }
     let entry_path = root.join(package_name);
+    if !*is_link
+        && !fs::symlink_metadata(&entry_path)
+            .is_ok_and(|metadata| metadata.is_dir() && !metadata_is_link_like(&metadata))
+    {
+        // Mirrors the Runner: a package directory must not be any kind of link
+        // (on Windows that includes non-surrogate reparse points).
+        package.invalid_reason = Some("invalid_skill_package");
+        return package;
+    }
     let package_root = match path_form::canonicalize(&entry_path) {
         Ok(path) if path.is_dir() => path,
         _ => {
@@ -419,23 +431,6 @@ fn metadata_is_link_like(metadata: &fs::Metadata) -> bool {
             return true;
         }
     }
-    false
-}
-
-/// `FileType::is_symlink` is the Unix link check; on Windows it depends on the
-/// reparse tag, so also treat any reparse point (junction, symlinked
-/// directory) as a link, exactly as `metadata_is_link_like` does for
-/// `symlink_metadata`. `DirEntry::metadata` does not follow links.
-#[cfg(windows)]
-fn entry_is_reparse_point(entry: &fs::DirEntry) -> bool {
-    entry
-        .metadata()
-        .map(|metadata| metadata_is_link_like(&metadata))
-        .unwrap_or(false)
-}
-
-#[cfg(not(windows))]
-fn entry_is_reparse_point(_entry: &fs::DirEntry) -> bool {
     false
 }
 
@@ -583,6 +578,14 @@ pub(crate) fn validate_requested_roots(
 ) -> Result<(), RootRejection> {
     let roots = normalize_requested_roots(roots);
     let script_roots = normalize_requested_roots(script_roots);
+    // Spellings of local disks the system-tree checks cannot classify (UNC
+    // aliases such as `\\localhost\C$`, admin shares, device namespaces).
+    if let Some(root) = roots
+        .iter()
+        .find(|root| path_form::is_local_alias_or_device_path(root))
+    {
+        return Err(RootRejection::new("skill_root_sensitive", Some(root)));
+    }
     chadex_runtime_runner_config::skills::validate_configured_skill_roots(&roots, &script_roots)
         .map_err(|_| RootRejection::new("skill_root_invalid", None))?;
     let home = path_form::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
@@ -618,7 +621,7 @@ pub(crate) fn validate_requested_roots(
             return Err(RootRejection::new("skill_root_sensitive", Some(root)));
         }
         let in_credential_store = path_form::strip_prefix(&canonical, &home)
-            .and_then(|relative| relative.components().next().map(|first| first.as_os_str().to_owned()))
+            .and_then(|relative| relative.into_iter().next())
             .is_some_and(|first| {
                 HOME_CREDENTIAL_DIRS
                     .iter()
@@ -683,12 +686,11 @@ pub(crate) fn persist_if_unchanged(
     if read_runner_config(path)? != expected {
         return Err("runner_config_concurrent_change");
     }
-    write_atomic(&runner_config_backup_path(path), expected.as_bytes())
-        .map_err(|_| "runner_config_write_failed")?;
+    write_atomic(&runner_config_backup_path(path), expected.as_bytes()).map_err(write_error_code)?;
     if read_runner_config(path)? != expected {
         return Err("runner_config_concurrent_change");
     }
-    write_atomic(path, candidate.as_bytes()).map_err(|_| "runner_config_write_failed")
+    write_atomic(path, candidate.as_bytes()).map_err(write_error_code)
 }
 
 /// Put `original` back if runner.toml still holds what Chadex wrote. Returns
@@ -701,8 +703,29 @@ pub(crate) fn restore_if_unchanged(
     if read_runner_config(path)? != written {
         return Ok(false);
     }
-    write_atomic(path, original.as_bytes()).map_err(|_| "runner_config_write_failed")?;
+    write_atomic(path, original.as_bytes()).map_err(write_error_code)?;
     Ok(true)
+}
+
+/// Marker for a refused write because runner.toml's directory is reached
+/// through a link (Windows reparse point).
+#[derive(Debug)]
+struct PathIsLink(String);
+
+impl std::fmt::Display for PathIsLink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for PathIsLink {}
+
+fn write_error_code(error: std::io::Error) -> &'static str {
+    if error.get_ref().is_some_and(|inner| inner.is::<PathIsLink>()) {
+        "runner_config_path_is_link"
+    } else {
+        "runner_config_write_failed"
+    }
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -747,8 +770,16 @@ fn write_new_private_temp(temp: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// the same protected current-user/SYSTEM DACL the tunnel state files get.
 #[cfg(windows)]
 fn write_new_private_temp(temp: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    crate::chadex_core::tunnel::windows_support::write_new_private_file(temp, bytes)
-        .map_err(std::io::Error::other)
+    crate::chadex_core::tunnel::windows_support::write_new_private_file(temp, bytes).map_err(
+        |message| {
+            // `reject_reparse_path` / `file_information` refuse links by name.
+            if message.contains("reparse point") {
+                std::io::Error::other(PathIsLink(message))
+            } else {
+                std::io::Error::other(message)
+            }
+        },
+    )
 }
 
 #[cfg(test)]
@@ -786,39 +817,46 @@ mod tests {
         canon(path).to_string_lossy().into_owned()
     }
 
-    fn symlink_dir(link: &Path, target: &Path) -> bool {
+    type LinkResult = Result<(), String>;
+
+    fn symlink_dir(link: &Path, target: &Path) -> LinkResult {
         #[cfg(unix)]
         let result = std::os::unix::fs::symlink(target, link);
         #[cfg(windows)]
         let result = std::os::windows::fs::symlink_dir(target, link);
-        result.is_ok()
+        result.map_err(|error| format!("symlink {link:?} -> {target:?}: {error}"))
     }
 
     /// Junctions need no privilege; `mklink /J` requires an existing target.
+    /// cmd treats `/` as a switch, so both paths are passed with backslashes.
     #[cfg(windows)]
-    fn junction_dir(link: &Path, target: &Path) -> bool {
-        std::process::Command::new("cmd.exe")
+    fn junction_dir(link: &Path, target: &Path) -> LinkResult {
+        let backslashed = |path: &Path| path.to_string_lossy().replace('/', "\\");
+        let output = std::process::Command::new("cmd.exe")
             .args(["/d", "/c", "mklink", "/J"])
-            .arg(link)
-            .arg(target)
+            .arg(backslashed(link))
+            .arg(backslashed(target))
             .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
+            .map_err(|error| format!("could not run cmd.exe: {error}"))?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "mklink /J {link:?} {target:?} failed: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ))
+        }
     }
 
     /// Symlink where possible, else (Windows without symlink privilege) a junction.
-    fn any_dir_link(link: &Path, target: &Path) -> bool {
-        if symlink_dir(link, target) {
-            return true;
-        }
+    fn any_dir_link(link: &Path, target: &Path) -> LinkResult {
+        let symlink = symlink_dir(link, target);
         #[cfg(windows)]
-        {
-            junction_dir(link, target)
+        if symlink.is_err() {
+            return junction_dir(link, target);
         }
-        #[cfg(not(windows))]
-        {
-            false
-        }
+        symlink
     }
 
     /// Windows symlink creation needs a privilege (or Developer Mode).
@@ -826,7 +864,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("target");
         fs::create_dir(&target).unwrap();
-        let available = symlink_dir(&dir.path().join("link"), &target);
+        let available = symlink_dir(&dir.path().join("link"), &target).is_ok();
         if !available {
             eprintln!("skipping: directory symlinks are not permitted here");
         }
@@ -857,7 +895,7 @@ mod tests {
     #[test]
     fn counts_valid_invalid_and_script_packages() {
         let home = tempfile::tempdir().unwrap();
-        let agents = home.path().join(".agents/skills");
+        let agents = home.path().join(".agents").join("skills");
         write_skill(&agents, "alpha", "alpha", true);
         write_skill(&agents, "beta", "beta", false);
         fs::create_dir_all(agents.join("empty")).unwrap();
@@ -895,7 +933,7 @@ mod tests {
     #[test]
     fn metadata_only_no_skill_body_in_output() {
         let home = tempfile::tempdir().unwrap();
-        write_skill(&home.path().join(".agents/skills"), "alpha", "alpha", false);
+        write_skill(&home.path().join(".agents").join("skills"), "alpha", "alpha", false);
         let discovery = discover_external_skill_sources(&env_for(home.path()));
         let json = serde_json::to_string(&discovery).unwrap();
         assert!(json.contains("\"alpha skill\""));
@@ -906,7 +944,7 @@ mod tests {
     #[test]
     fn oversized_definition_is_invalid() {
         let home = tempfile::tempdir().unwrap();
-        let agents = home.path().join(".agents/skills");
+        let agents = home.path().join(".agents").join("skills");
         fs::create_dir_all(agents.join("huge")).unwrap();
         let mut text = String::from("---\nname: huge\ndescription: huge\n---\n");
         text.push_str(&"x".repeat(MAX_SKILL_DEFINITION_BYTES));
@@ -920,7 +958,7 @@ mod tests {
     #[test]
     fn root_scan_limit_marks_source_truncated() {
         let home = tempfile::tempdir().unwrap();
-        let agents = home.path().join(".agents/skills");
+        let agents = home.path().join(".agents").join("skills");
         fs::create_dir_all(&agents).unwrap();
         for index in 0..=MAX_ROOT_SCAN_ENTRIES {
             fs::write(agents.join(format!("f{index}")), "").unwrap();
@@ -935,7 +973,7 @@ mod tests {
     #[test]
     fn package_limit_marks_source_truncated() {
         let home = tempfile::tempdir().unwrap();
-        let agents = home.path().join(".agents/skills");
+        let agents = home.path().join(".agents").join("skills");
         for index in 0..=MAX_PACKAGES_PER_ROOT {
             fs::create_dir_all(agents.join(format!("p{index:04}"))).unwrap();
         }
@@ -966,15 +1004,15 @@ mod tests {
         );
     }
 
-    fn symlink_packages_resolve_to_real_root(link: fn(&Path, &Path) -> bool) {
+    fn symlink_packages_resolve_to_real_root(link: fn(&Path, &Path) -> LinkResult) {
         let home = tempfile::tempdir().unwrap();
-        let agents = home.path().join(".agents/skills");
-        let claude = home.path().join(".claude/skills");
+        let agents = home.path().join(".agents").join("skills");
+        let claude = home.path().join(".claude").join("skills");
         write_skill(&agents, "alpha", "alpha", true);
         fs::create_dir_all(&claude).unwrap();
-        assert!(link(&claude.join("alpha"), &agents.join("alpha")));
+        link(&claude.join("alpha"), &agents.join("alpha")).unwrap();
         // A dangling link can only be made with real symlinks.
-        let dangling = link(&claude.join("dangling"), &home.path().join("nowhere"));
+        let dangling = link(&claude.join("dangling"), &home.path().join("nowhere")).is_ok();
 
         let discovery = discover_external_skill_sources(&env_for(home.path()));
         let claude_source = source(&discovery, "claude");
@@ -1004,24 +1042,24 @@ mod tests {
         assert_eq!(discovery.recommended_roots, vec![agents_canonical]);
     }
 
-    fn link_only_source_recommends_target_root(link: fn(&Path, &Path) -> bool) {
+    fn link_only_source_recommends_target_root(link: fn(&Path, &Path) -> LinkResult) {
         let home = tempfile::tempdir().unwrap();
-        let store = home.path().join("dev/skill-store");
-        let claude = home.path().join(".claude/skills");
+        let store = home.path().join("dev").join("skill-store");
+        let claude = home.path().join(".claude").join("skills");
         write_skill(&store, "gamma", "gamma", false);
         fs::create_dir_all(&claude).unwrap();
-        assert!(link(&claude.join("gamma"), &store.join("gamma")));
+        link(&claude.join("gamma"), &store.join("gamma")).unwrap();
         let discovery = discover_external_skill_sources(&env_for(home.path()));
         assert_eq!(source(&discovery, "claude").symlink_count, 1);
         assert_eq!(discovery.recommended_roots, vec![canon_text(&store)]);
     }
 
-    fn linked_root_reports_canonical_path_and_duplicates_scenario(link: fn(&Path, &Path) -> bool) {
+    fn linked_root_reports_canonical_path_and_duplicates_scenario(link: fn(&Path, &Path) -> LinkResult) {
         let home = tempfile::tempdir().unwrap();
-        let agents = home.path().join(".agents/skills");
+        let agents = home.path().join(".agents").join("skills");
         write_skill(&agents, "alpha", "alpha", false);
         fs::create_dir_all(home.path().join(".codex")).unwrap();
-        assert!(link(&home.path().join(".codex/skills"), &agents));
+        link(&home.path().join(".codex").join("skills"), &agents).unwrap();
         let discovery = discover_external_skill_sources(&env_for(home.path()));
         let codex = source(&discovery, "codex");
         assert!(codex.root_is_link);
@@ -1078,8 +1116,8 @@ mod tests {
     #[test]
     fn same_name_in_different_packages_is_a_conflict() {
         let home = tempfile::tempdir().unwrap();
-        write_skill(&home.path().join(".agents/skills"), "one", "Review", false);
-        write_skill(&home.path().join(".codex/skills"), "two", "review", false);
+        write_skill(&home.path().join(".agents").join("skills"), "one", "Review", false);
+        write_skill(&home.path().join(".codex").join("skills"), "two", "review", false);
         let discovery = discover_external_skill_sources(&env_for(home.path()));
         assert!(source(&discovery, "agents").packages[0].name_conflict);
         assert!(source(&discovery, "codex").packages[0].name_conflict);
@@ -1208,8 +1246,12 @@ mod tests {
         let ssh_skills = home.join(".ssh").join("skills");
         fs::create_dir_all(&ssh_skills).unwrap();
         let linked = home.join("linked");
-        let have_link = any_dir_link(&linked, &skills);
-        assert!(have_link || !cfg!(unix), "symlink creation must work on Unix");
+        let link_result = any_dir_link(&linked, &skills);
+        let have_link = link_result.is_ok();
+        assert!(
+            have_link || !cfg!(unix),
+            "symlink creation must work on Unix: {link_result:?}"
+        );
         let fs_root = home.ancestors().last().unwrap().to_path_buf();
         let deny: Vec<&str> = if cfg!(windows) {
             Vec::new()
@@ -1322,6 +1364,86 @@ mod tests {
             if let Some(program_data) = std::env::var_os("ProgramData") {
                 assert_eq!(check(canon(Path::new(&program_data))), Err("skill_root_sensitive"));
             }
+        }
+
+        #[test]
+        fn local_unc_aliases_and_admin_shares_are_refused() {
+            let denylist = system_skill_root_denylist();
+            let computer = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "NO-SUCH-PC".into());
+            let mut aliases = vec![
+                r"\\localhost\C$\Windows\System32".to_string(),
+                r"\\127.0.0.1\c$\Users\me\.ssh".to_string(),
+                r"\\?\UNC\localhost\c$\Windows".to_string(),
+                r"\\?\UNC\127.0.0.1\share\x".to_string(),
+                r"\\fileserver\ADMIN$\x".to_string(),
+                format!(r"\\{computer}\C$\Windows"),
+                r"\\.\C:\Windows".to_string(),
+                r"\\?\GLOBALROOT\Device\x".to_string(),
+            ];
+            aliases.push(aliases[0].to_lowercase());
+            for alias in aliases {
+                assert_eq!(
+                    validate_requested_roots(
+                        &[PathBuf::from(&alias)],
+                        &[],
+                        Path::new(r"C:\no-home"),
+                        &denylist
+                    )
+                    .map_err(|error| error.code),
+                    Err("skill_root_sensitive"),
+                    "{alias}"
+                );
+            }
+        }
+
+        /// Roots of 248+ UTF-16 units keep their `\\?\` spelling; the system,
+        /// home and credential checks must still see through the prefix.
+        #[test]
+        fn long_verbatim_roots_cannot_bypass_system_and_credential_checks() {
+            let base = tempfile::tempdir().unwrap();
+            let base_root = canon(base.path());
+            let deep = |parent: &Path| {
+                let path = parent.join("a".repeat(110)).join("b".repeat(110));
+                fs::create_dir_all(&path).unwrap();
+                path
+            };
+            let denied_tree = base_root.join("denied");
+            let denied_deep = deep(&denied_tree);
+            let canonical = path_form::canonicalize(&denied_deep).unwrap();
+            assert!(
+                canonical.to_string_lossy().starts_with(r"\\?\"),
+                "fixture must be long enough to stay verbatim: {canonical:?}"
+            );
+            let denylist = vec![denied_tree.to_string_lossy().into_owned()];
+            assert_eq!(
+                validate_requested_roots(
+                    &[canonical.clone()],
+                    &[],
+                    &base_root.join("home"),
+                    &denylist
+                )
+                .map_err(|error| error.code),
+                Err("skill_root_sensitive")
+            );
+
+            let home = base_root.join("home");
+            let ssh_deep = deep(&home.join(".ssh"));
+            let ssh_canonical = path_form::canonicalize(&ssh_deep).unwrap();
+            assert!(ssh_canonical.to_string_lossy().starts_with(r"\\?\"));
+            assert_eq!(
+                validate_requested_roots(&[ssh_canonical], &[], &home, &denylist)
+                    .map_err(|error| error.code),
+                Err("skill_root_sensitive")
+            );
+
+            // A long root elsewhere is fine and is stored as given.
+            let fine = deep(&base_root.join("fine"));
+            let fine_canonical = path_form::canonicalize(&fine).unwrap();
+            assert_eq!(
+                validate_requested_roots(&[fine_canonical], &[], &home, &denylist)
+                    .map_err(|error| error.code),
+                Ok(())
+            );
         }
 
         #[test]

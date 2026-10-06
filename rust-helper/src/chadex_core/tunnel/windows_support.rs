@@ -53,6 +53,10 @@ pub(crate) fn write_new_private_file(path: &Path, content: &[u8]) -> Result<(), 
         .write(true)
         .create_new(true)
         .access_mode(GENERIC_WRITE | READ_CONTROL | WRITE_DAC)
+        // Exclusive until the handle drops: nobody else can open the file
+        // while it still carries the inherited ACL, before the protected DACL
+        // below is applied.
+        .share_mode(0)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
         .open(path)
         .map_err(|error| format!("refused to overwrite existing private Windows state: {error}"))?;
