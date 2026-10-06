@@ -18,6 +18,19 @@ describe('skills logic', () => {
     expect(externalSkillErrorMessage('x (runner_config_path_is_link)')).toContain('連結');
     expect(externalSkillErrorMessage('plain failure')).toBe('plain failure');
   });
+  it('explains why a Skill ZIP could not be installed', () => {
+    // A ZIP that wraps the package in one folder (english-tv-coach/SKILL.md) is refused with skill_definition_missing.
+    const wrapped = 'Chadex could not install the Skill (skill_definition_missing)。請查看診斷並重試。';
+    expect(externalSkillErrorMessage(wrapped)).toContain('ZIP 最上層找不到 SKILL.md');
+    expect(externalSkillErrorMessage('x (skill_frontmatter_missing)')).toContain('frontmatter');
+    expect(externalSkillErrorMessage('x (skill_install_archive_malformed)')).toContain('不是有效的 ZIP');
+    expect(externalSkillErrorMessage('x (skill_install_total_too_large)')).toContain('上限');
+    expect(externalSkillErrorMessage('x (skill_install_artifact_changed)')).toContain('重新選擇 ZIP');
+    expect(externalSkillErrorMessage('x (skill_key_invalid)')).toContain('Skill 代號');
+    // An unmapped code keeps the bridge text, which already carries the code.
+    expect(externalSkillErrorMessage('Chadex could not install the Skill (skill_future_failure)。'))
+      .toContain('skill_future_failure');
+  });
   it('strips the extended-length prefix for display only', () => {
     expect(displayPath('\\\\?\\C:\\a')).toBe('C:\\a');
     expect(displayPath('\\\\?\\UNC\\srv\\s')).toBe('\\\\srv\\s');

@@ -3647,6 +3647,27 @@ mod tests {
         let malformed = zip_bytes(&[("SKILL.md", b"not-frontmatter", None)]);
         assert!(prepare_archive(&malformed, sha256_hex(&malformed)).is_err());
 
+        // A downloaded package that wraps everything in one top-level folder is
+        // refused: SKILL.md must be at the archive root.
+        let definition = b"---\nname: english-tv-coach\ndescription: demo\n---\n";
+        let wrapped = zip_bytes(&[
+            ("english-tv-coach/SKILL.md", definition, None),
+            ("english-tv-coach/agents/openai.yaml", b"interface: {}\n", None),
+            ("english-tv-coach/assets/icon.svg", b"<svg/>", None),
+        ]);
+        assert_eq!(
+            prepare_archive(&wrapped, sha256_hex(&wrapped))
+                .err()
+                .unwrap(),
+            "skill_definition_missing"
+        );
+        let flat = zip_bytes(&[
+            ("SKILL.md", definition, None),
+            ("agents/openai.yaml", b"interface: {}\n", None),
+            ("assets/icon.svg", b"<svg/>", None),
+        ]);
+        assert_eq!(prepare_archive(&flat, sha256_hex(&flat)).unwrap().file_count, 3);
+
         let large = vec![0u8; MAX_SKILL_STORE_FILE_BYTES];
         let definition = b"---\nname: demo\ndescription: demo\n---\n";
         let bomb = zip_bytes(&[

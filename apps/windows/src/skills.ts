@@ -8,8 +8,34 @@ export function helperErrorCode(error: unknown): string | null {
     : error && typeof error === 'object' && 'message' in error ? String(error.message) : '';
   return /\(([a-z][a-z0-9_]*)\)/.exec(message)?.[1] ?? null;
 }
+/** Skill package problems the runtime reports while installing a ZIP (mirrors macOS SkillManagementErrorMessage). */
+const SKILL_INSTALL_MESSAGES: Array<[string[], string]> = [
+  [['skill_definition_missing'], 'ZIP 最上層找不到 SKILL.md。若 ZIP 裡多包了一層資料夾（例如 my-skill/SKILL.md），請打開該資料夾、選取裡面的所有檔案重新壓縮，讓 SKILL.md 位於 ZIP 最上層後再安裝。'],
+  [['skill_frontmatter_missing', 'skill_frontmatter_unclosed', 'skill_frontmatter_duplicate_field', 'skill_frontmatter_scalar_invalid',
+    'skill_name_missing', 'skill_name_invalid', 'skill_description_missing', 'skill_description_invalid'],
+    'SKILL.md 格式不正確：檔案開頭必須是以 --- 包住的 frontmatter，並含有 name 與 description 欄位。'],
+  [['skill_definition_too_large'], 'SKILL.md 超過大小上限。'],
+  [['skill_definition_invalid_utf8'], 'SKILL.md 必須是 UTF-8 編碼的文字檔。'],
+  [['skill_install_archive_malformed', 'skill_install_archive_size_mismatch'], '這不是有效的 ZIP 檔，或檔案已損毀。請重新下載或重新壓縮後再試。'],
+  [['skill_install_archive_path_invalid', 'skill_install_archive_special_entry', 'skill_resource_path_invalid'],
+    'ZIP 內含不安全或不支援的項目（例如絕對路徑、..、連結或特殊檔案），無法安裝。'],
+  [['skill_install_duplicate_path'], 'ZIP 內有重複的檔名（只差大小寫也算重複），無法安裝。'],
+  [['skill_install_file_count_exceeded', 'skill_install_file_too_large', 'skill_install_total_too_large', 'skill_install_archive_too_large'],
+    'Skill 套件超過檔案數量或大小上限。'],
+  [['skill_artifact_invalid', 'skill_install_artifact_not_found', 'skill_install_artifact_path_invalid', 'skill_install_artifact_unavailable',
+    'skill_install_artifact_changed'], '安裝過程中無法讀取暫存的 ZIP，或它已被變更。請重新選擇 ZIP 再試一次。'],
+  [['skill_install_source_project_unavailable', 'skill_install_source_project_forbidden'], '目前專案不在本機 runner 允許的範圍內，無法從這裡安裝 Skill。'],
+  [['skill_key_invalid', 'skill_install_invalid_arguments'], 'Skill 代號只能使用英文字母、數字、點、底線或連字號，最多 96 個字元。'],
+  [['skill_store_skill_limit_exceeded', 'skill_store_revision_limit_exceeded'], '已達可安裝的 Skill 或版本數量上限，請先移除不需要的版本。'],
+  [['skill_state_changed', 'skill_expected_state_required', 'skill_install_reconcile_required'], '這個 Skill 的狀態已在其他地方變更，已重新整理，請再試一次。'],
+  [['skill_store_capability_unavailable', 'skill_store_unavailable', 'skill_store_lock_unavailable'],
+    '本機 runner 目前無法管理 Skill（可能尚未就緒或版本不支援）。請稍後重試，或重新啟動本機服務。'],
+];
 export function externalSkillErrorMessage(error: unknown): string {
-  switch (helperErrorCode(error)) {
+  const code = helperErrorCode(error);
+  const install = code ? SKILL_INSTALL_MESSAGES.find(([codes]) => codes.includes(code)) : undefined;
+  if (install) return install[1];
+  switch (code) {
     case 'external_skill_roots_conflict': return 'Skill 資料夾設定已在其他地方變更，已重新載入，請再試一次。';
     case 'skill_root_invalid': case 'skill_root_not_found': case 'skill_root_is_link':
     case 'skill_root_not_directory': case 'skill_root_not_canonical': return '無法連接此資料夾，請選擇實際存在且不是連結的資料夾。';

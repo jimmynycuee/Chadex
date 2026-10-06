@@ -322,8 +322,49 @@ enum SkillManagementErrorMessage {
         case "skill_management_credential_unavailable": return L10n.string("skills.error.credentialUnavailable")
         case "skill_management_credential_rejected": return L10n.string("skills.error.credentialRejected")
         case "runner_config_path_is_link": return L10n.string("skills.error.runnerConfigPathIsLink")
+        // Skill package problems reported by the runtime while installing a ZIP.
+        case "skill_definition_missing": return L10n.string("skills.error.definitionMissing")
+        case "skill_frontmatter_missing", "skill_frontmatter_unclosed", "skill_frontmatter_duplicate_field",
+             "skill_frontmatter_scalar_invalid", "skill_name_missing", "skill_name_invalid",
+             "skill_description_missing", "skill_description_invalid":
+            return L10n.string("skills.error.definitionInvalid")
+        case "skill_definition_too_large": return L10n.string("skills.error.definitionTooLarge")
+        case "skill_definition_invalid_utf8": return L10n.string("skills.error.definitionEncoding")
+        case "skill_install_archive_malformed", "skill_install_archive_size_mismatch":
+            return L10n.string("skills.error.archiveMalformed")
+        case "skill_install_archive_path_invalid", "skill_install_archive_special_entry", "skill_resource_path_invalid":
+            return L10n.string("skills.error.archivePathInvalid")
+        case "skill_install_duplicate_path": return L10n.string("skills.error.archiveDuplicatePath")
+        case "skill_install_file_count_exceeded", "skill_install_file_too_large",
+             "skill_install_total_too_large", "skill_install_archive_too_large":
+            return L10n.string("skills.error.archiveTooLarge")
+        case "skill_artifact_invalid", "skill_install_artifact_not_found", "skill_install_artifact_path_invalid",
+             "skill_install_artifact_unavailable", "skill_install_artifact_changed":
+            return L10n.string("skills.error.artifactUnavailable")
+        case "skill_install_source_project_unavailable", "skill_install_source_project_forbidden":
+            return L10n.string("skills.error.projectForbidden")
+        case "skill_key_invalid", "skill_install_invalid_arguments": return L10n.string("skills.error.keyInvalid")
+        case "skill_store_skill_limit_exceeded", "skill_store_revision_limit_exceeded":
+            return L10n.string("skills.error.limitReached")
+        case "skill_state_changed", "skill_expected_state_required", "skill_install_reconcile_required":
+            return L10n.string("skills.error.stateChanged")
+        case "skill_store_capability_unavailable", "skill_store_unavailable", "skill_store_lock_unavailable":
+            return L10n.string("skills.error.storeUnavailable")
         default: return nil
         }
+    }
+
+    /// The helper's fixed fallback text for `installSkill`; it carries no reason on its own.
+    static let genericInstallHelperMessage = "Chadex could not install the Skill"
+
+    /// Install failures always say why: a known code gets its own message, a specific
+    /// helper message is kept, and the helper's generic text is replaced by one naming the code.
+    static func installMessage(forCode code: String, helperMessage: String? = nil) -> String {
+        if let known = message(forCode: code) { return known }
+        if let helperMessage, !helperMessage.isEmpty, helperMessage != genericInstallHelperMessage {
+            return helperMessage
+        }
+        return L10n.string("skills.error.installFailed", code)
     }
 }
 

@@ -802,7 +802,9 @@ final class AppModel: ObservableObject {
             await refreshSkills()
             return true
         } catch {
-            let installError = helperErrorMessage(error)
+            let installError = helperErrorPayload(error)
+                .map { SkillManagementErrorMessage.installMessage(forCode: $0.code, helperMessage: $0.message) }
+                ?? error.localizedDescription
             await refreshSkills()
             skillsError = installError
             return false

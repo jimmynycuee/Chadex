@@ -18,6 +18,7 @@ use crate::chadex_core::runtime_compat::state::{
     ChadexAdminCredentialTarget, ChadexProjectActivationObservation,
     ChadexProjectActivationTarget, ChadexRuntimeProbeTarget, RuntimeStateManager,
 };
+use chadex_runtime_core::memory_contract::MAX_MEMORY_SEARCH_LIMIT;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -630,9 +631,11 @@ impl RuntimeBackendAdapter {
         let mut resolved_project: Option<String> = None;
         let mut memories = Vec::new();
         loop {
+            // The runtime rejects a page larger than its own bound with
+            // `memory_limit_invalid`, so always ask for exactly that bound.
             let mut arguments = json!({
                 "offset": offset,
-                "limit": 64
+                "limit": MAX_MEMORY_SEARCH_LIMIT
             });
             if let Some(revision) = catalog_revision.as_deref() {
                 arguments["expected_catalog_revision"] = Value::String(revision.to_string());
@@ -2511,7 +2514,11 @@ mod tests {
             registrations: usize,
             /// (tool, bearer) for every /mcp request, in order.
             mcp_calls: Vec<(String, String)>,
+            /// The inner tool arguments of every /mcp request, in order.
+            mcp_arguments: Vec<Value>,
             always_unauthorized: bool,
+            /// When set, `skill_install` fails with this runtime `error_kind`.
+            skill_install_error_kind: Option<String>,
         }
         type Shared = Arc<StdMutex<Fake>>;
 
@@ -2568,14 +2575,40 @@ mod tests {
                                 .as_str()
                                 .unwrap_or_default()
                                 .to_string();
+                            let arguments = body["params"]["arguments"]["arguments"].clone();
                             let mut fake = state.lock().unwrap();
                             fake.mcp_calls.push((tool.clone(), token.clone()));
+                            fake.mcp_arguments.push(arguments.clone());
                             let hash = format!("{:x}", sha2::Sha256::digest(token.as_bytes()));
                             let is_admin = fake.registered_hashes.contains(&hash);
                             let accepted = !fake.always_unauthorized
                                 && (token == USER_TOKEN || is_admin);
                             if !accepted {
                                 return (StatusCode::UNAUTHORIZED, AxumJson(json!({})));
+                            }
+                            // Mirror the runtime: a Memory page above its bound is
+                            // refused before anything is read.
+                            let over_limit = tool == "memory_search"
+                                && arguments["limit"]
+                                    .as_u64()
+                                    .is_none_or(|limit| {
+                                        limit == 0 || limit > MAX_MEMORY_SEARCH_LIMIT as u64
+                                    });
+                            let install_error = (tool == "skill_install")
+                                .then(|| fake.skill_install_error_kind.clone())
+                                .flatten();
+                            if let Some(kind) = over_limit
+                                .then(|| "memory_limit_invalid".to_string())
+                                .or(install_error)
+                            {
+                                return (
+                                    StatusCode::OK,
+                                    AxumJson(json!({"result": {"structuredContent": {
+                                        "success": false,
+                                        "output": {"error_kind": kind, "state_changed": false},
+                                        "error": kind
+                                    }}})),
+                                );
                             }
                             (
                                 StatusCode::OK,
@@ -2805,6 +2838,57 @@ mod tests {
                 drop(fake);
                 server.abort();
             }
+        }
+
+        #[tokio::test]
+        async fn memory_catalog_pages_within_the_runtime_search_limit() {
+            let shared: Shared = Arc::default();
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+
+            let catalog = fx.adapter.memory_catalog(&fx.project).await.unwrap();
+            assert_eq!(catalog["catalog_revision"], "r1");
+            let fake = shared.lock().unwrap();
+            let pages: Vec<&Value> = fake
+                .mcp_calls
+                .iter()
+                .zip(&fake.mcp_arguments)
+                .filter(|((tool, _), _)| tool == "memory_search")
+                .map(|(_, arguments)| arguments)
+                .collect();
+            assert_eq!(pages.len(), 1);
+            assert_eq!(pages[0]["limit"], json!(MAX_MEMORY_SEARCH_LIMIT));
+            drop(fake);
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn install_skill_reports_the_runtime_error_kind_as_the_error_code() {
+            let shared: Shared = Arc::default();
+            shared.lock().unwrap().skill_install_error_kind =
+                Some("skill_definition_missing".to_string());
+            let (url, server) = spawn(shared.clone()).await;
+            let fx = fixture(&url, false);
+            let imports = Path::new(&fx.project).join(".chadex/skill-imports");
+            std::fs::create_dir_all(&imports).unwrap();
+            std::fs::write(imports.join("wrapped.zip"), b"zip bytes").unwrap();
+
+            let error = fx
+                .adapter
+                .install_skill(&fx.project, "Eng_TV_Coach", ".chadex/skill-imports/wrapped.zip")
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, "skill_definition_missing");
+            let fake = shared.lock().unwrap();
+            let tools: Vec<&str> = fake.mcp_calls.iter().map(|(tool, _)| tool.as_str()).collect();
+            assert_eq!(tools, vec!["skill_install"], "no activation after a failed install");
+            assert_eq!(fake.mcp_arguments[0]["skill_key"], "Eng_TV_Coach");
+            assert_eq!(
+                fake.mcp_arguments[0]["artifact_path"],
+                ".chadex/skill-imports/wrapped.zip"
+            );
+            drop(fake);
+            server.abort();
         }
 
         #[tokio::test]

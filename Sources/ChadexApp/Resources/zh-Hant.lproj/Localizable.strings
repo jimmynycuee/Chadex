@@ -600,6 +600,21 @@
 "skills.error.credentialUnavailable" = "無法取得本機管理憑證，例如 runtime 尚未就緒。請稍後重試，或重新啟動本機服務。";
 "skills.error.credentialRejected" = "本機 runtime 拒絕了管理憑證。請重新啟動本機服務後再試。";
 "skills.error.runnerConfigPathIsLink" = "runner.toml 所在的資料夾是透過連結（junction 或 symlink）存取，Chadex 無法安全寫入。請改用不在連結之下的 runner.toml 位置。";
+"skills.error.definitionMissing" = "ZIP 最上層找不到 SKILL.md。若 ZIP 裡多包了一層資料夾（例如 my-skill/SKILL.md），請打開該資料夾、選取裡面的所有檔案重新壓縮，讓 SKILL.md 位於 ZIP 最上層後再安裝。";
+"skills.error.definitionInvalid" = "SKILL.md 格式不正確：檔案開頭必須是以 --- 包住的 frontmatter，並含有 name 與 description 欄位。";
+"skills.error.definitionTooLarge" = "SKILL.md 超過大小上限。";
+"skills.error.definitionEncoding" = "SKILL.md 必須是 UTF-8 編碼的文字檔。";
+"skills.error.archiveMalformed" = "這不是有效的 ZIP 檔，或檔案已損毀。請重新下載或重新壓縮後再試。";
+"skills.error.archivePathInvalid" = "ZIP 內含不安全或不支援的項目（例如絕對路徑、..、連結或特殊檔案），無法安裝。";
+"skills.error.archiveDuplicatePath" = "ZIP 內有重複的檔名（只差大小寫也算重複），無法安裝。";
+"skills.error.archiveTooLarge" = "Skill 套件超過檔案數量或大小上限。";
+"skills.error.artifactUnavailable" = "安裝過程中無法讀取暫存的 ZIP，或它已被變更。請重新選擇 ZIP 再試一次。";
+"skills.error.projectForbidden" = "目前專案不在本機 runner 允許的範圍內，無法從這裡安裝 Skill。";
+"skills.error.keyInvalid" = "Skill 代號只能使用英文字母、數字、點、底線或連字號，最多 96 個字元。";
+"skills.error.limitReached" = "已達可安裝的 Skill 或版本數量上限，請先移除不需要的版本。";
+"skills.error.stateChanged" = "這個 Skill 的狀態已在其他地方變更，已重新整理，請再試一次。";
+"skills.error.storeUnavailable" = "本機 runner 目前無法管理 Skill（可能尚未就緒或版本不支援）。請稍後重試，或重新啟動本機服務。";
+"skills.error.installFailed" = "無法安裝 Skill（%@）。請查看診斷後重試。";
 "skills.external.import" = "匯入 Skill";
 "skills.external.noneUsable" = "找不到可連接的 Skill 資料夾。可以改為匯入 Skill 檔案，或用「選擇資料夾…」連接資料夾。";
 

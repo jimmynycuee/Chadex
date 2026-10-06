@@ -600,6 +600,21 @@
 "skills.error.credentialUnavailable" = "Chadex could not get the local management credential, for example because the runtime is not ready yet. Wait a moment and retry, or restart the local service.";
 "skills.error.credentialRejected" = "The local runtime rejected the management credential. Restart the local service and try again.";
 "skills.error.runnerConfigPathIsLink" = "The folder holding runner.toml is reached through a link (junction or symlink), so Chadex cannot write to it safely. Use a runner.toml location that is not behind a link.";
+"skills.error.definitionMissing" = "SKILL.md is not at the top level of the ZIP. If the ZIP wraps everything in one folder (for example my-skill/SKILL.md), open that folder, select the files inside it and compress them again so SKILL.md sits at the top of the ZIP.";
+"skills.error.definitionInvalid" = "SKILL.md is not valid: it must start with front matter between --- lines that includes name and description.";
+"skills.error.definitionTooLarge" = "SKILL.md is larger than the allowed size.";
+"skills.error.definitionEncoding" = "SKILL.md must be a UTF-8 text file.";
+"skills.error.archiveMalformed" = "This is not a valid ZIP file, or it is damaged. Download or compress it again and retry.";
+"skills.error.archivePathInvalid" = "The ZIP contains unsafe or unsupported entries (such as absolute paths, .., links or special files) and cannot be installed.";
+"skills.error.archiveDuplicatePath" = "The ZIP contains duplicate file names (names that differ only in case count as duplicates) and cannot be installed.";
+"skills.error.archiveTooLarge" = "The Skill package exceeds the file count or size limits.";
+"skills.error.artifactUnavailable" = "The staged ZIP could not be read during installation, or it changed. Choose the ZIP again and retry.";
+"skills.error.projectForbidden" = "The current project is outside what the local runner allows, so a Skill cannot be installed from it.";
+"skills.error.keyInvalid" = "The Skill key may only use letters, numbers, dot, underscore or hyphen, up to 96 characters.";
+"skills.error.limitReached" = "The maximum number of installed Skills or versions has been reached. Remove versions you no longer need first.";
+"skills.error.stateChanged" = "This Skill changed elsewhere. Skills were refreshed; try again.";
+"skills.error.storeUnavailable" = "The local runner cannot manage Skills right now (it may not be ready or may not support it). Retry shortly or restart the local service.";
+"skills.error.installFailed" = "Chadex could not install the Skill (%@). Check the diagnostics and retry.";
 "skills.external.import" = "Import a Skill";
 "skills.external.noneUsable" = "No Skill folders were found to connect. Import a Skill file instead, or use Choose Folder… to connect a folder.";
 
