@@ -231,9 +231,16 @@ final class SkillArchiveStagingTests: XCTestCase {
     private var gitignore: URL { project.appendingPathComponent(".gitignore") }
 
     func testStagingCreatesGitignoreWhenMissing() throws {
+        try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
         let staged = try SkillArchiveStaging.stage(source: try makeZip(), projectRoot: project)
         staged.remove()
         XCTAssertEqual(try String(contentsOf: gitignore, encoding: .utf8), ".chadex/skill-imports/\n")
+    }
+
+    func testStagingLeavesNonGitProjectWithoutGitignore() throws {
+        let staged = try SkillArchiveStaging.stage(source: try makeZip(), projectRoot: project)
+        staged.remove()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: gitignore.path))
     }
 
     func testGitignoreAppendPreservesContentAndAddsMissingNewline() throws {

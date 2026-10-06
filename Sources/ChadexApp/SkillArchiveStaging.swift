@@ -74,7 +74,10 @@ enum SkillArchiveStaging {
         let directory = try prepareStagingDirectory(projectRoot: projectRoot)
         purgeStale(in: directory, now: now)
         // Best effort: a read-only .gitignore must not block an install whose copy is removed right after.
-        try? ensureGitignoreEntry(projectRoot: projectRoot)
+        // Only in a git checkout (`.git` is a directory, or a file in a worktree), so non-git folders get no new file.
+        if FileManager.default.fileExists(atPath: projectRoot.appendingPathComponent(".git").path) {
+            try? ensureGitignoreEntry(projectRoot: projectRoot)
+        }
 
         let name = "\(UUID().uuidString.lowercased()).zip"
         let destination = directory.appendingPathComponent(name, isDirectory: false)

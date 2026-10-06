@@ -783,10 +783,11 @@ final class AppModel: ObservableObject {
         defer { skillInstallInFlight = false }
         let staged: StagedSkillArchive
         do {
-            staged = try SkillArchiveStaging.stage(
-                source: archiveURL,
-                projectRoot: URL(fileURLWithPath: selectedProject.path, isDirectory: true)
-            )
+            // Off the main actor: the source may be a slow volume or a not-yet-downloaded iCloud file.
+            let projectRoot = URL(fileURLWithPath: selectedProject.path, isDirectory: true)
+            staged = try await Task.detached(priority: .userInitiated) {
+                try SkillArchiveStaging.stage(source: archiveURL, projectRoot: projectRoot)
+            }.value
         } catch {
             skillsError = error.localizedDescription
             return false

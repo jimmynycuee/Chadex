@@ -150,7 +150,10 @@ pub fn stage_archive(project: &Path, archive: &Path, limit: u64) -> Result<Stage
     }
     purge_stale(&dir);
     // Best effort: a read-only .gitignore must not block an install whose copy is removed right after.
-    let _ = ensure_gitignore_entry(project);
+    // Only in a git checkout (`.git` dir, or file in a worktree), so non-git folders get no new file.
+    if project.join(".git").exists() {
+        let _ = ensure_gitignore_entry(project);
+    }
 
     let mut source = std::fs::File::open(archive).map_err(|_| "skill_archive_unreadable")?;
     let meta = source.metadata().map_err(|_| "skill_archive_unreadable")?;
@@ -369,6 +372,17 @@ mod tests {
         drop(second);
         assert!(staged_names(&fx).is_empty());
         assert!(fx.project.join(".chadex").join("skill-imports").is_dir(), "empty dir stays");
+    }
+
+    #[test]
+    fn stage_adds_gitignore_entry_only_in_git_checkouts() {
+        let fx = fixture();
+        let source = zip(&fx, "skill.zip", 10);
+        drop(stage_archive(&fx.project, &source, MAX_SKILL_ARCHIVE_BYTES).unwrap());
+        assert!(!fx.project.join(".gitignore").exists(), "non-git folder gets no .gitignore");
+        std::fs::create_dir(fx.project.join(".git")).unwrap();
+        drop(stage_archive(&fx.project, &source, MAX_SKILL_ARCHIVE_BYTES).unwrap());
+        assert_eq!(std::fs::read_to_string(fx.project.join(".gitignore")).unwrap(), ".chadex/skill-imports/\n");
     }
 
     #[test]
