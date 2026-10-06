@@ -826,28 +826,30 @@ impl RuntimeBackendAdapter {
                 .map_err(map_desktop_error)?
             }
             ToolCredential::Admin => {
-                let Some(ChadexAdminCredentialTarget::Local {
-                    server_env_file,
-                    admin_token_file,
-                    ..
-                }) = admin_target
-                else {
-                    return Err(ChadexError::new(
+                let unavailable = || {
+                    ChadexError::new(
                         fallback_code,
                         "The local runtime credential is unavailable",
                         "Restore the local runtime and retry.",
-                    ));
+                    )
                 };
-                let admin_token_file =
-                    admin_token_path(&server_env_file, admin_token_file.as_deref()).ok_or_else(
-                        || {
-                            ChadexError::new(
-                                fallback_code,
-                                "The local runtime credential is unavailable",
-                                "Restore the local runtime and retry.",
-                            )
-                        },
-                    )?;
+                let Some(ChadexAdminCredentialTarget::Local {
+                    server_url: admin_server_url,
+                    server_env_file,
+                    ..
+                }) = admin_target
+                else {
+                    return Err(unavailable());
+                };
+                // The admin and probe targets are read under separate locks; if
+                // the runtime was switched in between, never mint or send a
+                // credential for a Server the probe target does not describe.
+                if admin_server_url != target.server_url {
+                    return Err(unavailable());
+                }
+                // Always the fixed file beside the env file: a path recorded in
+                // the saved config is never trusted.
+                let admin_token_file = admin_token_path(&server_env_file).ok_or_else(unavailable)?;
                 let source = AdminCredentialSource {
                     server_url: target.server_url.clone(),
                     server_env_file: server_env_file.clone(),
@@ -1474,6 +1476,9 @@ async fn call_extension_tool_as_admin(
     arguments: Value,
     cancellation: &CancellationContext,
 ) -> ChadexResult<Option<OperatorToolResult>> {
+    if let Some(error) = credentials.recent_failure() {
+        return Err(error);
+    }
     let mut rejected: Option<Zeroizing<String>> = None;
     for _attempt in 0..2 {
         let token = credentials
@@ -1492,11 +1497,15 @@ async fn call_extension_tool_as_admin(
         .await
         .map_err(map_desktop_error)?;
         if !unauthorized {
+            credentials.record_success();
             return Ok(result);
         }
         rejected = Some(token);
     }
-    Err(credential_rejected_error())
+    // A freshly minted token was refused too: stop re-minting on every call.
+    let error = credential_rejected_error();
+    credentials.record_failure(&error);
+    Err(error)
 }
 
 async fn call_local_runtime_tool_with_status(
@@ -2578,6 +2587,12 @@ mod tests {
 
         /// A saved Desktop state describing a ready local (or remote) Full runtime.
         fn fixture(server_url: &str, remote: bool) -> Fixture {
+            fixture_with_hint(server_url, remote, None)
+        }
+
+        /// `admin_hint` is a file name (inside the env directory) recorded as the
+        /// saved `admin_token_file`, to prove a recorded path is never trusted.
+        fn fixture_with_hint(server_url: &str, remote: bool, admin_hint: Option<&str>) -> Fixture {
             let dir = tempfile::tempdir().unwrap();
             let root = dir.path().canonicalize().unwrap();
             let data_dir = root.join("data");
@@ -2617,7 +2632,7 @@ mod tests {
                     server_env_file: Some(env_file.clone()),
                     runner_config: Some(runner_config),
                     user_token_file: Some(user_token_file),
-                    admin_token_file: None,
+                    admin_token_file: admin_hint.map(|name| local_dir.join(name)),
                     runner_client_id: Some("runner-a".to_string()),
                     project_id: Some("repo".to_string()),
                     runtime_project_id: Some("agent:runner-a:repo".to_string()),
@@ -2642,7 +2657,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn skill_management_uses_the_admin_token_and_everything_else_the_user_token() {
+        async fn skill_and_memory_tools_use_the_admin_token_and_everything_else_the_user_token() {
             let shared: Shared = Arc::default();
             let (url, server) = spawn(shared.clone()).await;
             let fx = fixture(&url, false);
@@ -2665,9 +2680,9 @@ mod tests {
                 vec![
                     ("skill_inventory".to_string(), admin.to_string()),
                     ("skill_inventory".to_string(), admin.to_string()),
-                    ("memory_read".to_string(), USER_TOKEN.to_string()),
+                    ("memory_read".to_string(), admin.to_string()),
                 ],
-                "admin token only for skill management; one mint, then reuse"
+                "admin token for skill management and Project Memory; one mint, then reuse"
             );
             assert_eq!(fake.registrations, 1);
             drop(fake);
@@ -2693,6 +2708,12 @@ mod tests {
             let fx = fixture(&url, false);
             // A leftover token the Server has never heard of (e.g. database reset).
             std::fs::write(&fx.admin_file, "wc_pat_stale_unknown_token\n").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&fx.admin_file, std::fs::Permissions::from_mode(0o600))
+                    .unwrap();
+            }
 
             fx.adapter.skill_inventory(&fx.project).await.unwrap();
 
@@ -2725,7 +2746,46 @@ mod tests {
             assert_eq!(fake.mcp_calls.len(), 2);
             assert_eq!(fake.registrations, 2);
             drop(fake);
+
+            // Backoff: the next calls fail fast with the same error and neither
+            // mint, revoke, nor reach /mcp again.
+            for _ in 0..2 {
+                let again = fx.adapter.skill_inventory(&fx.project).await.unwrap_err();
+                assert_eq!(again.code, "skill_management_credential_rejected");
+            }
+            let fake = shared.lock().unwrap();
+            assert_eq!(fake.mcp_calls.len(), 2);
+            assert_eq!(fake.registrations, 2);
+            drop(fake);
             server.abort();
+        }
+
+        #[tokio::test]
+        async fn a_recorded_admin_token_path_is_never_trusted_or_overwritten() {
+            for hint in ["webcodex.env", "webcodex-user-token"] {
+                let shared: Shared = Arc::default();
+                let (url, server) = spawn(shared.clone()).await;
+                let fx = fixture_with_hint(&url, false, Some(hint));
+                let local_dir = fx.admin_file.parent().unwrap().to_path_buf();
+                let before_env = std::fs::read(local_dir.join("webcodex.env")).unwrap();
+                let before_user = std::fs::read(local_dir.join("webcodex-user-token")).unwrap();
+
+                fx.adapter.skill_inventory(&fx.project).await.unwrap();
+
+                // Neither file was read as, or overwritten with, the admin token.
+                assert_eq!(std::fs::read(local_dir.join("webcodex.env")).unwrap(), before_env);
+                assert_eq!(
+                    std::fs::read(local_dir.join("webcodex-user-token")).unwrap(),
+                    before_user
+                );
+                let admin = std::fs::read_to_string(&fx.admin_file).unwrap();
+                let fake = shared.lock().unwrap();
+                assert_eq!(fake.mcp_calls.len(), 1, "{hint}");
+                assert_eq!(fake.mcp_calls[0].1, admin.trim(), "{hint}");
+                assert_ne!(fake.mcp_calls[0].1, USER_TOKEN, "{hint}");
+                drop(fake);
+                server.abort();
+            }
         }
 
         #[tokio::test]

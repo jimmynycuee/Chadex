@@ -1,9 +1,11 @@
 //! Local-only Desktop admin credential.
 //!
 //! Skill management (`skill_inventory`, `skill_versions`, `skill_install`,
-//! `skill_activate`, `skill_deactivate`, `skill_remove_revision`) and the admin
-//! Memory tools (`memory_scope_list`, `memory_scope_purge`) require the runtime
-//! `admin` scope. The pairing user token deliberately does not carry it, and the
+//! `skill_activate`, `skill_deactivate`, `skill_remove_revision`), the admin
+//! Memory tools (`memory_scope_list`, `memory_scope_purge`) and, by product
+//! decision, the Desktop's Project Memory tools (`memory_search`, `memory_read`,
+//! `memory_set`, `memory_delete`: the pairing user token lacks the `memory:*`
+//! scopes they need) all go through the runtime `admin` scope. The pairing user token deliberately does not carry it, and the
 //! bootstrap token is what the ChatGPT tunnel uses, so the helper keeps a third,
 //! separate credential: a managed `wc_pat_*` token with only the `admin` scope.
 //!
@@ -24,6 +26,8 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use sha2::Digest;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex as StdMutex;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use zeroize::Zeroizing;
 
@@ -32,10 +36,17 @@ const ADMIN_TOKEN_NAME: &str = "chadex-desktop-admin";
 const ADMIN_TOKEN_PREFIX: &str = "wc_pat_";
 const BOOTSTRAP_TOKEN_ENV: &str = "WEBCODEX_TOKEN";
 const ADMIN_SCOPE: &str = "admin";
+/// Lifetime of a minted token. After it lapses the Server answers 401 and the
+/// normal 401 -> re-mint path rotates it.
+const ADMIN_TOKEN_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+/// How long a persistent failure that has side effects (a registration that
+/// could not be stored, or a fresh token that was rejected) fails fast instead
+/// of minting and revoking again on every call.
+const FAILURE_BACKOFF: Duration = Duration::from_secs(60);
 
 /// Tools that need the admin credential. Every other Desktop call keeps using
 /// the pairing user token. Mirrors the `ToolOperatorExtensionFamily::
-/// SkillManagement` tools and the two admin-scoped Memory tools in
+/// SkillManagement` tools and the Memory tools in
 /// `runtime-engine/crates/chadex-runtime-tool-contracts`.
 const ADMIN_TOOLS: &[&str] = &[
     "skill_inventory",
@@ -46,6 +57,10 @@ const ADMIN_TOOLS: &[&str] = &[
     "skill_remove_revision",
     "memory_scope_list",
     "memory_scope_purge",
+    "memory_search",
+    "memory_read",
+    "memory_set",
+    "memory_delete",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,27 +89,65 @@ pub(super) struct AdminCredentialSource {
     pub username: String,
 }
 
-/// The admin token path: the recorded one while it still sits beside the
-/// server env file, otherwise the default file next to it.
-pub(super) fn admin_token_path(
-    server_env_file: &Path,
-    recorded: Option<&Path>,
-) -> Option<PathBuf> {
-    let directory = server_env_file.parent().filter(|dir| !dir.as_os_str().is_empty())?;
-    match recorded {
-        Some(path) if path.parent() == Some(directory) => Some(path.to_path_buf()),
-        _ => Some(directory.join(ADMIN_TOKEN_FILE_NAME)),
-    }
+/// The admin token path: always the fixed file name beside the server env
+/// file. A path recorded in the saved config is never trusted for reads or
+/// writes (it could name `webcodex.env` or the user token file); it is only a
+/// breadcrumb.
+pub(super) fn admin_token_path(server_env_file: &Path) -> Option<PathBuf> {
+    let directory = server_env_file
+        .parent()
+        .filter(|dir| !dir.as_os_str().is_empty())?;
+    let path = directory.join(ADMIN_TOKEN_FILE_NAME);
+    (path != server_env_file).then_some(path)
 }
 
-#[derive(Default)]
 pub(super) struct AdminCredentialStore {
     /// Serialises mint/rotate so concurrent first calls register one token and
     /// a stale-token retry cannot revoke a token another call just minted.
     mint_lock: Mutex<()>,
+    backoff: Duration,
+    failure: StdMutex<Option<(Instant, ChadexError)>>,
+}
+
+impl Default for AdminCredentialStore {
+    fn default() -> Self {
+        Self::with_backoff(FAILURE_BACKOFF)
+    }
 }
 
 impl AdminCredentialStore {
+    fn with_backoff(backoff: Duration) -> Self {
+        Self {
+            mint_lock: Mutex::new(()),
+            backoff,
+            failure: StdMutex::new(None),
+        }
+    }
+
+    /// The remembered persistent failure, while it is still inside the backoff
+    /// window. Lets a broken setup fail fast with the same stable error instead
+    /// of minting and revoking a token on every call.
+    pub(super) fn recent_failure(&self) -> Option<ChadexError> {
+        let mut failure = self.failure.lock().unwrap_or_else(|p| p.into_inner());
+        match failure.as_ref() {
+            Some((at, error)) if at.elapsed() < self.backoff => Some(error.clone()),
+            Some(_) => {
+                *failure = None;
+                None
+            }
+            None => None,
+        }
+    }
+
+    pub(super) fn record_failure(&self, error: &ChadexError) {
+        *self.failure.lock().unwrap_or_else(|p| p.into_inner()) =
+            Some((Instant::now(), error.clone()));
+    }
+
+    pub(super) fn record_success(&self) {
+        *self.failure.lock().unwrap_or_else(|p| p.into_inner()) = None;
+    }
+
     /// The current admin token, creating it when needed. `rejected` is a token
     /// the Server just answered 401 to: it is never returned again, and if the
     /// file still holds it a replacement is minted.
@@ -110,11 +163,39 @@ impl AdminCredentialStore {
                 return Ok(existing);
             }
         }
-        mint_admin_token(client, source).await
+        if let Some(error) = self.recent_failure() {
+            return Err(error);
+        }
+        let minted = mint_admin_token(client, source).await;
+        if let Err(error) = &minted {
+            // Only failures that already touched the Server's token table
+            // back off; an unreachable Server or a missing bootstrap changes
+            // nothing and must recover the moment the runtime is ready.
+            if matches!(
+                error
+                    .details
+                    .as_ref()
+                    .and_then(|details| details["reason"].as_str()),
+                Some("register_rejected" | "write_failed")
+            ) {
+                self.record_failure(error);
+            }
+        }
+        minted
     }
 }
 
 async fn read_admin_token(path: &Path) -> Option<Zeroizing<String>> {
+    // A token file readable by group/others may already have been read by
+    // someone else: treat it as unusable so it is replaced (and revoked).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = tokio::fs::symlink_metadata(path).await.ok()?;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            return None;
+        }
+    }
     let token = read_probe_token(path).await?;
     (token.starts_with(ADMIN_TOKEN_PREFIX) && token.is_ascii()).then_some(token)
 }
@@ -128,6 +209,10 @@ async fn mint_admin_token(
     let token = generate_admin_token()?;
     let hash = format!("{:x}", sha2::Sha256::digest(token.as_bytes()));
     let prefix: String = token.chars().take(16).collect();
+    let expires_at = (SystemTime::now() + ADMIN_TOKEN_TTL)
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| unavailable("clock_unavailable", None))?
+        .as_secs();
     let registered = post_json(
         client,
         &source.server_url,
@@ -139,6 +224,7 @@ async fn mint_admin_token(
             "token_hash": format!("sha256:{hash}"),
             "token_prefix": prefix,
             "scopes": [ADMIN_SCOPE],
+            "expires_at": expires_at,
         }),
     )
     .await;
@@ -202,6 +288,7 @@ async fn revoke_stale_admin_tokens(
         .flatten()
         .filter(|token| {
             token.get("name").and_then(Value::as_str) == Some(ADMIN_TOKEN_NAME)
+                && token.get("scopes") == Some(&json!([ADMIN_SCOPE]))
                 && token.get("revoked_at").is_none_or(Value::is_null)
                 && token.get("id").and_then(Value::as_str) != Some(keep_id)
         })
@@ -261,7 +348,7 @@ fn unavailable(reason: &'static str, status: Option<u16>) -> ChadexError {
     }
     ChadexError::new(
         "skill_management_credential_unavailable",
-        "Chadex could not prepare the local administrator credential for Skill management",
+        "Chadex could not prepare the local administrator credential for Skills and Project Memory",
         "Restart the local runtime from Chadex, then retry.",
     )
     .with_details(details)
@@ -278,8 +365,8 @@ pub(super) fn credential_rejected_error() -> ChadexError {
 pub(super) fn requires_local_runtime_error() -> ChadexError {
     ChadexError::new(
         "skill_management_requires_local_runtime",
-        "Installing and managing Skills requires the local runtime on this computer",
-        "Connect Chadex to a local runtime to manage Skills; a remote Server cannot be managed from here.",
+        "Managing Skills and Project Memory requires the local runtime on this computer",
+        "Connect Chadex to a local runtime to manage Skills and Project Memory; a remote Server cannot be managed from here.",
     )
 }
 
@@ -332,7 +419,8 @@ mod tests {
                         }
                         let id = format!("tok-{}", server.registered.len() + 1);
                         server.listed.push(json!({
-                            "id": id, "name": body["name"], "revoked_at": null
+                            "id": id, "name": body["name"], "scopes": body["scopes"],
+                            "revoked_at": null
                         }));
                         server.registered.push(body);
                         (StatusCode::OK, Json(json!({"success": true, "token": {"id": id}})))
@@ -387,7 +475,7 @@ mod tests {
         AdminCredentialSource {
             server_url: url.to_string(),
             server_env_file: env.clone(),
-            admin_token_file: admin_token_path(&env, None).unwrap(),
+            admin_token_file: admin_token_path(&env).unwrap(),
             username: "tester".to_string(),
         }
     }
@@ -403,6 +491,10 @@ mod tests {
             "skill_remove_revision",
             "memory_scope_list",
             "memory_scope_purge",
+            "memory_search",
+            "memory_read",
+            "memory_set",
+            "memory_delete",
         ] {
             assert_eq!(tool_credential(tool), ToolCredential::Admin, "{tool}");
         }
@@ -410,10 +502,6 @@ mod tests {
             "skill_list",
             "skill_read_file",
             "skill_load",
-            "memory_search",
-            "memory_read",
-            "memory_set",
-            "memory_delete",
             "cancel_task",
             "list_runners",
             "list_jobs",
@@ -424,16 +512,16 @@ mod tests {
     }
 
     #[test]
-    fn admin_token_path_stays_beside_the_server_env_file() {
+    fn admin_token_path_is_always_the_fixed_file_beside_the_server_env_file() {
         let env = Path::new("/data/runtime/local/webcodex.env");
-        let default = PathBuf::from("/data/runtime/local").join(ADMIN_TOKEN_FILE_NAME);
-        assert_eq!(admin_token_path(env, None), Some(default.clone()));
-        let recorded = PathBuf::from("/data/runtime/local/custom-admin");
-        assert_eq!(admin_token_path(env, Some(&recorded)), Some(recorded));
-        // A recorded path that drifted elsewhere is ignored.
-        let elsewhere = PathBuf::from("/other/place/admin");
-        assert_eq!(admin_token_path(env, Some(&elsewhere)), Some(default));
-        assert_eq!(admin_token_path(Path::new("webcodex.env"), None), None);
+        assert_eq!(
+            admin_token_path(env),
+            Some(PathBuf::from("/data/runtime/local").join(ADMIN_TOKEN_FILE_NAME))
+        );
+        assert_eq!(admin_token_path(Path::new("webcodex.env")), None);
+        // Never the env file itself, even if it were given the token's name.
+        let odd = Path::new("/data/runtime/local").join(ADMIN_TOKEN_FILE_NAME);
+        assert_eq!(admin_token_path(&odd), None);
     }
 
     #[test]
@@ -464,6 +552,10 @@ mod tests {
         assert_eq!(request["scopes"], json!(["admin"]));
         assert_eq!(request["name"], "chadex-desktop-admin");
         assert_eq!(request["username"], "tester");
+        let expires = request["expires_at"].as_u64().expect("expires_at is sent");
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let ttl = ADMIN_TOKEN_TTL.as_secs();
+        assert!(expires + 60 >= now + ttl && expires <= now + ttl + 60, "{expires}");
         let expected_hash = format!("sha256:{:x}", sha2::Sha256::digest(token.as_bytes()));
         assert_eq!(request["token_hash"], expected_hash.as_str());
         assert_eq!(request["token_prefix"], &token[..16]);
@@ -600,13 +692,15 @@ mod tests {
         assert_eq!(error.details.as_ref().unwrap()["status"], 403);
         assert!(!source.admin_token_file.exists());
 
-        // Missing bootstrap credential.
+        // Missing bootstrap credential (fresh store: the 403 above backs off).
+        let store = AdminCredentialStore::default();
         std::fs::write(&source.server_env_file, "OTHER=1\n").unwrap();
         let error = store.token(&client(), &source, None).await.unwrap_err();
         assert_eq!(error.code, "skill_management_credential_unavailable");
         assert_eq!(error.details.as_ref().unwrap()["reason"], "bootstrap_unavailable");
 
         // Unreachable Server.
+        let store = AdminCredentialStore::default();
         server.abort();
         let _ = server.await;
         std::fs::write(
@@ -712,5 +806,88 @@ mod tests {
         assert!(!format!("{admin_result:?}").contains("missing required scope"));
         let (_, bogus_401) = call("wc_pat_not_registered".to_string()).await;
         assert!(bogus_401, "unknown token must answer 401");
+    }
+
+    #[tokio::test]
+    async fn only_admin_scoped_tokens_with_our_name_are_revoked_on_rotation() {
+        let (url, state, server) = spawn_server().await;
+        let dir = tempfile::tempdir().unwrap();
+        let source = source(dir.path(), &url);
+        let store = AdminCredentialStore::default();
+        {
+            let mut fake = state.lock().unwrap();
+            // Same name but broader scopes, and a different name with admin.
+            fake.listed.push(json!({"id": "other-1", "name": "chadex-desktop-admin",
+                "scopes": ["admin", "project:read"], "revoked_at": null}));
+            fake.listed.push(json!({"id": "other-2", "name": "someone-elses-admin",
+                "scopes": ["admin"], "revoked_at": null}));
+            fake.listed.push(json!({"id": "old-ours", "name": "chadex-desktop-admin",
+                "scopes": ["admin"], "revoked_at": null}));
+        }
+        store.token(&client(), &source, None).await.unwrap();
+        assert_eq!(state.lock().unwrap().revoked, vec!["old-ours".to_string()]);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn persistent_registration_failure_backs_off_instead_of_hammering_the_server() {
+        let (url, state, server) = spawn_server().await;
+        let dir = tempfile::tempdir().unwrap();
+        let source = source(dir.path(), &url);
+        let store = AdminCredentialStore::with_backoff(Duration::from_millis(300));
+        state.lock().unwrap().register_status = Some(403);
+
+        let first = store.token(&client(), &source, None).await.unwrap_err();
+        let requests = state.lock().unwrap().bearers.len();
+        assert_eq!(requests, 1);
+        let second = store.token(&client(), &source, None).await.unwrap_err();
+        assert_eq!(second.code, first.code);
+        assert_eq!(state.lock().unwrap().bearers.len(), requests, "fail fast, no request");
+        assert!(store.recent_failure().is_some());
+
+        tokio::time::sleep(Duration::from_millis(350)).await;
+        state.lock().unwrap().register_status = None;
+        store.token(&client(), &source, None).await.unwrap();
+        assert_eq!(state.lock().unwrap().registered.len(), 1);
+        assert!(store.recent_failure().is_none());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn unreachable_runtime_never_backs_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = source(dir.path(), "http://127.0.0.1:9");
+        let store = AdminCredentialStore::with_backoff(Duration::from_secs(60));
+        let error = store.token(&client(), &source, None).await.unwrap_err();
+        assert_eq!(error.details.as_ref().unwrap()["reason"], "runtime_unreachable");
+        assert!(store.recent_failure().is_none());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn token_file_readable_by_others_is_replaced_and_stale_temporaries_are_removed() {
+        use std::os::unix::fs::PermissionsExt;
+        let (url, state, server) = spawn_server().await;
+        let dir = tempfile::tempdir().unwrap();
+        let source = source(dir.path(), &url);
+        let store = AdminCredentialStore::default();
+
+        let loose = "wc_pat_looselypermissionedtoken\n";
+        std::fs::write(&source.admin_token_file, loose).unwrap();
+        std::fs::set_permissions(&source.admin_token_file, std::fs::Permissions::from_mode(0o644))
+            .unwrap();
+        let stale_tmp = dir.path().join(".chadex-desktop-admin-token.123-456.tmp");
+        let unrelated_tmp = dir.path().join(".something-else.tmp");
+        std::fs::write(&stale_tmp, "leftover").unwrap();
+        std::fs::write(&unrelated_tmp, "keep").unwrap();
+
+        let token = store.token(&client(), &source, None).await.unwrap();
+        assert_ne!(token.as_str(), "wc_pat_looselypermissionedtoken");
+        assert_eq!(state.lock().unwrap().registered.len(), 1);
+        let mode = std::fs::metadata(&source.admin_token_file).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        assert!(!stale_tmp.exists());
+        assert!(unrelated_tmp.exists());
+        server.abort();
     }
 }
