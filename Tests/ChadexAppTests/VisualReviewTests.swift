@@ -21,8 +21,10 @@ final class VisualReviewTests: XCTestCase {
         }
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 
-        let fileManager = ReviewFileManager(applicationSupportRoot: temporaryRoot)
-        let store = ProjectStore(fileManager: fileManager)
+        // Never the real ~/Library/Application Support/Chadex: ProjectStore
+        // derives its folder from the home directory, so only the explicit
+        // override keeps a test run from replacing the user's preferences.
+        let store = ProjectStore(environment: ["CHADEX_PREFERENCES_DIR": temporaryRoot.path])
         let project = ProjectRecord(name: "Chadex", path: projectRoot.path)
         var preferences = ChadexPreferences()
         preferences.projects = [project]
@@ -30,6 +32,10 @@ final class VisualReviewTests: XCTestCase {
         preferences.tunnelID = "tunnel_chadex_dev"
         preferences.backgroundCloseHintShown = true
         try store.save(preferences)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: temporaryRoot.appendingPathComponent("preferences.json").path),
+            "review preferences must stay in the temporary folder"
+        )
 
         let keychain = KeychainStore(
             service: "app.chadex.tests.\(UUID().uuidString)",
@@ -227,18 +233,3 @@ final class VisualReviewTests: XCTestCase {
     }
 }
 
-private final class ReviewFileManager: FileManager {
-    private let applicationSupportRoot: URL
-
-    init(applicationSupportRoot: URL) {
-        self.applicationSupportRoot = applicationSupportRoot
-        super.init()
-    }
-
-    override func urls(for directory: SearchPathDirectory, in domainMask: SearchPathDomainMask) -> [URL] {
-        if directory == .applicationSupportDirectory {
-            return [applicationSupportRoot]
-        }
-        return super.urls(for: directory, in: domainMask)
-    }
-}
