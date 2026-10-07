@@ -150,6 +150,26 @@ struct ProjectSwitchGate: Sendable {
     }
 }
 
+/// The project row the sidebar should follow after the active project changed
+/// outside a sidebar click (adding a project, the memory inspector, removing
+/// the current project). Without it the row stays on the previous project and
+/// its detail keeps showing "Switching to …" although no switch is running.
+/// `nil` leaves the sidebar alone: it is not on a project row, already shows
+/// the active project, or its own switch request is still in flight.
+enum SidebarProjectFollow {
+    static func projectToSelect(
+        rowProjectID: UUID?,
+        activeProjectID: UUID?,
+        sidebarSwitchInFlight: Bool
+    ) -> UUID? {
+        guard let rowProjectID,
+              let activeProjectID,
+              !sidebarSwitchInFlight,
+              rowProjectID != activeProjectID else { return nil }
+        return activeProjectID
+    }
+}
+
 enum ActivityLevel: String, Codable, Sendable {
     case info
     case warning

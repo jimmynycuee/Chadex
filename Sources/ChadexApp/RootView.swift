@@ -273,6 +273,15 @@ struct RootView: View {
                 pendingProjectSwitchID = nil
             }
         }
+        .onChange(of: model.selectedProject?.id) { _, activeID in
+            guard case .project(let rowID) = selection,
+                  let target = SidebarProjectFollow.projectToSelect(
+                      rowProjectID: rowID,
+                      activeProjectID: activeID,
+                      sidebarSwitchInFlight: projectSwitchRequestInFlight
+                  ) else { return }
+            selection = .project(target)
+        }
         .sheet(isPresented: $model.showingConnectionSettings) {
             ConnectionSettingsSheet()
                 .environmentObject(model)

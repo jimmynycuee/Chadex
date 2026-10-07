@@ -375,9 +375,27 @@ final class AppModel: ObservableObject {
         guard let project = preferences.projects.first(where: { $0.id == id }) else { return true }
         let remaining = preferences.projects.filter { $0.id != id }
 
+        // A switch to this project is still running: removing it now would
+        // leave the selection pointing at a project that is no longer listed
+        // while the runtime serves it. Say so instead of doing nothing.
+        if projectSwitchGate.activeProjectID == id {
+            presentProjectRemovalBusy(project)
+            return false
+        }
+
         if selectedProject?.id == project.id {
+            // Removing the current project switches to another one first;
+            // while a switch is already running that cannot start, so tell
+            // the user instead of silently keeping the project.
+            if projectSwitchGate.activeProjectID != nil {
+                presentProjectRemovalBusy(project)
+                return false
+            }
             if let fallback = remaining.first {
-                guard await selectProject(fallback.id) else { return false }
+                guard await selectProject(fallback.id) else {
+                    if presentedError == nil { presentProjectRemovalBusy(project) }
+                    return false
+                }
             } else {
                 do {
                     _ = try await requestSnapshot(method: "stopLocalService", params: EmptyParams())
@@ -406,58 +424,110 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func presentProjectRemovalBusy(_ project: ProjectRecord) {
+        presentedError = PresentedError(
+            title: L10n.string("project.removeBusyTitle"),
+            message: L10n.string("project.removeBusyMessage", project.name),
+            recovery: L10n.string("project.removeBusyRecovery"),
+            code: "project_switch_in_progress",
+            details: nil
+        )
+    }
+
+    /// Switches the runtime to the project. The switching state (spinner,
+    /// disabled controls) covers only the activation itself: reloading the
+    /// project's Skills, memory and activity, and on failure the status
+    /// refresh, happen after it ends, so a slow secondary read can never keep
+    /// the UI in "Switching to …" once the switch is decided.
     @discardableResult
     func selectProject(_ id: UUID) async -> Bool {
-        guard !isRealigningRuntimeProject else { return false }
+        // A background realignment owns the runtime briefly; an explicit
+        // choice waits for it (bounded) instead of being silently dropped.
+        guard await waitForRuntimeProjectRealign() else { return false }
         guard projectSwitchGate.begin(id) else { return false }
-        defer { projectSwitchGate.finish(id) }
         if id == preferences.selectedProjectID {
+            projectSwitchGate.finish(id)
             await refreshSkills()
             await refreshProjectMemory()
             return true
         }
-        guard let project = preferences.projects.first(where: { $0.id == id }) else { return false }
+        guard let project = preferences.projects.first(where: { $0.id == id }) else {
+            projectSwitchGate.finish(id)
+            return false
+        }
         isSwitchingProject = true
         switchingProjectName = project.name
-        defer {
-            isSwitchingProject = false
-            switchingProjectName = nil
-        }
         presentedError = nil
         let switchStarted = ProcessInfo.processInfo.systemUptime
         let switchTimestamp = Date()
+        var switchError: Error?
         do {
             _ = try await requestSnapshot(
                 method: "switchLocalProject",
                 params: ActivateProjectParams(path: project.path)
             )
-            recordAppPhase(
-                timestamp: switchTimestamp,
-                operation: "project_switch",
-                phase: "activation",
-                startedUptime: switchStarted,
-                succeeded: true
-            )
-            preferences.selectedProjectID = id
-            try persist()
-            await refreshActivities()
-            clearSkills()
-            clearProjectMemory()
-            await refreshSkills()
-            await refreshProjectMemory()
-            return true
         } catch {
-            recordAppPhase(
-                timestamp: switchTimestamp,
-                operation: "project_switch",
-                phase: "activation",
-                startedUptime: switchStarted,
-                succeeded: false
-            )
-            present(error)
+            switchError = error
+        }
+        // The App can stop waiting (timeout) while the helper still completes
+        // the switch. The helper's selection is authoritative: adopt it rather
+        // than keep a selection the runtime no longer serves.
+        if switchError != nil,
+           let status = try? await requestSnapshot(
+               method: "getStatus",
+               params: MascotStatusParams(includeMascotJobs: false)
+           ),
+           status.selectedProject?.path == project.path {
+            switchError = nil
+        }
+        recordAppPhase(
+            timestamp: switchTimestamp,
+            operation: "project_switch",
+            phase: "activation",
+            startedUptime: switchStarted,
+            succeeded: switchError == nil
+        )
+        if let switchError {
+            endProjectSwitch(id)
+            present(switchError)
             await refreshStatus(force: true)
             return false
         }
+        preferences.selectedProjectID = id
+        do {
+            try persist()
+        } catch {
+            endProjectSwitch(id)
+            present(error)
+            return false
+        }
+        clearSkills()
+        clearProjectMemory()
+        endProjectSwitch(id)
+        await refreshActivities()
+        await refreshSkills()
+        await refreshProjectMemory()
+        return true
+    }
+
+    private func endProjectSwitch(_ id: UUID) {
+        isSwitchingProject = false
+        switchingProjectName = nil
+        projectSwitchGate.finish(id)
+    }
+
+    /// Waits until a background project realignment has finished. Returns
+    /// false only if it did not finish in time or the app is shutting down.
+    private func waitForRuntimeProjectRealign(timeout: TimeInterval = 50) async -> Bool {
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        while isRealigningRuntimeProject {
+            if isShuttingDown || Task.isCancelled
+                || ProcessInfo.processInfo.systemUptime >= deadline {
+                return false
+            }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        return !isShuttingDown
     }
 
     @discardableResult

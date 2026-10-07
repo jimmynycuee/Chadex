@@ -416,7 +416,14 @@ final class HelperClient: @unchecked Sendable {
         switch method {
         case "connectChatGPT", "startTunnel", "configureLocalSetup", "resumeService", "prewarmRuntime":
             return 120
-        case "switchLocalProject", "realignLocalProject", "activateProject", "stopLocalService", "disconnectAI", "stopTunnel":
+        case "switchLocalProject":
+            // The helper bounds its own wait and activation (10s + 25s) so it
+            // answers first; this leaves room for pausing the ingress, the
+            // tunnel restore and a warm-up cancel without giving up early.
+            return 60
+        case "realignLocalProject":
+            return 45
+        case "activateProject", "stopLocalService", "disconnectAI", "stopTunnel":
             return 30
         case "shutdown":
             return shutdownRPCTimeout

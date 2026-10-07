@@ -27,6 +27,9 @@
 "project.remove" = "Remove Project…";
 "project.removeTitle" = "Remove this project from Chadex?";
 "project.removeMessage" = "“%@” will be removed from Chadex. The folder and all files on your Mac will not be deleted.";
+"project.removeBusyTitle" = "Can’t remove the project yet";
+"project.removeBusyMessage" = "Chadex is switching projects, so “%@” can’t be removed right now.";
+"project.removeBusyRecovery" = "Wait for the switch to finish, then remove the project again.";
 "project.switching" = "Switching to %@…";
 "project.emptyTitle" = "No Project Selected";
 "project.emptyMessage" = "Add a local folder to prepare it for ChatGPT access.";

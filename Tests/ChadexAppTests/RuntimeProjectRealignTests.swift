@@ -192,13 +192,23 @@ final class RuntimeProjectRealignTests: XCTestCase {
         XCTAssertTrue(model.connectionActionInFlight)
         XCTAssertTrue(model.hasUpdateBlockingWork)
         let other = try XCTUnwrap(model.preferences.projects.last?.id)
-        let switched = await model.selectProject(other)
-        XCTAssertFalse(switched, "project switches wait for the realignment")
+        // An explicit project choice waits for the realignment, then runs:
+        // it is never silently dropped.
+        let switching = Task { await model.selectProject(other) }
         model.primaryAction()
         try await Task.sleep(for: .milliseconds(150))
         for method in ["disconnectAI", "connectChatGPT", "switchLocalProject"] {
             XCTAssertEqual(count(method, fixture), 0, "\(method) must wait for the realignment")
         }
+
+        let switched = await switching.value
+        XCTAssertTrue(switched, "the waiting switch runs once the realignment ended")
+        XCTAssertEqual(model.preferences.selectedProjectID, other)
+        let methods = ((try? String(contentsOf: fixture.log, encoding: .utf8)) ?? "").split(separator: "\n")
+        let realignIndex = try XCTUnwrap(methods.firstIndex(of: "realignLocalProject"))
+        let switchIndex = try XCTUnwrap(methods.firstIndex(of: "switchLocalProject"))
+        XCTAssertLessThan(realignIndex, switchIndex, "the switch is sent only after the realignment")
+        XCTAssertFalse(model.isSwitchingProject)
 
         await refresh.value
         await model.shutdown()

@@ -34,6 +34,14 @@ const MAX_REQUEST_FRAME_BYTES: usize = 256 * 1024;
 // so a stuck warm-up can never block the request that cancelled it.
 const PREWARM_CANCEL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(12);
 const PREWARM_CANCEL_RETRY: std::time::Duration = std::time::Duration::from_millis(40);
+// A project switch or realignment must answer before the App stops waiting
+// for it (60s / 45s): otherwise the helper could finish a switch the App
+// already reported as failed, leaving the App and the runtime on different
+// projects. Waiting for another project operation and the activation itself
+// are therefore bounded; an activation past its bound is cancelled through the
+// coordinator (never dropped, so its operation slot is always released).
+const PROJECT_SWITCH_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+const PROJECT_ACTIVATION_DEADLINE: std::time::Duration = std::time::Duration::from_secs(25);
 
 #[derive(Debug, Deserialize)]
 struct Request {
@@ -419,6 +427,60 @@ impl PrewarmPort for ChadexRuntimeCore {
 
     async fn activate(&self, path: &str) -> Result<RuntimeSnapshot, ChadexError> {
         self.activate_local_project_background(path).await
+    }
+}
+
+fn project_switch_busy_error() -> ErrorPayload {
+    ErrorPayload::new(
+        "project_switch_busy",
+        "Another project operation is still running in Chadex",
+        "Wait a moment, then choose the project again.",
+    )
+}
+
+fn project_activation_timed_out_error() -> ErrorPayload {
+    ErrorPayload::new(
+        "project_activation_timed_out",
+        "The local runtime did not finish opening the project in time",
+        "The previous project is still active. Retry, or check the project folder and the local runtime in Diagnostics.",
+    )
+}
+
+/// Waits for the project-operation lock, but never longer than `wait`: a
+/// request that cannot start in time fails at once instead of running long
+/// after its caller gave up.
+async fn lock_project_operation<'a>(
+    lock: &'a Mutex<()>,
+    wait: std::time::Duration,
+) -> Result<tokio::sync::MutexGuard<'a, ()>, ErrorPayload> {
+    tokio::time::timeout(wait, lock.lock())
+        .await
+        .map_err(|_| project_switch_busy_error())
+}
+
+/// Runs a project activation with an upper bound. Past `deadline` the
+/// activation is asked to cancel (`cancel`) and is still awaited, so the
+/// coordinator unwinds and releases its operation slot; a cancelled or failed
+/// activation then reports the timeout. An activation that completed anyway
+/// keeps its result.
+async fn bounded_activation<F, C>(
+    activation: F,
+    deadline: std::time::Duration,
+    cancel: C,
+) -> Result<RuntimeSnapshot, ErrorPayload>
+where
+    F: std::future::Future<Output = Result<RuntimeSnapshot, ChadexError>>,
+    C: FnOnce(),
+{
+    tokio::pin!(activation);
+    tokio::select! {
+        result = &mut activation => result.map_err(ErrorPayload::from),
+        _ = tokio::time::sleep(deadline) => {
+            cancel();
+            activation
+                .await
+                .map_err(|_| project_activation_timed_out_error())
+        }
     }
 }
 
@@ -1002,7 +1064,9 @@ impl Bridge {
         // single ChatGPT tunnel alive whenever its local target remains unchanged.
         // The ingress is paused so no new request can enter while the active project
         // is transitioning; in-flight requests keep their old verification epoch.
-        let _switch = self.project_switch_lifecycle.lock().await;
+        let _switch =
+            lock_project_operation(&self.project_switch_lifecycle, PROJECT_SWITCH_LOCK_WAIT)
+                .await?;
         let previous_target = self.target_project();
         let before = self.runtime.snapshot();
         let tunnel_state = self.tunnel.snapshot().state;
@@ -1028,11 +1092,7 @@ impl Bridge {
 
         let switch_result: Result<ProjectInspection, ErrorPayload> = async {
             if before.readiness.runtime_ready && before.project.is_some() {
-                let activated = self
-                    .runtime
-                    .activate_local_project(path)
-                    .await
-                    .map_err(ErrorPayload::from)?;
+                let activated = self.bounded_local_activation(path).await?;
                 let activated_project = activated.project.ok_or_else(|| {
                     ErrorPayload::new(
                         "project_activation_incomplete",
@@ -1166,11 +1226,30 @@ impl Bridge {
         runtime_matches_previous
     }
 
+    /// A user-visible project activation, bounded by
+    /// `PROJECT_ACTIVATION_DEADLINE` (see `bounded_activation`).
+    async fn bounded_local_activation(&self, path: &str) -> Result<RuntimeSnapshot, ErrorPayload> {
+        bounded_activation(
+            self.runtime.activate_local_project(path),
+            PROJECT_ACTIVATION_DEADLINE,
+            || {
+                if let Some(operation) = self.runtime.snapshot().current_operation.filter(|operation| {
+                    operation.kind == "local_project_activate" && !operation.background
+                }) {
+                    let _ = self.runtime.cancel_operation(&operation.id);
+                }
+            },
+        )
+        .await
+    }
+
     /// Re-activates the selected project in a ready runtime that serves
     /// another one. Unlike a project switch it never touches the tunnel or the
     /// selection: on failure everything stays as it was.
     async fn realign_local_project(&self, path: &str) -> Result<BackendSnapshot, ErrorPayload> {
-        let _switch = self.project_switch_lifecycle.lock().await;
+        let _switch =
+            lock_project_operation(&self.project_switch_lifecycle, PROJECT_SWITCH_LOCK_WAIT)
+                .await?;
         let target = self.target_project();
         let current = self.runtime.snapshot();
         let Some(path) = realign_activation_path(&current, target.as_ref(), path)? else {
@@ -1178,7 +1257,7 @@ impl Bridge {
         };
         let started_at_ms = now_ms();
         let started = Instant::now();
-        let result = self.runtime.activate_local_project(path).await;
+        let result = self.bounded_local_activation(path).await;
         self.push_lifecycle(
             "realign",
             "project_activation",
@@ -1186,7 +1265,7 @@ impl Bridge {
             started,
             step_completion(&result, false),
         );
-        let activated = result.map_err(ErrorPayload::from)?;
+        let activated = result?;
         // Any verification observed while the runtime served another project
         // does not count for the selection.
         self.reset_verification_for_target();
@@ -3556,5 +3635,74 @@ mod tests {
         assert_eq!(state.assign_revision(tunnel_changed.clone()).state_revision, 6);
         tunnel_changed.tunnel_status = Some(TunnelStatus { configured: true, state: TunnelState::Ready });
         assert_eq!(state.assign_revision(tunnel_changed).state_revision, 7);
+    }
+
+    #[tokio::test]
+    async fn project_operation_lock_wait_is_bounded() {
+        let lock = Mutex::new(());
+        let held = lock.lock().await;
+        let started = std::time::Instant::now();
+        let error = lock_project_operation(&lock, std::time::Duration::from_millis(30))
+            .await
+            .expect_err("a held lock must not be waited for forever");
+        assert_eq!(error.code, "project_switch_busy");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        drop(held);
+        assert!(lock_project_operation(&lock, std::time::Duration::from_millis(30)).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn bounded_activation_cancels_a_slow_activation_and_waits_for_it_to_unwind() {
+        let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let unwound = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let activation = {
+            let cancelled = Arc::clone(&cancelled);
+            let unwound = Arc::clone(&unwound);
+            async move {
+                // Like the coordinator: runs until cancelled, then unwinds.
+                while !cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+                    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+                }
+                unwound.store(true, std::sync::atomic::Ordering::SeqCst);
+                Err::<RuntimeSnapshot, _>(ChadexError::new(
+                    "desktop_operation_cancelled",
+                    "cancelled",
+                    "retry",
+                ))
+            }
+        };
+        let started = std::time::Instant::now();
+        let error = bounded_activation(activation, std::time::Duration::from_millis(30), || {
+            cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
+        })
+        .await
+        .expect_err("a cancelled activation reports the timeout");
+        assert_eq!(error.code, "project_activation_timed_out");
+        assert!(unwound.load(std::sync::atomic::Ordering::SeqCst), "the activation is awaited, never dropped");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn bounded_activation_keeps_fast_results_and_errors() {
+        let cancel_called = std::sync::atomic::AtomicBool::new(false);
+        let ok = bounded_activation(
+            async { Ok::<_, ChadexError>(prewarm_runtime_snapshot()) },
+            std::time::Duration::from_secs(5),
+            || cancel_called.store(true, std::sync::atomic::Ordering::SeqCst),
+        )
+        .await
+        .expect("a fast activation succeeds");
+        assert_eq!(ok, prewarm_runtime_snapshot());
+        let error = bounded_activation(
+            async {
+                Err::<RuntimeSnapshot, _>(ChadexError::new("project_not_readable", "unreadable", "choose another"))
+            },
+            std::time::Duration::from_secs(5),
+            || cancel_called.store(true, std::sync::atomic::Ordering::SeqCst),
+        )
+        .await
+        .expect_err("activation errors pass through");
+        assert_eq!(error.code, "project_not_readable", "a real failure keeps its own reason");
+        assert!(!cancel_called.load(std::sync::atomic::Ordering::SeqCst));
     }
 }
