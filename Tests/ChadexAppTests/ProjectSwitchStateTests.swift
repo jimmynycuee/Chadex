@@ -25,3 +25,20 @@ final class ProjectSwitchStateTests: XCTestCase {
         )
     }
 }
+
+/// Adding a folder as broad as the home folder asks for confirmation first.
+final class ProjectPathBreadthTests: XCTestCase {
+    private let home = "/Users/alex"
+
+    func testHomeFolderAndEverythingAboveItIsBroad() {
+        for path in ["/", "/Users", "/Users/", "/Users/alex", "/Users/alex/", "/Volumes", "/Volumes/External", "/Volumes/External/"] {
+            XCTAssertTrue(ProjectPathBreadth.isBroad(path, homeDirectory: home), path)
+        }
+    }
+
+    func testProjectFoldersAreNotBroad() {
+        for path in ["/Users/alex/Documents/App", "/Users/alex/Desktop", "/Users/other", "/Volumes/External/Work", "/opt/project", "/Users/alexander"] {
+            XCTAssertFalse(ProjectPathBreadth.isBroad(path, homeDirectory: home), path)
+        }
+    }
+}

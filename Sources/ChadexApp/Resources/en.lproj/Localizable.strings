@@ -30,6 +30,12 @@
 "project.removeBusyTitle" = "Can’t remove the project yet";
 "project.removeBusyMessage" = "Chadex is switching projects, so “%@” can’t be removed right now.";
 "project.removeBusyRecovery" = "Wait for the switch to finish, then remove the project again.";
+"project.removeSwitchFailedTitle" = "The project was not removed";
+"project.removeSwitchFailedMessage" = "“%1$@” is the current project. To remove it, Chadex first has to switch to “%2$@”, but that switch failed: %3$@";
+"project.removeSwitchFailedRecovery" = "“%@” is still in Chadex. Fix the problem above or switch to another project yourself, then remove it again.";
+"project.broadAccessTitle" = "Give ChatGPT access to this whole folder?";
+"project.broadAccessMessage" = "“%@” is your home folder or a folder that contains it. Once it is a project, ChatGPT can read and change every file under it, including documents, settings and keys. Choose a specific project folder unless you really mean this.";
+"project.broadAccessConfirm" = "Add Anyway";
 "project.switching" = "Switching to %@…";
 "project.emptyTitle" = "No Project Selected";
 "project.emptyMessage" = "Add a local folder to prepare it for ChatGPT access.";

@@ -5,6 +5,7 @@ import { DesktopStore, connectionStatus, localStatus, observedRuntime, safeError
 import { Ferret } from './FerretCompanion';
 import { JobActivity, TraceActivity } from './RuntimeActivity';
 import { SkillsPage } from './SkillsPage';
+import { isBroadProjectPath } from './projectPath';
 
 type Page = 'home' | 'projects' | 'project' | 'skills' | 'connection' | 'activity' | 'settings' | 'diagnostics' | 'updates';
 const titles: Record<Page, string> = { home: '總覽', projects: '專案', project: '專案詳情', skills: 'Skills', connection: '連線', activity: '活動紀錄', settings: '設定', diagnostics: '診斷', updates: '版本與更新' };
@@ -42,6 +43,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
   const actionGate = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
+  const [broadProjectPath, setBroadProjectPath] = useState<string | null>(null);
   const [activityLevel, setActivityLevel] = useState('all');
   const [activitySearch, setActivitySearch] = useState('');
   const [credential, setCredential] = useState('');
@@ -122,8 +124,15 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
     await run('選擇專案', async () => {
       const path = await api.chooseProject();
       if (path === null) return;
+      // A folder as broad as the user profile (or wider) lets ChatGPT reach every file under it: confirm first.
+      if (isBroadProjectPath(path)) { setBroadProjectPath(path); return; }
       setInspection(await api.inspectProject(path)); setPage('project');
     }, false);
+  }
+  function confirmBroadProject() {
+    const path = broadProjectPath; setBroadProjectPath(null);
+    if (path === null) return;
+    void run('選擇專案', async () => { setInspection(await api.inspectProject(path)); setPage('project'); }, false);
   }
   function inspect(path: string) {
     void run('檢查專案', async () => { setInspection(await api.inspectProject(path)); setPage('project'); }, false);
@@ -172,6 +181,11 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
         {snapshot?.error && <div className="notice error" role="alert"><strong>{safeError(snapshot.error.message)}</strong><p>{snapshot.error.recovery && safeError(snapshot.error.recovery)}</p></div>}
         {actionError && <div className="notice error" role="alert"><p>{actionError}</p><button onClick={() => setActionError(null)}>關閉</button></div>}
         {busy && <div className="notice busy" role="status"><span className="spinner" />{busy}…</div>}
+        {broadProjectPath !== null && <div className="notice broad-project-confirm" role="alertdialog" aria-label="確認加入範圍很大的資料夾">
+          <strong>要讓 ChatGPT 存取整個資料夾嗎？</strong>
+          <p>「{broadProjectPath}」是使用者資料夾、磁碟根目錄或包含它們的上層資料夾。加入成專案後，ChatGPT 將能讀取並修改其中所有檔案，包括文件、設定與金鑰。除非你確定要這樣做，否則請改選特定的專案資料夾。</p>
+          <div className="button-row"><button autoFocus onClick={() => setBroadProjectPath(null)} onKeyDown={(event) => { if (event.key === 'Escape') setBroadProjectPath(null); }}>取消</button><button className="danger" onClick={confirmBroadProject}>仍要加入</button></div>
+        </div>}
 
         {page === 'home' && <>
           <section className="overview-hero"><div><span className="eyebrow">CURRENT WORKSPACE</span><h2>{project ? basename(project.path) : '從一個專案開始。'}</h2><p>{project ? project.path : '選擇你的本地資料夾，準備服務，再連接 ChatGPT。'}</p><div className="button-row"><button className="primary" disabled={!editable} onClick={() => project ? (setInspection(null), setPage('project')) : void chooseProject()}>{project ? '檢視專案' : '選擇專案'} <span aria-hidden="true">↗</span></button><button onClick={() => setPage('connection')}>連線設定</button></div></div><div className="hero-index" aria-hidden="true">LOCAL<span>01</span></div></section>

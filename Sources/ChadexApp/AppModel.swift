@@ -337,7 +337,27 @@ final class AppModel: ObservableObject {
         panel.canCreateDirectories = false
         panel.prompt = L10n.string("project.choose")
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard confirmBroadProjectAccess(url) else { return }
         Task { await addProject(url: url) }
+    }
+
+    /// A folder as broad as the home folder (or wider) lets ChatGPT reach
+    /// every file under it: ask before adding it. Cancel is the default.
+    private func confirmBroadProjectAccess(_ url: URL) -> Bool {
+        let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let home = FileManager.default.homeDirectoryForCurrentUser
+            .resolvingSymlinksInPath().standardizedFileURL.path
+        guard ProjectPathBreadth.isBroad(path, homeDirectory: home) else { return true }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.string("project.broadAccessTitle")
+        alert.informativeText = L10n.string("project.broadAccessMessage", path)
+        let cancel = alert.addButton(withTitle: L10n.string("common.cancel"))
+        cancel.keyEquivalent = "\r"
+        let addAnyway = alert.addButton(withTitle: L10n.string("project.broadAccessConfirm"))
+        addAnyway.keyEquivalent = ""
+        addAnyway.hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     @discardableResult
@@ -393,7 +413,24 @@ final class AppModel: ObservableObject {
             }
             if let fallback = remaining.first {
                 guard await selectProject(fallback.id) else {
-                    if presentedError == nil { presentProjectRemovalBusy(project) }
+                    if let switchError = presentedError {
+                        // Keep the project and say why: removing the current
+                        // project needs a switch first, and that switch failed.
+                        presentedError = PresentedError(
+                            title: L10n.string("project.removeSwitchFailedTitle"),
+                            message: L10n.string(
+                                "project.removeSwitchFailedMessage",
+                                project.name,
+                                fallback.name,
+                                switchError.message
+                            ),
+                            recovery: L10n.string("project.removeSwitchFailedRecovery", project.name),
+                            code: switchError.code,
+                            details: switchError.details
+                        )
+                    } else {
+                        presentProjectRemovalBusy(project)
+                    }
                     return false
                 }
             } else {

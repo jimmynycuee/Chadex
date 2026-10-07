@@ -205,3 +205,4 @@ button.skill-toggle:hover:not(:disabled) { background: none; }
 .skill-warning .skill-meta { margin: 0 0 6px; }
 .skill-definition { margin: 6px 0; padding: 10px 12px; max-height: 320px; overflow: auto; background: var(--background); border: 1px solid var(--line); border-radius: 6px; font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 main.narrow { max-width: 1036px; }
+.broad-project-confirm { border: 1px solid var(--warn); }

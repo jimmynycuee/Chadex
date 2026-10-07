@@ -95,6 +95,27 @@ describe('desktop pages and IPC behavior', () => {
     expect(api.inspectProject).not.toHaveBeenCalled(); expect(api.runtimeAction).not.toHaveBeenCalled();
     expect(api.savePreferences).not.toHaveBeenCalled();
   });
+  it('asks before adding a user profile folder and adds it only after confirmation', async () => {
+    const { api } = await mount();
+    const home = 'C:\\Users\\alex';
+    vi.mocked(api.chooseProject).mockResolvedValue(home);
+    vi.mocked(api.inspectProject).mockResolvedValue({ ...snapshot().selected_project!, path: home, allowed_root: home });
+    fireEvent.click(screen.getByRole('button', { name: '專案' }));
+    fireEvent.click(screen.getByRole('button', { name: /選擇資料夾/ }));
+    const dialog = await screen.findByRole('alertdialog', { name: '確認加入範圍很大的資料夾' });
+    expect(dialog.textContent).toContain('ChatGPT 將能讀取並修改其中所有檔案');
+    expect(api.inspectProject).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '取消' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(api.inspectProject).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /選擇資料夾/ }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: '仍要加入' }));
+    await waitFor(() => expect(api.inspectProject).toHaveBeenCalledWith(home));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: '專案詳情' })).toBeTruthy());
+    expect(api.runtimeAction).not.toHaveBeenCalled();
+  });
   it('activates through the real method and delegates recent project persistence to backend', async () => {
     const { api } = await mount(desktop({ runtime: snapshot({ selected_project: null }), preferences: { ...desktop().preferences, recent_projects: [] } }));
     const checked = { ...snapshot().selected_project!, path: 'C:\\new-project', allowed_root: 'C:\\new-project' };

@@ -170,6 +170,29 @@ enum SidebarProjectFollow {
     }
 }
 
+/// Folders too broad to hand to ChatGPT without an explicit confirmation:
+/// the filesystem root, the home folder or any folder that contains it (for
+/// example `/Users`), and a volume root (`/Volumes`, `/Volumes/<name>`).
+/// Paths are compared after removing trailing slashes; callers pass resolved
+/// absolute paths.
+enum ProjectPathBreadth {
+    static func isBroad(_ path: String, homeDirectory: String) -> Bool {
+        let candidate = normalized(path)
+        let home = normalized(homeDirectory)
+        if candidate == "/" || candidate == "/Users" || candidate == "/Volumes" { return true }
+        if candidate == home { return true }
+        if !home.isEmpty, home.hasPrefix(candidate + "/") { return true }
+        let components = candidate.split(separator: "/", omittingEmptySubsequences: true)
+        return components.count == 2 && components[0] == "Volumes"
+    }
+
+    private static func normalized(_ path: String) -> String {
+        var value = path
+        while value.count > 1 && value.hasSuffix("/") { value.removeLast() }
+        return value
+    }
+}
+
 enum ActivityLevel: String, Codable, Sendable {
     case info
     case warning

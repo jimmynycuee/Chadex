@@ -30,6 +30,12 @@
 "project.removeBusyTitle" = "暫時無法移除專案";
 "project.removeBusyMessage" = "Chadex 正在切換專案，現在無法移除「%@」。";
 "project.removeBusyRecovery" = "請等切換完成後，再移除一次。";
+"project.removeSwitchFailedTitle" = "專案沒有被移除";
+"project.removeSwitchFailedMessage" = "「%1$@」是目前使用中的專案。要移除它，Chadex 必須先切換到「%2$@」，但切換沒有成功：%3$@";
+"project.removeSwitchFailedRecovery" = "「%@」仍保留在 Chadex 中。請先排除上面的問題，或自行切換到其他專案，再移除一次。";
+"project.broadAccessTitle" = "要讓 ChatGPT 存取整個資料夾嗎？";
+"project.broadAccessMessage" = "「%@」是你的家目錄，或包含家目錄的上層資料夾。加入成專案後，ChatGPT 將能讀取並修改其中所有檔案，包括文件、設定與金鑰。除非你確定要這樣做，否則請改選特定的專案資料夾。";
+"project.broadAccessConfirm" = "仍要加入";
 "project.switching" = "正在切換到 %@…";
 "project.emptyTitle" = "尚未選擇專案";
 "project.emptyMessage" = "加入一個本機資料夾，準備讓 ChatGPT 存取。";
