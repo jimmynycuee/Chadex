@@ -659,3 +659,4 @@
 "skills.row.expandHint" = "Shows the full description and SKILL.md";
 "skills.row.collapseHint" = "Hides the details";
 "skills.error.replayCapacity" = "Too many Skill changes in a short time; the local runtime is refusing new changes for now. Try again later (up to about a day).";
+"project.removeConfirm" = "Remove";

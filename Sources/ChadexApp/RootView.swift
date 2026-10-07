@@ -18,7 +18,6 @@ struct RootView: View {
     @AppStorage("root.didRouteFirstLaunch") private var didRouteFirstLaunch = false
     @AppStorage("root.lastSidebarDestination") private var lastSidebarDestination = "project"
     @State private var selection: SidebarSelection?
-    @State private var projectPendingRemoval: ProjectRecord?
     @State private var projectSwitchRequestInFlight = false
     @State private var pendingProjectSwitchID: UUID?
     @State private var memoryInspectorProject: ProjectRecord?
@@ -77,7 +76,7 @@ struct RootView: View {
                             Divider()
 
                             Button(L10n.string("project.remove"), role: .destructive) {
-                                projectPendingRemoval = project
+                                confirmProjectRemoval(project)
                             }
                         }
                     }
@@ -228,7 +227,7 @@ struct RootView: View {
                         Divider()
 
                         Button(L10n.string("project.remove"), role: .destructive) {
-                            projectPendingRemoval = project
+                            confirmProjectRemoval(project)
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -297,27 +296,6 @@ struct RootView: View {
                 dismissButton: .default(Text(L10n.string("common.ok")))
             )
         }
-        .alert(item: $projectPendingRemoval) { project in
-            Alert(
-                title: Text(L10n.string("project.removeTitle")),
-                message: Text(L10n.string("project.removeMessage", project.name)),
-                primaryButton: .destructive(Text(L10n.string("project.remove"))) {
-                    Task {
-                        if await model.removeProject(project.id) {
-                            switch selection {
-                            case .agentSettings, .skills, .computerUse:
-                                if model.selectedProject == nil {
-                                    selection = .activity
-                                }
-                            default:
-                                selection = model.selectedProject.map { .project($0.id) } ?? .activity
-                            }
-                        }
-                    }
-                },
-                secondaryButton: .cancel(Text(L10n.string("common.cancel")))
-            )
-        }
     }
 
     private var fixedSidebarWidth: CGFloat {
@@ -332,6 +310,32 @@ struct RootView: View {
             return model.selectedProject
         case .activity, .guide, .none:
             return nil
+        }
+    }
+
+    /// Confirms with an app-modal NSAlert: a second SwiftUI `.alert(item:)` on
+    /// this view never appeared next to the error alert, so Remove did nothing.
+    private func confirmProjectRemoval(_ project: ProjectRecord) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.string("project.removeTitle")
+        alert.informativeText = L10n.string("project.removeMessage", project.name)
+        let cancel = alert.addButton(withTitle: L10n.string("common.cancel"))
+        cancel.keyEquivalent = "\r"
+        let remove = alert.addButton(withTitle: L10n.string("project.removeConfirm"))
+        remove.keyEquivalent = ""
+        remove.hasDestructiveAction = true
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+        Task {
+            guard await model.removeProject(project.id) else { return }
+            switch selection {
+            case .agentSettings, .skills, .computerUse:
+                if model.selectedProject == nil {
+                    selection = .activity
+                }
+            default:
+                selection = model.selectedProject.map { .project($0.id) } ?? .activity
+            }
         }
     }
 
