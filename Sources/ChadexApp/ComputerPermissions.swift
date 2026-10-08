@@ -134,7 +134,7 @@ struct ComputerPermissionsCard: View {
             if state.allGranted {
                 HStack(spacing: layout.spacing(10)) {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Self.grantedText)
                         .accessibilityHidden(true)
                     Text(L10n.string("computer.permission.ready"))
                         .chadexFont(.callout)
@@ -168,6 +168,15 @@ struct ComputerPermissionsCard: View {
         .onDisappear { monitor.stop() }
     }
 
+    /// Green text for "On". System green is too light to read as small text
+    /// on a light card (about 2:1), so light mode uses a deeper green that
+    /// keeps 4.5:1; dark mode keeps the system green.
+    static let grantedText = Color(nsColor: NSColor(name: "ChadexGrantedText") { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? .systemGreen
+            : NSColor(srgbRed: 0x1A / 255, green: 0x7F / 255, blue: 0x37 / 255, alpha: 1)
+    })
+
     private func row(_ permission: ComputerPermission, granted: Bool) -> some View {
         HStack(alignment: .center, spacing: layout.spacing(12)) {
             Image(systemName: permission.symbol)
@@ -188,7 +197,7 @@ struct ComputerPermissionsCard: View {
             if granted {
                 Label(L10n.string("computer.permission.granted"), systemImage: "checkmark.circle.fill")
                     .chadexFont(.caption, weight: .semibold)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.green)
                     .labelStyle(.titleAndIcon)
                     .fixedSize()
             } else {
