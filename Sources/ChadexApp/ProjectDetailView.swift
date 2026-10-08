@@ -288,11 +288,7 @@ struct ProjectDetailView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     computerControlModePicker
-                        .chadexPadding(.top, 2)
-                    Text(computerControlModeDescription)
-                        .chadexFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .chadexPadding(.top, 4)
                     if !model.snapshot.tunnelReady {
                         Text(L10n.string("computer.sessionUnavailable"))
                             .chadexFont(.caption)
@@ -338,16 +334,23 @@ struct ProjectDetailView: View {
                     }
                 }
 
-                Divider()
-                VStack(alignment: .leading, spacing: layout.spacing(10)) {
-                    Text(L10n.string("computer.safetyTitle"))
-                        .chadexFont(.headline, weight: .semibold)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(L10n.string("computer.safetyNote"))
-                        .chadexFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
+                HStack(alignment: .top, spacing: layout.spacing(14)) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: layout.control(16), weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: layout.control(34), height: layout.control(34))
+                        .background(ChadexBrand.signal, in: RoundedRectangle(cornerRadius: layout.control(9), style: .continuous))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: layout.spacing(6)) {
+                        Text(L10n.string("computer.safetyTitle"))
+                            .chadexFont(.headline, weight: .semibold)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(L10n.string("computer.safetyNote"))
+                            .chadexFont(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: layout.spacing(12))
                     Button(role: .destructive) {
                         Task { await model.stopComputerControl() }
                     } label: {
@@ -355,9 +358,11 @@ struct ProjectDetailView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.regular)
+                    .fixedSize()
                     .disabled(model.computerSafetyMutationInFlight)
                     .help(L10n.string("computer.stopHelp"))
                 }
+                .chadexCard(padding: 18)
             }
 
             if let error = model.computerSafetyError {
@@ -369,11 +374,19 @@ struct ProjectDetailView: View {
     }
 
     private var computerControlModePicker: some View {
-        Picker(
-            L10n.string("computer.controlModeTitle"),
-            selection: Binding(
-                get: { model.computerSafety.mode },
-                set: { mode in
+        let modes: [ComputerControlMode] = model.snapshot.tunnelReady
+            ? [.askBeforeControl, .allowSession, .alwaysAllow, .readOnly]
+            : [.askBeforeControl, .alwaysAllow, .readOnly]
+        return LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: layout.control(220)), spacing: layout.spacing(12), alignment: .top)],
+            alignment: .leading,
+            spacing: layout.spacing(12)
+        ) {
+            ForEach(modes) { mode in
+                ComputerModeCard(
+                    mode: mode,
+                    isSelected: model.computerSafety.mode == mode
+                ) {
                     Task {
                         if mode == .allowSession {
                             await model.setComputerControlMode(mode)
@@ -382,18 +395,10 @@ struct ProjectDetailView: View {
                         }
                     }
                 }
-            )
-        ) {
-            Text(L10n.string("computer.mode.ask")).tag(ComputerControlMode.askBeforeControl)
-            if model.snapshot.tunnelReady {
-                Text(L10n.string("computer.mode.allowSession")).tag(ComputerControlMode.allowSession)
+                .disabled(model.computerSafetyMutationInFlight)
             }
-            Text(L10n.string("computer.mode.alwaysAllow")).tag(ComputerControlMode.alwaysAllow)
-            Text(L10n.string("computer.mode.readOnly")).tag(ComputerControlMode.readOnly)
         }
-        .pickerStyle(.radioGroup)
-        .labelsHidden()
-        .disabled(model.computerSafetyMutationInFlight)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(L10n.string("computer.controlModeTitle"))
     }
 
@@ -438,19 +443,6 @@ struct ProjectDetailView: View {
             return L10n.string("computer.status.allowSession")
         case .alwaysAllow:
             return L10n.string("computer.status.alwaysAllow")
-        }
-    }
-
-    private var computerControlModeDescription: String {
-        switch model.computerSafety.mode {
-        case .readOnly:
-            return L10n.string("computer.description.readOnly")
-        case .askBeforeControl:
-            return L10n.string("computer.description.ask")
-        case .allowSession:
-            return L10n.string("computer.description.allowSession")
-        case .alwaysAllow:
-            return L10n.string("computer.description.alwaysAllow")
         }
     }
 
@@ -865,5 +857,97 @@ enum ActivityPresentation {
         let remainder = message[marker.upperBound...]
         let digits = remainder.prefix(while: { $0.isNumber })
         return digits.isEmpty ? nil : String(digits)
+    }
+}
+
+/// One Computer Use mode as a selectable card: the symbol and title name the
+/// mode, the description says what ChatGPT can do under it.
+private struct ComputerModeCard: View {
+    @Environment(\.chadexLayout) private var layout
+    @Environment(\.isEnabled) private var isEnabled
+    let mode: ComputerControlMode
+    let isSelected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: layout.control(12), style: .continuous)
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: layout.spacing(8)) {
+                HStack(spacing: layout.spacing(8)) {
+                    Image(systemName: symbol)
+                        .font(.system(size: layout.control(13), weight: .semibold))
+                        .foregroundStyle(isSelected ? Color.white : tint)
+                        .frame(width: layout.control(28), height: layout.control(28))
+                        .background(isSelected ? tint : tint.opacity(0.14), in: Circle())
+                    Text(L10n.string(titleKey))
+                        .chadexFont(.callout, weight: .semibold)
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 4)
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: layout.control(15)))
+                        .foregroundStyle(isSelected ? ChadexBrand.signal : Color.secondary.opacity(0.5))
+                }
+                Text(L10n.string(descriptionKey))
+                    .chadexFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .chadexPadding(14)
+            .background(ChadexBrand.cardFill, in: shape)
+            .overlay(
+                shape.strokeBorder(
+                    isSelected ? ChadexBrand.signal : (hovering ? Color.secondary.opacity(0.45) : ChadexBrand.cardStroke),
+                    lineWidth: isSelected ? 2 : 1
+                )
+            )
+            .contentShape(shape)
+            .opacity(isEnabled ? 1 : 0.6)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.string(titleKey))
+        .accessibilityHint(L10n.string(descriptionKey))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private var titleKey: String {
+        switch mode {
+        case .askBeforeControl: return "computer.mode.ask"
+        case .allowSession: return "computer.mode.allowSession"
+        case .alwaysAllow: return "computer.mode.alwaysAllow"
+        case .readOnly: return "computer.mode.readOnly"
+        }
+    }
+
+    private var descriptionKey: String {
+        switch mode {
+        case .askBeforeControl: return "computer.description.ask"
+        case .allowSession: return "computer.description.allowSession"
+        case .alwaysAllow: return "computer.description.alwaysAllow"
+        case .readOnly: return "computer.description.readOnly"
+        }
+    }
+
+    private var symbol: String {
+        switch mode {
+        case .askBeforeControl: return "hand.raised.fill"
+        case .allowSession: return "clock.fill"
+        case .alwaysAllow: return "bolt.fill"
+        case .readOnly: return "eye.fill"
+        }
+    }
+
+    /// Hue grows with how much control the mode hands over.
+    private var tint: Color {
+        switch mode {
+        case .readOnly: return .gray
+        case .askBeforeControl: return ChadexBrand.signal
+        case .allowSession: return .indigo
+        case .alwaysAllow: return .orange
+        }
     }
 }
