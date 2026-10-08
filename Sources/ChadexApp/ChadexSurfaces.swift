@@ -192,14 +192,14 @@ struct ConnectionCircuitView: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var tunnelState: CircuitNode.State {
+    private var tunnelState: CircuitNode.Stage {
         if phase == .error { return .error }
         if tunnelReady || chatGPTVerified { return .complete }
         if isConnecting || phase == .preparing { return .active }
         return .idle
     }
 
-    private var chatGPTState: CircuitNode.State {
+    private var chatGPTState: CircuitNode.Stage {
         // A failed tunnel never reached ChatGPT; mark only the hop that failed.
         if phase == .error { return tunnelReady ? .error : .idle }
         if chatGPTConnected || chatGPTVerified { return .complete }
@@ -254,7 +254,7 @@ struct ConnectionCircuitView: View {
 private struct CircuitNode: View {
     static let diameter: CGFloat = 40
 
-    enum State: Equatable {
+    enum Stage: Equatable {
         case complete
         case active
         case waiting
@@ -267,7 +267,7 @@ private struct CircuitNode: View {
     let title: String
     let detail: String
     let symbol: String
-    let state: State
+    let state: Stage
     var accent: Color = ChadexBrand.signal
     @State private var halo = false
 
@@ -434,10 +434,14 @@ struct ConnectionAmbience: View {
 extension View {
     @ViewBuilder
     func chadexExtendsUnderSidebar() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             backgroundExtensionEffect()
         } else {
             self
         }
+        #else
+        self
+        #endif
     }
 }
