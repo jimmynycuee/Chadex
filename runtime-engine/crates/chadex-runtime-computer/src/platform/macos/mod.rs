@@ -1,4 +1,7 @@
 use super::{map_error, resolve_surface_window};
+use crate::ax_traversal::{
+    observe_tree, resolve as resolve_element, AxSource, TreeBounds, TreeMode,
+};
 use crate::validate_key_input;
 use crate::{
     bounded_text, ensure_raw_capture_bound, prepare_clipboard_write_text, validate_input_text,
@@ -15,7 +18,7 @@ use xcap::Window;
 
 #[cfg(target_os = "macos")]
 use crate::{
-    clipboard_read_result, ensure_correlated_fingerprint, is_secure_text_fingerprint,
+    clipboard_read_result, is_secure_text_fingerprint,
     run_macos_clipboard_write_effect_steps, select_exact_ax_window_index,
     validate_element_state_target, validate_key_modifiers, validate_text_input_preflight,
     validate_text_input_target, AxObservationDeadline,

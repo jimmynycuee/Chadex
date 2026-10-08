@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 #[cfg(any(test, target_os = "macos"))]
 use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -94,12 +94,32 @@ const MAX_ACCESSIBILITY_DEPTH: usize = 8;
 const MAX_ACCESSIBILITY_NODES: usize = 256;
 pub const DEFAULT_ACCESSIBILITY_DEPTH: usize = 6;
 pub const DEFAULT_ACCESSIBILITY_NODES: usize = 128;
+/// Absolute (window-root relative) depth ceiling for subtree and deep-find walks.
+/// It also bounds the cost of re-resolving a handle (about nine AX calls per level).
+#[cfg(any(test, target_os = "macos"))]
+const MAX_ACCESSIBILITY_ABSOLUTE_DEPTH: usize = 64;
+pub const DEFAULT_FIND_DEPTH: usize = 32;
+pub const MAX_FIND_DEPTH: usize = 48;
+pub const DEFAULT_FIND_ELEMENTS_LIMIT: usize = 8;
+pub const MAX_FIND_ELEMENTS_LIMIT: usize = 32;
+/// Nodes read per deep search (not exposed as a request parameter).
+pub const MAX_FIND_VISITED: usize = 4000;
+/// Children expanded for any single node (large lists and tables).
+#[cfg(any(test, target_os = "macos"))]
+const MAX_FIND_CHILDREN_PER_NODE: usize = 512;
+/// Soft wall-clock budget for a deep search, measured from the start of the
+/// observation. Reaching it returns the partial result as a success.
+#[cfg(any(test, target_os = "macos"))]
+const FIND_SOFT_BUDGET: Duration = Duration::from_secs(6);
 const RGBA_BYTES_PER_PIXEL: u64 = 4;
 /// Pre-capture ceiling for the expected complete raw RGBA frame. Standard
 /// 8K UHD (7680x4320x4) fits while malformed/extreme dimensions fail closed
 /// before xcap is allowed to allocate the native capture image.
 const MAX_RAW_CAPTURE_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION: u32 = 4096;
+
+#[cfg(any(test, target_os = "macos"))]
+mod ax_traversal;
 
 #[cfg(any(test, target_os = "macos"))]
 const AX_MESSAGING_TIMEOUT_SECS: f32 = 2.0;
@@ -255,7 +275,9 @@ impl ElementFingerprint {
 struct ElementRecord {
     surface_id: String,
     path: Vec<usize>,
-    lineage: Vec<ElementFingerprint>,
+    /// Root-to-target fingerprints. `Arc` keeps deep (up to
+    /// `MAX_ACCESSIBILITY_ABSOLUTE_DEPTH`) lineages shared between sibling records.
+    lineage: Vec<Arc<ElementFingerprint>>,
 }
 
 impl ElementRecord {
@@ -264,6 +286,7 @@ impl ElementRecord {
         (self.lineage.len() == self.path.len() + 1)
             .then(|| self.lineage.last())
             .flatten()
+            .map(Arc::as_ref)
     }
 
     #[cfg(any(test, target_os = "macos", windows))]
@@ -464,7 +487,7 @@ fn validate_text_input_target(element: &ElementRecord) -> Result<&ElementFingerp
                 .to_string(),
         );
     }
-    if element.lineage.iter().any(is_secure_text_fingerprint) {
+    if element.lineage.iter().any(|fp| is_secure_text_fingerprint(fp)) {
         return Err(
             "permission_denied: secure Accessibility text elements cannot receive text input"
                 .to_string(),
@@ -2145,7 +2168,7 @@ mod element_registry_tests {
         let fingerprint = fingerprint(label);
         ElementRecord {
             surface_id: surface_id.to_string(),
-            lineage: vec![fingerprint; path.len() + 1],
+            lineage: vec![Arc::new(fingerprint); path.len() + 1],
             path,
         }
     }
@@ -2155,7 +2178,7 @@ mod element_registry_tests {
         let element = ElementRecord {
             surface_id: "surface_test".to_string(),
             path: Vec::new(),
-            lineage: vec![fingerprint("")],
+            lineage: vec![Arc::new(fingerprint(""))],
         };
         assert_eq!(
             validate_element_state_target(&element).unwrap_err(),
@@ -2295,7 +2318,7 @@ mod element_registry_tests {
         let mut element = record("surface_test", "target", vec![0, 1]);
         assert!(element.target_fingerprint().is_some());
         assert!(!element.contains_protected_content());
-        element.lineage[1].protected = true;
+        Arc::make_mut(&mut element.lineage[1]).protected = true;
         assert!(element.contains_protected_content());
         element.lineage.pop();
         assert!(element.target_fingerprint().is_none());
@@ -2317,47 +2340,49 @@ mod element_registry_tests {
     #[test]
     fn computer_text_input_target_preflight_fails_closed() {
         let mut text_target = record("surface_test", "target", vec![0]);
-        text_target.lineage[1].role = "AXTextArea".to_string();
+        Arc::make_mut(&mut text_target.lineage[1]).role = "AXTextArea".to_string();
         assert!(validate_text_input_target(&text_target).is_ok());
 
         let mut protected = text_target.clone();
-        protected.lineage[0].protected = true;
+        Arc::make_mut(&mut protected.lineage[0]).protected = true;
         assert!(validate_text_input_target(&protected)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut secure = text_target.clone();
-        secure.lineage[1].role = "AXSecureTextField".to_string();
+        Arc::make_mut(&mut secure.lineage[1]).role = "AXSecureTextField".to_string();
         assert!(validate_text_input_target(&secure)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut secure_subrole = text_target.clone();
-        secure_subrole.lineage[1].subrole = Some("AXSecureTextField".to_string());
+        Arc::make_mut(&mut secure_subrole.lineage[1]).subrole =
+            Some("AXSecureTextField".to_string());
         assert!(validate_text_input_target(&secure_subrole)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut secure_ancestor = text_target.clone();
-        secure_ancestor.lineage[0].role = "AXSecureTextField".to_string();
+        Arc::make_mut(&mut secure_ancestor.lineage[0]).role = "AXSecureTextField".to_string();
         assert!(validate_text_input_target(&secure_ancestor)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut search_field = text_target.clone();
-        search_field.lineage[1].role = "AXTextField".to_string();
-        search_field.lineage[1].subrole = Some("AXSearchField".to_string());
+        Arc::make_mut(&mut search_field.lineage[1]).role = "AXTextField".to_string();
+        Arc::make_mut(&mut search_field.lineage[1]).subrole = Some("AXSearchField".to_string());
         assert!(validate_text_input_target(&search_field).is_ok());
 
         let mut unsupported_subrole = text_target.clone();
-        unsupported_subrole.lineage[1].role = "AXTextField".to_string();
-        unsupported_subrole.lineage[1].subrole = Some("AXUnknownTextSubrole".to_string());
+        Arc::make_mut(&mut unsupported_subrole.lineage[1]).role = "AXTextField".to_string();
+        Arc::make_mut(&mut unsupported_subrole.lineage[1]).subrole =
+            Some("AXUnknownTextSubrole".to_string());
         assert!(validate_text_input_target(&unsupported_subrole)
             .unwrap_err()
             .starts_with("input_failed:"));
 
         let mut non_text = text_target.clone();
-        non_text.lineage[1].role = "AXButton".to_string();
+        Arc::make_mut(&mut non_text.lineage[1]).role = "AXButton".to_string();
         assert!(validate_text_input_target(&non_text)
             .unwrap_err()
             .starts_with("input_failed:"));
@@ -3316,7 +3341,7 @@ mod unsupported_platform_tests {
         let element = ElementRecord {
             surface_id: "surface_test".to_string(),
             path: Vec::new(),
-            lineage: vec![fingerprint],
+            lineage: vec![Arc::new(fingerprint)],
         };
         let error =
             platform::input_text("surface_test", "element_test", &surface, &element, "hello")

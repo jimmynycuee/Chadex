@@ -182,6 +182,79 @@ pub(super) fn optional_ax_string(
         .map(|value| bounded_text(&value.to_string())))
 }
 
+/// Like [`optional_ax_string`] with a caller-chosen UTF-8 byte bound. Only used for
+/// non-sensitive `AXValue` reads that are compared but never returned.
+#[cfg(target_os = "macos")]
+fn optional_ax_string_bounded(
+    deadline: &AxObservationDeadline,
+    element: &AXUIElement,
+    attribute: &'static str,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
+    let Some(value) = optional_ax_value(deadline, element, attribute)? else {
+        return Ok(None);
+    };
+    Ok(value.downcast::<CFString>().ok().map(|value| {
+        let text = value.to_string();
+        let mut end = text.len().min(max_bytes);
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text[..end].to_string()
+    }))
+}
+
+/// Native reader behind the platform-neutral traversal engine.
+#[cfg(target_os = "macos")]
+pub(super) struct MacAxSource<'a> {
+    pub(super) deadline: &'a AxObservationDeadline,
+}
+
+#[cfg(target_os = "macos")]
+impl AxSource for MacAxSource<'_> {
+    type Node = CFRetained<AXUIElement>;
+
+    fn platform(&self) -> &'static str {
+        "macos"
+    }
+
+    fn fingerprint(
+        &self,
+        node: &Self::Node,
+        inherited_protected: bool,
+    ) -> Result<ElementFingerprint, String> {
+        element_fingerprint(self.deadline, node, inherited_protected)
+    }
+
+    fn value(&self, node: &Self::Node, max_bytes: usize) -> Result<Option<String>, String> {
+        optional_ax_string_bounded(self.deadline, node, "AXValue", max_bytes)
+    }
+
+    fn enabled(&self, node: &Self::Node) -> Result<Option<bool>, String> {
+        optional_ax_bool(self.deadline, node, "AXEnabled")
+    }
+
+    fn focused(&self, node: &Self::Node) -> Result<Option<bool>, String> {
+        optional_ax_bool(self.deadline, node, "AXFocused")
+    }
+
+    fn child_count(&self, node: &Self::Node) -> Result<usize, String> {
+        ax_array_count(self.deadline, node, "AXChildren")
+    }
+
+    fn children(&self, node: &Self::Node, take: usize) -> Result<Vec<Self::Node>, String> {
+        ax_elements(self.deadline, node, "AXChildren", take)
+    }
+
+    fn child_at(&self, node: &Self::Node, index: usize) -> Result<Self::Node, String> {
+        ax_element_at(self.deadline, node, "AXChildren", index)
+    }
+
+    fn check_deadline(&self) -> Result<(), String> {
+        self.deadline.ensure_remaining()
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn element_fingerprint(
     deadline: &AxObservationDeadline,
@@ -517,113 +590,19 @@ pub(crate) fn accessibility_tree(
     }
     let deadline = AxObservationDeadline::new();
     let root = exact_ax_window(surface, &deadline)?;
-    let mut queue = VecDeque::from([(
+    observe_tree(
+        &MacAxSource {
+            deadline: &deadline,
+        },
         root,
-        None::<String>,
-        0usize,
-        Vec::<usize>::new(),
-        Vec::<ElementFingerprint>::new(),
-        false,
-    )]);
-    let mut nodes = Vec::with_capacity(max_nodes.min(64));
-    let mut elements: Vec<(String, ElementRecord)> = Vec::with_capacity(max_nodes.min(64));
-    let mut truncated = false;
-    while let Some((element, parent_element_id, depth, path, mut lineage, inherited_protected)) =
-        queue.pop_front()
-    {
-        deadline.ensure_remaining()?;
-        if nodes.len() >= max_nodes {
-            truncated = true;
-            break;
-        }
-        let element_id = crate::allocate_selector("element_", |id| {
-            elements.iter().any(|(existing, _)| existing == id)
-        })?;
-        let fingerprint = element_fingerprint(&deadline, &element, inherited_protected)?;
-        let role = fingerprint.role.clone();
-        let subrole = fingerprint.subrole.clone();
-        let title = fingerprint.title.clone();
-        let description = fingerprint.description.clone();
-        let placeholder = fingerprint.placeholder.clone();
-        let protected = fingerprint.protected;
-        lineage.push(fingerprint);
-        let sensitive = role == "AXSecureTextField"
-            || subrole
-                .as_deref()
-                .is_some_and(|value| value.contains("Secure"));
-        let value = if sensitive || protected {
-            None
-        } else {
-            optional_ax_string(&deadline, &element, "AXValue")?
-        };
-        let enabled = optional_ax_bool(&deadline, &element, "AXEnabled")?;
-        let focused = optional_ax_bool(&deadline, &element, "AXFocused")?;
-        let child_count = ax_array_count(&deadline, &element, "AXChildren")?;
-        if depth < max_depth && child_count > 0 {
-            let reserved = nodes.len() + queue.len() + 1;
-            let remaining = max_nodes.saturating_sub(reserved);
-            let take = child_count.min(remaining);
-            if take < child_count {
-                truncated = true;
-            }
-            for (index, child) in ax_elements(&deadline, &element, "AXChildren", take)?
-                .into_iter()
-                .enumerate()
-            {
-                let mut child_path = path.clone();
-                child_path.push(index);
-                queue.push_back((
-                    child,
-                    Some(element_id.clone()),
-                    depth + 1,
-                    child_path,
-                    lineage.clone(),
-                    protected,
-                ));
-            }
-        } else if child_count > 0 {
-            truncated = true;
-        }
-        elements.push((
-            element_id.clone(),
-            ElementRecord {
-                surface_id: surface_id.to_string(),
-                path,
-                lineage,
-            },
-        ));
-        nodes.push(json!({
-            "element_id": element_id,
-            "parent_element_id": parent_element_id,
-            "depth": depth,
-            "role": role,
-            "subrole": subrole,
-            "title": title,
-            "description": description,
-            "value": value,
-            "placeholder": placeholder,
-            "enabled": enabled,
-            "focused": focused,
-            "child_count": child_count,
-        }));
-    }
-    if !queue.is_empty() {
-        truncated = true;
-    }
-    deadline.ensure_remaining()?;
-    let node_count = nodes.len();
-    Ok(AccessibilityTreeResult {
-        output: json!({
-            "platform": "macos",
-            "surface_id": surface_id,
-            "nodes": nodes,
-            "node_count": node_count,
-            "truncated": truncated,
-            "max_depth": max_depth,
-            "max_nodes": max_nodes,
-        }),
-        elements,
-    })
+        surface_id,
+        None,
+        TreeBounds {
+            max_depth,
+            max_nodes,
+        },
+        TreeMode::Legacy,
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -632,23 +611,8 @@ pub(super) fn resolve_correlated_element(
     element: &ElementRecord,
     deadline: &AxObservationDeadline,
 ) -> Result<CFRetained<AXUIElement>, String> {
-    if element.lineage.len() != element.path.len() + 1 {
-        return Err("stale_element: AX element correlation lineage is incomplete".to_string());
-    }
-    let mut current = exact_ax_window(surface, deadline)?;
-    let current_root_fingerprint = element_fingerprint(deadline, &current, false)?;
-    ensure_correlated_fingerprint(&element.lineage[0], &current_root_fingerprint, true)?;
-    for (depth, &index) in element.path.iter().enumerate() {
-        let child_count = ax_array_count(deadline, &current, "AXChildren")?;
-        if index >= child_count {
-            return Err("stale_element: AX child path no longer exists".to_string());
-        }
-        current = ax_element_at(deadline, &current, "AXChildren", index)?;
-        let current_fingerprint =
-            element_fingerprint(deadline, &current, element.lineage[depth].protected)?;
-        ensure_correlated_fingerprint(&element.lineage[depth + 1], &current_fingerprint, false)?;
-    }
-    Ok(current)
+    let root = exact_ax_window(surface, deadline)?;
+    resolve_element(&MacAxSource { deadline }, root, element)
 }
 
 #[cfg(target_os = "macos")]
@@ -668,7 +632,7 @@ pub(crate) fn element_state(
     let enabled = optional_ax_bool(&deadline, &current, "AXEnabled")?;
     let focused = optional_ax_bool(&deadline, &current, "AXFocused")?;
     let protected = element.contains_protected_content()
-        || element.lineage.iter().any(is_secure_text_fingerprint);
+        || element.lineage.iter().any(|fp| is_secure_text_fingerprint(fp));
     let enabled_for_effect = enabled != Some(false);
     let can_press =
         !protected && enabled_for_effect && ax_supports_action(&deadline, &current, "AXPress")?;

@@ -10,6 +10,7 @@ use crate::{is_supported_text_input_fingerprint, ElementFingerprint};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::ptr::NonNull;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use xcap::Window;
 

@@ -587,7 +587,7 @@ pub(super) fn resolve_uia_element(
     }
     let mut current = exact_uia_window(context, surface)?;
     let current_root = uia_fingerprint(context, &current, false)?;
-    if current_root != element.lineage[0] {
+    if current_root != *element.lineage[0] {
         return Err("stale_element: UIA root identity changed since observation".to_string());
     }
     for (depth, &index) in element.path.iter().enumerate() {
@@ -601,7 +601,7 @@ pub(super) fn resolve_uia_element(
         current = children[index].clone();
         let current_fingerprint =
             uia_fingerprint(context, &current, element.lineage[depth].protected)?;
-        if current_fingerprint != element.lineage[depth + 1] {
+        if current_fingerprint != *element.lineage[depth + 1] {
             return Err("stale_element: UIA element lineage changed since observation".to_string());
         }
     }
@@ -628,7 +628,7 @@ pub(crate) fn accessibility_tree(
         None::<String>,
         0usize,
         Vec::<usize>::new(),
-        Vec::<ElementFingerprint>::new(),
+        Vec::<Arc<ElementFingerprint>>::new(),
         false,
     )]);
     let mut nodes = Vec::with_capacity(max_nodes.min(64));
@@ -666,7 +666,7 @@ pub(crate) fn accessibility_tree(
         let focused = unsafe { current.CurrentHasKeyboardFocus() }
             .map_err(|error| uia_error("IUIAutomationElement::CurrentHasKeyboardFocus", &error))?
             .as_bool();
-        lineage.push(fingerprint);
+        lineage.push(Arc::new(fingerprint));
 
         let reserved = nodes.len() + queue.len() + 1;
         let remaining = max_nodes.saturating_sub(reserved);
