@@ -109,3 +109,4 @@
 - 連線錯誤時只標記失敗的那一段：Tunnel 失敗時 ChatGPT 節點顯示「尚未連線」而非「錯誤」。
 
 證據（離屏渲染）：`ui-review/d1-v2/`。離屏渲染畫不出 vibrancy／玻璃，側欄折射效果需實機確認，仍屬 **Pending Validation**。
+- 2026-10-08：以不同 bundle ID（`app.chadex.ChadexDesignPreview`）組裝設計預覽版並開啟給使用者實機檢視；對預覽版的電腦控制申請同樣回傳 `user_denied`，真實視窗截圖仍待使用者提供。
