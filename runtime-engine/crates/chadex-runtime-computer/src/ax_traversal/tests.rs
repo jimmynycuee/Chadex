@@ -676,6 +676,21 @@ fn observe_tree_respects_node_and_depth_bounds_and_deadline() {
     assert!(error.contains("deadline exceeded"), "{error}");
 }
 
+#[test]
+fn bounds_match_the_design_constants() {
+    assert_eq!(crate::MAX_ACCESSIBILITY_ABSOLUTE_DEPTH, 64);
+    assert_eq!(crate::DEFAULT_FIND_DEPTH, 32);
+    assert_eq!(crate::MAX_FIND_DEPTH, 48);
+    assert_eq!(crate::MAX_FIND_VISITED, 4000);
+    assert_eq!(crate::DEFAULT_FIND_ELEMENTS_LIMIT, 8);
+    assert_eq!(crate::MAX_FIND_ELEMENTS_LIMIT, 32);
+    #[cfg(target_os = "macos")]
+    {
+        assert_eq!(crate::MAX_FIND_CHILDREN_PER_NODE, 512);
+        assert_eq!(crate::FIND_SOFT_BUDGET, Duration::from_secs(6));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // find
 // ---------------------------------------------------------------------------
@@ -851,6 +866,18 @@ fn find_sensitive_nodes_can_match_structurally_but_never_by_value() {
     for (_, record) in &result.elements {
         assert!(record.contains_protected_content());
     }
+    // Their records re-resolve to the same nodes without ever reading text or values.
+    tree.clear_calls();
+    let mut resolved: Vec<usize> = result
+        .elements
+        .iter()
+        .map(|(_, record)| resolve(&tree, 0, record).unwrap())
+        .collect();
+    resolved.sort_unstable();
+    assert_eq!(resolved, vec![DOTS, INNER]);
+    assert!(tree.values_read().is_empty());
+    assert!(!tree.text_reads().contains(&DOTS));
+    assert!(!tree.text_reads().contains(&INNER));
 }
 
 #[test]

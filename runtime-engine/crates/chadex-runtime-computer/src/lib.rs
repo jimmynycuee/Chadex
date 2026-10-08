@@ -105,11 +105,11 @@ pub const MAX_FIND_ELEMENTS_LIMIT: usize = 32;
 /// Nodes read per deep search (not exposed as a request parameter).
 pub const MAX_FIND_VISITED: usize = 4000;
 /// Children expanded for any single node (large lists and tables).
-#[cfg(any(test, target_os = "macos"))]
+#[cfg(target_os = "macos")]
 const MAX_FIND_CHILDREN_PER_NODE: usize = 512;
 /// Soft wall-clock budget for a deep search, measured from the start of the
 /// observation. Reaching it returns the partial result as a success.
-#[cfg(any(test, target_os = "macos"))]
+#[cfg(target_os = "macos")]
 const FIND_SOFT_BUDGET: Duration = Duration::from_secs(6);
 const RGBA_BYTES_PER_PIXEL: u64 = 4;
 /// Pre-capture ceiling for the expected complete raw RGBA frame. Standard
