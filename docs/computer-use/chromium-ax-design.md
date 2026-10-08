@@ -1,6 +1,6 @@
 # Computer use：Chromium／Electron 網頁輔助資訊支援設計
 
-狀態：設計（未實作）。分支：`feature/computer-chromium-ax`，基準 `dd74d05`。
+狀態：S1–S6 已實作（macOS），尚待 §9 實機測試與 §10 決策確認，實作差異見 §12。分支：`feature/computer-chromium-ax`，基準 `dd74d05`。
 範圍：macOS 實作；Windows 維持現有行為，新能力回 `capability_unavailable`（見 §7）。
 不在範圍：放寬 `input_text`（只接受空的 `AXTextField`／`AXTextArea`、2048 bytes）、`key`（只開放導覽鍵）、登入／授權畫面封鎖。這些限制原樣保留。
 
@@ -444,3 +444,64 @@ cargo clippy --workspace --all-targets
 - Google Sheets 的儲存格大多是 canvas 繪製，開了 AX 也只會改善外框和工具列。使用者「在 Sheets 裡定位元素」的需求只會部分改善；而名稱方塊不是空的，所以 `input_text` 規則仍然不能用它跳到儲存格（這是範圍外的限制）。
 - Chromium 的網頁樹變動頻繁，path + 完整 lineage 比對會讓 `stale_element` 變多。這是安全上正確的行為，但會增加模型的重試次數。之後可以考慮把 `AXDOMIdentifier` 加進 fingerprint 的 positive evidence，但這會改到 `ElementFingerprint` 的跨平台結構，不在這次範圍。
 - 深層搜尋每次最多約 4000 × 5 次 IPC。在很慢的頁面上會常常碰到軟預算，回傳部分結果；模型要靠 `root_element_id` 縮小範圍。
+
+---
+
+## 12. 實作狀態與設計差異
+
+### 12.1 §10 決策（目前實作採用的預設，全部可調整）
+
+| # | 實作方式 | 調整位置 |
+|---|---|---|
+| D1 | 只對偵測到的 Chromium／Electron 設定 | `web_accessibility.rs::classify_web_engine`、`enable_web_accessibility` |
+| D2 | 沒有 `AXEnhancedUserInterface` 備用方案 | 未實作 |
+| D3 | 預設 `Auto`；`CHADEX_COMPUTER_WEB_ACCESSIBILITY=off`（不分大小寫）關閉 | `WebAccessibilityPolicy`、runner `computer_config` |
+| D4 | 不復原 | 未實作 |
+| D5 | 放在 `computer_observe` 裡，輸出帶 `web_accessibility`，稽核紀錄也記錄這個值 | `tool_audit.rs` |
+| D6 | 沒有擴充 `sensitive_auth_title` | 未改 |
+| D7 | 加嚴只套用新路徑（subtree／find）。見 12.3 第 1 點 | `TreeMode::{Legacy, Query}` |
+| D8 | Windows 不宣告 `computer_accessibility_query`，帶 root 回 `capability_unavailable`，不帶 root 退回舊流程 | runner `lib.rs`、server fallback |
+
+### 12.2 實作位置
+
+- 遍歷引擎：`crates/chadex-runtime-computer/src/ax_traversal.rs`（`AxSource`、`observe_tree`、`find`、`resolve`、`ancestors_summary`、`probe_web_content`），假 AX 樹測試在 `src/ax_traversal/tests.rs`。
+- Chromium 開啟：`src/web_accessibility.rs`（分類、等待、memo、policy），測試在 `src/web_accessibility/tests.rs`。
+- macOS adapter：`platform/macos/accessibility.rs`（`MacAxSource`、`observe_accessibility_tree`、`accessibility_subtree`、`find_elements`）。
+- 協定：`computer_accessibility_query` 能力；`computer_accessibility_subtree`／`computer_accessibility_find` 兩個 wire kind。
+- Server：`src/tool_runtime/computer_tools.rs`（派送、fallback、`validate_accessibility_subtree`／`validate_accessibility_find`）。
+
+### 12.3 與設計不同的地方
+
+1. **model-facing `accessibility_tree`（不帶 root）在新 runner 上也走 subtree 路徑**（照 §4）。結果是新 runner 上，觀察 sensitive surface（密碼 app、授權對話框）的樹會被 `permission_denied` 擋下；舊 runner 維持原行為。這與 D7「舊 tree 行為不變」只有 wire kind 層級一致，需要使用者確認。
+2. `find` 找到 `limit + 1` 個符合者就停止（`stop_reason = "limit"`），不為了數 `total_matches` 繼續走到預算用完。`truncated` 一樣準確，而且不需要多走最多 4000 個節點。
+3. 單一節點的子節點數超過 `MAX_FIND_CHILDREN_PER_NODE`（512），或剩餘 visit 預算不足以展開所有子節點時，`stop_reason` 是 `visit_budget`（列舉值不新增）。
+4. 有指定 `root_element_id` 時，root 本身不會出現在 find 的結果裡（只有它的後代會），root 另外用新 id 回傳在 `root_element_id`。
+5. `AxSource` 的 `enabled_focused` 拆成 `enabled`／`focused` 兩個方法（只在需要時才讀），另外新增 `role`（探測用，一次 IPC）和 `value(node, max_bytes)`。`value` 條件比對最多讀 4096 bytes（tree 輸出仍維持 256 bytes），否則網頁上的長文字只能比對前 256 bytes。
+6. `resolve` 的 inherited 規則：secure 父節點底下的子節點，只有在記錄的子 fingerprint 已經是 `protected` 時才視為繼承 protected。這讓舊 tree 與新路徑產生的 record 都能解析回自己，也不改舊 tree 的行為。
+7. `find` 的 payload 上限為 8 KiB（`SHELL_COMPUTER_ACCESSIBILITY_FIND_PAYLOAD_MAX_BYTES`），不沿用 4096：四個 256 bytes 的篩選字串，最壞情況 JSON 跳脫後會超過 4096。其他新 kind 沿用基準值。
+8. Gateway 的 `computer_action_schema` 會把每個分支屬性的 `description` 全部移除，所以 §5 說的「說明放在屬性 description」不成立。實際做法是在 `computer_observe` 的 tool description 加一句（887／900 字元）。input schema 從 4175 bytes 增加到約 4440 bytes。
+9. 探測（`probe_web_content`）：預算用完或深度不夠而沒有找到 `AXWebArea` 時，視為「還是空的」繼續等，只有整棵樹走完仍沒有 `AXWebArea` 才視為 `NoWebArea`（算 enabled）。
+10. Chromium 開啟在 platform 函式裡、`exact_ax_window` 成功之後做，不是在 `ComputerRuntime`。舊的 `computer_accessibility_tree` kind 在 macOS 上也會做（不回報狀態）。sensitive surface 與 `Off` 不會寫屬性。
+11. 遍歷引擎只在 `any(test, macos)` 編譯，沒有編進 Windows 正式版（沒有 Windows adapter，編進去只會有 dead code）。Windows 只做 `ElementRecord.lineage` 改 `Arc`，以及 `observe_accessibility_tree`／`accessibility_subtree`／`find_elements` 三個函式（後兩個回 `unsupported_platform`）。
+12. `objc2-app-kit` 加了 `libc` feature、`objc2-foundation` 加了 `NSDate` feature（`runningApplicationWithProcessIdentifier`、`launchDate` 需要）。`Cargo.lock` 沒有變動。
+13. 沒有實作 `AXUIElementCopyMultipleAttributeValues` 合併（設計標示為可選）。
+14. 新增兩個 `#[ignore]` live 測試：`computer_macos_find_deep_chromium_live_smoke`、`computer_macos_subtree_chromium_live_smoke`。
+
+### 12.4 實機測試結果（§9）
+
+尚未執行。請依 §9 的表格記錄：
+
+| # | 結果 |
+|---|---|
+| L1 | |
+| L2 | |
+| L3 | |
+| L4 | |
+| L5 | |
+| L6 | |
+| L7 | |
+| L8 | |
+| L9 | |
+| L10 | |
+| L11 | |
+| L12 | |
