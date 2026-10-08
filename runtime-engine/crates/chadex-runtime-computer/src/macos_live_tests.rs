@@ -52,6 +52,29 @@ fn surface_record(candidate: PlatformWindow) -> SurfaceRecord {
     }
 }
 
+fn live_web_context(registry: &WebAxRegistry) -> WebAxContext<'_> {
+    WebAxContext {
+        policy: WebAccessibilityPolicy::Auto,
+        sensitive_surface: false,
+        registry,
+    }
+}
+
+fn is_chromium_browser(application: &str) -> bool {
+    let application = application.to_ascii_lowercase();
+    ["chrome", "microsoft edge", "brave", "arc"]
+        .iter()
+        .any(|name| application.contains(name))
+}
+
+fn live_chromium_window() -> Option<SurfaceRecord> {
+    platform::list_windows(MAX_WINDOWS)
+        .expect("list live macOS windows")
+        .into_iter()
+        .find(|candidate| is_chromium_browser(&candidate.application))
+        .map(surface_record)
+}
+
 fn live_accessibility_smoke(application_matches: impl Fn(&str) -> bool) -> bool {
     let candidates = platform::list_windows(MAX_WINDOWS).expect("list live macOS windows");
     let Some(candidate) = candidates
@@ -61,7 +84,9 @@ fn live_accessibility_smoke(application_matches: impl Fn(&str) -> bool) -> bool 
         return false;
     };
     let record = surface_record(candidate);
-    let tree = platform::accessibility_tree("surface_live", &record, 3, 64)
+    let registry = WebAxRegistry::default();
+    let web = live_web_context(&registry);
+    let tree = platform::observe_accessibility_tree("surface_live", &record, 3, 64, &web)
         .expect("read bounded live accessibility tree");
     let output = tree.output;
     assert_eq!(output["platform"], "macos");
@@ -82,7 +107,9 @@ fn live_focus_control_smoke(application_matches: impl Fn(&str) -> bool) -> bool 
     };
     let record = surface_record(candidate);
     let surface_id = "surface_control_live";
-    let tree = platform::accessibility_tree(surface_id, &record, 6, 128)
+    let registry = WebAxRegistry::default();
+    let web = live_web_context(&registry);
+    let tree = platform::observe_accessibility_tree(surface_id, &record, 6, 128, &web)
         .expect("read bounded accessibility tree for live focus control");
     let candidate_roles = [
         "AXTextField",
@@ -373,4 +400,57 @@ fn computer_macos_accessibility_wechat_live_smoke() {
         }),
         "WeChat window must be open for this live smoke"
     );
+}
+
+#[test]
+#[ignore = "requires a live Chromium browser window and macOS Accessibility permission"]
+fn computer_macos_find_deep_chromium_live_smoke() {
+    let record = live_chromium_window().expect("a Chromium browser window must be open");
+    let registry = WebAxRegistry::default();
+    let web = live_web_context(&registry);
+    let request = ElementFindRequest {
+        role: Some("AXWebArea".to_string()),
+        limit: 4,
+        max_depth: DEFAULT_FIND_DEPTH,
+        ..ElementFindRequest::default()
+    };
+    let result = platform::find_elements("surface_live", &record, None, &request, &web)
+        .expect("deep find over a live Chromium window");
+    let output = result.output;
+    assert_eq!(output["search_mode"], "deep");
+    assert!(output["web_accessibility"].is_string());
+    assert!(output["scanned_nodes"].as_u64().unwrap_or(0) > 0);
+    assert!(output["elements"]
+        .as_array()
+        .expect("elements")
+        .iter()
+        .all(|element| element.get("value").is_none()));
+}
+
+#[test]
+#[ignore = "requires a live Chromium browser window and macOS Accessibility permission"]
+fn computer_macos_subtree_chromium_live_smoke() {
+    let record = live_chromium_window().expect("a Chromium browser window must be open");
+    let registry = WebAxRegistry::default();
+    let web = live_web_context(&registry);
+    let request = ElementFindRequest {
+        role: Some("AXWebArea".to_string()),
+        limit: 1,
+        max_depth: DEFAULT_FIND_DEPTH,
+        ..ElementFindRequest::default()
+    };
+    let found = platform::find_elements("surface_live", &record, None, &request, &web)
+        .expect("locate the web area");
+    let (_, root) = found
+        .elements
+        .into_iter()
+        .next()
+        .expect("a live Chromium window exposes an AXWebArea");
+    let tree = platform::accessibility_subtree("surface_live", &record, Some(&root), 3, 64, &web)
+        .expect("subtree below the web area");
+    let output = tree.output;
+    assert_eq!(output["nodes"][0]["role"], "AXWebArea");
+    assert_eq!(output["nodes"][0]["depth"], 0);
+    assert_eq!(output["root"]["element_id"], output["nodes"][0]["element_id"]);
+    assert!(output["web_accessibility"].is_string());
 }

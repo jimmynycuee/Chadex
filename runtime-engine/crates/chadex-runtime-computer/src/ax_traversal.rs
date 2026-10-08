@@ -20,12 +20,15 @@ use crate::{
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::sync::Arc;
+use crate::web_accessibility::WebProbe;
 use std::time::Duration;
 
 /// Longest `AXValue` prefix a deep search compares against. Tree output keeps the
 /// historical `MAX_TEXT_BYTES` bound; searching reads further because web text
 /// frequently lives in long `AXStaticText` values.
 pub(crate) const MAX_FIND_VALUE_BYTES: usize = 4096;
+const PROBE_MAX_DEPTH: usize = 12;
+const PROBE_MAX_VISITED: usize = 200;
 const ANCESTORS_MAX_BYTES: usize = 256;
 const ANCESTOR_TITLE_MAX_BYTES: usize = 40;
 const ANCESTORS_TRUNCATION_PREFIX: &str = "… › ";
@@ -44,6 +47,8 @@ pub(crate) trait AxSource {
         node: &Self::Node,
         inherited_protected: bool,
     ) -> Result<ElementFingerprint, String>;
+    /// The `AXRole` alone; the cheap read used by web-content probing.
+    fn role(&self, node: &Self::Node) -> Result<Option<String>, String>;
     /// Only ever called for nodes that are neither protected nor secure.
     fn value(&self, node: &Self::Node, max_bytes: usize) -> Result<Option<String>, String>;
     fn enabled(&self, node: &Self::Node) -> Result<Option<bool>, String>;
@@ -100,6 +105,63 @@ pub(crate) fn resolve<S: AxSource>(
         ensure_correlated_fingerprint(expected, &current_fingerprint, false)?;
     }
     Ok(current)
+}
+
+// ---------------------------------------------------------------------------
+// web content probe
+// ---------------------------------------------------------------------------
+
+/// Cheap readiness check used after enabling web accessibility: is there an
+/// `AXWebArea` that already has children? Reads only role and child counts, never any
+/// text, and stays within 12 levels / 200 nodes. An inconclusive search (budget cut)
+/// counts as "still empty" so the caller keeps waiting instead of assuming absence.
+pub(crate) fn probe_web_content<S: AxSource>(
+    source: &S,
+    window: S::Node,
+) -> Result<WebProbe, String> {
+    let mut queue = VecDeque::from([(window, 0usize)]);
+    let mut visited = 0usize;
+    let mut saw_empty_web_area = false;
+    let mut inconclusive = false;
+    while let Some((node, depth)) = queue.pop_front() {
+        source.check_deadline()?;
+        if visited >= PROBE_MAX_VISITED {
+            inconclusive = true;
+            break;
+        }
+        visited += 1;
+        let is_web_area = source.role(&node)?.as_deref() == Some("AXWebArea");
+        let child_count = source.child_count(&node)?;
+        if is_web_area {
+            if child_count > 0 {
+                return Ok(WebProbe::Content);
+            }
+            saw_empty_web_area = true;
+            continue;
+        }
+        if child_count == 0 {
+            continue;
+        }
+        if depth >= PROBE_MAX_DEPTH {
+            inconclusive = true;
+            continue;
+        }
+        let remaining = PROBE_MAX_VISITED.saturating_sub(visited + queue.len());
+        let take = child_count.min(remaining);
+        if take < child_count {
+            inconclusive = true;
+        }
+        if take > 0 {
+            for child in source.children(&node, take)? {
+                queue.push_back((child, depth + 1));
+            }
+        }
+    }
+    Ok(if saw_empty_web_area || inconclusive {
+        WebProbe::Empty
+    } else {
+        WebProbe::NoWebArea
+    })
 }
 
 // ---------------------------------------------------------------------------

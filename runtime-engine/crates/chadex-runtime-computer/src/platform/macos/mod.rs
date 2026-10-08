@@ -1,7 +1,11 @@
 use super::{map_error, resolve_surface_window};
 use crate::ax_traversal::{
-    find, observe_tree, resolve as resolve_element, AxClock, AxSource, FindBounds, TreeBounds,
-    TreeMode,
+    find, observe_tree, probe_web_content, resolve as resolve_element, AxClock, AxSource,
+    FindBounds, TreeBounds, TreeMode,
+};
+use crate::web_accessibility::{
+    classify_web_engine, enable_web_accessibility, ProcessKey, SetOutcome, WebAxEnvironment,
+    WebAxRegistry, WebEngine, WebProbe,
 };
 use crate::validate_key_input;
 use crate::{
@@ -22,7 +26,7 @@ use crate::{
     clipboard_read_result, is_secure_text_fingerprint, run_macos_clipboard_write_effect_steps,
     select_exact_ax_window_index, validate_element_state_target, validate_key_modifiers, validate_text_input_preflight,
     validate_text_input_target, AxObservationDeadline, FIND_SOFT_BUDGET,
-    MAX_FIND_CHILDREN_PER_NODE, MAX_FIND_VISITED,
+    MAX_FIND_CHILDREN_PER_NODE, MAX_FIND_VISITED, WebAxContext, WebAxState,
 };
 
 #[cfg(target_os = "macos")]
@@ -105,8 +109,8 @@ pub(crate) fn permission_readiness() -> Result<Value, String> {
 }
 
 pub(crate) use accessibility::{
-    accessibility_status, accessibility_subtree, accessibility_tree, activate_window, control,
-    element_state, find_elements, scroll_to_element,
+    accessibility_status, accessibility_subtree, activate_window, control, element_state,
+    find_elements, observe_accessibility_tree, scroll_to_element,
 };
 use accessibility::{
     ax_attribute_settable, checked_surface_pid, exact_ax_window, optional_ax_bool,

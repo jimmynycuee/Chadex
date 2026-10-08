@@ -4,7 +4,7 @@ use crate::{
     bounded_text, ensure_raw_capture_bound, prepare_clipboard_write_text, validate_input_text,
     AccessibilityTreeResult, ApplicationRecord, ClipboardWriteEffectState, ComputerAction,
     DisplayRecord, ElementFindRequest, ElementRecord, PlatformApplication, PlatformDisplay,
-    PointerAction, PointerPlan, SurfaceRecord,
+    PointerAction, PointerPlan, SurfaceRecord, WebAxContext,
 };
 use crate::{is_supported_text_input_fingerprint, ElementFingerprint};
 use serde_json::{json, Value};
@@ -135,7 +135,8 @@ pub(crate) fn permission_readiness() -> Result<Value, String> {
 
 pub(crate) use accessibility::{
     accessibility_status, accessibility_subtree, accessibility_tree, activate_window, control,
-    element_state, find_elements, scroll_to_element, uia_semantic_text_input_role, win_hwnd,
+    element_state, find_elements, observe_accessibility_tree, scroll_to_element,
+    uia_semantic_text_input_role, win_hwnd,
 };
 use accessibility::{
     exact_uia_window, resolve_uia_element, uia_element_has_exact_focus, uia_error,

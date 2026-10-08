@@ -614,6 +614,19 @@ pub(crate) fn accessibility_status() -> Result<Value, String> {
     Ok(json!({"platform": "windows", "trusted": true}))
 }
 
+/// Uniform entry point used by `ComputerRuntime`: UIA has no web accessibility switch
+/// (Chromium enables itself when a UIA client queries), so the context is ignored.
+#[cfg(windows)]
+pub(crate) fn observe_accessibility_tree(
+    surface_id: &str,
+    surface: &SurfaceRecord,
+    max_depth: usize,
+    max_nodes: usize,
+    _web: &WebAxContext<'_>,
+) -> Result<AccessibilityTreeResult, String> {
+    accessibility_tree(surface_id, surface, max_depth, max_nodes)
+}
+
 /// Subtree observation is not implemented for UIA yet. The Runner does not advertise
 /// `computer_accessibility_query` on Windows, so this is unreachable through the wire.
 #[cfg(windows)]
@@ -623,6 +636,7 @@ pub(crate) fn accessibility_subtree(
     _root: Option<&ElementRecord>,
     _max_depth: usize,
     _max_nodes: usize,
+    _web: &WebAxContext<'_>,
 ) -> Result<AccessibilityTreeResult, String> {
     Err(
         "unsupported_platform: computer accessibility subtree is unavailable on Windows"
@@ -637,6 +651,7 @@ pub(crate) fn find_elements(
     _surface: &SurfaceRecord,
     _root: Option<&ElementRecord>,
     _request: &ElementFindRequest,
+    _web: &WebAxContext<'_>,
 ) -> Result<AccessibilityTreeResult, String> {
     Err("unsupported_platform: computer deep find is unavailable on Windows".to_string())
 }

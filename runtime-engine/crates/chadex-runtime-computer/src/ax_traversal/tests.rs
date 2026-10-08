@@ -22,6 +22,7 @@ enum Call {
     Fingerprint { node: usize, inherited: bool },
     /// The fingerprint read title/description/placeholder (node was not protected).
     TextRead(usize),
+    Role(usize),
     Value(usize),
     Enabled(usize),
     Focused(usize),
@@ -128,6 +129,11 @@ impl AxSource for FakeTree {
             #[cfg(windows)]
             native_runtime_id: Vec::new(),
         })
+    }
+
+    fn role(&self, node: &usize) -> Result<Option<String>, String> {
+        self.calls.borrow_mut().push(Call::Role(*node));
+        Ok(Some(self.nodes[*node].role.clone()))
     }
 
     fn value(&self, node: &usize, max_bytes: usize) -> Result<Option<String>, String> {
@@ -1128,6 +1134,83 @@ fn find_children_cap_limits_children_requested_from_the_source() {
 }
 
 // ---------------------------------------------------------------------------
+// web content probe
+// ---------------------------------------------------------------------------
+
+fn probe(tree: &FakeTree) -> WebProbe {
+    probe_web_content(tree, 0).unwrap()
+}
+
+#[test]
+fn probe_finds_a_populated_web_area_and_reads_only_role_and_child_counts() {
+    let mut tree = FakeTree::new("AXWindow");
+    let toolbar = tree.add(0, "AXToolbar");
+    tree.titled(toolbar, "AXButton", "Back");
+    let group = tree.add(0, "AXGroup");
+    let area = tree.titled(group, "AXWebArea", "Page");
+    tree.add(area, "AXGroup");
+    assert_eq!(probe(&tree), WebProbe::Content);
+    for call in tree.calls() {
+        assert!(
+            matches!(call, Call::Role(_) | Call::ChildCount(_) | Call::Children(..)),
+            "{call:?}"
+        );
+    }
+}
+
+#[test]
+fn probe_distinguishes_empty_absent_and_inconclusive() {
+    // Empty web area: keep waiting.
+    let mut tree = FakeTree::new("AXWindow");
+    tree.add(0, "AXWebArea");
+    assert_eq!(probe(&tree), WebProbe::Empty);
+
+    // A fully explored tree without any web area is a definite absence.
+    let mut tree = FakeTree::new("AXWindow");
+    let group = tree.add(0, "AXGroup");
+    tree.add(group, "AXButton");
+    assert_eq!(probe(&tree), WebProbe::NoWebArea);
+
+    // Too deep to be sure: inconclusive means "still empty".
+    assert_eq!(probe(&chain_tree(40)), WebProbe::Empty);
+
+    // Too wide to be sure.
+    let mut wide = FakeTree::new("AXWindow");
+    for _ in 0..300 {
+        let group = wide.add(0, "AXGroup");
+        wide.add(group, "AXButton");
+    }
+    assert_eq!(probe(&wide), WebProbe::Empty);
+
+    // A populated area beyond an empty one still wins.
+    let mut tree = FakeTree::new("AXWindow");
+    tree.add(0, "AXWebArea");
+    let second = tree.add(0, "AXWebArea");
+    tree.add(second, "AXGroup");
+    assert_eq!(probe(&tree), WebProbe::Content);
+}
+
+#[test]
+fn probe_is_bounded_and_honors_the_deadline() {
+    let mut wide = FakeTree::new("AXWindow");
+    for _ in 0..1000 {
+        wide.add(0, "AXGroup");
+    }
+    probe(&wide);
+    let roles = wide
+        .calls()
+        .into_iter()
+        .filter(|call| matches!(call, Call::Role(_)))
+        .count();
+    assert!(roles <= 200, "{roles}");
+
+    let tree = chain_tree(5);
+    tree.deadline_checks_left.set(1);
+    let error = probe_web_content(&tree, 0).unwrap_err();
+    assert!(error.contains("deadline exceeded"), "{error}");
+}
+
+// ---------------------------------------------------------------------------
 // ancestors
 // ---------------------------------------------------------------------------
 
@@ -1204,11 +1287,14 @@ fn ancestors_summary_drops_the_farthest_segments_to_fit_256_bytes() {
 
 mod runtime {
     use super::*;
-    use crate::{ComputerConfig, ComputerRuntime, ElementFindRequest, SurfaceRecord};
+    use crate::{
+        ComputerConfig, ComputerRuntime, ElementFindRequest, SurfaceRecord, WebAccessibilityPolicy,
+    };
 
     fn runtime() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -1246,6 +1332,19 @@ mod runtime {
             .as_str()
             .unwrap()
             .to_string()
+    }
+
+    #[test]
+    fn web_context_carries_policy_and_surface_sensitivity() {
+        let off = ComputerRuntime::new(ComputerConfig {
+            max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Off,
+        });
+        assert_eq!(off.web_context(false).policy, WebAccessibilityPolicy::Off);
+        assert!(off.web_context(true).sensitive_surface);
+        let auto = runtime();
+        assert_eq!(auto.web_context(false).policy, WebAccessibilityPolicy::Auto);
+        assert!(!auto.web_context(false).sensitive_surface);
     }
 
     #[test]

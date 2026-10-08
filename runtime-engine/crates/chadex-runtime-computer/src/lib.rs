@@ -120,6 +120,10 @@ const MAX_IMAGE_DIMENSION: u32 = 4096;
 
 #[cfg(any(test, target_os = "macos"))]
 mod ax_traversal;
+mod web_accessibility;
+use web_accessibility::{WebAxContext, WebAxRegistry};
+#[cfg(any(test, target_os = "macos"))]
+use web_accessibility::WebAxState;
 
 #[cfg(any(test, target_os = "macos"))]
 const AX_MESSAGING_TIMEOUT_SECS: f32 = 2.0;
@@ -158,6 +162,11 @@ impl AxObservationDeadline {
     #[cfg(target_os = "macos")]
     fn ensure_remaining(&self) -> Result<(), String> {
         self.ensure_remaining_at(Instant::now())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn remaining(&self) -> Duration {
+        self.expires_at.saturating_duration_since(Instant::now())
     }
 
     fn remaining_timeout_secs_at(&self, now: Instant) -> Result<f32, String> {
@@ -1050,9 +1059,33 @@ fn dispatch_after_spending_pointer_generation(
     dispatch(snapshots)
 }
 
+/// Whether observations may switch on web accessibility (`AXManualAccessibility`) of
+/// Chromium/Electron apps so their page content appears in the Accessibility tree.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WebAccessibilityPolicy {
+    #[default]
+    Auto,
+    Off,
+}
+
+impl WebAccessibilityPolicy {
+    /// Environment variable consulted by the Runner.
+    pub const ENV_VAR: &'static str = "CHADEX_COMPUTER_WEB_ACCESSIBILITY";
+
+    /// `off` (case-insensitive, surrounding whitespace ignored) disables the feature;
+    /// any other value, or none, keeps the default.
+    pub fn from_env_value(value: Option<&str>) -> Self {
+        match value {
+            Some(value) if value.trim().eq_ignore_ascii_case("off") => Self::Off,
+            _ => Self::Auto,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ComputerConfig {
     pub max_encoded_image_bytes: usize,
+    pub web_accessibility: WebAccessibilityPolicy,
 }
 
 pub struct ComputerRuntime {
@@ -1062,17 +1095,27 @@ pub struct ComputerRuntime {
     applications: Mutex<HashMap<String, ApplicationRecord>>,
     displays: Mutex<HashMap<String, DisplayRecord>>,
     display_snapshots: Mutex<DisplaySnapshotRegistry>,
+    web_ax: WebAxRegistry,
 }
 
 impl ComputerRuntime {
     pub fn new(config: ComputerConfig) -> Self {
         Self {
             config,
+            web_ax: WebAxRegistry::default(),
             surfaces: Mutex::new(HashMap::new()),
             elements: Mutex::new(ElementRegistry::default()),
             applications: Mutex::new(HashMap::new()),
             displays: Mutex::new(HashMap::new()),
             display_snapshots: Mutex::new(DisplaySnapshotRegistry::default()),
+        }
+    }
+
+    fn web_context(&self, sensitive_surface: bool) -> WebAxContext<'_> {
+        WebAxContext {
+            policy: self.config.web_accessibility,
+            sensitive_surface,
+            registry: &self.web_ax,
         }
     }
 
@@ -1432,8 +1475,11 @@ impl ComputerRuntime {
             .get(surface_id)
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
+        // The legacy tree keeps its historical sensitive-surface behavior; it merely
+        // never switches on web accessibility for a sensitive surface.
+        let web = self.web_context(ensure_surface_not_sensitive(&record).is_err());
         let AccessibilityTreeResult { output, elements } =
-            platform::accessibility_tree(surface_id, &record, max_depth, max_nodes)?;
+            platform::observe_accessibility_tree(surface_id, &record, max_depth, max_nodes, &web)?;
         self.finish_accessibility_observation(surface_id, &record, output, elements)
     }
 
@@ -1454,12 +1500,14 @@ impl ComputerRuntime {
             return Err("invalid_request: accessibility bounds are invalid".to_string());
         }
         let (record, root) = self.prepare_query(surface_id, root_element_id)?;
+        let web = self.web_context(false);
         let AccessibilityTreeResult { output, elements } = platform::accessibility_subtree(
             surface_id,
             &record,
             root.as_ref(),
             max_depth,
             max_nodes,
+            &web,
         )?;
         self.finish_accessibility_observation(surface_id, &record, output, elements)
     }
@@ -1473,8 +1521,9 @@ impl ComputerRuntime {
     ) -> Result<Value, String> {
         request.validate()?;
         let (record, root) = self.prepare_query(surface_id, request.root_element_id.as_deref())?;
+        let web = self.web_context(false);
         let AccessibilityTreeResult { output, elements } =
-            platform::find_elements(surface_id, &record, root.as_ref(), request)?;
+            platform::find_elements(surface_id, &record, root.as_ref(), request, &web)?;
         self.finish_accessibility_observation(surface_id, &record, output, elements)
     }
 
@@ -1808,6 +1857,7 @@ mod public_runtime_bounds_tests {
     fn runtime() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -2638,6 +2688,7 @@ mod application_runtime_tests {
     fn observer() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -2770,6 +2821,7 @@ mod display_runtime_tests {
     fn observer() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -3248,7 +3300,7 @@ mod platform {
     use super::{
         AccessibilityTreeResult, ApplicationRecord, ComputerAction, DisplayRecord,
         ElementFindRequest, ElementRecord, PlatformApplication, PlatformDisplay, PlatformWindow,
-        PointerAction, PointerPlan, SurfaceRecord,
+        PointerAction, PointerPlan, SurfaceRecord, WebAxContext,
     };
 
     pub(super) fn read_clipboard() -> Result<serde_json::Value, String> {
@@ -3322,11 +3374,12 @@ mod platform {
         )
     }
 
-    pub(super) fn accessibility_tree(
+    pub(super) fn observe_accessibility_tree(
         _surface_id: &str,
         _surface: &SurfaceRecord,
         _max_depth: usize,
         _max_nodes: usize,
+        _web: &WebAxContext<'_>,
     ) -> Result<AccessibilityTreeResult, String> {
         Err(
             "unsupported_platform: computer accessibility observation is unavailable on this platform"
@@ -3340,6 +3393,7 @@ mod platform {
         _root: Option<&ElementRecord>,
         _max_depth: usize,
         _max_nodes: usize,
+        _web: &WebAxContext<'_>,
     ) -> Result<AccessibilityTreeResult, String> {
         Err(
             "unsupported_platform: computer accessibility observation is unavailable on this platform"
@@ -3352,6 +3406,7 @@ mod platform {
         _surface: &SurfaceRecord,
         _root: Option<&ElementRecord>,
         _request: &ElementFindRequest,
+        _web: &WebAxContext<'_>,
     ) -> Result<AccessibilityTreeResult, String> {
         Err(
             "unsupported_platform: computer accessibility observation is unavailable on this platform"
@@ -3532,6 +3587,7 @@ mod unsupported_platform_tests {
     fn runtime() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
