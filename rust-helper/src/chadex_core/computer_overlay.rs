@@ -864,6 +864,28 @@ mod tests {
         assert_eq!(stream.validate(&finished(2, 1)), Err(DropReason::Pairing));
     }
 
+    /// Lines exactly as `ComputerOverlayEvent::encode_line` in chadex-runtime-computer
+    /// writes them (keys sorted by serde_json). If the runtime's wire format changes,
+    /// this and the runtime's golden tests must change together.
+    #[test]
+    fn lines_written_by_the_runtime_encoder_validate() {
+        let lines = [
+            r#"{"action":"click","action_id":1,"display":{"bounds":{"height":982.0,"width":1512.0,"x":0.0,"y":0.0},"id":69733378},"emitted_at_ms":1791500000000,"event":"computer_overlay","phase":"will_act","schema":"chadex.computer_overlay.v1","seq":1,"space":"macos_cg_global_pt","target":{"kind":"point","x":812.5,"y":433.0},"token":"0123456789abcdef0123456789abcdef","ttl_ms":2000}"#,
+            r#"{"action_id":1,"emitted_at_ms":1791500000000,"event":"computer_overlay","outcome":"succeeded","phase":"finished","schema":"chadex.computer_overlay.v1","seq":2,"token":"0123456789abcdef0123456789abcdef"}"#,
+            r#"{"action":"key","action_id":2,"display":null,"emitted_at_ms":1791500000000,"event":"computer_overlay","key":{"modifiers":["command","shift"],"name":"page_down"},"phase":"will_act","schema":"chadex.computer_overlay.v1","seq":3,"space":"macos_cg_global_pt","target":{"height":40.0,"kind":"rect","width":300.0,"x":10.0,"y":20.0},"token":"0123456789abcdef0123456789abcdef","ttl_ms":2000}"#,
+            r#"{"action_id":2,"emitted_at_ms":1791500000000,"event":"computer_overlay","outcome":"unknown","phase":"finished","schema":"chadex.computer_overlay.v1","seq":4,"token":"0123456789abcdef0123456789abcdef"}"#,
+            r#"{"action":"press","action_id":3,"display":null,"emitted_at_ms":1791500000000,"event":"computer_overlay","phase":"will_act","schema":"chadex.computer_overlay.v1","seq":5,"space":"macos_cg_global_pt","target":{"kind":"none"},"token":"0123456789abcdef0123456789abcdef","ttl_ms":2000}"#,
+            r#"{"action_id":3,"emitted_at_ms":1791500000000,"event":"computer_overlay","outcome":"not_started","phase":"finished","schema":"chadex.computer_overlay.v1","seq":6,"token":"0123456789abcdef0123456789abcdef"}"#,
+        ];
+        let mut stream = stream();
+        for line in lines {
+            let value: Value = serde_json::from_str(line).unwrap();
+            stream
+                .validate(&value)
+                .unwrap_or_else(|reason| panic!("{reason:?}: {line}"));
+        }
+    }
+
     #[test]
     fn event_frame_golden() {
         let data = json!({"v": 1, "phase": "clear", "reason": "stopped"});

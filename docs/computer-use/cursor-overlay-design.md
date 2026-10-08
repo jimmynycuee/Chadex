@@ -1,6 +1,6 @@
 # Computer Use 代理游標疊加層（Cursor Overlay）設計
 
-- 狀態：設計定稿待使用者確認（見 [§12 待決事項](#12-待使用者決定)），預計 v0.6.1
+- 狀態：已依 [§14 實作紀錄](#14-實作紀錄) 的預設決定實作（macOS）；§12 仍待使用者確認，預計 v0.6.1
 - 範圍：macOS 實作；Windows 只寫設計（[§9](#9-windows-設計備註本版不實作)）
 - 基準：`origin/main` @ `dd74d05`
 - 讀者：實作 runtime／helper／macOS App 的 agent。每一段都標出要改的檔案與驗收條件。
@@ -672,3 +672,28 @@ static func plan(action: OverlayActionKind, reduceMotion: Bool,
 | `assistiveTechHighWindow` 蓋到系統 UI | 視覺干擾 | 很短的顯示時間加上 `ignoresMouseEvents`；必要時退回 `.statusBar` |
 | Helper stdout 多一種 frame | 舊版 App 會 `failAllPending` | Helper 預設不送，只有 App 明確啟用後才送；App 與 helper 同版發布 |
 | Runner 不是 helper spawn 的 | 沒有 overlay | `runner_channel: "detached"`，屬已知限制（§2.4） |
+
+## 14. 實作紀錄
+
+macOS 已實作（`feature/computer-cursor-overlay`）。使用者確認 §12 之前，以下預設決定生效；每一項只改一處就能調整。
+
+| §12 | 目前預設 | 要改的地方 |
+| --- | --- | --- |
+| 1 預設開關 | 開（`computerCursorOverlay` 為 `nil` 視為開） | `ChadexPreferences.cursorOverlayEnabled(for:)`（`ProjectStore.swift`） |
+| 2 開關位置 | 只放在 Computer Use 頁（控制模式區塊之後，Stop 狀態下也看得到） | `ProjectDetailView.computerCursorOverlayToggle` |
+| 3 敏感畫面 | 不顯示：事件只在敏感檢查之後送出 | runtime 送出點，見 §5.2；測試在 `overlay_runtime_tests` |
+| 4 提前預告 | 不延遲：同時出現＋殘留 | 無，刻意不做 |
+| 5 截圖排除失敗 | 尚未做自動停用；**發布前 gate**，需實機驗證 §10.2 第 2 項 | `ComputerOverlayPanel.swift` 的 `TODO(release gate)` |
+| 6 Ask 批准前預覽 | 不做 | 無 |
+| 7 AX frame | 照設計：讀取失敗就不畫框（`OverlayTarget::None`），讀取有獨立 150 ms 預算，不佔動作的 AX 預算 | `overlay_frame_for_element`（`platform/macos/accessibility.rs`） |
+| 8 按鍵 badge | 只顯示動作類型（鍵盤圖示），不顯示按鍵名稱；runtime 仍送封閉詞彙的 key | `ComputerOverlayStyle.showsKeyNames`（`ComputerOverlayGeometry.swift`） |
+
+與前文不同之處：
+
+- **平台函式簽名**：`control`／`scroll_to_element`／`input_text`／`key_input`／`activate_window` 在 macOS 多一個 `&mut OverlayActionGuard` 參數（不是 closure）。Windows 與不支援的平台維持原簽名，由 `lib.rs` 的 `overlay_platform` 轉接層略過 guard；Windows 因此沒有送出點，與「Windows 不安裝 sink」一致。
+- **Runner 的 tracing**：`tracing_subscriber` 預設寫 stdout，不是設計假設的「完全不寫 stdout」。通道啟用後 fd 1 指向 `/dev/null`，所以 tracing 在此時改寫 stderr，診斷仍進 helper 的 log。
+- **Token**：由 `ComputerOverlayHub::prepare_runner_command` 產生並寫入 spawn 的 `Command`（不是 `local_runner_command` 回傳 token）。Hub 是整個 helper 行程唯一的實例（`install_shared_hub`），由 `run_async` 安裝；沒有安裝時（單元測試）Runner 用舊命令列啟動。
+- **Helper 轉送佇列滿了**：丟棄新的 frame 並計數（`tokio::mpsc` 無法丟最舊的）；App 端的 `ttl_ms` 自動隱藏兜底。
+- **診斷計數**：目前只放在 `setComputerOverlayEvents` 的回應（`counters`），尚未接進「匯出診斷資料」。
+- **Space／螢幕**：`NSWorkspace.activeSpaceDidChangeNotification` 沒有接（設計的隱藏時機清單沒有它）；`.canJoinAllSpaces` 讓標記跟著使用者。
+- **Live 截圖測試**：`CGDisplayCreateImage` 在 macOS 15 SDK 已被標為 obsoleted，Swift 無法呼叫；`ComputerOverlayLiveCaptureTests` 只涵蓋 `kCGWindowSharingState` 與 ScreenCaptureKit。Runtime 整個螢幕截圖（`CGDisplayCreateImage`）是否含 overlay 仍要照 §10.2 手動確認。
