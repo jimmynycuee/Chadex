@@ -1,7 +1,7 @@
 use super::{map_error, resolve_surface_window};
 use crate::ax_traversal::{
     find, observe_tree, probe_web_content, resolve as resolve_element, AxClock, AxSource,
-    FindBounds, TreeBounds, TreeMode,
+    FindBounds, subtree_mode, TreeBounds, TreeMode,
 };
 use crate::web_accessibility::{
     classify_web_engine, enable_web_accessibility, ProcessKey, SetOutcome, WebAxEnvironment,

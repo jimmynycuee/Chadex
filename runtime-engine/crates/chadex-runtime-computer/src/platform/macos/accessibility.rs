@@ -739,7 +739,7 @@ pub(crate) fn accessibility_subtree(
             max_depth,
             max_nodes,
         },
-        TreeMode::Query,
+        subtree_mode(root),
     )?;
     result.output["web_accessibility"] = json!(web_state.as_str());
     Ok(result)

@@ -459,7 +459,7 @@ cargo clippy --workspace --all-targets
 | D4 | 不復原 | 未實作 |
 | D5 | 放在 `computer_observe` 裡，輸出帶 `web_accessibility`，稽核紀錄也記錄這個值 | `tool_audit.rs` |
 | D6 | 沒有擴充 `sensitive_auth_title` | 未改 |
-| D7 | 加嚴只套用新路徑（subtree／find）。見 12.3 第 1 點 | `TreeMode::{Legacy, Query}` |
+| D7 | 加嚴只套用帶 root 的 subtree 和 find；不帶 root 的 `accessibility_tree` 與舊 kind 行為相同。見 12.3 第 1 點 | `TreeMode::{Legacy, Query}` |
 | D8 | Windows 不宣告 `computer_accessibility_query`，帶 root 回 `capability_unavailable`，不帶 root 退回舊流程 | runner `lib.rs`、server fallback |
 
 ### 12.2 實作位置
@@ -472,7 +472,7 @@ cargo clippy --workspace --all-targets
 
 ### 12.3 與設計不同的地方
 
-1. **model-facing `accessibility_tree`（不帶 root）在新 runner 上也走 subtree 路徑**（照 §4）。結果是新 runner 上，觀察 sensitive surface（密碼 app、授權對話框）的樹會被 `permission_denied` 擋下；舊 runner 維持原行為。這與 D7「舊 tree 行為不變」只有 wire kind 層級一致，需要使用者確認。
+1. model-facing `accessibility_tree` 不帶 root 時，新 runner 也送 subtree wire kind（為了拿到 `web_accessibility`），但 runner 對「不帶 root 的 subtree」套用舊 tree 的語意（`TreeMode::LegacyRootless`）：不擋 sensitive surface，secure 子孫的處理（只傳遞 `AXProtectedContent`）、節點、記錄和原生讀取順序都和舊 kind 相同，輸出只多 `root: null` 與 `web_accessibility`。sensitive surface 上仍不寫 `AXManualAccessibility`，狀態回 `skipped_sensitive`。只有帶 root 的 subtree 和所有 find 才加嚴（擋 sensitive surface、secure 子孫視為 protected、root 不得是 protected／secure）。這符合 D7。測試：`rootless_subtree_is_the_legacy_walk_with_only_the_subtree_envelope_added`、`rootless_subtree_keeps_the_legacy_sensitive_surface_behavior`、`rooted_queries_refuse_sensitive_surfaces_before_any_native_call`。
 2. `find` 找到 `limit + 1` 個符合者就停止（`stop_reason = "limit"`），不為了數 `total_matches` 繼續走到預算用完。`truncated` 一樣準確，而且不需要多走最多 4000 個節點。
 3. 單一節點的子節點數超過 `MAX_FIND_CHILDREN_PER_NODE`（512），或剩餘 visit 預算不足以展開所有子節點時，`stop_reason` 是 `visit_budget`（列舉值不新增）。
 4. 有指定 `root_element_id` 時，root 本身不會出現在 find 的結果裡（只有它的後代會），root 另外用新 id 回傳在 `root_element_id`。

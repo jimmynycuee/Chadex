@@ -499,6 +499,61 @@ fn query_observe_tree_never_reads_value_or_text_for_secure_protected_or_their_de
 }
 
 #[test]
+fn rootless_subtree_is_the_legacy_walk_with_only_the_subtree_envelope_added() {
+    assert_eq!(subtree_mode(None), TreeMode::LegacyRootless);
+    let prefix = tree_record(&sample_tree(), &[0]);
+    assert_eq!(subtree_mode(Some(&prefix)), TreeMode::Query);
+    for (max_depth, max_nodes) in [(8, 256), (2, 5), (0, 1)] {
+        let legacy_tree = sample_tree();
+        let legacy = observe_tree(
+            &legacy_tree,
+            0,
+            "surface_x",
+            None,
+            bounds(max_depth, max_nodes),
+            TreeMode::Legacy,
+        )
+        .unwrap();
+        let rootless_tree = sample_tree();
+        let rootless = observe_tree(
+            &rootless_tree,
+            0,
+            "surface_x",
+            None,
+            bounds(max_depth, max_nodes),
+            subtree_mode(None),
+        )
+        .unwrap();
+        // Same nodes (secure descendants included), same records, same native reads.
+        assert_eq!(
+            normalize_nodes(&nodes_of(&rootless)),
+            normalize_nodes(&nodes_of(&legacy))
+        );
+        assert_eq!(records_of(&rootless), records_of(&legacy));
+        assert_eq!(rootless_tree.calls(), legacy_tree.calls());
+        let mut output = rootless.output.clone();
+        assert_eq!(output["root"], Value::Null);
+        output.as_object_mut().unwrap().remove("root");
+        let mut expected = legacy.output.clone();
+        // Element ids are random per walk; compare everything else.
+        for value in [&mut output, &mut expected] {
+            value.as_object_mut().unwrap().remove("nodes");
+        }
+        assert_eq!(output, expected);
+    }
+    // Unlike the hardened query walk, a child of a secure field is fingerprinted and
+    // read exactly as the legacy tree always did.
+    let tree = sample_tree();
+    observe_tree(&tree, 0, "surface_x", None, bounds(8, 256), TreeMode::LegacyRootless).unwrap();
+    assert!(tree.calls().contains(&Call::Fingerprint {
+        node: DOTS,
+        inherited: false
+    }));
+    assert!(!tree.values_read().contains(&SECURE));
+    assert!(!tree.values_read().contains(&VAULT));
+}
+
+#[test]
 fn query_observe_tree_without_prefix_reports_null_root() {
     let tree = sample_tree();
     let result =
@@ -1315,7 +1370,8 @@ fn ancestors_summary_drops_the_farthest_segments_to_fit_256_bytes() {
 mod runtime {
     use super::*;
     use crate::{
-        ComputerConfig, ComputerRuntime, ElementFindRequest, SurfaceRecord, WebAccessibilityPolicy,
+        ensure_surface_not_sensitive, ComputerConfig, ComputerRuntime, ElementFindRequest,
+        SurfaceRecord, WebAccessibilityPolicy,
     };
 
     fn runtime() -> ComputerRuntime {
@@ -1391,7 +1447,7 @@ mod runtime {
         let toolbar_id = element_id_for(&first, "Toolbar");
 
         // Subtree below Toolbar: ids for the whole surface are replaced.
-        let (_, root) = runtime.prepare_query("surface_a", Some(&toolbar_id)).unwrap();
+        let (_, root) = runtime.prepare_query("surface_a", Some(&toolbar_id), true).unwrap();
         let root = root.unwrap();
         let second = commit(
             &runtime,
@@ -1406,11 +1462,11 @@ mod runtime {
         assert_eq!(second["nodes"][0]["element_id"], json!(new_root_id));
         // The previous generation's handle, including the root that was passed in, is stale.
         let error = runtime
-            .prepare_query("surface_a", Some(&toolbar_id))
+            .prepare_query("surface_a", Some(&toolbar_id), true)
             .err()
             .unwrap();
         assert!(error.starts_with("stale_element:"), "{error}");
-        assert!(runtime.prepare_query("surface_a", Some(&new_root_id)).is_ok());
+        assert!(runtime.prepare_query("surface_a", Some(&new_root_id), true).is_ok());
 
         // Find with the re-issued root re-issues it again and bumps the generation.
         let found = commit(
@@ -1431,15 +1487,15 @@ mod runtime {
         assert_eq!(found["observation_generation"], json!(3));
         let reissued = found["root_element_id"].as_str().unwrap().to_string();
         assert_ne!(reissued, new_root_id);
-        assert!(runtime.prepare_query("surface_a", Some(&reissued)).is_ok());
+        assert!(runtime.prepare_query("surface_a", Some(&reissued), true).is_ok());
         assert!(runtime
-            .prepare_query("surface_a", Some(&new_root_id))
+            .prepare_query("surface_a", Some(&new_root_id), true)
             .err()
             .unwrap()
             .starts_with("stale_element:"));
         // The match is registered and usable as a handle for later calls.
         let share_id = element_id_for(&found, "Share");
-        assert!(runtime.prepare_query("surface_a", Some(&share_id)).is_ok());
+        assert!(runtime.prepare_query("surface_a", Some(&share_id), true).is_ok());
     }
 
     #[test]
@@ -1458,7 +1514,7 @@ mod runtime {
         );
         let b_id = element_id_for(&b_output, "Toolbar");
         for root in [b_id.as_str(), "element_neverissued"] {
-            let error = runtime.prepare_query("surface_a", Some(root)).err().unwrap();
+            let error = runtime.prepare_query("surface_a", Some(root), true).err().unwrap();
             assert!(error.starts_with("stale_element:"), "{error}");
             let error = runtime
                 .accessibility_subtree("surface_a", Some(root), 4, 16)
@@ -1466,7 +1522,7 @@ mod runtime {
             assert!(error.starts_with("stale_element:"), "{error}");
         }
         let error = runtime
-            .prepare_query("surface_missing", None)
+            .prepare_query("surface_missing", None, true)
             .err()
             .unwrap();
         assert!(error.starts_with("stale_surface:"), "{error}");
@@ -1509,7 +1565,7 @@ mod runtime {
         let mut refused = vec![secure, protected];
         refused.extend(protected_child);
         for root in refused {
-            let error = runtime.prepare_query("surface_a", Some(&root)).err().unwrap();
+            let error = runtime.prepare_query("surface_a", Some(&root), true).err().unwrap();
             assert!(error.starts_with("permission_denied:"), "{error}");
             let error = runtime
                 .accessibility_subtree("surface_a", Some(&root), 4, 16)
@@ -1528,7 +1584,7 @@ mod runtime {
     }
 
     #[test]
-    fn sensitive_surfaces_are_refused_before_any_native_call() {
+    fn rooted_queries_refuse_sensitive_surfaces_before_any_native_call() {
         let runtime = runtime();
         runtime.insert_surface_for_test("surface_pw", surface("Passwords", "Passwords"));
         runtime.insert_surface_for_test("surface_auth", surface("Example", "Authorization Required"));
@@ -1538,19 +1594,61 @@ mod runtime {
             max_depth: 32,
             ..ElementFindRequest::default()
         };
+        let expected = "permission_denied: sensitive Computer surface cannot be controlled";
         for surface_id in ["surface_pw", "surface_auth"] {
-            let expected = "permission_denied: sensitive Computer surface cannot be controlled";
-            assert_eq!(
-                runtime
-                    .accessibility_subtree(surface_id, None, 4, 16)
-                    .unwrap_err(),
-                expected
-            );
+            // Find is always hardened, even without a root.
             assert_eq!(
                 runtime.find_elements(surface_id, &request).unwrap_err(),
                 expected
             );
+            let rooted = ElementFindRequest {
+                root_element_id: Some("element_anything".to_string()),
+                ..request.clone()
+            };
+            assert_eq!(runtime.find_elements(surface_id, &rooted).unwrap_err(), expected);
+            // A subtree with a root is hardened too (checked before the root lookup).
+            assert_eq!(
+                runtime
+                    .accessibility_subtree(surface_id, Some("element_anything"), 4, 16)
+                    .unwrap_err(),
+                expected
+            );
+            assert_eq!(
+                runtime.prepare_query(surface_id, None, true).err().unwrap(),
+                expected
+            );
         }
+    }
+
+    #[test]
+    fn rootless_subtree_keeps_the_legacy_sensitive_surface_behavior() {
+        let runtime = runtime();
+        runtime.insert_surface_for_test("surface_pw", surface("Passwords", "Passwords"));
+        runtime.insert_surface_for_test("surface_auth", surface("Example", "Authorization Required"));
+        for surface_id in ["surface_pw", "surface_auth"] {
+            // The sensitive gate is not applied, exactly like the legacy tree ...
+            assert!(runtime.prepare_query(surface_id, None, false).is_ok());
+            // ... so the request reaches the native layer (which cannot resolve this
+            // synthetic surface) instead of failing with the sensitive-surface refusal.
+            let error = runtime
+                .accessibility_subtree(surface_id, None, 4, 16)
+                .unwrap_err();
+            assert_ne!(
+                error,
+                "permission_denied: sensitive Computer surface cannot be controlled"
+            );
+            // And the legacy kind reaches the same native layer with the same error class.
+            let legacy = runtime.accessibility_tree(surface_id, 4, 16).unwrap_err();
+            assert_eq!(
+                error.split(':').next(),
+                legacy.split(':').next(),
+                "{error} vs {legacy}"
+            );
+        }
+        // Web accessibility is still never enabled on a sensitive surface.
+        assert!(
+            ensure_surface_not_sensitive(&surface("Passwords", "Passwords")).is_err()
+        );
     }
 
     #[test]

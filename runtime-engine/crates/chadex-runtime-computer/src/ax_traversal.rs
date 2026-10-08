@@ -172,9 +172,23 @@ pub(crate) fn probe_web_content<S: AxSource>(
 pub(crate) enum TreeMode {
     /// Historical `computer_accessibility_tree` behavior.
     Legacy,
-    /// `computer_accessibility_subtree`: secure fields protect their descendants and
-    /// the output carries a `root` descriptor.
+    /// `computer_accessibility_subtree` with a root: secure fields protect their
+    /// descendants and the output carries a `root` descriptor.
     Query,
+    /// `computer_accessibility_subtree` without a root: exactly the `Legacy` walk (same
+    /// sensitive-content handling, same nodes and records), only reported through the
+    /// subtree wire shape (`root: null`).
+    LegacyRootless,
+}
+
+/// The walk semantics of a subtree request: only a rooted query is hardened, so the
+/// model-facing `accessibility_tree` keeps its historical behavior when no root is given.
+pub(crate) fn subtree_mode(root: Option<&ElementRecord>) -> TreeMode {
+    if root.is_some() {
+        TreeMode::Query
+    } else {
+        TreeMode::LegacyRootless
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -279,7 +293,7 @@ pub(crate) fn observe_tree<S: AxSource>(
                 truncated = true;
             }
             let child_inherited = match mode {
-                TreeMode::Legacy => protected,
+                TreeMode::Legacy | TreeMode::LegacyRootless => protected,
                 TreeMode::Query => protected || secure,
             };
             for (index, child) in source.children(&node, take)?.into_iter().enumerate() {
@@ -342,7 +356,7 @@ pub(crate) fn observe_tree<S: AxSource>(
         "max_depth": max_depth,
         "max_nodes": max_nodes,
     });
-    if mode == TreeMode::Query {
+    if matches!(mode, TreeMode::Query | TreeMode::LegacyRootless) {
         output["root"] = root_descriptor.unwrap_or(Value::Null);
     }
     Ok(AccessibilityTreeResult { output, elements })

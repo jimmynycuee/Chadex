@@ -1483,10 +1483,12 @@ impl ComputerRuntime {
         self.finish_accessibility_observation(surface_id, &record, output, elements)
     }
 
-    /// Subtree observation (`computer_accessibility_subtree`). Unlike the legacy tree
-    /// it refuses sensitive surfaces before any native call, hardens secure fields and
-    /// accepts a previously issued `root_element_id`. The result re-issues ids for the
-    /// whole surface, including the root.
+    /// Subtree observation (`computer_accessibility_subtree`). With a
+    /// `root_element_id` it refuses sensitive surfaces before any native call and
+    /// hardens secure fields. Without one it behaves exactly like the legacy tree
+    /// (sensitive surfaces are observable, secure descendants are handled as before) and
+    /// only never enables web accessibility on a sensitive surface. The result
+    /// re-issues ids for the whole surface, including the root.
     pub fn accessibility_subtree(
         &self,
         surface_id: &str,
@@ -1499,8 +1501,9 @@ impl ComputerRuntime {
         {
             return Err("invalid_request: accessibility bounds are invalid".to_string());
         }
-        let (record, root) = self.prepare_query(surface_id, root_element_id)?;
-        let web = self.web_context(false);
+        let (record, root) =
+            self.prepare_query(surface_id, root_element_id, root_element_id.is_some())?;
+        let web = self.web_context(ensure_surface_not_sensitive(&record).is_err());
         let AccessibilityTreeResult { output, elements } = platform::accessibility_subtree(
             surface_id,
             &record,
@@ -1520,7 +1523,8 @@ impl ComputerRuntime {
         request: &ElementFindRequest,
     ) -> Result<Value, String> {
         request.validate()?;
-        let (record, root) = self.prepare_query(surface_id, request.root_element_id.as_deref())?;
+        let (record, root) =
+            self.prepare_query(surface_id, request.root_element_id.as_deref(), true)?;
         let web = self.web_context(false);
         let AccessibilityTreeResult { output, elements } =
             platform::find_elements(surface_id, &record, root.as_ref(), request, &web)?;
@@ -1528,11 +1532,13 @@ impl ComputerRuntime {
     }
 
     /// Everything a query-style observation must settle before touching the native
-    /// tree: id syntax, surface liveness, sensitive surface, and root eligibility.
+    /// tree: id syntax, surface liveness, sensitive surface (when `enforce_sensitive`),
+    /// and root eligibility.
     fn prepare_query(
         &self,
         surface_id: &str,
         root_element_id: Option<&str>,
+        enforce_sensitive: bool,
     ) -> Result<(SurfaceRecord, Option<ElementRecord>), String> {
         if surface_id.is_empty() || surface_id.len() > MAX_SURFACE_ID_BYTES {
             return Err("invalid_request: surface_id is invalid".to_string());
@@ -1552,7 +1558,9 @@ impl ComputerRuntime {
             .get(surface_id)
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
-        ensure_surface_not_sensitive(&record)?;
+        if enforce_sensitive {
+            ensure_surface_not_sensitive(&record)?;
+        }
         let root = match root_element_id {
             None => None,
             Some(root_element_id) => {
