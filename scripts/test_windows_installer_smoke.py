@@ -553,6 +553,21 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             stage["probe_failure"] = raw
             self.assertNotIn("probe_failure", report.public_value()["stages"][0])
 
+    def test_inventory_timeout_during_owned_launch_keeps_its_code(self) -> None:
+        report = smoke.SmokeReport("win32")
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(smoke.suspended, "launch_owned",
+                             side_effect=smoke.w2.E2EFailure("process_inventory_timeout")):
+            with self.assertRaises(smoke.SmokeFailure) as raised:
+                smoke.run_owned_executable(
+                    Path(tmp) / "setup.exe", "/S", cwd=Path(tmp), powershell="powershell.exe",
+                    groups=[], timeout=1, timeout_code="installer_timeout",
+                    spawn_code="installer_spawn_failed", exit_code="installer_exit_nonzero",
+                    report=report,
+                )
+        self.assertEqual(raised.exception.code, "process_inventory_timeout")
+        self.assertIn("process_inventory_timeout", smoke.SAFE_CODES)
+
     def test_unexpected_stage_exception_logs_traceback_and_reports_only_its_type(self) -> None:
         report = smoke.SmokeReport("win32")
         stderr = io.StringIO()

@@ -77,7 +77,7 @@ SAFE_CODES = frozenset({
     "installed_helper_identity_unowned", "installed_helper_identity_changed",
     "installed_runtime_not_ready", "installed_ui_not_rendered",
     "installed_preferences_not_restored", "installed_smoke_ipc_exposed",
-    "installed_processes_remain", "installed_app_exit_nonzero", "process_inventory_failed", "process_cleanup_failed",
+    "installed_processes_remain", "installed_app_exit_nonzero", "process_inventory_failed", "process_inventory_timeout", "process_cleanup_failed",
     "node_cleanup_failed", "owned_processes_remain", "forced_cleanup_required",
     "appdata_missing", "appdata_snapshot_invalid", "appdata_changed",
     "preferences_missing", "preferences_changed", "project_marker_changed",
@@ -740,6 +740,9 @@ def run_owned_executable(executable: Path, arguments: str, *, cwd: Path,
         )
     except suspended.LaunchFailure:
         raise SmokeFailure("process_inventory_failed") from None
+    except w2.E2EFailure as error:
+        code = error.code if error.code in SAFE_CODES else "process_inventory_failed"
+        raise SmokeFailure(code) from None
     except OSError:
         raise SmokeFailure(spawn_code) from None
     deadline = time.monotonic() + timeout
@@ -864,6 +867,9 @@ def _launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: 
         )
     except suspended.LaunchFailure:
         raise SmokeFailure("process_inventory_failed") from None
+    except w2.E2EFailure as error:
+        code = error.code if error.code in SAFE_CODES else "process_inventory_failed"
+        raise SmokeFailure(code) from None
     except OSError:
         raise SmokeFailure("installed_probe_spawn_failed") from None
     node_process: subprocess.Popen[bytes] | None = None
