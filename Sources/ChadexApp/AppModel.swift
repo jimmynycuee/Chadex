@@ -210,6 +210,11 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Newest first, ignoring the Activity page's search and filter.
+    var recentActivities: [ActivityEntry] {
+        activities.sorted { $0.sequence > $1.sequence }
+    }
+
     var filteredActivities: [ActivityEntry] {
         activities.filter { entry in
             let levelMatches = activityFilter == .all || entry.level == .warning || entry.level == .error
@@ -1412,6 +1417,48 @@ final class AppModel: ObservableObject {
     func refreshDiagnostics() async {
         await refreshStatus(force: true)
         await refreshPerformanceTraces()
+    }
+
+    /// Title for the primary connection action, shared by the project
+    /// overview, the main menu and the menu bar extra so one action keeps
+    /// one name everywhere.
+    var primaryActionTitle: String {
+        if let actionText = connectionActionStatusText { return actionText }
+        switch connectionPresentationPhase {
+        case .unconfigured: return L10n.string("connection.configure")
+        case .preparing: return snapshot.currentOperation?.cancellable == true ? L10n.string("connection.cancel") : L10n.string("status.preparing")
+        case .waitingForChatGPTVerification: return L10n.string("connection.disconnect")
+        case .verified: return L10n.string("connection.disconnect")
+        case .stopped: return L10n.string("connection.connect")
+        case .error: return L10n.string("connection.retry")
+        }
+    }
+
+    /// Whether the primary connection action can run now. Shared by the
+    /// overview button, the File menu and the menu bar extra so none of them
+    /// can trigger a connection the others deliberately block.
+    var primaryActionEnabled: Bool {
+        guard selectedProject != nil, !connectionActionInFlight, !isSwitchingProject else { return false }
+        if connectionPresentationPhase == .preparing {
+            // Bootstrap can present `.error` as `.preparing`; only a real,
+            // cancellable operation is actionable here.
+            return snapshot.phase == .preparing && snapshot.currentOperation?.cancellable == true
+        }
+        return true
+    }
+
+    /// Menu titles name their object, since a bare "Cancel" or "Retry"
+    /// is ambiguous outside the overview.
+    var primaryMenuActionTitle: String {
+        if let actionText = connectionActionStatusText { return actionText }
+        switch connectionPresentationPhase {
+        case .preparing:
+            return snapshot.currentOperation?.cancellable == true
+                ? L10n.string("connection.cancelMenu")
+                : L10n.string("status.preparing")
+        case .error: return L10n.string("connection.retryMenu")
+        default: return primaryActionTitle
+        }
     }
 
     func primaryAction() {

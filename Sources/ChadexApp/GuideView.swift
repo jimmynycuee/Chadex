@@ -256,7 +256,7 @@ struct GuideView: View {
 
             Text(L10n.string("guide.uiMayChange"))
                 .chadexFont(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .chadexPadding(.bottom, 8)
         }
     }
@@ -502,15 +502,19 @@ private struct GuidePath: View {
 }
 
 private struct GuideInstructionRow: View {
+    @Environment(\.chadexLayout) private var layout
     let number: Int
     let text: String
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 9) {
+            // The marker scales with the type; a fixed 18 pt column truncated
+            // "1." to an ellipsis at larger interface sizes.
             Text("\(number).")
                 .chadexFont(.caption, weight: .semibold, design: .monospaced)
-                .foregroundStyle(.tertiary)
-                .frame(width: 18, alignment: .trailing)
+                .foregroundStyle(.secondary)
+                .fixedSize()
+                .frame(minWidth: 18 * layout.fontScale, alignment: .trailing)
             Text(text)
                 .chadexFont(.callout)
                 .foregroundStyle(.secondary)

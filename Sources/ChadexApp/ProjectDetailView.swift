@@ -62,6 +62,10 @@ struct ProjectDetailView: View {
         }
     }
 
+    private var computerControlNeedsAttention: Bool {
+        model.computerSafety.stopped || !model.computerSafety.pendingApprovals.isEmpty
+    }
+
     private var navigationTitle: String {
         switch destination {
         case .overview:
@@ -91,7 +95,7 @@ struct ProjectDetailView: View {
                         .chadexFont(.caption, weight: .medium)
                     Text(project.path)
                         .chadexFont(.caption, design: .monospaced)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .textSelection(.enabled)
                 }
@@ -141,7 +145,7 @@ struct ProjectDetailView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     Text(project.path)
                         .chadexFont(.callout, design: .monospaced)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -186,6 +190,9 @@ struct ProjectDetailView: View {
                 chatGPTVerified: model.isSwitchingProject ? false : model.snapshot.chatGPTVerifiedForSelectedProject,
                 isConnecting: model.connectionAction == .connecting
             )
+            // Three steps read as one path; past ~640 pt the connectors turn
+            // into long empty rules on wide windows.
+            .frame(maxWidth: layout.control(640), alignment: .leading)
             .chadexPadding(.vertical, 1)
 
             Divider()
@@ -219,19 +226,15 @@ struct ProjectDetailView: View {
     private var computerControlSection: some View {
         VStack(alignment: .leading, spacing: layout.spacing(22)) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                SectionEyebrow(title: L10n.string("computer.title"))
+                SectionTitle(title: L10n.string("computer.title"))
                 Spacer(minLength: 12)
-                Label(
-                    computerControlStatusText,
+                ChadexStatusLabel(
+                    title: computerControlStatusText,
                     systemImage: model.computerSafety.stopped
                         ? "hand.raised.fill"
-                        : (model.computerSafety.pendingApprovals.isEmpty ? "desktopcomputer" : "exclamationmark.circle.fill")
-                )
-                .chadexFont(.caption, weight: .medium)
-                .foregroundStyle(
-                    model.computerSafety.stopped || !model.computerSafety.pendingApprovals.isEmpty
-                        ? Color.orange
-                        : Color.secondary
+                        : (model.computerSafety.pendingApprovals.isEmpty ? "desktopcomputer" : "exclamationmark.circle.fill"),
+                    tint: computerControlNeedsAttention ? .orange : .secondary,
+                    emphasized: computerControlNeedsAttention
                 )
             }
 
@@ -255,7 +258,8 @@ struct ProjectDetailView: View {
             } else {
                 VStack(alignment: .leading, spacing: layout.spacing(10)) {
                     Text(L10n.string("computer.controlModeTitle"))
-                        .chadexFont(.callout, weight: .semibold)
+                        .chadexFont(.headline, weight: .semibold)
+                        .accessibilityAddTraits(.isHeader)
                     Text(L10n.string("computer.controlModeHelp"))
                         .chadexFont(.caption)
                         .foregroundStyle(.secondary)
@@ -264,12 +268,12 @@ struct ProjectDetailView: View {
                         .chadexPadding(.top, 2)
                     Text(computerControlModeDescription)
                         .chadexFont(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if !model.snapshot.tunnelReady {
                         Text(L10n.string("computer.sessionUnavailable"))
                             .chadexFont(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -306,7 +310,7 @@ struct ProjectDetailView: View {
                                 model.computerSafety.pendingApprovals.count - 1
                             ))
                             .chadexFont(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -314,7 +318,8 @@ struct ProjectDetailView: View {
                 Divider()
                 VStack(alignment: .leading, spacing: layout.spacing(10)) {
                     Text(L10n.string("computer.safetyTitle"))
-                        .chadexFont(.callout, weight: .semibold)
+                        .chadexFont(.headline, weight: .semibold)
+                        .accessibilityAddTraits(.isHeader)
                     Text(L10n.string("computer.safetyNote"))
                         .chadexFont(.caption)
                         .foregroundStyle(.secondary)
@@ -333,9 +338,9 @@ struct ProjectDetailView: View {
             }
 
             if let error = model.computerSafetyError {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .chadexFont(.caption)
-                    .foregroundStyle(.secondary)
+                ChadexInlineError(message: error) {
+                    await model.refreshComputerSafety()
+                }
             }
         }
     }
@@ -463,12 +468,16 @@ struct ProjectDetailView: View {
                 .frame(maxWidth: layout.control(620), alignment: .leading)
 
             if let message = model.connectionCheckMessage {
-                Label(
-                    message,
-                    systemImage: model.connectionCheckSucceeded == false ? "exclamationmark.circle" : "checkmark.circle"
-                )
+                let failed = model.connectionCheckSucceeded == false
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Image(systemName: failed ? "exclamationmark.circle.fill" : "checkmark.circle")
+                        .foregroundStyle(failed ? Color.red : Color.secondary)
+                    Text(message)
+                        .foregroundStyle(failed ? Color.primary : Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 .chadexFont(.caption)
-                .foregroundStyle(model.connectionCheckSucceeded == false ? Color.red : Color.secondary)
+                .accessibilityElement(children: .combine)
                 .chadexPadding(.top, 2)
             }
         }
@@ -514,11 +523,7 @@ struct ProjectDetailView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
-                .disabled(
-                    model.connectionActionInFlight
-                        || model.isSwitchingProject
-                        || (model.connectionPresentationPhase == .preparing && model.snapshot.currentOperation?.cancellable != true)
-                )
+                .disabled(!model.primaryActionEnabled)
             }
         }
     }
@@ -564,7 +569,7 @@ struct ProjectDetailView: View {
                                 .textSelection(.enabled)
                         }
                     }
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .chadexPadding(.top, 6)
                 }
             }
@@ -581,17 +586,16 @@ struct ProjectDetailView: View {
     private var recentActivity: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(L10n.string("activity.recent"))
-                    .chadexFont(.headline)
+                SectionTitle(title: L10n.string("activity.recent"))
                 Spacer()
-                if !model.filteredActivities.isEmpty {
+                if !model.recentActivities.isEmpty {
                     Button(L10n.string("activity.viewAll"), action: onShowAllActivity)
                         .buttonStyle(.link)
                         .chadexFont(.callout)
                 }
             }
 
-            if model.filteredActivities.isEmpty {
+            if model.recentActivities.isEmpty {
                 HStack(spacing: 9) {
                     Image(systemName: "clock.arrow.circlepath")
                         .foregroundStyle(.tertiary)
@@ -602,10 +606,10 @@ struct ProjectDetailView: View {
                 .chadexPadding(.vertical, 12)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(model.filteredActivities.prefix(4))) { activity in
+                    ForEach(Array(model.recentActivities.prefix(4))) { activity in
                         ActivityRow(entry: activity)
                             .chadexPadding(.vertical, 5)
-                        if activity.id != model.filteredActivities.prefix(4).last?.id {
+                        if activity.id != model.recentActivities.prefix(4).last?.id {
                             Divider()
                         }
                     }
@@ -628,15 +632,7 @@ struct ProjectDetailView: View {
     }
 
     private var primaryActionTitle: String {
-        if let actionText = model.connectionActionStatusText { return actionText }
-        switch model.connectionPresentationPhase {
-        case .unconfigured: return L10n.string("connection.configure")
-        case .preparing: return model.snapshot.currentOperation?.cancellable == true ? L10n.string("connection.cancel") : L10n.string("status.preparing")
-        case .waitingForChatGPTVerification: return L10n.string("connection.disconnect")
-        case .verified: return L10n.string("connection.disconnect")
-        case .stopped: return L10n.string("connection.connect")
-        case .error: return L10n.string("connection.retry")
-        }
+        model.primaryActionTitle
     }
 
     private var connectionStatusTitle: String {
@@ -694,7 +690,7 @@ struct GlobalInstructionsEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                SectionEyebrow(title: L10n.string("globalInstructions.title"))
+                SectionTitle(title: L10n.string("globalInstructions.title"))
                 Spacer(minLength: 12)
                 if saved {
                     Label(L10n.string("globalInstructions.saved"), systemImage: "checkmark")
@@ -724,7 +720,7 @@ struct GlobalInstructionsEditor: View {
                 .font(.system(.body, design: .monospaced))
                 .frame(minHeight: layout.control(180), maxHeight: layout.control(320))
                 .padding(7)
-                .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: layout.control(9), style: .continuous))
+                .chadexEditorSurface()
                 .onChange(of: draft) { _, _ in saved = false }
 
             HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -732,14 +728,19 @@ struct GlobalInstructionsEditor: View {
                     .chadexFont(.caption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 10)
-                Text("\(byteCount) / \(ProjectStore.maxGlobalInstructionsBytes) bytes")
+                Text(L10n.string(
+                    "globalInstructions.byteCount",
+                    byteCount.formatted(),
+                    ProjectStore.maxGlobalInstructionsBytes.formatted()
+                ))
                     .chadexFont(.caption, design: .monospaced)
                     .foregroundStyle(byteCount > ProjectStore.maxGlobalInstructionsBytes ? Color.red : Color.secondary)
+                    .fontWeight(byteCount > ProjectStore.maxGlobalInstructionsBytes ? .bold : .regular)
             }
 
             Text(L10n.string("globalInstructions.precedence"))
                 .chadexFont(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let error = model.globalInstructionsError {
@@ -818,12 +819,12 @@ struct ActivityRow: View {
                     Text(entry.date.formatted(date: .omitted, time: .shortened))
                         .chadexFont(.caption, design: .monospaced)
                         .monospacedDigit()
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                 }
 
                 Text("\(entry.source) · \(entry.eventKind)")
                     .chadexFont(.caption, design: .monospaced)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
         }
         .contextMenu {

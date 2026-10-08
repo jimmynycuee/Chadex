@@ -13,10 +13,18 @@ final class VisualReviewTests: XCTestCase {
         try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
 
         let updateCommittedReview = ProcessInfo.processInfo.environment["CHADEX_UPDATE_UI_REVIEW"] == "1"
-        let output = updateCommittedReview
+        let customOutput = ProcessInfo.processInfo.environment["CHADEX_UI_REVIEW_OUTPUT"]
+            .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
+        let output = customOutput ?? (updateCommittedReview
             ? projectRoot.appendingPathComponent("ui-review", isDirectory: true)
-            : temporaryRoot.appendingPathComponent("ui-review", isDirectory: true)
-        if updateCommittedReview {
+            : temporaryRoot.appendingPathComponent("ui-review", isDirectory: true))
+        if customOutput != nil {
+            // Only clear images this test writes; never delete a caller's folder.
+            let existing = (try? FileManager.default.contentsOfDirectory(at: output, includingPropertiesForKeys: nil)) ?? []
+            for file in existing where ["png", "jpg"].contains(file.pathExtension) {
+                try? FileManager.default.removeItem(at: file)
+            }
+        } else if updateCommittedReview {
             try? FileManager.default.removeItem(at: output)
         }
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
@@ -143,6 +151,76 @@ final class VisualReviewTests: XCTestCase {
             to: output.appendingPathComponent("guide-narrow-100-dark.png")
         )
 
+        try render(
+            presented(
+                ProjectDetailView(project: project, destination: .agentSettings) {}
+                    .environmentObject(model),
+                interfaceSize: .comfortable
+            ),
+            size: CGSize(width: 980, height: 820),
+            scheme: .dark,
+            to: output.appendingPathComponent("agent-settings-120-dark.png")
+        )
+        try render(
+            presented(ActivityView().environmentObject(model), interfaceSize: .comfortable),
+            size: CGSize(width: 900, height: 520),
+            scheme: .light,
+            to: output.appendingPathComponent("activity-empty-120-light.png")
+        )
+        try render(
+            presented(ConnectionSettingsSheet().environmentObject(model), interfaceSize: .comfortable),
+            size: CGSize(width: 640, height: 460),
+            scheme: .light,
+            to: output.appendingPathComponent("connection-sheet-120-light.png")
+        )
+        try render(
+            presented(
+                ProjectDetailView(project: project, destination: .computerUse) {}
+                    .environmentObject(model),
+                interfaceSize: .extraLarge
+            ),
+            size: CGSize(width: 900, height: 720),
+            scheme: .dark,
+            to: output.appendingPathComponent("computer-use-160-dark.png")
+        )
+
+        let runningTask = TaskProgressSnapshot(
+            taskId: "review-running", project: "Chadex",
+            goal: "Fix the flaky connection retry test and validate the runner",
+            status: "running", currentStep: 2, totalSteps: 4, completedSteps: 2,
+            plan: ["search", "read", "edit", "validate"], cancelRequested: false,
+            startedAtMs: UInt64(Date().addingTimeInterval(-95).timeIntervalSince1970 * 1_000),
+            validation: TaskValidationSummary(status: "not_run", checksPassed: 0, checksFailed: 0),
+            review: TaskReviewSummary(status: "pending"),
+            steps: [
+                TaskProgressStep(index: 0, kind: "search", status: "completed", durationMs: 2_100, attempts: 1, retries: 0),
+                TaskProgressStep(index: 1, kind: "read", status: "completed", durationMs: 4_800, attempts: 1, retries: 0)
+            ]
+        )
+        var failedTask = runningTask
+        failedTask.status = "failed_validation"
+        failedTask.currentStep = 3
+        failedTask.completedSteps = 3
+        failedTask.steps.append(TaskProgressStep(index: 2, kind: "edit", status: "completed", durationMs: 61_000, attempts: 1, retries: 0))
+        failedTask.steps.append(TaskProgressStep(index: 3, kind: "validate", status: "failed", durationMs: 244_500, attempts: 1, retries: 0))
+        failedTask.durationMs = 312_400
+        failedTask.validation = TaskValidationSummary(status: "failed", checksPassed: 41, checksFailed: 2)
+        try render(
+            presented(
+                VStack(alignment: .leading, spacing: 28) {
+                    TaskProgressView(task: runningTask) {}
+                    Divider()
+                    TaskProgressView(task: failedTask) {}
+                }
+                .padding(28)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading),
+                interfaceSize: .comfortable
+            ),
+            size: CGSize(width: 900, height: 420),
+            scheme: .light,
+            to: output.appendingPathComponent("task-progress-120-light.png")
+        )
+
         let reviewImages = [
             "main-wide-100-light.png",
             "main-wide-140-light.png",
@@ -153,7 +231,12 @@ final class VisualReviewTests: XCTestCase {
             "global-instructions-100-light.png",
             "computer-use-100-light.png",
             "guide-wide-140-light.png",
-            "guide-narrow-100-dark.png"
+            "guide-narrow-100-dark.png",
+            "agent-settings-120-dark.png",
+            "activity-empty-120-light.png",
+            "connection-sheet-120-light.png",
+            "computer-use-160-dark.png",
+            "task-progress-120-light.png"
         ].map { output.appendingPathComponent($0) }
         try makeContactSheet(from: reviewImages, to: output.appendingPathComponent("contact-sheet.jpg"))
     }
@@ -218,6 +301,20 @@ final class VisualReviewTests: XCTestCase {
         let hosting = NSHostingView(rootView: view)
         hosting.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
         hosting.frame = CGRect(origin: .zero, size: size)
+        // Host inside a real (never ordered-front) window so AppKit-backed
+        // containers such as sidebar Lists and split views lay out their rows.
+        let window = NSWindow(
+            contentRect: CGRect(origin: .zero, size: size),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.appearance = hosting.appearance
+        NSApplication.shared.appearance = hosting.appearance
+        defer { NSApplication.shared.appearance = nil }
+        window.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.35))
         hosting.layoutSubtreeIfNeeded()
 
         guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {

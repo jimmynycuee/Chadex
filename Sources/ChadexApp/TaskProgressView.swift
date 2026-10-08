@@ -7,11 +7,14 @@ struct TaskProgressView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                SectionEyebrow(title: L10n.string("task.title"))
+                SectionTitle(title: L10n.string("task.title"))
                 Spacer(minLength: 12)
-                Label(statusText, systemImage: statusSymbol)
-                    .chadexFont(.caption, weight: .medium)
-                    .foregroundStyle(statusColor)
+                ChadexStatusLabel(
+                    title: statusText,
+                    systemImage: statusSymbol,
+                    tint: statusColor,
+                    emphasized: statusColor != .secondary
+                )
             }
 
             Text(task.goal)
@@ -126,13 +129,17 @@ struct TaskProgressView: View {
     }
 
     private func formatDuration(_ milliseconds: UInt64) -> String {
-        let totalSeconds = Double(milliseconds) / 1_000
-        if totalSeconds < 60 {
-            return String(format: "%.1fs", totalSeconds)
+        let duration = Duration.milliseconds(Int64(clamping: milliseconds))
+        let locale = L10n.selectedLanguage.locale
+        if milliseconds < 60_000 {
+            return duration.formatted(
+                .units(allowed: [.seconds], width: .narrow, fractionalPart: .show(length: 1))
+                    .locale(locale)
+            )
         }
-        let minutes = Int(totalSeconds) / 60
-        let seconds = Int(totalSeconds) % 60
-        return "\(minutes)m \(seconds)s"
+        return duration.formatted(
+            .units(allowed: [.hours, .minutes, .seconds], width: .narrow).locale(locale)
+        )
     }
 }
 
@@ -143,12 +150,13 @@ private struct TaskMetadataLabel: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 5) {
             Text(title)
-                .foregroundStyle(.tertiary)
-            Text(value)
                 .foregroundStyle(.secondary)
+            Text(value)
+                .foregroundStyle(.primary)
                 .monospacedDigit()
         }
         .chadexFont(.caption)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -183,6 +191,7 @@ private enum TaskPhaseState {
 }
 
 private struct TaskPhaseView: View {
+    @Environment(\.chadexLayout) private var layout
     let title: String
     let state: TaskPhaseState
 
@@ -191,16 +200,30 @@ private struct TaskPhaseView: View {
             if state == .running {
                 ProgressView()
                     .controlSize(.mini)
-                    .frame(width: 12, height: 12)
+                    .frame(width: layout.control(12), height: layout.control(12))
             } else {
                 Image(systemName: symbol)
                     .chadexFont(.caption2, weight: .semibold)
                     .foregroundStyle(color)
-                    .frame(width: 12)
+                    .frame(width: layout.control(12))
             }
+            // Pending reads as secondary (not tertiary, 1.9:1); the symbol and
+            // weight carry the state difference.
             Text(title)
-                .chadexFont(.caption, weight: state == .running ? .semibold : .regular)
-                .foregroundStyle(state == .pending ? .tertiary : .secondary)
+                .chadexFont(.caption, weight: state == .running || state == .failed ? .semibold : .regular)
+                .foregroundStyle(state == .running || state == .failed ? Color.primary : Color.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(accessibilityState)
+    }
+
+    private var accessibilityState: String {
+        switch state {
+        case .pending: return L10n.string("a11y.step.inactive")
+        case .running: return L10n.string("a11y.step.active")
+        case .completed: return L10n.string("a11y.step.complete")
+        case .failed: return L10n.string("a11y.step.error")
         }
     }
 
@@ -215,7 +238,7 @@ private struct TaskPhaseView: View {
 
     private var color: Color {
         switch state {
-        case .pending: return .secondary.opacity(0.45)
+        case .pending: return .secondary
         case .running: return .secondary
         case .completed: return .green
         case .failed: return .red

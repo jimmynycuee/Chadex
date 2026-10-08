@@ -121,11 +121,20 @@ struct ChadexApp: App {
                 }
                 .keyboardShortcut("o", modifiers: .command)
 
+                Button(model.primaryMenuActionTitle) {
+                    model.primaryAction()
+                }
+                // Shift keeps a one-chord disconnect from firing by accident.
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .disabled(!model.primaryActionEnabled)
+
                 Button(L10n.string("settings.refresh")) {
                     Task { await model.refreshStatus(force: true) }
                 }
                 .keyboardShortcut("r", modifiers: .command)
             }
+
+            ChadexNavigationCommands(model: model)
 
             CommandGroup(after: .toolbar) {
                 Divider()
@@ -206,7 +215,7 @@ private struct MainWindowContent: View {
             })
             .task {
                 appDelegate.reopenHandler = {
-                    openWindow(id: "main")
+                    MainWindowPresenter.show(using: openWindow)
                 }
                 appDelegate.shutdownHandler = { [model] in
                     await model.shutdown()

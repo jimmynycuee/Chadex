@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-enum SettingsTab: Hashable {
+enum SettingsTab: String, Hashable {
     case general
     case connection
     case advanced
@@ -11,8 +11,17 @@ struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selection: SettingsTab
 
-    init(initialTab: SettingsTab = .general) {
-        _selection = State(initialValue: initialTab)
+    static let lastTabKey = "settings.lastTab"
+
+    /// With no explicit tab, reopen the pane the person used last (HIG › Settings).
+    init(initialTab: SettingsTab? = nil) {
+        _selection = State(initialValue: Self.openingTab(initialTab))
+    }
+
+    static func openingTab(_ requested: SettingsTab?, defaults: UserDefaults = .standard) -> SettingsTab {
+        requested
+            ?? defaults.string(forKey: lastTabKey).flatMap(SettingsTab.init(rawValue:))
+            ?? .general
     }
 
     var body: some View {
@@ -30,7 +39,9 @@ struct SettingsView: View {
                 .tabItem { Label(L10n.string("settings.advanced"), systemImage: "wrench.and.screwdriver") }
                 .tag(SettingsTab.advanced)
         }
-        .background(SettingsWindowTitleHider())
+        .onChange(of: selection) { _, tab in
+            UserDefaults.standard.set(tab.rawValue, forKey: Self.lastTabKey)
+        }
     }
 }
 
@@ -151,7 +162,9 @@ private struct SettingsPrimaryControlModifier: ViewModifier {
                 )
             )
             .controlSize(.regular)
-            .frame(maxWidth: .infinity)
+            // Menus keep their intrinsic width; lead-align them so every
+            // control in the column shares one left edge.
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: layout.control(ChadexMetrics.settingsControlBaseHeight))
     }
 
@@ -163,22 +176,6 @@ private struct SettingsPrimaryControlModifier: ViewModifier {
 private extension View {
     func settingsPrimaryControl(monospaced: Bool = false) -> some View {
         modifier(SettingsPrimaryControlModifier(monospaced: monospaced))
-    }
-}
-
-private struct SettingsWindowTitleHider: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { configure(view.window) }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { configure(nsView.window) }
-    }
-
-    private func configure(_ window: NSWindow?) {
-        window?.titleVisibility = .hidden
     }
 }
 
@@ -453,7 +450,7 @@ struct ConnectionSettingsSheet: View {
 
                 Text(L10n.string("settings.secretNote"))
                     .chadexFont(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
 
                 HStack(spacing: 10) {
                     Spacer()
@@ -556,7 +553,7 @@ struct ConnectionSettingsView: View {
                 SettingsControlBlock {
                     Text(L10n.string("settings.secretNote"))
                         .chadexFont(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -782,12 +779,16 @@ struct MenuBarContent: View {
                 .foregroundStyle(.secondary)
         }
         Divider()
-        Button(L10n.string("menubar.open")) { openWindow(id: "main") }
+        Button(L10n.string("menubar.open")) { MainWindowPresenter.show(using: openWindow) }
         if model.snapshot.phase == .unconfigured {
-            SettingsLink { Text(L10n.string("connection.configure")) }
+            // Same destination as the overview's Set Up Connection button.
+            Button(L10n.string("connection.configure")) {
+                MainWindowPresenter.show(using: openWindow)
+                model.showConnectionSettings()
+            }
         } else {
-            Button(menuActionTitle) { model.primaryAction() }
-                .disabled(model.selectedProject == nil || model.connectionActionInFlight)
+            Button(model.primaryMenuActionTitle) { model.primaryAction() }
+                .disabled(!model.primaryActionEnabled)
         }
         if model.snapshot.tunnelReady {
             Button(L10n.string("computer.stop"), role: .destructive) {
@@ -796,7 +797,7 @@ struct MenuBarContent: View {
             .disabled(model.computerSafety.stopped || model.computerSafetyMutationInFlight)
         }
         Button(L10n.string("updates.checkMenu")) {
-            openWindow(id: "main")
+            MainWindowPresenter.show(using: openWindow)
             Task { await updateManager.checkForUpdates(userInitiated: true) }
         }
         .disabled(updateManager.isBusy)
@@ -806,10 +807,4 @@ struct MenuBarContent: View {
             .keyboardShortcut("q")
     }
 
-    private var menuActionTitle: String {
-        if let actionText = model.connectionActionStatusText { return actionText }
-        return (model.snapshot.chatGPTConnected || model.snapshot.phase == .verified)
-            ? L10n.string("connection.disconnect")
-            : L10n.string("connection.connect")
-    }
 }

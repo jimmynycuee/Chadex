@@ -25,7 +25,7 @@ struct SkillsCenterView: View {
 
             Label(L10n.string("skills.authorityNote"), systemImage: "lock.shield")
                 .chadexFont(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .task(id: project.id) {
@@ -124,10 +124,9 @@ struct SkillsCenterView: View {
                 .chadexPadding(.vertical, 8)
             } else {
                 if let error = model.skillsError {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .chadexFont(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    ChadexInlineError(message: error, font: .callout) {
+                        await model.refreshSkills()
+                    }
                 }
 
                 catalogWarnings
@@ -154,10 +153,7 @@ struct SkillsCenterView: View {
                                 }
                             }
                         }
-                        .background(
-                            .quaternary.opacity(0.16),
-                            in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous)
-                        )
+                        .chadexGroupSurface()
                     }
                 }
             }
@@ -395,15 +391,12 @@ struct SkillsCenterView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .chadexPadding(10)
-                    .background(
-                        .quaternary.opacity(0.14),
-                        in: RoundedRectangle(cornerRadius: layout.control(8), style: .continuous)
-                    )
+                    .chadexGroupSurface(inset: true)
             }
 
             Text(executionNote(item))
                 .chadexFont(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -415,7 +408,7 @@ struct SkillsCenterView: View {
                 .foregroundStyle(.secondary)
             Text(value)
                 .chadexFont(.caption, design: .monospaced)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .textSelection(.enabled)
         }
     }
@@ -493,14 +486,14 @@ private struct SkillDraftSheet: View {
 
             Text(project.path + "/.agents/skills/" + (skillKey.isEmpty ? "<skill>" : skillKey) + "/SKILL.md")
                 .chadexFont(.caption, design: .monospaced)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .textSelection(.enabled)
 
             TextEditor(text: $instructions)
                 .font(.system(.body, design: .monospaced))
                 .frame(minWidth: 640, minHeight: 310)
                 .padding(7)
-                .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .chadexEditorSurface()
 
             Label(L10n.string("skills.noOverwrite"), systemImage: "lock.shield")
                 .chadexFont(.caption)
@@ -579,7 +572,7 @@ private struct SkillInstallSheet: View {
             HStack(spacing: 10) {
                 Text(archiveURL.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? L10n.string("skills.noArchive"))
                     .chadexFont(.callout, design: .monospaced)
-                    .foregroundStyle(archiveURL == nil ? .tertiary : .secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .textSelection(.enabled)
                 Spacer(minLength: 12)

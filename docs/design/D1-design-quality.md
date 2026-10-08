@@ -1,0 +1,97 @@
+# D1 · Design Quality（macOS）
+
+> 狀態：**Pending Validation**。本文件的評分來自實作者與一個獨立 AI reviewer，
+> 不是外部設計評審；依 Goal 規則，未經外部（人類）評估前不宣稱達到得獎水準。
+
+## 1. 驗收標準（開工前制定）
+
+每個維度 1–5 分；通過門檻是每一維度 ≥ 4，且沒有未解決的 Critical / High。
+
+| 維度 | 5 分的定義 | 可量測條件 |
+| --- | --- | --- |
+| A. 無障礙 | 任何介面大小都可讀、可用鍵盤與 VoiceOver 完成核心流程 | 文字 ≥ 10 pt（HIG macOS 最小值）；資訊性文字不使用 `tertiaryLabel`；狀態不只靠顏色；每個 icon-only 控制項有 label；步驟／狀態有 accessibility value；區段標題有 header trait |
+| B. 平台慣例 | 看起來、用起來就是 Mac App | 每個主要指令都在選單列且有快捷鍵；Settings 在 App 選單、記住上次分頁；側欄 ≤ 2 層、可收合；系統色與系統元件 |
+| C. 視覺一致性 | 一套字級、表面、間距與標題系統 | 字級走 `ChadexFontStyle`；編輯區用同一個表面 token；控制項欄位左緣對齊；同層標題同一種大小寫 |
+| D. 互動與回饋 | 每個狀態都有立即且正確的回饋 | loading／empty／filtered-empty／error 各自有文案；主要動作在所有入口同名 |
+| E. 文案 | 說清楚會發生什麼、中英混排一致 | 同一層標題同樣大小寫；錯誤附修正方式 |
+
+## 2. 量測基準
+
+`NSColor` 語意色疊在 `windowBackgroundColor` 上的 WCAG 對比（`scratchpad/contrast.swift` 實算）：
+
+| 顏色 | Light | Dark | 判定 |
+| --- | --- | --- | --- |
+| `labelColor` | 14.94:1 | 12.23:1 | 通過 |
+| `secondaryLabelColor` | 3.95:1 | 5.89:1 | 系統標準；light 低於 4.5:1，由 macOS「增加對比」接手 |
+| `tertiaryLabelColor` | **1.88:1** | **2.26:1** | 不可用於資訊文字 |
+| `systemGreen`（文字） | **2.22:1** | 8.25:1 | light 不可當文字色 |
+| `systemOrange`（文字） | **2.31:1** | 7.47:1 | light 不可當文字色 |
+| `systemRed`（文字） | 3.57:1 | 4.86:1 | 小字需搭配粗體或圖示 |
+
+## 3. 稽核發現與處理
+
+| # | 嚴重度 | 發現 | 處理 |
+| --- | --- | --- | --- |
+| 1 | Critical | `caption2` 為 9 pt，低於 macOS 10 pt 最小字級 | 改為 10 pt，並加回歸測試 |
+| 2 | Critical | 35 處資訊性文字（專案路徑、Tunnel ID 標籤、說明、時間戳）用 `tertiaryLabel`，1.88:1 | 改為 `secondaryLabel`；只保留純裝飾 icon 的 tertiary |
+| 3 | High | 連線狀態「就緒」用綠色小字、Computer Use 狀態用橘色小字（light 約 2.2–2.3:1） | 只為 symbol 上色，文字回到 primary／secondary |
+| 4 | High | 連線步驟、目前專案狀態點只靠圖示／顏色，VoiceOver 讀不到狀態 | 加 accessibility value（已完成／就緒／進行中／尚未開始／錯誤）；狀態點對應的 row 有 value |
+| 5 | High | 連線／中斷、側欄各目的地、使用指南沒有選單列入口與快捷鍵 | 檔案選單 ⌘K 連線／中斷；顯示選單 ⌘1–⌘4；說明選單 ⌘? 開啟使用指南 |
+| 6 | High | 使用指南子步驟編號固定 18 pt 寬，大介面尺寸被截成「…」 | 編號隨字級縮放並不截斷 |
+| 7 | Medium | 主要動作在總覽、選單列 extra 用兩套命名邏輯 | `AppModel.primaryActionTitle` 統一 |
+| 8 | Medium | Settings 選單控制項置中，左緣不對齊；每次都回到「一般」 | 左對齊；記住上次分頁（HIG › Settings） |
+| 9 | Medium | 三個編輯區用 16% quaternary 底色，邊界約 1.05:1，圓角 8／9 不一 | 新增 `chadexEditorSurface()` token：text background + hairline |
+| 10 | Medium | 活動紀錄搜尋／篩選無結果時仍顯示「目前沒有活動紀錄」 | 分別顯示「找不到符合…」與「沒有警告或錯誤」 |
+| 11 | Medium | 區段標題 `COMPUTER USE`、`SKILLS` 寫死全大寫，與中文標題並列不一致 | 兩種語言統一 title-style |
+| 12 | Low | 側欄 icon 固定 13 pt，不隨介面大小縮放 | 改用縮放字級 |
+| 13 | Medium | ⌘K／選單列 extra 在 bootstrap 期間可觸發總覽頁刻意擋下的連線（reviewer 發現） | `AppModel.primaryActionEnabled` 三處共用；改 ⇧⌘K；選單標題帶受詞（「取消連線準備」「重試連線」） |
+| 14 | High | 10 pt caption 承載必要說明；compact 80% 會降到 8 pt | 所有尺寸夾住 10 pt；caption 11 pt；`headline` 預設 semibold；頂層區段改用比說明更大的 `SectionTitle` |
+| 15 | Medium | 總覽「最近活動」被活動頁搜尋／篩選影響 | 改用未篩選的 `recentActivities`；活動頁篩選無結果時提供「清除搜尋與篩選」 |
+| 16 | Medium | helper 錯誤訊息寫死英文、無修正方式；說明文案術語過多；`bytes` 寫死 | 錯誤在地化並附修正步驟；改寫優先序與 Computer Use 文案；位元組數在地化；中文不再混用「Computer control」 |
+| 17 | Medium | 選單列 extra「設定連線」與總覽行為不同；沒有主視窗時說明選單無法使用 | 兩者都開同一個連線表單；說明選單會開新視窗到指南 |
+| 18 | Low | 列表容器圓角 6／8／9／10 混用、邊界不可見；任務階段與時間不在地化 | `chadexGroupSurface()` token；任務階段有 VoiceOver 狀態；時間用 `Duration.formatted` |
+| 19 | Low | Settings 視窗隱藏標題；連線步驟在寬視窗拉成長線 | 顯示目前分頁標題；步驟寬度上限 640 pt |
+| 20 | Medium | `openWindow(id: "main")` 在已有主視窗時再開一個，連線表單同時出現在兩個視窗（reviewer 第二輪） | `MainWindowPresenter` 先把既有（含縮到 Dock 的）主視窗帶到前面，沒有才開新視窗 |
+| 21 | Medium | 中文術語不一致（Computer Use／電腦控制／電腦操作、helper、Keychain、metadata）與多餘空白 | 統一為 Computer Use、本機輔助程式、「鑰匙圈」；改寫 Skills／Agent 說明 |
+
+## 3a. 獨立評分紀錄（AI reviewer，非外部驗證）
+
+| 維度 | 第 1 輪 @386e68b | 第 2 輪 @6677dc8 | 第 3 輪 @0f61177 |
+| --- | --- | --- | --- |
+| A. 無障礙 | 3 | 4 | 4 |
+| B. 平台慣例 | 3 | 3 | 4 |
+| C. 視覺一致性 | 3 | 4 | 4 |
+| D. 互動與回饋 | 3 | 4 | 4 |
+| E. 文案 | 2 | 3 | 4 |
+
+第 3 輪：無 Critical／High，剩餘皆為 Low（secondaryLabel 淺色 3.95:1 由系統「增加對比」處理；依賴 SwiftUI `main-AppWindow-N` 視窗命名，失效時退回開新視窗；總覽頁 eyebrow 與其他頁 SectionTitle 兩種模式並存）。視窗 identifier 格式已由 reviewer 以 SwiftUI 探針在本機實測。
+
+證據頁：https://claude.ai/artifact/4JFYhwQoAubu5qjHufkHAh（私人，需由擁有者分享）
+
+## 4. 刻意保留
+
+- **App 內外觀設定（跟隨系統／淺色／深色）**：HIG › Dark Mode 建議避免，但這是既有功能且預設跟隨系統；保留。
+- **側欄底部「設定」**：與 ⌘, 重複，但非關鍵動作；保留以維持既有使用習慣。
+- **Code Ferret**：產品識別的唯一招牌元素，已支援「減少動態效果」與關閉顯示。
+
+## 5. 驗證
+
+- `swift test`：89/89 通過（含新增 `DesignSystemTests`：每個介面尺寸的字級下限、Settings 開啟分頁邏輯、雙語 key 一致、中文字間無多餘空白）。
+- Release 建置：`swift build -c release` 成功，`Chadex --resource-preflight` → `Chadex resource preflight OK`（exit 0）。
+- `VisualReviewTests`：15 張狀態截圖（light／dark、100–160%，含 Agent 設定、空活動、連線表單、執行中／驗證失敗任務），前 10 張有改版前對照。
+- 嘗試以測試讀取執行時的 AppKit 無障礙樹：SwiftUI 只在有輔助技術連線時才產生完整節點，而測試程序未獲輔助使用權限（`AXIsProcessTrusted() == false`），無法自動驗證，已移除該測試，改列為人工走查項目。
+- 限制：截圖為離屏渲染。macOS 未授予螢幕錄製權限，側欄 vibrancy／選取列與 Settings 分頁列無法正確繪製（黑色選取列、`.…` 標題是渲染器限制，不是 App 問題）。真實視窗截圖與 VoiceOver 實機走查需人工補做。
+
+## 6. 尚待外部驗證
+
+- 由人類設計師或目標使用者，對照第 1 節標準獨立評分。
+- 實機 VoiceOver、鍵盤全流程、增加對比／減少透明度走查。
+- 真實視窗（含側欄 vibrancy）的前後對照截圖。
+
+## 7. 自動化無法完成的驗證（2026-10-08）
+
+- 電腦控制：兩次申請 Chadex 視窗控制都回傳 `user_denied`（第二次是在使用者選擇授權之後，回應是立即的）。
+- 螢幕錄製：`CGPreflightScreenCaptureAccess() == false`。
+- 輔助使用：`AXIsProcessTrusted() == false`。
+
+因此真實視窗截圖、VoiceOver 與鍵盤走查、人類評審仍待完成，D1 維持 **Pending Validation**。

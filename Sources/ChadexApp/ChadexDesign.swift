@@ -8,7 +8,7 @@ enum ChadexMetrics {
     static let detailVerticalPadding: CGFloat = 24
     static let sectionSpacing: CGFloat = 24
     static let compactSectionSpacing: CGFloat = 18
-    static let contentCornerRadius: CGFloat = 6
+    static let contentCornerRadius: CGFloat = 8
     static let sidebarFixedWidth: CGFloat = 200
     static let settingsContentWidth: CGFloat = 612
     static let settingsLabelWidth: CGFloat = 126
@@ -37,6 +37,15 @@ enum ChadexFontStyle {
     case caption
     case caption2
 
+    /// HIG › Typography: macOS text never goes below 10 pt, including at
+    /// the compact (80%) interface size.
+    static let minimumSize: CGFloat = 10
+
+    /// Rendered point size at an interface scale, never below the minimum.
+    func size(at scale: CGFloat) -> CGFloat {
+        max(Self.minimumSize, baseSize * scale)
+    }
+
     var baseSize: CGFloat {
         switch self {
         case .largeTitle: return 26
@@ -48,8 +57,11 @@ enum ChadexFontStyle {
         case .callout: return 12
         case .subheadline: return 11
         case .footnote: return 10
-        case .caption: return 10
-        case .caption2: return 9
+        // Above the HIG caption default: Chadex uses caption for explanatory
+        // copy people must read, not only for metadata.
+        case .caption: return 11
+        // HIG macOS minimum text size is 10 pt.
+        case .caption2: return 10
         }
     }
 }
@@ -63,8 +75,8 @@ private struct ChadexScaledFontModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.font(
             .system(
-                size: style.baseSize * layout.fontScale,
-                weight: weight,
+                size: style.size(at: layout.fontScale),
+                weight: style == .headline && weight == .regular ? .semibold : weight,
                 design: design
             )
         )
@@ -112,6 +124,48 @@ extension View {
                 length: length
             )
         )
+    }
+}
+
+/// Text-entry surface: the system text background plus a visible hairline,
+/// so the editable area keeps a clear boundary in light, dark and Increase
+/// Contrast (a 16% quaternary fill alone is ~1.05:1 against the window).
+private struct ChadexEditorSurfaceModifier: ViewModifier {
+    @Environment(\.chadexLayout) private var layout
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: layout.control(8), style: .continuous)
+        content
+            .background(Color(nsColor: .textBackgroundColor), in: shape)
+            .overlay(shape.strokeBorder(ChadexSurface.separator, lineWidth: 1))
+    }
+}
+
+extension View {
+    func chadexEditorSurface() -> some View {
+        modifier(ChadexEditorSurfaceModifier())
+    }
+}
+
+/// Grouped-content surface (lists of skills, sources, memories): a faint
+/// fill plus a hairline so the group edge stays visible (~1.05:1 fill alone).
+/// One radius for every group so containers read as one family.
+private struct ChadexGroupSurfaceModifier: ViewModifier {
+    @Environment(\.chadexLayout) private var layout
+    var inset = false
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: layout.control(inset ? 6 : 8), style: .continuous)
+        content
+            .background(.quaternary.opacity(inset ? 0.22 : 0.16), in: shape)
+            .overlay(shape.strokeBorder(ChadexSurface.separator.opacity(inset ? 0 : 1), lineWidth: 1))
+    }
+}
+
+extension View {
+    /// `inset` marks a detail panel nested inside a group: no second border.
+    func chadexGroupSurface(inset: Bool = false) -> some View {
+        modifier(ChadexGroupSurfaceModifier(inset: inset))
     }
 }
 
@@ -242,7 +296,7 @@ struct TechnicalMetadataItem: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
                 .chadexFont(.caption, weight: .medium)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(value)
@@ -344,6 +398,76 @@ struct ChadexPageHeader<Actions: View>: View {
     }
 }
 
+/// Caption-size status: only the symbol carries the semantic tint, because
+/// green and orange caption text fall to ~2.2:1 on a light window.
+struct ChadexStatusLabel: View {
+    let title: String
+    let systemImage: String
+    var tint: Color = .secondary
+    var emphasized = false
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+            Text(title)
+                .foregroundStyle(emphasized ? Color.primary : Color.secondary)
+        }
+        .chadexFont(.caption, weight: .medium)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Title for a top-level section of a page. It always outranks the
+/// explanatory copy beneath it.
+struct SectionTitle: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .chadexFont(.title3, weight: .semibold)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Inline, recoverable error: says what went wrong and offers the retry
+/// right where it happened instead of pointing at a menu command.
+struct ChadexInlineError: View {
+    let message: String
+    var font: ChadexFontStyle = .caption
+    let retry: () async -> Void
+    @State private var retrying = false
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+            Text(message)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            Spacer(minLength: 8)
+            Button {
+                retrying = true
+                Task {
+                    await retry()
+                    retrying = false
+                }
+            } label: {
+                if retrying {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Text(L10n.string("common.tryAgain"))
+                }
+            }
+            .controlSize(.small)
+            .disabled(retrying)
+        }
+        .chadexFont(font)
+    }
+}
+
 struct SectionEyebrow: View {
     let title: String
 
@@ -351,6 +475,7 @@ struct SectionEyebrow: View {
         Text(title)
             .chadexFont(.caption, weight: .semibold)
             .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -386,18 +511,30 @@ private struct ConnectionNode: View {
 
             Text(title)
                 .chadexFont(.caption, weight: state == .inactive ? .regular : .medium)
-                .foregroundStyle(state == .inactive ? .tertiary : .secondary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             if let detail {
                 Text(detail)
                     .chadexFont(.caption)
-                    .foregroundStyle(state == .ready ? Color.green.opacity(0.82) : Color.secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
         }
         .frame(minWidth: layout.control(74))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(detail.map { "\(title), \($0)" } ?? title)
+        .accessibilityValue(accessibilityStateText)
+    }
+
+    private var accessibilityStateText: String {
+        switch state {
+        case .complete: return L10n.string("a11y.step.complete")
+        case .ready: return L10n.string("a11y.step.ready")
+        case .active: return L10n.string("a11y.step.active")
+        case .inactive: return L10n.string("a11y.step.inactive")
+        case .error: return L10n.string("a11y.step.error")
+        }
     }
 
     private var displayedSymbol: String {

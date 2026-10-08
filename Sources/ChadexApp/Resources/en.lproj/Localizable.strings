@@ -7,6 +7,7 @@
 "common.cancel" = "Cancel";
 "common.done" = "Done";
 "common.copy" = "Copy";
+"common.tryAgain" = "Try Again";
 "view.zoomIn" = "Zoom In";
 "view.zoomOut" = "Zoom Out";
 "view.actualSize" = "Actual Size";
@@ -43,7 +44,7 @@
 "agentSettings.subtitle" = "Configure Chadex-wide behavior that applies to every project’s agent.";
 "agentSettings.currentProject" = "Current project: %@";
 
-"computer.title" = "COMPUTER USE";
+"computer.title" = "Computer Use";
 "computer.defaultPolicy" = "Default policy";
 "computer.currentSession" = "Current session";
 "computer.sessionUnavailable" = "Allow this session appears only while ChatGPT is connected. Persistent modes can be changed at any time.";
@@ -61,7 +62,7 @@
 "computer.status.alwaysAllow" = "Always allowed";
 "computer.description.stopped" = "Computer Use is stopped. No control requests can be dispatched until you resume it.";
 "computer.description.readOnly" = "ChatGPT can observe supported UI state, but every Computer Use action is blocked before dispatch.";
-"computer.description.ask" = "Each Computer Use action waits for your explicit approval before it can be dispatched.";
+"computer.description.ask" = "ChatGPT asks for your approval before every action on your Mac.";
 "computer.description.allowSession" = "Control is allowed for this connected session only. The next session returns to your saved persistent mode.";
 "computer.description.alwaysAllow" = "Routine Computer Use actions are allowed across future sessions without per-action approval. Chadex hard safety blocks still apply.";
 "computer.approvalTitle" = "ChatGPT wants to control your Mac";
@@ -114,12 +115,12 @@
 "instructions.summary.sources" = "Sources: %d";
 "instructions.summary.unavailable" = "Details unavailable";
 
-"globalInstructions.title" = "CHADEX GLOBAL INSTRUCTIONS";
+"globalInstructions.title" = "Chadex Global Instructions";
 "globalInstructions.subtitle" = "Applies to every Chadex project as an editable behavior preference. This is stored by Chadex itself and never reads or writes a parent-folder or repository AGENTS.md.";
 "globalInstructions.save" = "Save";
 "globalInstructions.saved" = "Saved";
 "globalInstructions.storageNote" = "Stored in Chadex app data, outside every repository (maximum 8 KiB).";
-"globalInstructions.precedence" = "Behavior precedence: current request → nested/repository AGENTS.md → Global Instructions → built-in baseline. System/platform safety, authority, approvals, and sensitive-content protections remain non-overridable. Blank Global Instructions are safe.";
+"globalInstructions.precedence" = "When rules conflict, the more specific one wins: your current request, then the project’s AGENTS.md files, then these Global Instructions. Safety protections and approvals can’t be overridden, and leaving this blank is safe.";
 
 "skills.title" = "Skills";
 "skills.subtitle" = "Reusable procedures for this project. Chadex matches metadata first and reads SKILL.md only when a Skill is opened or used.";
@@ -149,7 +150,7 @@
 "skills.projectExecutionNote" = "Project Skills provide reusable guidance, but project-content scripts are not trusted for execution.";
 "skills.managedExecutionNote" = "Managed Skill resources still run through Chadex's normal permissions, capability checks, approvals, and revision fences.";
 "skills.authorityNote" = "Skills are procedures, not authority. Project Instructions and Chadex permission boundaries still apply.";
-"skills.external.title" = "EXTERNAL SKILL SOURCES";
+"skills.external.title" = "External Skill Sources";
 "skills.external.subtitle" = "Connect Skill folders you already use with Codex, Claude Code, or shared agents. Connected folders are followed live, so edits to the originals apply without re-importing.";
 "skills.external.uploadVsConnect" = "Import ZIP… copies a ZIP into Chadex's own store, independent of the original. Connect follows the original folder.";
 "skills.external.scriptsNote" = "Scripts are off by default. This is a default policy for run_skill_resource, not a sandbox: ChatGPT can still run commands through shell tools when those are enabled.";
@@ -482,7 +483,7 @@
 "settings.interfaceSize.comfortable" = "Comfortable";
 "settings.interfaceSize.large" = "Large";
 "settings.interfaceSize.extraLarge" = "Extra Large";
-"settings.interfaceSizeNote" = "Interface Size adjusts type, controls, spacing, and sidebar density without geometrically zooming the whole window. You can also use ⌘+, ⌘−, and ⌘0.";
+"settings.interfaceSizeNote" = "Use ⌘+ / ⌘− / ⌘0 at any time. Interface Size changes type, controls, spacing and sidebar density without zooming the whole window.";
 "settings.colorScheme" = "Appearance";
 "settings.colorScheme.system" = "System Default";
 "settings.colorScheme.light" = "Light";
@@ -660,3 +661,35 @@
 "skills.row.collapseHint" = "Hides the details";
 "skills.error.replayCapacity" = "Too many Skill changes in a short time; the local runtime is refusing new changes for now. Try again later (up to about a day).";
 "project.removeConfirm" = "Remove";
+
+/* Accessibility values for connection steps */
+"a11y.step.complete" = "Complete";
+"a11y.step.ready" = "Ready";
+"a11y.step.active" = "In progress";
+"a11y.step.inactive" = "Not started";
+"a11y.step.error" = "Error";
+
+/* Navigation commands */
+"navigation.overview" = "Project Overview";
+"navigation.guideHelp" = "Chadex Guide";
+
+/* Activity empty states */
+"activity.noResults" = "No activity matches “%@”.";
+"activity.noFilteredResults" = "No warnings or errors.";
+"activity.emptyHint" = "Tool calls, connection changes and warnings appear here once ChatGPT starts working in a project.";
+
+/* Helper client errors */
+"helperError.missing" = "Chadex can’t find its local helper at %@. Reinstall Chadex from the latest DMG.";
+"helperError.launchFailed" = "Chadex couldn’t start its local helper: %@. Quit and reopen Chadex.";
+"helperError.notRunning" = "Chadex’s local helper isn’t running. Choose Refresh Status (⌘R) to restart it.";
+"helperError.protocolMismatch" = "Chadex and its local helper don’t match (expected protocol %ld, got %ld). Reinstall Chadex.";
+"helperError.malformedResponse" = "Chadex’s local helper sent an unreadable response. Choose Refresh Status (⌘R) to try again.";
+"helperError.disconnected" = "Chadex lost contact with its local helper. Choose Refresh Status (⌘R) to reconnect.";
+"helperError.timedOut" = "The local helper didn’t answer in time. Choose Refresh Status (⌘R) to try again.";
+"helperError.cancelled" = "The request to the local helper was cancelled.";
+"helperError.tooManyPendingRequests" = "The local helper is busy. Wait a moment, then try again.";
+"connection.cancelMenu" = "Cancel Connection Setup";
+"connection.retryMenu" = "Retry Connection";
+
+"globalInstructions.byteCount" = "%@ / %@ bytes";
+"activity.clearFilters" = "Clear Search and Filter";
