@@ -232,4 +232,3 @@ final class VisualReviewTests: XCTestCase {
         try data.write(to: url, options: .atomic)
     }
 }
-
