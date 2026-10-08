@@ -15,6 +15,11 @@ struct ProjectDetailView: View {
         ChadexPageColumn {
             workspaceContent
         }
+        .background {
+            if destination == .overview {
+                ConnectionAmbience(tint: connectionPillTint)
+            }
+        }
         .navigationTitle(navigationTitle)
         .task(id: "\(project.id.uuidString):\(destination.rawValue)") {
             guard model.selectedProject?.id == project.id else { return }
@@ -632,19 +637,10 @@ struct ProjectDetailView: View {
                     }
                     .chadexPadding(.vertical, 6)
                 } else {
-                    VStack(spacing: 0) {
-                        let rows = Array(model.recentActivities.prefix(5))
-                        ForEach(rows) { activity in
-                            ActivityRow(entry: activity)
-                                .chadexPadding(.vertical, 9)
-                            if activity.id != rows.last?.id {
-                                Divider().padding(.leading, layout.control(36))
-                            }
-                        }
-                    }
+                    ActivityTimeline(entries: Array(model.recentActivities.prefix(5)))
                 }
             }
-            .chadexCard(padding: 14)
+            .chadexCard(padding: 16)
         }
     }
 
@@ -869,61 +865,5 @@ enum ActivityPresentation {
         let remainder = message[marker.upperBound...]
         let digits = remainder.prefix(while: { $0.isNumber })
         return digits.isEmpty ? nil : String(digits)
-    }
-}
-
-struct ActivityRow: View {
-    @Environment(\.chadexLayout) private var layout
-    let entry: ActivityEntry
-
-    var body: some View {
-        HStack(alignment: .center, spacing: layout.spacing(12)) {
-            Image(systemName: ActivityPresentation.symbol(for: entry))
-                .font(.system(size: layout.control(10), weight: .bold))
-                .foregroundStyle(iconColor)
-                .frame(width: layout.control(24), height: layout.control(24))
-                .background(iconColor.opacity(0.14), in: Circle())
-                .accessibilityHidden(true)
-
-            Text(ActivityPresentation.message(for: entry))
-                .chadexFont(.callout)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 12)
-
-            Text(entry.date, format: .relative(presentation: .named, unitsStyle: .abbreviated))
-                .chadexFont(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .help(entry.date.formatted(date: .abbreviated, time: .standard))
-        }
-        // Source and event identifiers stay available for support without
-        // turning the list into a log console.
-        .help("\(entry.source) · \(entry.eventKind)")
-        .contentShape(Rectangle())
-        .contextMenu {
-            Button(L10n.string("activity.copyMessage")) {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(ActivityPresentation.message(for: entry), forType: .string)
-            }
-            Button(L10n.string("activity.copyDetails")) {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(
-                    "\(entry.source) · \(entry.eventKind) · \(entry.date.formatted(date: .abbreviated, time: .standard))",
-                    forType: .string
-                )
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var iconColor: Color {
-        switch entry.level {
-        case .info:
-            return entry.eventKind == "local_runtime_ready" ? .green : ChadexBrand.signal
-        case .warning: return .orange
-        case .error: return .red
-        }
     }
 }

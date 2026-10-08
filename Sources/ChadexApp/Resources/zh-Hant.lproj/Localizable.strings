@@ -706,3 +706,7 @@
 "circuit.tunnel.idle" = "未啟動";
 "circuit.chatGPT.verified" = "已驗證";
 "circuit.chatGPT.idle" = "尚未連線";
+"activity.today" = "今天";
+"activity.yesterday" = "昨天";
+"activity.level.warning" = "警告";
+"activity.level.error" = "錯誤";

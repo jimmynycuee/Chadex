@@ -32,11 +32,10 @@ struct ActivityView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(model.filteredActivities) { entry in
-                    ActivityRow(entry: entry)
-                        .chadexPadding(.vertical, 4)
+                ChadexPageColumn {
+                    ActivityTimeline(entries: model.filteredActivities)
+                        .chadexCard(padding: 18)
                 }
-                .listStyle(.inset)
             }
         }
         .navigationTitle(L10n.string("sidebar.activity"))

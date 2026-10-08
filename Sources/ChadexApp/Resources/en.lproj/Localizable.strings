@@ -706,3 +706,7 @@
 "circuit.tunnel.idle" = "Not running";
 "circuit.chatGPT.verified" = "Verified";
 "circuit.chatGPT.idle" = "Not connected";
+"activity.today" = "Today";
+"activity.yesterday" = "Yesterday";
+"activity.level.warning" = "Warning";
+"activity.level.error" = "Error";

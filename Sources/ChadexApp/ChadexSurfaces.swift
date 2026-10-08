@@ -149,7 +149,8 @@ struct ConnectionCircuitView: View {
     }
 
     private var chatGPTState: CircuitNode.State {
-        if phase == .error { return .error }
+        // A failed tunnel never reached ChatGPT; mark only the hop that failed.
+        if phase == .error { return tunnelReady ? .error : .idle }
         if chatGPTConnected || chatGPTVerified { return .complete }
         if tunnelReady { return .waiting }
         return .idle
@@ -168,7 +169,7 @@ struct ConnectionCircuitView: View {
         if chatGPTVerified { return L10n.string("circuit.chatGPT.verified") }
         if chatGPTConnected { return L10n.string("connection.connectedShort") }
         if tunnelReady { return L10n.string("connection.awaitingFirstUseShort") }
-        if phase == .error { return L10n.string("a11y.step.error") }
+        if phase == .error && tunnelReady { return L10n.string("a11y.step.error") }
         return L10n.string("circuit.chatGPT.idle")
     }
 
@@ -307,6 +308,52 @@ private struct CircuitNode: View {
         case .active: return L10n.string("a11y.step.active")
         case .idle: return L10n.string("a11y.step.inactive")
         case .error: return L10n.string("a11y.step.error")
+        }
+    }
+}
+
+/// The overview's ambient light: a soft wash in the connection's state color
+/// that sits behind the content and, on macOS 26 and later, extends under the
+/// floating Liquid Glass sidebar so the system material picks up the state.
+/// Cards stay opaque on top, so text contrast never depends on the wash.
+struct ConnectionAmbience: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    let tint: Color
+
+    var body: some View {
+        let strength: Double = colorScheme == .dark ? 0.22 : 0.16
+        ZStack {
+            LinearGradient(
+                stops: [
+                    .init(color: tint.opacity(strength), location: 0),
+                    .init(color: tint.opacity(strength * 0.35), location: 0.38),
+                    .init(color: tint.opacity(0), location: 0.75),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            RadialGradient(
+                colors: [tint.opacity(strength * 0.9), tint.opacity(0)],
+                center: .topTrailing,
+                startRadius: 0,
+                endRadius: 520
+            )
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.8), value: tint)
+        .chadexExtendsUnderSidebar()
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func chadexExtendsUnderSidebar() -> some View {
+        if #available(macOS 26.0, *) {
+            backgroundExtensionEffect()
+        } else {
+            self
         }
     }
 }

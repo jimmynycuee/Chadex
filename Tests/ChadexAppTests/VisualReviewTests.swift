@@ -72,7 +72,10 @@ final class VisualReviewTests: XCTestCase {
             entry(7, 70, "chadex", "local_runtime_ready", "Local runtime ready"),
             entry(6, 72, "runner", "process_started", "Started local process (PID 16179)"),
             entry(5, 74, "service", "process_started", "Started local process (PID 16174)"),
-            entry(4, 80, "chadex", "operation_started", "Chadex operation started: runtime_resume")
+            entry(4, 80, "chadex", "operation_started", "Chadex operation started: runtime_resume"),
+            ActivityEntry(sequence: 3, timestampMs: nowMs - 86_400_000 - 3_600_000, source: "tunnel", level: .error, eventKind: "tunnel_disconnected", message: "Tunnel connection was closed by the remote host"),
+            ActivityEntry(sequence: 2, timestampMs: nowMs - 86_400_000 - 3_660_000, source: "tunnel", level: .warning, eventKind: "tunnel_retry", message: "Retrying tunnel connection (attempt 2)"),
+            entry(1, 86_400 + 4_000, "chadex", "operation_started", "Chadex operation started: connect")
         ])
         for (scheme, name) in [(ColorScheme.light, "light"), (.dark, "dark")] {
             try render(
@@ -85,6 +88,33 @@ final class VisualReviewTests: XCTestCase {
                 size: CGSize(width: 1000, height: 960),
                 scheme: scheme,
                 to: output.appendingPathComponent("overview-live-140-\(name).png")
+            )
+            try render(
+                presented(ActivityView().environmentObject(liveModel), interfaceSize: .comfortable),
+                size: CGSize(width: 900, height: 760),
+                scheme: scheme,
+                to: output.appendingPathComponent("activity-timeline-120-\(name).png")
+            )
+        }
+
+        // The ambient wash follows the connection: verified (green) and error (red).
+        for (phase, name) in [(ConnectionPhase.verified, "verified"), (.error, "error")] {
+            var stateSnapshot = liveSnapshot
+            stateSnapshot.phase = phase
+            stateSnapshot.chatGPTConnected = phase == .verified
+            stateSnapshot.tunnelReady = phase == .verified
+            stateSnapshot.stateRevision = 2
+            liveModel.presentForReview(snapshot: stateSnapshot, activities: Array(liveModel.recentActivities))
+            try render(
+                presented(
+                    RootView()
+                        .environmentObject(liveModel)
+                        .environmentObject(updateManager),
+                    interfaceSize: .standard
+                ),
+                size: CGSize(width: 1000, height: 760),
+                scheme: .light,
+                to: output.appendingPathComponent("overview-\(name)-100-light.png")
             )
         }
 

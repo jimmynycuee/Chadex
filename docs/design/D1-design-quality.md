@@ -95,3 +95,14 @@
 - 輔助使用：`AXIsProcessTrusted() == false`。
 
 因此真實視窗截圖、VoiceOver 與鍵盤走查、人類評審仍待完成，D1 維持 **Pending Validation**。
+
+## 8. 第二版視覺方向（參考 Apple Design Award 2026：Tide Guide、Structured）
+
+使用者回饋「沒感覺到更有設計感」後，改做看得見的設計語言，而不是只修規格：
+
+- **Structured 式時間軸**（`ActivityTimeline`）：左側時間欄、一條連續的線串起彩色事件節點、依「今天／昨天／日期」分組；總覽「最近活動」與活動紀錄頁共用。顏色代表事件類型，同時有符號形狀與 VoiceOver 等級（警告／錯誤）＋時間，不只靠顏色。
+- **Tide Guide 式狀態色**（`ConnectionAmbience`）：總覽背景隨連線狀態換色（未連線灰、準備中／等待青、已驗證綠、錯誤紅），「減少動態效果」時不做轉場動畫。卡片維持不透明，文字對比不受影響。
+- **Liquid Glass**：依 HIG `liquid-glass.md`「Don't use Liquid Glass in the content layer」，內容卡片不做玻璃。專案以 SDK 27 建置，側欄、toolbar、Settings 已自動採用系統玻璃；macOS 26+ 以 `backgroundExtensionEffect()` 讓狀態色延伸到浮動側欄底下，由系統玻璃折射。刻意不加自訂玻璃按鈕（主要動作在內容卡片內，屬內容層）。
+- 連線錯誤時只標記失敗的那一段：Tunnel 失敗時 ChatGPT 節點顯示「尚未連線」而非「錯誤」。
+
+證據（離屏渲染）：`ui-review/d1-v2/`。離屏渲染畫不出 vibrancy／玻璃，側欄折射效果需實機確認，仍屬 **Pending Validation**。
