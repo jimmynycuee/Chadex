@@ -334,11 +334,11 @@
 "connection.explainConnecting" = "Chadex is starting the local service and Secure Tunnel. Connection checks can take a little while; progress is shown here while they run.";
 "connection.explainDisconnecting" = "Chadex is closing the Secure Tunnel while keeping the selected local project ready for the next connection.";
 "connection.explainWaiting" = "The secure tunnel is ready and Chadex is waiting for ChatGPT to connect.";
-"connection.explainReadyToUse" = "The connection is ready; you can start using it in ChatGPT. This turns to connected after ChatGPT's first call, and verification completes after a successful project read.";
+"connection.explainReadyToUse" = "You can start using it in ChatGPT. Once ChatGPT reads this project for the first time, this shows as verified.";
 "connection.explainConnected" = "ChatGPT activity has been detected; verification completes after the first successful access to this project.";
 "connection.explainVerified" = "Tunnel and ChatGPT access are healthy. You can use the current project directly from ChatGPT.";
 "connection.explainStopped" = "The local project is ready, but the Secure Tunnel has not been established.";
-"connection.explainError" = "The backend reported a real error. Review the recovery action below and retry.";
+"connection.explainError" = "Something went wrong with the connection. Follow the steps below, then try again.";
 "connection.checkTunnelReady" = "The Tunnel is healthy and Chadex is ready to use from ChatGPT.";
 "connection.checkChatGPTSeen" = "Connection is healthy and ChatGPT activity has been observed.";
 "connection.checkVerified" = "Connection is healthy and ChatGPT has verified the current project.";
@@ -693,3 +693,16 @@
 
 "globalInstructions.byteCount" = "%@ / %@ bytes";
 "activity.clearFilters" = "Clear Search and Filter";
+
+/* Readable activity */
+"activity.event.projectActivated" = "Switched to “%@”";
+"activity.operation.local_project_activate" = "Opening the project for ChatGPT";
+"activity.operation.runtime_resume" = "Resuming the local runtime";
+"activity.operation.connect" = "Connecting to ChatGPT";
+"activity.operation.disconnect" = "Disconnecting from ChatGPT";
+"activity.operation.generic" = "Started: %@";
+"circuit.tunnel.ready" = "Ready";
+"circuit.tunnel.starting" = "Starting…";
+"circuit.tunnel.idle" = "Not running";
+"circuit.chatGPT.verified" = "Verified";
+"circuit.chatGPT.idle" = "Not connected";

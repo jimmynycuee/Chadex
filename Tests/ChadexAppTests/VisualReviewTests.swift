@@ -52,6 +52,42 @@ final class VisualReviewTests: XCTestCase {
         let model = AppModel(keychain: keychain, store: store)
         let updateManager = UpdateManager()
 
+        // The live state from the person's own screenshots: tunnel up, waiting
+        // for ChatGPT's first call, with the activity that produced it.
+        let liveModel = AppModel(
+            keychain: KeychainStore(service: "app.chadex.tests.\(UUID().uuidString)", account: "visual-review-live"),
+            store: store
+        )
+        let nowMs = UInt64(Date().timeIntervalSince1970 * 1_000)
+        var liveSnapshot = BackendSnapshot.initial
+        liveSnapshot.phase = .waitingForChatGPTVerification
+        liveSnapshot.tunnelReady = true
+        liveSnapshot.stateRevision = 1
+        func entry(_ sequence: UInt64, _ secondsAgo: UInt64, _ source: String, _ kind: String, _ message: String) -> ActivityEntry {
+            ActivityEntry(sequence: sequence, timestampMs: nowMs - secondsAgo * 1_000, source: source, level: .info, eventKind: kind, message: message)
+        }
+        liveModel.presentForReview(snapshot: liveSnapshot, activities: [
+            entry(9, 40, "chadex", "project_activated", "Chadex"),
+            entry(8, 42, "chadex", "operation_started", "Chadex operation started: local_project_activate"),
+            entry(7, 70, "chadex", "local_runtime_ready", "Local runtime ready"),
+            entry(6, 72, "runner", "process_started", "Started local process (PID 16179)"),
+            entry(5, 74, "service", "process_started", "Started local process (PID 16174)"),
+            entry(4, 80, "chadex", "operation_started", "Chadex operation started: runtime_resume")
+        ])
+        for (scheme, name) in [(ColorScheme.light, "light"), (.dark, "dark")] {
+            try render(
+                presented(
+                    RootView()
+                        .environmentObject(liveModel)
+                        .environmentObject(updateManager),
+                    interfaceSize: .large
+                ),
+                size: CGSize(width: 1000, height: 960),
+                scheme: scheme,
+                to: output.appendingPathComponent("overview-live-140-\(name).png")
+            )
+        }
+
         try render(
             presented(
                 RootView()

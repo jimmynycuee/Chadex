@@ -34,21 +34,20 @@ struct ProjectDetailView: View {
         switch destination {
         case .overview:
             header
-            Divider()
             connectionSection
+                .chadexCard(padding: 22)
 
             if let error = model.connectionError {
                 errorSection(error)
             }
 
             if let task = model.snapshot.taskProgress {
-                Divider()
                 TaskProgressView(task: task) {
                     Task { await model.cancelTask(task) }
                 }
+                .chadexCard()
             }
 
-            Divider()
             recentActivity
 
         case .agentSettings:
@@ -131,97 +130,116 @@ struct ProjectDetailView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "folder")
-                .chadexFont(.callout, weight: .semibold)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: layout.control(22), height: layout.control(24), alignment: .top)
+        VStack(alignment: .leading, spacing: layout.spacing(8)) {
+            Text(project.name)
+                .chadexFont(.title, weight: .semibold)
+                .tracking(-0.3)
+                .accessibilityAddTraits(.isHeader)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text(project.name)
-                    .chadexFont(.title2, weight: .semibold)
-                    .tracking(-0.2)
-
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Text(project.path)
-                        .chadexFont(.callout, design: .monospaced)
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(project.path, forType: .string)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder")
                         .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(project.path, forType: .string)
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .chadexFont(.caption2, weight: .medium)
-                    }
-                    .buttonStyle(.borderless)
-                    .help(L10n.string("project.copyPath"))
-                    .accessibilityLabel(L10n.string("project.copyPath"))
+                    Text(abbreviatedPath)
+                        .chadexFont(.caption, design: .monospaced)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "doc.on.doc")
+                        .foregroundStyle(.secondary)
                 }
+                .chadexFont(.caption)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Color.secondary.opacity(0.1), in: Capsule())
+                .contentShape(Capsule())
             }
-
-            Spacer(minLength: 20)
+            .buttonStyle(.plain)
+            .help(L10n.string("project.copyPath") + " — " + project.path)
+            .accessibilityLabel(L10n.string("project.copyPath"))
+            .accessibilityValue(project.path)
         }
     }
 
+    private func inlineMetadata(
+        _ title: String,
+        value: String,
+        monospaced: Bool = false,
+        copyValue: String? = nil
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: ChadexFontStyle.caption.size(at: layout.fontScale), design: monospaced ? .monospaced : .default))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            if let copyValue {
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(copyValue, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .help(L10n.string("common.copy"))
+                .accessibilityLabel(L10n.string("common.copy") + " " + title)
+            }
+        }
+        .chadexFont(.caption)
+        .fixedSize()
+        .accessibilityElement(children: .combine)
+    }
+
+    private var abbreviatedPath: String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return project.path.hasPrefix(home) ? "~" + project.path.dropFirst(home.count) : project.path
+    }
+
     private var connectionSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionEyebrow(title: L10n.string("connection.title"))
-
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: layout.spacing(24)) {
-                    connectionStatusCopy
-                    Spacer(minLength: 20)
-                    connectionActions
-                }
-
-                VStack(alignment: .leading, spacing: layout.spacing(16)) {
-                    connectionStatusCopy
-                    connectionActions
-                }
+        VStack(alignment: .leading, spacing: layout.spacing(20)) {
+            // Copy wraps inside its own column so the action stays pinned to
+            // the card's top-right corner at every width.
+            HStack(alignment: .top, spacing: layout.spacing(24)) {
+                connectionStatusCopy
+                    .frame(maxWidth: layout.control(560), alignment: .leading)
+                Spacer(minLength: 0)
+                connectionActions
+                    .fixedSize()
             }
 
-            ConnectionPathView(
+            ConnectionCircuitView(
+                projectName: project.name,
                 phase: model.connectionPresentationPhase,
                 tunnelReady: model.isSwitchingProject ? false : model.snapshot.tunnelReady,
                 chatGPTConnected: model.isSwitchingProject ? false : model.snapshot.chatGPTConnected,
                 chatGPTVerified: model.isSwitchingProject ? false : model.snapshot.chatGPTVerifiedForSelectedProject,
                 isConnecting: model.connectionAction == .connecting
             )
-            // Three steps read as one path; past ~640 pt the connectors turn
-            // into long empty rules on wide windows.
-            .frame(maxWidth: layout.control(640), alignment: .leading)
-            .chadexPadding(.vertical, 1)
+            .frame(maxWidth: .infinity)
+            .chadexPadding(.vertical, 4)
 
             Divider()
 
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(minimum: layout.control(220)), spacing: layout.spacing(32), alignment: .leading),
-                    GridItem(.flexible(minimum: layout.control(180)), spacing: layout.spacing(32), alignment: .leading)
-                ],
-                alignment: .leading,
-                spacing: layout.spacing(12)
-            ) {
-                TechnicalMetadataItem(
-                    title: L10n.string("settings.tunnelID"),
+            HStack(alignment: .firstTextBaseline, spacing: layout.spacing(24)) {
+                inlineMetadata(
+                    L10n.string("settings.tunnelID"),
                     value: tunnelIDDisplayValue,
                     monospaced: true,
                     copyValue: model.preferences.tunnelID.isEmpty ? nil : model.preferences.tunnelID
                 )
                 if model.snapshot.lastVerifiedAtMs != nil {
-                    TechnicalMetadataItem(
-                        title: L10n.string("connection.lastVerifiedLabel"),
-                        value: lastVerifiedValue,
-                        monospaced: true
-                    )
+                    inlineMetadata(L10n.string("connection.lastVerifiedLabel"), value: lastVerifiedValue)
                 }
+                Spacer(minLength: 0)
             }
         }
     }
-
 
     private var computerControlSection: some View {
         VStack(alignment: .leading, spacing: layout.spacing(22)) {
@@ -448,18 +466,17 @@ struct ProjectDetailView: View {
     }
 
     private var connectionStatusCopy: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
-                if model.connectionActionInFlight {
-                    ProgressView()
-                        .controlSize(.small)
-                } else if connectionIsUsable {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                }
-                Text(connectionStatusTitle)
-            }
-            .chadexFont(.title3, weight: .semibold)
+        VStack(alignment: .leading, spacing: 8) {
+            ChadexStatusPill(
+                title: L10n.string("connection.title"),
+                tint: connectionPillTint,
+                pulsing: model.connectionActionInFlight || model.connectionPresentationPhase == .waitingForChatGPTVerification
+            )
+            .padding(.bottom, 2)
+
+            Text(connectionStatusTitle)
+                .chadexFont(.title2, weight: .semibold)
+                .tracking(-0.2)
 
             Text(statusExplanation)
                 .chadexFont(.callout)
@@ -584,37 +601,50 @@ struct ProjectDetailView: View {
     }
 
     private var recentActivity: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: layout.spacing(10)) {
             HStack(alignment: .firstTextBaseline) {
                 SectionTitle(title: L10n.string("activity.recent"))
                 Spacer()
                 if !model.recentActivities.isEmpty {
-                    Button(L10n.string("activity.viewAll"), action: onShowAllActivity)
-                        .buttonStyle(.link)
-                        .chadexFont(.callout)
+                    Button {
+                        onShowAllActivity()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(L10n.string("activity.viewAll"))
+                            Image(systemName: "chevron.right")
+                                .imageScale(.small)
+                        }
+                    }
+                    .buttonStyle(.link)
+                    .chadexFont(.callout)
                 }
             }
 
-            if model.recentActivities.isEmpty {
-                HStack(spacing: 9) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundStyle(.tertiary)
-                    Text(L10n.string("activity.empty"))
-                        .chadexFont(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .chadexPadding(.vertical, 12)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(model.recentActivities.prefix(4))) { activity in
-                        ActivityRow(entry: activity)
-                            .chadexPadding(.vertical, 5)
-                        if activity.id != model.recentActivities.prefix(4).last?.id {
-                            Divider()
+            Group {
+                if model.recentActivities.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                        Text(L10n.string("activity.empty"))
+                            .chadexFont(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    .chadexPadding(.vertical, 6)
+                } else {
+                    VStack(spacing: 0) {
+                        let rows = Array(model.recentActivities.prefix(5))
+                        ForEach(rows) { activity in
+                            ActivityRow(entry: activity)
+                                .chadexPadding(.vertical, 9)
+                            if activity.id != rows.last?.id {
+                                Divider().padding(.leading, layout.control(36))
+                            }
                         }
                     }
                 }
             }
+            .chadexCard(padding: 14)
         }
     }
 
@@ -653,6 +683,15 @@ struct ProjectDetailView: View {
         !model.isSwitchingProject
             && (model.snapshot.chatGPTConnected
                 || model.snapshot.chatGPTVerifiedForSelectedProject)
+    }
+
+    private var connectionPillTint: Color {
+        switch model.connectionPresentationPhase {
+        case .verified: return .green
+        case .waitingForChatGPTVerification, .preparing: return ChadexBrand.signal
+        case .error: return .red
+        case .unconfigured, .stopped: return .secondary
+        }
     }
 
     private var statusExplanation: String {
@@ -785,9 +824,44 @@ enum ActivityPresentation {
                 return L10n.string("activity.event.processStarted", pid)
             }
             return L10n.string("activity.event.processStartedGeneric")
+        case "project_activated":
+            return L10n.string("activity.event.projectActivated", entry.message)
+        case "operation_started":
+            return operationMessage(entry.message)
         default:
             return entry.message
         }
+    }
+
+    /// Symbol that says what kind of thing happened, not just its severity.
+    static func symbol(for entry: ActivityEntry) -> String {
+        switch entry.level {
+        case .warning: return "exclamationmark.triangle.fill"
+        case .error: return "xmark.octagon.fill"
+        case .info: break
+        }
+        switch entry.eventKind {
+        case "project_activated": return "folder.fill"
+        case "operation_started": return "play.fill"
+        case "local_runtime_ready": return "checkmark"
+        case "local_setup_preparing": return "hammer.fill"
+        case "process_started": return "gearshape.2.fill"
+        default:
+            if entry.eventKind.contains("tunnel") || entry.eventKind.contains("connect") { return "link" }
+            if entry.eventKind.contains("tool") || entry.eventKind.contains("mcp") { return "wrench.and.screwdriver.fill" }
+            return "circle.fill"
+        }
+    }
+
+    private static func operationMessage(_ message: String) -> String {
+        let marker = "operation started: "
+        guard let range = message.range(of: marker) else { return message }
+        let operation = String(message[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        let key = "activity.operation.\(operation)"
+        let localized = L10n.string(key)
+        return localized == key
+            ? L10n.string("activity.operation.generic", operation)
+            : localized
     }
 
     private static func processID(in message: String) -> String? {
@@ -799,34 +873,35 @@ enum ActivityPresentation {
 }
 
 struct ActivityRow: View {
+    @Environment(\.chadexLayout) private var layout
     let entry: ActivityEntry
 
     var body: some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: symbol)
-                .chadexFont(.caption2, weight: .medium)
-                .frame(width: 16, height: 16)
+        HStack(alignment: .center, spacing: layout.spacing(12)) {
+            Image(systemName: ActivityPresentation.symbol(for: entry))
+                .font(.system(size: layout.control(10), weight: .bold))
                 .foregroundStyle(iconColor)
+                .frame(width: layout.control(24), height: layout.control(24))
+                .background(iconColor.opacity(0.14), in: Circle())
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(ActivityPresentation.message(for: entry))
-                        .chadexFont(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
+            Text(ActivityPresentation.message(for: entry))
+                .chadexFont(.callout)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
-                    Spacer(minLength: 12)
+            Spacer(minLength: 12)
 
-                    Text(entry.date.formatted(date: .omitted, time: .shortened))
-                        .chadexFont(.caption, design: .monospaced)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                }
-
-                Text("\(entry.source) · \(entry.eventKind)")
-                    .chadexFont(.caption, design: .monospaced)
-                    .foregroundStyle(.secondary)
-            }
+            Text(entry.date, format: .relative(presentation: .named, unitsStyle: .abbreviated))
+                .chadexFont(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .help(entry.date.formatted(date: .abbreviated, time: .standard))
         }
+        // Source and event identifiers stay available for support without
+        // turning the list into a log console.
+        .help("\(entry.source) · \(entry.eventKind)")
+        .contentShape(Rectangle())
         .contextMenu {
             Button(L10n.string("activity.copyMessage")) {
                 NSPasteboard.general.clearContents()
@@ -845,17 +920,10 @@ struct ActivityRow: View {
 
     private var iconColor: Color {
         switch entry.level {
-        case .info: return .secondary
+        case .info:
+            return entry.eventKind == "local_runtime_ready" ? .green : ChadexBrand.signal
         case .warning: return .orange
         case .error: return .red
-        }
-    }
-
-    private var symbol: String {
-        switch entry.level {
-        case .info: return "info.circle"
-        case .warning: return "exclamationmark.triangle"
-        case .error: return "xmark.octagon"
         }
     }
 }

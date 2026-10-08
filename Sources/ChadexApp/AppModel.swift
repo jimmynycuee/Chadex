@@ -2233,6 +2233,14 @@ final class AppModel: ObservableObject {
         }
     }
 
+#if DEBUG
+    /// Visual review only: present a fixed backend state without a helper.
+    func presentForReview(snapshot: BackendSnapshot, activities: [ActivityEntry]) {
+        self.snapshot = snapshot
+        self.activities = activities
+    }
+#endif
+
     @discardableResult
     private func applySnapshot(_ candidate: BackendSnapshot, requestSequence: UInt64? = nil) -> Bool {
         if let requestSequence {

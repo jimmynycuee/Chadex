@@ -334,11 +334,11 @@
 "connection.explainConnecting" = "Chadex 正在啟動本機服務與安全 Tunnel。連線檢查可能需要一些時間，執行期間會在此顯示進度。";
 "connection.explainDisconnecting" = "Chadex 正在關閉安全 Tunnel；目前選擇的本機專案會保留，方便下次重新連線。";
 "connection.explainWaiting" = "安全 Tunnel 已就緒，Chadex 正在等待 ChatGPT 連入。";
-"connection.explainReadyToUse" = "連線已就緒，可以到 ChatGPT 開始使用；ChatGPT 第一次呼叫後這裡會轉為已連線，成功讀取專案後完成驗證。";
+"connection.explainReadyToUse" = "可以到 ChatGPT 開始使用了。ChatGPT 第一次讀取這個專案後，這裡會顯示已驗證。";
 "connection.explainConnected" = "已偵測到 ChatGPT；第一次成功存取目前專案後會完成驗證。";
 "connection.explainVerified" = "Tunnel 與 ChatGPT 存取都正常，可以直接從 ChatGPT 使用目前專案。";
 "connection.explainStopped" = "本機專案已就緒，但尚未建立安全 Tunnel。";
-"connection.explainError" = "後端回報了真實錯誤；請依下方修復動作處理後再重試。";
+"connection.explainError" = "連線發生問題，請依下方說明處理後再試一次。";
 "connection.checkTunnelReady" = "Tunnel 狀態正常，可以從 ChatGPT 使用 Chadex。";
 "connection.checkChatGPTSeen" = "連線正常，已偵測到 ChatGPT 活動。";
 "connection.checkVerified" = "連線正常，ChatGPT 與目前專案都已驗證。";
@@ -693,3 +693,16 @@
 
 "globalInstructions.byteCount" = "%@ / %@ 位元組";
 "activity.clearFilters" = "清除搜尋與篩選";
+
+/* Readable activity */
+"activity.event.projectActivated" = "已切換到「%@」";
+"activity.operation.local_project_activate" = "正在為 ChatGPT 開啟專案";
+"activity.operation.runtime_resume" = "正在恢復本機執行環境";
+"activity.operation.connect" = "正在連線到 ChatGPT";
+"activity.operation.disconnect" = "正在中斷與 ChatGPT 的連線";
+"activity.operation.generic" = "開始執行：%@";
+"circuit.tunnel.ready" = "已就緒";
+"circuit.tunnel.starting" = "啟動中…";
+"circuit.tunnel.idle" = "未啟動";
+"circuit.chatGPT.verified" = "已驗證";
+"circuit.chatGPT.idle" = "尚未連線";
