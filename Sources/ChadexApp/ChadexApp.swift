@@ -78,7 +78,7 @@ struct ChadexApp: App {
     @StateObject private var updateManager = UpdateManager()
     @AppStorage(ChadexPreferenceKey.language) private var languageRaw = ChadexLanguage.system.rawValue
     @AppStorage(ChadexPreferenceKey.interfaceSize) private var interfaceSizeRaw = ChadexInterfaceSize.comfortable.rawValue
-    @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.system.rawValue
+    @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.defaultValue.rawValue
 
     init() {
         guard let status = ChadexStartupPreflight.resourceExitStatus() else { return }
@@ -198,7 +198,7 @@ struct ChadexApp: App {
     }
 
     private var appearance: ChadexAppearance {
-        ChadexAppearance(rawValue: appearanceRaw) ?? .system
+        ChadexAppearance(rawValue: appearanceRaw) ?? .defaultValue
     }
 }
 

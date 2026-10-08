@@ -191,7 +191,7 @@ private struct GeneralSettingsView: View {
     @EnvironmentObject private var updateManager: UpdateManager
     @AppStorage(ChadexPreferenceKey.language) private var languageRaw = ChadexLanguage.system.rawValue
     @AppStorage(ChadexPreferenceKey.interfaceSize) private var interfaceSizeRaw = ChadexInterfaceSize.comfortable.rawValue
-    @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.system.rawValue
+    @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.defaultValue.rawValue
     @AppStorage(ChadexPreferenceKey.autoCheckUpdates) private var autoCheckUpdates = true
     @AppStorage("ferret.visible") private var ferretVisible = true
     @AppStorage("ferret.motion") private var ferretMotion = true
@@ -233,9 +233,9 @@ private struct GeneralSettingsView: View {
 
                     SettingsFormRow(L10n.string("settings.colorScheme")) {
                         Picker("", selection: $appearanceRaw) {
-                            Text(L10n.string("settings.colorScheme.system")).tag(ChadexAppearance.system.rawValue)
-                            Text(L10n.string("settings.colorScheme.light")).tag(ChadexAppearance.light.rawValue)
                             Text(L10n.string("settings.colorScheme.dark")).tag(ChadexAppearance.dark.rawValue)
+                            Text(L10n.string("settings.colorScheme.light")).tag(ChadexAppearance.light.rawValue)
+                            Text(L10n.string("settings.colorScheme.system")).tag(ChadexAppearance.system.rawValue)
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)

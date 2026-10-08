@@ -1717,7 +1717,7 @@ final class AppModel: ObservableObject {
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
         let language = UserDefaults.standard.string(forKey: ChadexPreferenceKey.language) ?? ChadexLanguage.system.rawValue
         let interfaceSize = UserDefaults.standard.string(forKey: ChadexPreferenceKey.interfaceSize) ?? ChadexInterfaceSize.comfortable.rawValue
-        let appearance = UserDefaults.standard.string(forKey: ChadexPreferenceKey.appearance) ?? ChadexAppearance.system.rawValue
+        let appearance = UserDefaults.standard.string(forKey: ChadexPreferenceKey.appearance) ?? ChadexAppearance.defaultValue.rawValue
 
         var lines: [String] = [
             "Chadex Diagnostics",
