@@ -81,8 +81,14 @@ private struct SettingsSection<Content: View>: View {
         VStack(alignment: .leading, spacing: layout.spacing(ChadexMetrics.settingsSectionContentSpacing)) {
             Text(title)
                 .chadexFont(.headline)
+                .accessibilityAddTraits(.isHeader)
+                .chadexPadding(.leading, 4)
 
-            content
+            // Grouped like System Settings: the title sits above one raised card.
+            VStack(alignment: .leading, spacing: layout.spacing(ChadexMetrics.settingsSectionContentSpacing)) {
+                content
+            }
+            .chadexCard(padding: 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -236,8 +242,6 @@ private struct GeneralSettingsView: View {
                 }
             }
 
-            Divider()
-
             SettingsSection(L10n.string("settings.companion")) {
                 SettingsControlBlock {
                     VStack(alignment: .leading, spacing: ChadexMetrics.settingsRowSpacing) {
@@ -252,8 +256,6 @@ private struct GeneralSettingsView: View {
                     }
                 }
             }
-
-            Divider()
 
             SettingsSection(L10n.string("settings.startup")) {
                 SettingsControlBlock {
@@ -270,8 +272,6 @@ private struct GeneralSettingsView: View {
                     }
                 }
             }
-
-            Divider()
 
             SettingsSection(L10n.string("updates.section")) {
                 VStack(alignment: .leading, spacing: ChadexMetrics.settingsRowSpacing) {
@@ -322,8 +322,6 @@ private struct GeneralSettingsView: View {
                     }
                 }
             }
-
-            Divider()
 
             SettingsSection(L10n.string("settings.guide")) {
                 SettingsControlBlock {
@@ -575,8 +573,6 @@ struct ConnectionSettingsView: View {
                 }
             }
 
-            Divider()
-
             SettingsSection(L10n.string("settings.resources")) {
                 SettingsControlBlock {
                     VStack(alignment: .leading, spacing: 8) {
@@ -658,8 +654,6 @@ private struct AdvancedSettingsView: View {
                     }
                 }
             }
-
-            Divider()
 
             SettingsSection(L10n.string("settings.diagnostics")) {
                 VStack(alignment: .leading, spacing: ChadexMetrics.settingsRowSpacing) {
@@ -743,8 +737,6 @@ private struct AdvancedSettingsView: View {
             .task {
                 await model.refreshPerformanceTraces()
             }
-
-            Divider()
 
             SettingsSection(L10n.string("settings.serviceControl")) {
                 SettingsControlBlock {
