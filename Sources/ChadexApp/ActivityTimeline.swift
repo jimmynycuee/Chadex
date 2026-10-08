@@ -93,7 +93,7 @@ struct ActivityTimelineRow: View {
 
             Image(systemName: ActivityPresentation.symbol(for: entry))
                 .font(.system(size: layout.control(10), weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(ChadexBrand.glyph(on: tint))
                 .frame(width: node, height: node)
                 .background(tint, in: Circle())
                 .overlay(Circle().strokeBorder(ChadexBrand.cardFill, lineWidth: 2))

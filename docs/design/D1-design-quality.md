@@ -110,3 +110,18 @@
 
 證據（離屏渲染）：`ui-review/d1-v2/`。離屏渲染畫不出 vibrancy／玻璃，側欄折射效果需實機確認，仍屬 **Pending Validation**。
 - 2026-10-08：以不同 bundle ID（`app.chadex.ChadexDesignPreview`）組裝設計預覽版並開啟給使用者實機檢視；對預覽版的電腦控制申請同樣回傳 `user_denied`，真實視窗截圖仍待使用者提供。
+
+## 9. 第一份真實視窗證據（使用者提供，2026-10-08）
+
+使用者在預覽版截了總覽、Agent 設定、Skills、Computer Use、使用指南與 Settings 三個分頁。據此發現並處理：
+
+- **App 一直以舊外觀相容模式執行**：SwiftPM 預設的 swiftbuild 後端把 `LC_BUILD_VERSION` 的 SDK 標成部署目標（`sdk 14.0`；已安裝的 v0.5.0 則是 `sdk 15.5`），macOS 依此不套用 Liquid Glass，側欄、toolbar、Settings 全是舊樣式。`--build-system native` 會正確標 `sdk 27.0`。`scripts/build_app.sh` 改為以 `vtool -set-build-version` 重新標記實際 SDK。
+- **Settings 下拉選單被拉成整列寬**（離屏渲染看不出）：選單改為 `.fixedSize()` 保持原生寬度。
+- **使用指南頂端標題被 toolbar 區壓住、與視窗標題重疊**：待以新 SDK 標記重測（新版 toolbar 有 scroll edge effect），仍為未解決問題。
+
+同時處理獨立 AI reviewer 第 4 輪（A3／B4／C3／D4／E4，不算外部驗證）的 High／Medium：
+- H1：彩色節點上的白色符號低於 3:1 → `ChadexBrand.glyph(on:)` 依底色選白或近黑，`testStatusGlyphsKeepNonTextContrast` 斷言兩種外觀都 ≥ 3:1。
+- M1：深色卡片原為白色 α 0.055（半透明，次要文字會隨洗色降到 3.2:1）→ 改為不透明 `white 0.155`。
+- M2：「減少透明度」與「增加對比」時不畫狀態洗色。
+- M5：已驗證時連線圖改用與膠囊、洗色相同的綠色。
+- 尚未處理：M3（模式卡片的 radio 語意／焦點環）、M4（錯誤區與待批准請求沒有卡片）、L1–L9。

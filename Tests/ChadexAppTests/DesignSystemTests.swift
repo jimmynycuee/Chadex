@@ -1,3 +1,5 @@
+import AppKit
+import SwiftUI
 import XCTest
 @testable import ChadexApp
 
@@ -62,5 +64,36 @@ final class DesignSystemTests: XCTestCase {
             let range = NSRange(value.startIndex..., in: value)
             XCTAssertNil(pattern.firstMatch(in: value, range: range), "stray space in \(key): \(value)")
         }
+    }
+
+    /// The symbol on a solid status fill is the non-color cue, so it must
+    /// keep WCAG 1.4.11's 3:1 against that fill in both appearances.
+    func testStatusGlyphsKeepNonTextContrast() {
+        let fills: [Color] = [ChadexBrand.signal, .green, .orange, .red, .gray, .indigo]
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = NSAppearance(named: name)!
+            for fill in fills {
+                let ratio = contrast(ChadexBrand.glyph(on: fill), fill, in: appearance)
+                XCTAssertGreaterThanOrEqual(ratio, 3, "\(fill) in \(name.rawValue): \(ratio)")
+            }
+        }
+    }
+
+    private func contrast(_ a: Color, _ b: Color, in appearance: NSAppearance) -> Double {
+        var result = 0.0
+        appearance.performAsCurrentDrawingAppearance {
+            let la = luminance(NSColor(a)), lb = luminance(NSColor(b))
+            result = (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+        }
+        return result
+    }
+
+    private func luminance(_ color: NSColor) -> Double {
+        let c = color.usingColorSpace(.sRGB)!
+        func channel(_ v: CGFloat) -> Double {
+            let v = Double(v)
+            return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(c.redComponent) + 0.7152 * channel(c.greenComponent) + 0.0722 * channel(c.blueComponent)
     }
 }

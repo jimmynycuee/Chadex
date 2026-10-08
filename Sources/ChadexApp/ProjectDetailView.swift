@@ -224,7 +224,8 @@ struct ProjectDetailView: View {
                 tunnelReady: model.isSwitchingProject ? false : model.snapshot.tunnelReady,
                 chatGPTConnected: model.isSwitchingProject ? false : model.snapshot.chatGPTConnected,
                 chatGPTVerified: model.isSwitchingProject ? false : model.snapshot.chatGPTVerifiedForSelectedProject,
-                isConnecting: model.connectionAction == .connecting
+                isConnecting: model.connectionAction == .connecting,
+                accent: model.connectionPresentationPhase == .verified ? .green : ChadexBrand.signal
             )
             .frame(maxWidth: .infinity)
             .chadexPadding(.vertical, 4)
@@ -337,7 +338,7 @@ struct ProjectDetailView: View {
                 HStack(alignment: .top, spacing: layout.spacing(14)) {
                     Image(systemName: "lock.shield.fill")
                         .font(.system(size: layout.control(16), weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(ChadexBrand.onSignal)
                         .frame(width: layout.control(34), height: layout.control(34))
                         .background(ChadexBrand.signal, in: RoundedRectangle(cornerRadius: layout.control(9), style: .continuous))
                         .accessibilityHidden(true)
@@ -878,7 +879,7 @@ private struct ComputerModeCard: View {
                 HStack(spacing: layout.spacing(8)) {
                     Image(systemName: symbol)
                         .font(.system(size: layout.control(13), weight: .semibold))
-                        .foregroundStyle(isSelected ? Color.white : tint)
+                        .foregroundStyle(isSelected ? ChadexBrand.glyph(on: tint) : tint)
                         .frame(width: layout.control(28), height: layout.control(28))
                         .background(isSelected ? tint : tint.opacity(0.14), in: Circle())
                     Text(L10n.string(titleKey))

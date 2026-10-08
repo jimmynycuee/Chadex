@@ -208,6 +208,7 @@ private struct GeneralSettingsView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        .fixedSize()
                         .settingsPrimaryControl()
                     }
 
@@ -219,6 +220,7 @@ private struct GeneralSettingsView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        .fixedSize()
                         .settingsPrimaryControl()
                     }
 
@@ -230,6 +232,7 @@ private struct GeneralSettingsView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        .fixedSize()
                         .settingsPrimaryControl()
                     }
                 }

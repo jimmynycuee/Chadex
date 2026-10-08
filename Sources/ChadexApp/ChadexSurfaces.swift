@@ -13,9 +13,27 @@ enum ChadexBrand {
             : NSColor(srgbRed: 0.04, green: 0.56, blue: 0.72, alpha: 1)
     })
 
+    /// Opaque in both appearances so the state wash behind a card never
+    /// lowers the contrast of the text on it.
     static let cardFill = Color(nsColor: NSColor(name: "ChadexCardFill") { appearance in
-        appearance.isDark ? NSColor(white: 1, alpha: 0.055) : NSColor.white
+        appearance.isDark ? NSColor(white: 0.155, alpha: 1) : NSColor.white
     })
+
+    /// Glyph drawn on a solid `signal` fill: white on the deep light-mode hue
+    /// (3.7:1), near-black on the bright dark-mode hue (white would be 1.7:1).
+    static let onSignal = Color(nsColor: NSColor(name: "ChadexOnSignal") { appearance in
+        appearance.isDark ? NSColor(white: 0.08, alpha: 1) : NSColor.white
+    })
+
+    /// Glyph color for a solid fill of `tint`, chosen so the symbol, which is
+    /// the non-color cue, keeps at least 3:1 against its fill. White on
+    /// systemGreen/systemOrange is only ~2.2:1, so those take near-black.
+    static func glyph(on tint: Color) -> Color {
+        // systemGray brightens in Dark Mode too (white is 2.9:1 there).
+        if tint == signal || tint == .gray { return onSignal }
+        if tint == .green || tint == .orange || tint == .yellow { return Color(white: 0.08) }
+        return .white
+    }
 
     static let cardStroke = Color(nsColor: NSColor(name: "ChadexCardStroke") { appearance in
         appearance.isDark ? NSColor(white: 1, alpha: 0.09) : NSColor(white: 0, alpha: 0.08)
@@ -114,6 +132,8 @@ struct ConnectionCircuitView: View {
     let chatGPTConnected: Bool
     let chatGPTVerified: Bool
     var isConnecting = false
+    /// The connection state's hue, shared with the pill and the page wash.
+    var accent: Color = ChadexBrand.signal
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -121,21 +141,24 @@ struct ConnectionCircuitView: View {
                 title: L10n.string("connection.projectNode"),
                 detail: projectName,
                 symbol: "laptopcomputer",
-                state: .complete
+                state: .complete,
+                accent: accent
             )
             link(filled: tunnelState == .complete, live: tunnelState == .active)
             CircuitNode(
                 title: L10n.string("connection.tunnelNode"),
                 detail: tunnelDetail,
                 symbol: "lock.shield.fill",
-                state: tunnelState
+                state: tunnelState,
+                accent: accent
             )
             link(filled: chatGPTState == .complete, live: chatGPTState == .waiting)
             CircuitNode(
                 title: L10n.string("connection.chatGPTNode"),
                 detail: chatGPTDetail,
                 symbol: "sparkles",
-                state: chatGPTState
+                state: chatGPTState,
+                accent: accent
             )
         }
         .accessibilityElement(children: .contain)
@@ -179,7 +202,7 @@ struct ConnectionCircuitView: View {
                 Capsule()
                     .fill(Color.secondary.opacity(0.22))
                 if filled {
-                    Capsule().fill(ChadexBrand.signal)
+                    Capsule().fill(accent)
                 } else if live {
                     Capsule()
                         .fill(
@@ -217,6 +240,7 @@ private struct CircuitNode: View {
     let detail: String
     let symbol: String
     let state: State
+    var accent: Color = ChadexBrand.signal
     @State private var halo = false
 
     var body: some View {
@@ -278,7 +302,7 @@ private struct CircuitNode: View {
 
     private var fill: Color {
         switch state {
-        case .complete: return ChadexBrand.signal
+        case .complete: return accent
         case .error: return .red
         case .active, .waiting: return ChadexBrand.signal.opacity(0.1)
         case .idle: return Color.secondary.opacity(0.1)
@@ -295,7 +319,8 @@ private struct CircuitNode: View {
 
     private var glyph: Color {
         switch state {
-        case .complete, .error: return .white
+        case .complete: return ChadexBrand.glyph(on: accent)
+        case .error: return .white
         case .active, .waiting: return ChadexBrand.signal
         case .idle: return .secondary
         }
@@ -318,11 +343,16 @@ private struct CircuitNode: View {
 /// Cards stay opaque on top, so text contrast never depends on the wash.
 struct ConnectionAmbience: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.colorScheme) private var colorScheme
     let tint: Color
 
     var body: some View {
-        let strength: Double = colorScheme == .dark ? 0.22 : 0.16
+        // Reduce Transparency and Increase Contrast get the plain window
+        // background: the state stays in the pill, circuit and copy.
+        let muted = reduceTransparency || contrast == .increased
+        let strength: Double = muted ? 0 : (colorScheme == .dark ? 0.22 : 0.16)
         ZStack {
             LinearGradient(
                 stops: [
