@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "windows-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "apps/windows", "run", "dev"],
+      "port": 1420
+    }
+  ]
+}
