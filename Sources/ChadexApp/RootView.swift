@@ -580,8 +580,12 @@ private final class SidebarSplitViewAlignmentView: NSView {
         // a second boundary at a different edge of the 4-pt vibrant divider
         // (3 pt / 6 Retina pixels away from the body boundary). Let the shared
         // split-view material draw through the titlebar so both regions use the
-        // exact same divider geometry.
-        window.titlebarAppearsTransparent = true
+        // exact same divider geometry. From macOS 26 the floating sidebar has
+        // no such seam, and a transparent titlebar would hide the toolbar's
+        // scroll edge effect, letting scrolled content run under the title.
+        if #unavailable(macOS 26.0) {
+            window.titlebarAppearsTransparent = true
+        }
 
         windowUpdateObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didUpdateNotification,

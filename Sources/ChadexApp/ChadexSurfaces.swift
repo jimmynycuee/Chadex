@@ -66,6 +66,35 @@ extension View {
     func chadexCard(padding: CGFloat = 20) -> some View {
         modifier(ChadexCardModifier(padding: padding))
     }
+
+    /// A card that needs the person to act (an error, a pending approval):
+    /// the same card plus a leading rule in the state color, so it outranks
+    /// the static cards around it.
+    func chadexAttentionCard(tint: Color, padding: CGFloat = 20) -> some View {
+        modifier(ChadexAttentionCardModifier(tint: tint, padding: padding))
+    }
+}
+
+private struct ChadexAttentionCardModifier: ViewModifier {
+    @Environment(\.chadexLayout) private var layout
+    let tint: Color
+    let padding: CGFloat
+
+    func body(content: Content) -> some View {
+        let radius = layout.control(12)
+        content
+            .chadexCard(padding: padding)
+            .overlay(alignment: .leading) {
+                UnevenRoundedRectangle(
+                    topLeadingRadius: radius,
+                    bottomLeadingRadius: radius,
+                    style: .continuous
+                )
+                .fill(tint)
+                .frame(width: 4)
+                .accessibilityHidden(true)
+            }
+    }
 }
 
 /// Compact state capsule: a colored dot plus a label in primary text, so the

@@ -641,7 +641,7 @@
 "sidebar.skills" = "Skills";
 "agentSettings.skillsLink.title" = "Skills";
 "agentSettings.skillsLink.message" = "Reusable procedures, external Skill folders and ZIP imports are managed on their own page.";
-"agentSettings.manageSkills" = "Manage Skills →";
+"agentSettings.manageSkills" = "Manage Skills";
 "skills.list.title" = "Skill List";
 "skills.list.titleCount" = "Skill List · %d of %d";
 "skills.search.placeholder" = "Search name or description";

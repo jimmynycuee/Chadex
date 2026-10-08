@@ -641,7 +641,7 @@
 "sidebar.skills" = "Skills";
 "agentSettings.skillsLink.title" = "Skills";
 "agentSettings.skillsLink.message" = "重複使用流程、外部 Skill 資料夾與 ZIP 匯入都在獨立的頁面管理。";
-"agentSettings.manageSkills" = "管理 Skills →";
+"agentSettings.manageSkills" = "管理 Skills";
 "skills.list.title" = "Skill 列表";
 "skills.list.titleCount" = "Skill 列表 · %d／%d";
 "skills.search.placeholder" = "搜尋名稱或描述";

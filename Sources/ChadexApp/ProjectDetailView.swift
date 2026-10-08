@@ -44,6 +44,7 @@ struct ProjectDetailView: View {
 
             if let error = model.connectionError {
                 errorSection(error)
+                    .chadexAttentionCard(tint: .red)
             }
 
             if let task = model.snapshot.taskProgress {
@@ -89,19 +90,8 @@ struct ProjectDetailView: View {
                 title: L10n.string("sidebar.agentSettings"),
                 subtitle: L10n.string("agentSettings.subtitle")
             ) {
-                HStack(spacing: 6) {
-                    Image(systemName: "folder.fill")
-                        .foregroundStyle(ChadexBrand.signal)
-                        .accessibilityHidden(true)
-                    Text(L10n.string("agentSettings.currentProject", project.name))
-                        .lineLimit(1)
-                }
-                .chadexFont(.caption, weight: .medium)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color.secondary.opacity(0.1), in: Capsule())
-                .help(project.path)
-                .accessibilityElement(children: .combine)
+                // Global settings: no per-project context in the header.
+                EmptyView()
             }
 
             GlobalInstructionsEditor()
@@ -298,7 +288,6 @@ struct ProjectDetailView: View {
                 }
 
                 if let approval = model.computerSafety.pendingApprovals.first {
-                    Divider()
                     VStack(alignment: .leading, spacing: layout.spacing(10)) {
                         Text(L10n.string("computer.requestTitle"))
                             .chadexFont(.caption, weight: .semibold)
@@ -333,6 +322,7 @@ struct ProjectDetailView: View {
                             .foregroundStyle(.secondary)
                         }
                     }
+                    .chadexAttentionCard(tint: .orange, padding: 18)
                 }
 
                 HStack(alignment: .top, spacing: layout.spacing(14)) {
@@ -376,8 +366,8 @@ struct ProjectDetailView: View {
 
     private var computerControlModePicker: some View {
         let modes: [ComputerControlMode] = model.snapshot.tunnelReady
-            ? [.askBeforeControl, .allowSession, .alwaysAllow, .readOnly]
-            : [.askBeforeControl, .alwaysAllow, .readOnly]
+            ? [.readOnly, .askBeforeControl, .allowSession, .alwaysAllow]
+            : [.readOnly, .askBeforeControl, .alwaysAllow]
         return LazyVGrid(
             columns: [GridItem(.adaptive(minimum: layout.control(220)), spacing: layout.spacing(12), alignment: .top)],
             alignment: .leading,
@@ -388,19 +378,37 @@ struct ProjectDetailView: View {
                     mode: mode,
                     isSelected: model.computerSafety.mode == mode
                 ) {
-                    Task {
-                        if mode == .allowSession {
-                            await model.setComputerControlMode(mode)
-                        } else {
-                            await model.setComputerControlDefaultMode(mode)
-                        }
-                    }
+                    computerModeBinding.wrappedValue = mode
                 }
                 .disabled(model.computerSafetyMutationInFlight)
             }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(L10n.string("computer.controlModeTitle"))
+        // VoiceOver keeps hearing one native radio group (count, selection,
+        // arrow keys) instead of three or four unrelated buttons.
+        .accessibilityRepresentation {
+            Picker(L10n.string("computer.controlModeTitle"), selection: computerModeBinding) {
+                ForEach(modes) { mode in
+                    Text(L10n.string(mode.titleKey)).tag(mode)
+                }
+            }
+            .pickerStyle(.radioGroup)
+            .accessibilityValue(L10n.string(model.computerSafety.mode.descriptionKey))
+        }
+    }
+
+    private var computerModeBinding: Binding<ComputerControlMode> {
+        Binding(
+            get: { model.computerSafety.mode },
+            set: { mode in
+                Task {
+                    if mode == .allowSession {
+                        await model.setComputerControlMode(mode)
+                    } else {
+                        await model.setComputerControlDefaultMode(mode)
+                    }
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -552,7 +560,7 @@ struct ProjectDetailView: View {
                 systemImage: "exclamationmark.triangle.fill"
             )
                 .chadexFont(.headline)
-                .foregroundStyle(.red)
+                .foregroundStyle(.primary, .red)
 
             Text(
                 error.code == "tunnel_credentials_rejected"
@@ -866,7 +874,6 @@ enum ActivityPresentation {
 /// mode, the description says what ChatGPT can do under it.
 private struct ComputerModeCard: View {
     @Environment(\.chadexLayout) private var layout
-    @Environment(\.isEnabled) private var isEnabled
     let mode: ComputerControlMode
     let isSelected: Bool
     let action: () -> Void
@@ -882,7 +889,7 @@ private struct ComputerModeCard: View {
                         .foregroundStyle(isSelected ? ChadexBrand.glyph(on: tint) : tint)
                         .frame(width: layout.control(28), height: layout.control(28))
                         .background(isSelected ? tint : tint.opacity(0.14), in: Circle())
-                    Text(L10n.string(titleKey))
+                    Text(L10n.string(mode.titleKey))
                         .chadexFont(.callout, weight: .semibold)
                         .foregroundStyle(.primary)
                     Spacer(minLength: 4)
@@ -890,7 +897,7 @@ private struct ComputerModeCard: View {
                         .font(.system(size: layout.control(15)))
                         .foregroundStyle(isSelected ? ChadexBrand.signal : Color.secondary.opacity(0.5))
                 }
-                Text(L10n.string(descriptionKey))
+                Text(L10n.string(mode.descriptionKey))
                     .chadexFont(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
@@ -906,32 +913,13 @@ private struct ComputerModeCard: View {
                 )
             )
             .contentShape(shape)
-            .opacity(isEnabled ? 1 : 0.6)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L10n.string(titleKey))
-        .accessibilityHint(L10n.string(descriptionKey))
+        .accessibilityLabel(L10n.string(mode.titleKey))
+        .accessibilityHint(L10n.string(mode.descriptionKey))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-    }
-
-    private var titleKey: String {
-        switch mode {
-        case .askBeforeControl: return "computer.mode.ask"
-        case .allowSession: return "computer.mode.allowSession"
-        case .alwaysAllow: return "computer.mode.alwaysAllow"
-        case .readOnly: return "computer.mode.readOnly"
-        }
-    }
-
-    private var descriptionKey: String {
-        switch mode {
-        case .askBeforeControl: return "computer.description.ask"
-        case .allowSession: return "computer.description.allowSession"
-        case .alwaysAllow: return "computer.description.alwaysAllow"
-        case .readOnly: return "computer.description.readOnly"
-        }
     }
 
     private var symbol: String {
@@ -950,6 +938,26 @@ private struct ComputerModeCard: View {
         case .askBeforeControl: return ChadexBrand.signal
         case .allowSession: return .indigo
         case .alwaysAllow: return .orange
+        }
+    }
+}
+
+private extension ComputerControlMode {
+    var titleKey: String {
+        switch self {
+        case .askBeforeControl: return "computer.mode.ask"
+        case .allowSession: return "computer.mode.allowSession"
+        case .alwaysAllow: return "computer.mode.alwaysAllow"
+        case .readOnly: return "computer.mode.readOnly"
+        }
+    }
+
+    var descriptionKey: String {
+        switch self {
+        case .askBeforeControl: return "computer.description.ask"
+        case .allowSession: return "computer.description.allowSession"
+        case .alwaysAllow: return "computer.description.alwaysAllow"
+        case .readOnly: return "computer.description.readOnly"
         }
     }
 }

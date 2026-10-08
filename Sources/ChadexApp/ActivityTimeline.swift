@@ -12,7 +12,7 @@ struct ActivityTimeline: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(days.enumerated()), id: \.element.day) { index, group in
+            ForEach(Array(days.enumerated()), id: \.offset) { index, group in
                 if showsDayHeaders {
                     dayHeader(group.day)
                         .chadexPadding(.top, index == 0 ? 0 : 14)
@@ -63,6 +63,7 @@ struct ActivityTimeline: View {
 
 struct ActivityTimelineRow: View {
     @Environment(\.chadexLayout) private var layout
+    @Environment(\.locale) private var locale
     let entry: ActivityEntry
     var isFirst = false
     var isLast = false
@@ -89,7 +90,7 @@ struct ActivityTimelineRow: View {
                 .minimumScaleFactor(0.85)
                 .frame(width: layout.control(Self.timeWidth), alignment: .trailing)
                 .frame(minHeight: node)
-                .help(entry.date.formatted(date: .abbreviated, time: .standard))
+                .help(entry.date.formatted(.dateTime.year().month().day().hour().minute().second().locale(locale)))
 
             Image(systemName: ActivityPresentation.symbol(for: entry))
                 .font(.system(size: layout.control(10), weight: .bold))
@@ -154,7 +155,7 @@ struct ActivityTimelineRow: View {
     }
 
     private var accessibilityValue: String {
-        let time = entry.date.formatted(date: .omitted, time: .shortened)
+        let time = entry.date.formatted(.dateTime.hour().minute().locale(locale))
         switch entry.level {
         case .info: return time
         case .warning: return "\(L10n.string("activity.level.warning")), \(time)"

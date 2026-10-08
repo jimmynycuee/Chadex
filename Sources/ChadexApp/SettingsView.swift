@@ -82,7 +82,7 @@ private struct SettingsSection<Content: View>: View {
             Text(title)
                 .chadexFont(.headline)
                 .accessibilityAddTraits(.isHeader)
-                .chadexPadding(.leading, 4)
+                .chadexPadding(.leading, 16)
 
             // Grouped like System Settings: the title sits above one raised card.
             VStack(alignment: .leading, spacing: layout.spacing(ChadexMetrics.settingsSectionContentSpacing)) {
