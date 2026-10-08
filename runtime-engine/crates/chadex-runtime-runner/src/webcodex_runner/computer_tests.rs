@@ -73,6 +73,8 @@ fn computer_request_kinds_remain_closed() {
         "computer_permission_readiness",
         "computer_accessibility_status",
         "computer_accessibility_tree",
+        "computer_accessibility_subtree",
+        "computer_accessibility_find",
         "computer_element_state",
         "computer_activate_window",
         "computer_control",
@@ -450,4 +452,210 @@ fn computer_wire_rejects_invalid_json_and_nul_payloads() {
             result.error
         );
     }
+}
+
+const SUBTREE_PAYLOAD: &str =
+    r#"{"surface_id":"surface_missing","root_element_id":null,"max_depth":2,"max_nodes":8}"#;
+const FIND_PAYLOAD: &str = r#"{"surface_id":"surface_missing","root_element_id":null,"role":"AXButton","subrole":null,"label":null,"value":null,"focused":null,"enabled":null,"limit":8,"max_depth":32}"#;
+
+fn handled_error(kind: &str, payload: &str) -> String {
+    let result = handle_computer_request(&request(kind, payload));
+    assert_eq!(result.exit_code, None, "{kind} {payload}");
+    result.error.expect("expected an error")
+}
+
+#[test]
+fn computer_accessibility_subtree_payload_is_closed_and_typed() {
+    let exact: Value = serde_json::from_str(SUBTREE_PAYLOAD).unwrap();
+    assert!(handle_accessibility_subtree(&exact)
+        .unwrap_err()
+        .starts_with("stale_surface:"));
+
+    // Every key is mandatory (root_element_id may be null) and nothing else is allowed.
+    for missing in ["surface_id", "root_element_id", "max_depth", "max_nodes"] {
+        let mut payload = exact.clone();
+        payload.as_object_mut().unwrap().remove(missing);
+        assert!(
+            ensure_exact_payload_fields(
+                &payload,
+                &["surface_id", "root_element_id", "max_depth", "max_nodes"]
+            )
+            .is_err(),
+            "missing {missing}"
+        );
+        assert!(
+            handle_accessibility_subtree(&payload)
+                .unwrap_err()
+                .starts_with("invalid_request:"),
+            "missing {missing}"
+        );
+    }
+    let mut extra = exact.clone();
+    extra
+        .as_object_mut()
+        .unwrap()
+        .insert("label".to_string(), serde_json::json!("x"));
+    assert!(handle_accessibility_subtree(&extra)
+        .unwrap_err()
+        .starts_with("invalid_request:"));
+    for (field, bad) in [
+        ("root_element_id", serde_json::json!(7)),
+        ("max_depth", serde_json::json!("2")),
+        ("max_depth", serde_json::json!(-1)),
+        ("max_nodes", serde_json::Value::Null),
+        ("surface_id", serde_json::json!(null)),
+    ] {
+        let mut payload = exact.clone();
+        payload.as_object_mut().unwrap().insert(field.to_string(), bad);
+        assert!(
+            handle_accessibility_subtree(&payload)
+                .unwrap_err()
+                .starts_with("invalid_request:"),
+            "{field}"
+        );
+    }
+}
+
+#[test]
+fn computer_accessibility_find_payload_is_closed_and_typed() {
+    let exact: Value = serde_json::from_str(FIND_PAYLOAD).unwrap();
+    let (surface_id, parsed) = parse_accessibility_find(&exact).unwrap();
+    assert_eq!(surface_id, "surface_missing");
+    assert_eq!(parsed.role.as_deref(), Some("AXButton"));
+    assert_eq!(parsed.root_element_id, None);
+    assert_eq!(parsed.value, None);
+    assert_eq!((parsed.limit, parsed.max_depth), (8, 32));
+
+    let full = serde_json::json!({
+        "surface_id": "surface_missing",
+        "root_element_id": "element_abc",
+        "role": "AXLink",
+        "subrole": "AXSearchField",
+        "label": "Share",
+        "value": "needle",
+        "focused": true,
+        "enabled": false,
+        "limit": 3,
+        "max_depth": 5,
+    });
+    let (_, parsed) = parse_accessibility_find(&full).unwrap();
+    assert_eq!(parsed.root_element_id.as_deref(), Some("element_abc"));
+    assert_eq!(parsed.value.as_deref(), Some("needle"));
+    assert_eq!((parsed.focused, parsed.enabled), (Some(true), Some(false)));
+    // The request's Debug form never prints the value needle.
+    assert!(!format!("{parsed:?}").contains("needle"));
+
+    for key in exact.as_object().unwrap().keys() {
+        let mut payload = exact.clone();
+        payload.as_object_mut().unwrap().remove(key);
+        assert!(parse_accessibility_find(&payload).is_err(), "missing {key}");
+    }
+    let mut extra = exact.clone();
+    extra
+        .as_object_mut()
+        .unwrap()
+        .insert("max_nodes".to_string(), serde_json::json!(8));
+    assert!(parse_accessibility_find(&extra).is_err());
+    for (field, bad) in [
+        ("role", serde_json::json!(1)),
+        ("value", serde_json::json!(false)),
+        ("focused", serde_json::json!("yes")),
+        ("enabled", serde_json::json!(0)),
+        ("limit", serde_json::json!(null)),
+        ("max_depth", serde_json::json!(1.5)),
+    ] {
+        let mut payload = exact.clone();
+        payload.as_object_mut().unwrap().insert(field.to_string(), bad);
+        assert!(
+            parse_accessibility_find(&payload)
+                .unwrap_err()
+                .starts_with("invalid_request:"),
+            "{field}"
+        );
+    }
+}
+
+#[test]
+fn computer_accessibility_query_wire_requests_fail_closed_before_native_calls() {
+    // Unknown surface: the runtime reports stale_surface (or unsupported_platform off-native)
+    // without touching any native tree.
+    for (kind, payload) in [
+        ("computer_accessibility_subtree", SUBTREE_PAYLOAD),
+        ("computer_accessibility_find", FIND_PAYLOAD),
+    ] {
+        let error = handled_error(kind, payload);
+        assert!(
+            error.starts_with("stale_surface:") || error.starts_with("unsupported_platform:"),
+            "{kind}: {error}"
+        );
+    }
+    // A filterless find is refused as invalid_request.
+    let no_filter = FIND_PAYLOAD.replace(r#""role":"AXButton""#, r#""role":null"#);
+    let error = handled_error("computer_accessibility_find", &no_filter);
+    assert!(
+        error.starts_with("invalid_request:") || error.starts_with("unsupported_platform:"),
+        "{error}"
+    );
+    // Malformed payloads never reach the runtime.
+    for kind in ["computer_accessibility_subtree", "computer_accessibility_find"] {
+        for payload in ["{}", r#"{"surface_id":"surface_missing"}"#] {
+            assert!(
+                handled_error(kind, payload).starts_with("invalid_request:"),
+                "{kind} {payload}"
+            );
+        }
+    }
+}
+
+#[test]
+fn computer_accessibility_query_payload_bounds_match_the_wire_contract() {
+    let find_worst_case = serde_json::json!({
+        "surface_id": "s".repeat(128),
+        "root_element_id": "e".repeat(128),
+        "role": "\u{1}".repeat(256),
+        "subrole": "\u{1}".repeat(256),
+        "label": "\u{1}".repeat(256),
+        "value": "\u{1}".repeat(256),
+        "focused": false,
+        "enabled": false,
+        "limit": 32,
+        "max_depth": 48,
+    })
+    .to_string();
+    assert!(
+        find_worst_case.len()
+            <= shell_computer_request_payload_max_bytes("computer_accessibility_find")
+    );
+    assert!(
+        SUBTREE_PAYLOAD.len() + 256
+            <= shell_computer_request_payload_max_bytes("computer_accessibility_subtree")
+    );
+}
+
+#[test]
+fn computer_web_accessibility_policy_comes_from_the_environment_value() {
+    assert_eq!(
+        computer_config(None).web_accessibility,
+        WebAccessibilityPolicy::Auto
+    );
+    assert_eq!(
+        computer_config(Some("off")).web_accessibility,
+        WebAccessibilityPolicy::Off
+    );
+    assert_eq!(
+        computer_config(Some("OFF")).web_accessibility,
+        WebAccessibilityPolicy::Off
+    );
+    for other in ["", "on", "auto", "false", "0"] {
+        assert_eq!(
+            computer_config(Some(other)).web_accessibility,
+            WebAccessibilityPolicy::Auto,
+            "{other}"
+        );
+    }
+    assert_eq!(
+        computer_config(None).max_encoded_image_bytes,
+        MAX_MCP_IMAGE_BYTES
+    );
+    assert_eq!(WebAccessibilityPolicy::ENV_VAR, "CHADEX_COMPUTER_WEB_ACCESSIBILITY");
 }

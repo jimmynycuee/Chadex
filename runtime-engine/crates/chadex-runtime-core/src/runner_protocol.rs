@@ -351,6 +351,12 @@ pub const RUNNER_CAPABILITY_COMPUTER_WINDOW_ACTIVATE: &str = "computer_window_ac
 /// Native bounded Accessibility text input. Missing on older Runners is false
 /// and is never inferred from accessibility observation or computer control.
 pub const RUNNER_CAPABILITY_COMPUTER_TEXT_INPUT: &str = "computer_text_input";
+/// Query-style Accessibility observation: `computer_accessibility_subtree` (bounded
+/// observation below an optional previously issued root) and
+/// `computer_accessibility_find` (deep search). Missing on older Runners is false and
+/// is never inferred from `computer_accessibility_observe`; servers fall back to the
+/// legacy tree request when it is absent.
+pub const RUNNER_CAPABILITY_COMPUTER_ACCESSIBILITY_QUERY: &str = "computer_accessibility_query";
 /// Baseline bounded JSON payload size for typed computer requests carried in stdin.
 pub const SHELL_COMPUTER_REQUEST_PAYLOAD_MAX_BYTES: usize = 4096;
 /// Text input needs a larger wire envelope because valid caller text may expand
@@ -359,12 +365,17 @@ pub const SHELL_COMPUTER_TEXT_INPUT_PAYLOAD_MAX_BYTES: usize = 16 * 1024;
 /// Clipboard write allows a 16 KiB decoded UTF-8 body; JSON escaping can expand
 /// control characters by up to six bytes each, so keep a separate bounded wire envelope.
 pub const SHELL_COMPUTER_CLIPBOARD_WRITE_PAYLOAD_MAX_BYTES: usize = 128 * 1024;
+/// Deep find carries up to four 256-byte filter strings; JSON escaping may expand
+/// control characters by up to six bytes each, which exceeds the baseline envelope.
+pub const SHELL_COMPUTER_ACCESSIBILITY_FIND_PAYLOAD_MAX_BYTES: usize = 8 * 1024;
 
 pub fn shell_computer_request_payload_max_bytes(kind: &str) -> usize {
     if kind == "computer_input_text" {
         SHELL_COMPUTER_TEXT_INPUT_PAYLOAD_MAX_BYTES
     } else if kind == "computer_write_clipboard" {
         SHELL_COMPUTER_CLIPBOARD_WRITE_PAYLOAD_MAX_BYTES
+    } else if kind == "computer_accessibility_find" {
+        SHELL_COMPUTER_ACCESSIBILITY_FIND_PAYLOAD_MAX_BYTES
     } else {
         SHELL_COMPUTER_REQUEST_PAYLOAD_MAX_BYTES
     }
@@ -497,6 +508,7 @@ pub const RUNNER_CAPABILITY_NAMES: &[&str] = &[
     RUNNER_CAPABILITY_COMPUTER_KEY_INPUT,
     RUNNER_CAPABILITY_COMPUTER_WINDOW_ACTIVATE,
     RUNNER_CAPABILITY_COMPUTER_TEXT_INPUT,
+    RUNNER_CAPABILITY_COMPUTER_ACCESSIBILITY_QUERY,
 ];
 
 /// Maximum summaries in one project-inventory page. Cardinality is bounded per
@@ -746,6 +758,11 @@ pub struct RunnerCapabilities {
     /// older Runners is false and never follows from computer_control.
     #[serde(default, skip_serializing_if = "is_false")]
     pub computer_text_input: bool,
+    /// The Runner implements `computer_accessibility_subtree` and
+    /// `computer_accessibility_find`. Missing on older Runners is false and never
+    /// follows from `computer_accessibility_observe`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub computer_accessibility_query: bool,
     /// submits a complete active inventory at register/re-register time.
     #[serde(default, skip_serializing_if = "is_false")]
     pub job_state_reconciliation: bool,
@@ -1003,6 +1020,7 @@ impl Default for RunnerCapabilities {
             computer_key_input: false,
             computer_window_activate: false,
             computer_text_input: false,
+            computer_accessibility_query: false,
             job_state_reconciliation: false,
             coding_agent_runs: false,
             native_tool_plugins: false,
@@ -2709,6 +2727,7 @@ mod envelope_tests {
                 computer_key_input: false,
                 computer_window_activate: false,
                 computer_text_input: false,
+                computer_accessibility_query: false,
                 job_state_reconciliation: false,
                 coding_agent_runs: false,
                 native_tool_plugins: false,
@@ -2804,6 +2823,7 @@ mod envelope_tests {
         assert!(!capabilities.computer_window_activate);
         assert!(!RunnerCapabilities::default().ssh_persistent_shell);
         assert!(!capabilities.computer_text_input);
+        assert!(!capabilities.computer_accessibility_query);
         assert!(!RunnerCapabilities::default().project_path_registration);
         assert!(!RunnerCapabilities::default().computer_observe);
         assert!(!RunnerCapabilities::default().computer_application_discovery);
@@ -2814,6 +2834,7 @@ mod envelope_tests {
         assert!(!RunnerCapabilities::default().computer_key_input);
         assert!(!RunnerCapabilities::default().computer_window_activate);
         assert!(!RunnerCapabilities::default().computer_text_input);
+        assert!(!RunnerCapabilities::default().computer_accessibility_query);
         assert!(!RunnerCapabilities::default().artifact_export_streaming_metadata);
     }
 
@@ -2974,6 +2995,52 @@ mod envelope_tests {
         assert!(capabilities.computer_element_state);
         assert!(!capabilities.computer_accessibility_observe);
         assert!(!capabilities.computer_control);
+    }
+
+    #[test]
+    fn computer_accessibility_query_capability_deserializes_only_when_present() {
+        let capabilities: RunnerCapabilities =
+            serde_json::from_str(r#"{"computer_accessibility_observe":true}"#).unwrap();
+        assert!(capabilities.computer_accessibility_observe);
+        assert!(!capabilities.computer_accessibility_query);
+
+        let capabilities: RunnerCapabilities =
+            serde_json::from_str(r#"{"computer_accessibility_query":true}"#).unwrap();
+        assert!(capabilities.computer_accessibility_query);
+        assert!(!capabilities.computer_accessibility_observe);
+        assert!(!capabilities.computer_element_state);
+        // A false value is omitted on the wire so older servers never see the field.
+        assert!(!serde_json::to_string(&RunnerCapabilities::default())
+            .unwrap()
+            .contains("computer_accessibility_query"));
+        assert!(serde_json::to_string(&capabilities)
+            .unwrap()
+            .contains("\"computer_accessibility_query\":true"));
+    }
+
+    #[test]
+    fn accessibility_find_uses_a_larger_wire_envelope_than_the_baseline() {
+        assert_eq!(
+            shell_computer_request_payload_max_bytes("computer_accessibility_find"),
+            SHELL_COMPUTER_ACCESSIBILITY_FIND_PAYLOAD_MAX_BYTES
+        );
+        assert!(
+            SHELL_COMPUTER_ACCESSIBILITY_FIND_PAYLOAD_MAX_BYTES
+                > SHELL_COMPUTER_REQUEST_PAYLOAD_MAX_BYTES
+        );
+        for kind in [
+            "computer_accessibility_tree",
+            "computer_accessibility_subtree",
+            "computer_element_state",
+        ] {
+            assert_eq!(
+                shell_computer_request_payload_max_bytes(kind),
+                SHELL_COMPUTER_REQUEST_PAYLOAD_MAX_BYTES,
+                "{kind}"
+            );
+        }
+        // Four 256-byte filters of worst-case escaped control characters still fit.
+        assert!(4 * 256 * 6 + 512 <= SHELL_COMPUTER_ACCESSIBILITY_FIND_PAYLOAD_MAX_BYTES);
     }
 
     #[test]
@@ -3979,6 +4046,7 @@ mod envelope_tests {
                 "computer_key_input",
                 "computer_window_activate",
                 "computer_text_input",
+                "computer_accessibility_query",
             ]
         );
     }
