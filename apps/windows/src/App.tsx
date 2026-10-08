@@ -6,13 +6,16 @@ import { Ferret } from './FerretCompanion';
 import { JobActivity, TraceActivity } from './RuntimeActivity';
 import { SkillsPage } from './SkillsPage';
 import { isBroadProjectPath } from './projectPath';
+import { ActivityTimeline } from './ActivityTimeline';
+import { ConnectionCircuit } from './ConnectionCircuit';
+import { Icon, type IconName } from './icons';
 
 type Page = 'home' | 'projects' | 'project' | 'skills' | 'connection' | 'activity' | 'settings' | 'diagnostics' | 'updates';
 const titles: Record<Page, string> = { home: '總覽', projects: '專案', project: '專案詳情', skills: 'Skills', connection: '連線', activity: '活動紀錄', settings: '設定', diagnostics: '診斷', updates: '版本與更新' };
-const nav: { page: Page; glyph: string; name: string }[] = [
-  { page: 'home', glyph: '◫', name: '總覽' }, { page: 'projects', glyph: '▱', name: '專案' }, { page: 'skills', glyph: '✦', name: 'Skills' },
-  { page: 'connection', glyph: '↗', name: '連線' }, { page: 'activity', glyph: '≡', name: '活動紀錄' },
-  { page: 'settings', glyph: '⚙', name: '設定' },
+const nav: { page: Page; icon: IconName; name: string }[] = [
+  { page: 'home', icon: 'home', name: '總覽' }, { page: 'projects', icon: 'folder', name: '專案' }, { page: 'skills', icon: 'skills', name: 'Skills' },
+  { page: 'connection', icon: 'link', name: '連線' }, { page: 'activity', icon: 'activity', name: '活動紀錄' },
+  { page: 'settings', icon: 'settings', name: '設定' },
 ];
 const pageNotes: Record<Page, string> = {
   home: '你的專案與連線，在這裡掌握。', projects: '選擇資料夾，讓工作留在你的電腦。', project: '檢視工作範圍與專案狀態。', skills: '管理 Skills、外部來源與 ZIP 匯入。',
@@ -68,6 +71,18 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
   const activities = snapshot ? view.desktop?.activity ?? [] : [];
   const traces = snapshot ? view.desktop?.traces ?? [] : [];
   const jobs = snapshot?.mascot_jobs ?? [];
+  const recentActivities = activities.slice().sort((a, b) => b.sequence - a.sequence);
+  const failed = snapshot?.phase === 'error' || Boolean(snapshot?.error) || Boolean(snapshot?.runtime_status?.needs_attention);
+  // One state color for the whole window (the macOS app's ConnectionAmbience): it washes the
+  // background behind every page so the state reads before any text does.
+  const ambience = !snapshot ? 'idle' : failed ? 'danger' : connection.verified ? 'good' : project ? 'signal' : 'idle';
+  const heroTitle = !snapshot ? '正在取得連線狀態' : failed ? '連線需要處理' : connection.verified ? '此專案已可從 ChatGPT 使用'
+    : snapshot.tunnel_ready ? '已連線，等待 ChatGPT' : snapshot.phase === 'preparing' ? '正在準備連線' : !project ? '從一個專案開始' : '還沒有連接 ChatGPT';
+  const heroMessage = !snapshot ? '本地服務回報狀態後會顯示在這裡。' : failed ? '依頁面上方的說明處理後，再到「連線」重試。'
+    : connection.verified ? 'Tunnel 與 ChatGPT 存取都正常，可以直接在 ChatGPT 使用目前專案。'
+    : snapshot.tunnel_ready ? '可以到 ChatGPT 開始使用了。ChatGPT 第一次讀取這個專案後，這裡會顯示已驗證。'
+    : !project ? '選擇一個本地資料夾，準備服務，再連接 ChatGPT。' : '儲存憑證後連接 ChatGPT，就能讓它操作這個專案。';
+  const canConnect = editable && Boolean(project) && Boolean(view.desktop?.credential_stored) && Boolean(prefs.tunnel_id) && !snapshot?.current_operation;
   const filteredActivities = activities.filter((entry) => (activityLevel === 'all' || entry.level === activityLevel)
     && `${entry.message} ${entry.source} ${entry.event_kind}`.toLocaleLowerCase().includes(activitySearch.toLocaleLowerCase())).slice().sort((a, b) => b.sequence - a.sequence);
 
@@ -161,21 +176,21 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
     ['Tunnel', <Badge tone={snapshot?.tunnel_ready ? 'good' : 'quiet'}>{snapshot ? snapshot.tunnel_ready ? '可用' : '尚未可用' : '狀態未確認'}</Badge>],
     ['ChatGPT', <Badge tone={connection.tone}>{connection.label}</Badge>],
   ];
-  return <div className="app-shell">
+  return <div className="app-shell" data-ambience={ambience}>
     <aside className="sidebar" aria-label="主要導覽">
       <a className="brand" href="#home" onClick={(event) => { event.preventDefault(); setPage('home'); }}><span className="brand-mark" aria-hidden="true">C<span>·</span></span><span>Chadex<small>你的本地工作夥伴</small></span></a>
       <div className="sidebar-label">工作空間</div>
       <nav>{nav.map((item) => <button key={item.page} className={`nav-item ${page === item.page || (page === 'project' && item.page === 'projects') ? 'active' : ''}`}
-        aria-current={page === item.page || (page === 'project' && item.page === 'projects') ? 'page' : undefined} onClick={() => setPage(item.page)}><span aria-hidden="true">{item.glyph}</span>{item.name}</button>)}</nav>
+        aria-current={page === item.page || (page === 'project' && item.page === 'projects') ? 'page' : undefined} onClick={() => setPage(item.page)}><Icon name={item.icon} />{item.name}</button>)}</nav>
       <div className="sidebar-project"><small>目前專案</small><strong>{project ? basename(project.path) : '尚未選擇'}</strong><span title={project?.path}>{project?.path ?? '從「專案」選擇資料夾'}</span></div>
       <div className="sidebar-spacer" />
       <Ferret snapshot={snapshot} activities={activities} visible={prefs.ferret_visible} motion={prefs.ferret_motion} unavailable={view.freshness === 'unavailable' || view.desktop?.helper.state === 'failed'} />
-      <button className={`nav-item ${page === 'diagnostics' ? 'active' : ''}`} onClick={() => setPage('diagnostics')}><span aria-hidden="true">⊙</span>診斷</button>
-      <button className={`version-link ${page === 'updates' ? 'active' : ''}`} onClick={() => setPage('updates')}>Windows Desktop <span>{view.desktop ? `v${view.desktop.version}` : '版本未確認'} ↗</span></button>
+      <button className={`nav-item ${page === 'diagnostics' ? 'active' : ''}`} onClick={() => setPage('diagnostics')}><Icon name="pulse" />診斷</button>
+      <button className={`version-link ${page === 'updates' ? 'active' : ''}`} onClick={() => setPage('updates')}>Windows Desktop <span>{view.desktop ? `v${view.desktop.version}` : '版本未確認'}</span></button>
     </aside>
     <div className="workspace">
-      <header className="topbar"><div className={`topbar-inner${page === 'skills' ? ' narrow' : ''}`}><span>本地工作空間 <span className="crumb">/ {titles[page]}</span></span><div><Badge tone={connection.tone}>{!snapshot ? '連線狀態未確認' : connection.verified ? 'ChatGPT 已驗證' : !local.ready ? local.label : snapshot.tunnel_ready ? '等待驗證' : '尚未連線'}</Badge><button className="icon-button" title="重新整理狀態" aria-label="重新整理狀態" disabled={Boolean(busy)} onClick={() => { void store.refresh(); }}>↻</button></div></div></header>
-      <main id="main" className={page === 'skills' ? 'narrow' : undefined}><div className="page-heading"><div><div className="eyebrow">CHADEX / {page === 'project' ? 'PROJECT' : page.toUpperCase()}</div><h1>{titles[page]}</h1><p>{pageNotes[page]}</p></div>{page === 'projects' && <button className="primary" disabled={!editable} onClick={() => { void chooseProject(); }}>＋ 選擇資料夾</button>}</div>
+      <header className="topbar"><div className={`topbar-inner${page === 'skills' ? ' narrow' : ''}`}><span>本地工作空間 <span className="crumb">/ {titles[page]}</span></span><div><Badge tone={connection.tone}>{!snapshot ? '連線狀態未確認' : connection.verified ? 'ChatGPT 已驗證' : !local.ready ? local.label : snapshot.tunnel_ready ? '等待驗證' : '尚未連線'}</Badge><button className="icon-button" title="重新整理狀態" aria-label="重新整理狀態" disabled={Boolean(busy)} onClick={() => { void store.refresh(); }}><Icon name="refresh" size={18} /></button></div></div></header>
+      <main id="main" className={page === 'skills' ? 'narrow' : undefined}><div className="page-heading"><div><h1>{titles[page]}</h1><p>{pageNotes[page]}</p></div>{page === 'projects' && <button className="primary" disabled={!editable} onClick={() => { void chooseProject(); }}>選擇資料夾…</button>}</div>
         {view.error && <div className="notice error" role="alert"><strong>無法取得目前狀態</strong><p>{view.error}</p><button disabled={Boolean(busy)} onClick={() => { void store.refresh(); }}>重試</button></div>}
         {view.desktop && view.desktop.helper.state !== 'running' && <div className="notice error" role="alert"><strong>Helper {view.desktop.helper.state === 'failed' ? '異常結束' : view.desktop.helper.state === 'stopping' ? '正在停止' : '已停止'}</strong><p>{safeError(view.desktop.helper.error ?? '本地服務暫時無法使用。')}</p><button disabled={Boolean(busy) || view.desktop.helper.state === 'stopping'} onClick={() => { void run('重新啟動 Helper', api.restartHelper); }}>重新啟動 Helper</button></div>}
         {snapshot?.error && <div className="notice error" role="alert"><strong>{safeError(snapshot.error.message)}</strong><p>{snapshot.error.recovery && safeError(snapshot.error.recovery)}</p></div>}
@@ -188,10 +203,27 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
         </div>}
 
         {page === 'home' && <>
-          <section className="overview-hero"><div><span className="eyebrow">CURRENT WORKSPACE</span><h2>{project ? basename(project.path) : '從一個專案開始。'}</h2><p>{project ? project.path : '選擇你的本地資料夾，準備服務，再連接 ChatGPT。'}</p><div className="button-row"><button className="primary" disabled={!editable} onClick={() => project ? (setInspection(null), setPage('project')) : void chooseProject()}>{project ? '檢視專案' : '選擇專案'} <span aria-hidden="true">↗</span></button><button onClick={() => setPage('connection')}>連線設定</button></div></div><div className="hero-index" aria-hidden="true">LOCAL<span>01</span></div></section>
-          <div className="two-column"><Panel title="服務狀態" action={<button className="text-button" onClick={() => setPage('diagnostics')}>檢視診斷 ↗</button>}><Facts items={statusRows} />{snapshot?.runtime_status?.summary && <p className="panel-note">{safeError(snapshot.runtime_status.summary)}</p>}</Panel>
-          <Panel title="接著做"><ol className="steps"><li className={project ? 'done' : ''}><span>01</span><div><strong>選擇專案</strong><p>{project ? '目前工作範圍已指定。' : '指定 ChatGPT 可操作的本地範圍。'}</p></div></li><li className={local.ready ? 'done' : ''}><span>02</span><div><strong>準備本地服務</strong><p>{local.label}</p></div></li><li className={connection.verified ? 'done' : ''}><span>03</span><div><strong>連接 ChatGPT</strong><p>{connection.label}</p></div></li></ol></Panel></div>
-          <Panel title="最近活動" action={<button className="text-button" onClick={() => setPage('activity')}>全部紀錄 ↗</button>}>{activities.length ? <ul className="activity-list">{activities.slice().sort((a, b) => b.sequence - a.sequence).slice(0, 4).map((entry) => <li key={entry.sequence}><span className={`dot ${entry.level === 'error' ? 'warn' : 'quiet'}`} /><div><p>{safeError(entry.message)}</p><small>{entry.source} · {date(entry.timestamp_ms)}</small></div></li>)}</ul> : <p className="panel-note">{snapshot ? '尚無活動紀錄。' : '等待取得最新狀態。'}</p>}</Panel>
+          <section className="hero" aria-labelledby="hero-title">
+            <div className="hero-top">
+              <div className="hero-copy">
+                <span className={`status-pill ${ambience}`}><span className="status-dot" aria-hidden="true" />ChatGPT 連線</span>
+                <h2 id="hero-title">{heroTitle}</h2>
+                <p>{heroMessage}</p>
+              </div>
+              <div className="hero-actions">
+                {!project ? <button className="primary" disabled={!editable} onClick={() => { void chooseProject(); }}>選擇專案…</button>
+                  : !snapshot?.tunnel_ready && !connection.verified ? <button className="primary" disabled={!canConnect} onClick={() => { void runtime('connectChatGPT', '連接 ChatGPT'); }}>連線到 ChatGPT</button> : null}
+                <button onClick={() => setPage('connection')}>連線設定</button>
+              </div>
+            </div>
+            <ConnectionCircuit snapshot={snapshot} verified={connection.verified} />
+            {project && <div className="hero-meta"><span>專案路徑</span><code title={project.path}>{project.path}</code>
+              <button className="icon-button small" title="檢視專案" aria-label="檢視專案" onClick={() => { setInspection(null); setPage('project'); }}><Icon name="chevron" size={16} /></button></div>}
+          </section>
+          <div className="two-column">
+            <Panel title="最近活動" action={<button className="text-button" onClick={() => setPage('activity')}>全部紀錄</button>}>{recentActivities.length ? <ActivityTimeline entries={recentActivities.slice(0, 5)} /> : <p className="panel-note">{snapshot ? '尚無活動紀錄。ChatGPT 開始在專案中工作後，工具呼叫與連線變化會出現在這裡。' : '等待取得最新狀態。'}</p>}</Panel>
+            <Panel title="服務狀態" action={<button className="text-button" onClick={() => setPage('diagnostics')}>檢視診斷</button>}><Facts items={statusRows} />{snapshot?.runtime_status?.summary && <p className="panel-note">{safeError(snapshot.runtime_status.summary)}</p>}</Panel>
+          </div>
         </>}
 
         {page === 'projects' && <Panel title="本地專案"><p className="panel-note">資料夾的實際存取權限由本地服務檢查。</p>{prefs.recent_projects.length ? <div className="project-list">{prefs.recent_projects.map((path) => <button key={path} className="project-row" disabled={!editable} onClick={() => inspect(path)}><span className="folder-icon" aria-hidden="true">▱</span><span><strong>{basename(path)}</strong><small>{path}</small></span>{path === project?.path && <Badge tone="good">目前專案</Badge>}<span aria-hidden="true">→</span></button>)}</div> : <Empty title="還沒有專案">使用右上角「選擇資料夾」加入本地專案。</Empty>}</Panel>}
@@ -215,7 +247,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
           <Panel title="網路代理"><form onSubmit={(event) => { event.preventDefault(); void runtime('updateProxySettings', '套用代理設定', { mode: proxyMode, custom_url: proxyMode === 'custom' ? proxyUrl.trim() : null }); }}><label className="field">代理模式<select value={proxyMode} disabled={!editable} onChange={(event) => setProxyMode(event.target.value as typeof proxyMode)}><option value="auto">自動</option><option value="direct">直接連線</option><option value="custom">自訂代理</option></select></label>{proxyMode === 'custom' && <label className="field">代理 URL<input type="url" value={proxyUrl} disabled={!editable} onChange={(event) => setProxyUrl(event.target.value)} placeholder="http://127.0.0.1:8080" required /></label>}<p className="panel-note">套用選擇的代理模式。套用後由服務重新回報連線狀態。</p><button type="submit" disabled={!editable}>套用代理設定</button></form></Panel></div>
         </>}
 
-        {page === 'activity' && <><Panel title="本地 Job"><JobActivity jobs={jobs} available={Boolean(snapshot)} /></Panel><Panel title="工具／命令呼叫"><TraceActivity traces={traces} available={Boolean(snapshot)} /><p className="panel-note">顯示服務實際觀測的工具名稱、完成狀態與耗時。</p></Panel><Panel title="服務活動"><div className="filter-row"><label className="field">等級<select value={activityLevel} onChange={(event) => setActivityLevel(event.target.value)}><option value="all">全部等級</option><option value="info">資訊</option><option value="warning">警告</option><option value="error">錯誤</option></select></label><label className="field grow">搜尋紀錄<input type="search" value={activitySearch} onChange={(event) => setActivitySearch(event.target.value)} placeholder="搜尋訊息、來源或事件" /></label></div>{filteredActivities.length ? <ul className="activity-list">{filteredActivities.map((entry) => <li key={entry.sequence}><Badge tone={entry.level === 'error' || entry.level === 'warning' ? 'warn' : 'quiet'}>{entry.level}</Badge><div><p>{safeError(entry.message)}</p><small>{entry.source} · {entry.event_kind} · #{entry.sequence} · {date(entry.timestamp_ms)}</small></div></li>)}</ul> : <Empty title={snapshot ? '沒有符合的紀錄' : '活動狀態未確認'}>{snapshot ? '試著調整搜尋條件，或等待服務回報新活動。' : '重新取得 helper 狀態後會顯示活動紀錄。'}</Empty>}</Panel></>}
+        {page === 'activity' && <><Panel title="本地 Job"><JobActivity jobs={jobs} available={Boolean(snapshot)} /></Panel><Panel title="工具／命令呼叫"><TraceActivity traces={traces} available={Boolean(snapshot)} /><p className="panel-note">顯示服務實際觀測的工具名稱、完成狀態與耗時。</p></Panel><Panel title="服務活動"><div className="filter-row"><label className="field">等級<select value={activityLevel} onChange={(event) => setActivityLevel(event.target.value)}><option value="all">全部等級</option><option value="info">資訊</option><option value="warning">警告</option><option value="error">錯誤</option></select></label><label className="field grow">搜尋紀錄<input type="search" value={activitySearch} onChange={(event) => setActivitySearch(event.target.value)} placeholder="搜尋訊息、來源或事件" /></label></div>{filteredActivities.length ? <ActivityTimeline entries={filteredActivities} showMeta /> : <Empty title={snapshot ? '沒有符合的紀錄' : '活動狀態未確認'}>{snapshot ? '試著調整搜尋條件，或等待服務回報新活動。' : '重新取得 helper 狀態後會顯示活動紀錄。'}</Empty>}</Panel></>}
 
         {page === 'settings' && <>
           <Panel title="Chadex Global Instructions" action={<Badge tone={globalInstructionsError ? 'warn' : 'quiet'}>{globalInstructionsLoading ? '載入中' : globalInstructions === savedGlobalInstructions ? '已儲存' : '尚未儲存'}</Badge>}>
@@ -230,7 +262,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
           <Panel title="桌面偏好"><form onSubmit={(event) => { event.preventDefault(); if (prefsDraft) void run('儲存偏好', async () => { const latest = store.getSnapshot().desktop?.preferences ?? prefs; await api.savePreferences({ ...latest, restore_project: prefsDraft.restore_project, launch_at_login: prefsDraft.launch_at_login, notifications: prefsDraft.notifications, ferret_visible: prefsDraft.ferret_visible, ferret_motion: prefsDraft.ferret_motion, prepare_service_on_launch: prefsDraft.prepare_service_on_launch ?? true, theme: prefsDraft.theme }); setPrefsDraft(null); }); }}>
             {([['restore_project', '啟動時恢復上次專案', '回到上一次使用的本地工作範圍。'], ['launch_at_login', '登入時啟動 Chadex', '由桌面應用程式管理系統登入設定。'], ['notifications', '桌面通知', '允許桌面應用程式顯示服務通知。'], ['ferret_visible', '顯示 Code Ferret', '在側欄呈現實際任務狀態。'], ['ferret_motion', 'Code Ferret 動畫', '降低動態效果時也會自動停用。'], ['prepare_service_on_launch', '啟動時在背景準備本機服務（加快連接）', '只會恢復你設定過且未手動停止的服務；下次啟動生效。']] as const).map(([key, label, hint]) => <label className="setting-row" key={key}><span><strong>{label}</strong><small>{hint}</small></span><input type="checkbox" disabled={!prefsEditable} checked={(prefsDraft ?? prefs)[key] ?? true} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), [key]: event.target.checked })} /></label>)}
             <label className="setting-row"><span><strong>外觀</strong><small>選擇淺色、深色或跟隨系統。</small></span><select disabled={!prefsEditable} value={(prefsDraft ?? prefs).theme} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), theme: event.target.value as Preferences['theme'] })}><option value="system">跟隨系統</option><option value="light">淺色</option><option value="dark">深色</option></select></label><div className="button-row"><button className="primary" type="submit" disabled={!prefsEditable || !prefsDraft}>儲存偏好</button><button type="button" disabled={!prefsDraft || Boolean(busy)} onClick={() => setPrefsDraft(null)}>取消變更</button></div></form></Panel>
-          <Panel title="應用程式"><div className="button-row"><button onClick={() => setPage('updates')}>版本與更新 ↗</button><button onClick={() => setPage('diagnostics')}>診斷資訊 ↗</button><button disabled={Boolean(busy)} onClick={() => { void run('結束 Chadex', api.quitApp, false); }}>結束 Chadex</button></div></Panel>
+          <Panel title="應用程式"><div className="button-row"><button onClick={() => setPage('updates')}>版本與更新</button><button onClick={() => setPage('diagnostics')}>診斷資訊</button><button disabled={Boolean(busy)} onClick={() => { void run('結束 Chadex', api.quitApp, false); }}>結束 Chadex</button></div></Panel>
         </>}
 
         {page === 'diagnostics' && <>
