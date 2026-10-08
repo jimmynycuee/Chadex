@@ -1197,3 +1197,320 @@ fn ancestors_summary_drops_the_farthest_segments_to_fit_256_bytes() {
     assert!(summary.starts_with("… › "));
     assert!(std::str::from_utf8(summary.as_bytes()).is_ok());
 }
+
+// ---------------------------------------------------------------------------
+// ComputerRuntime registry integration (no native calls)
+// ---------------------------------------------------------------------------
+
+mod runtime {
+    use super::*;
+    use crate::{ComputerConfig, ComputerRuntime, ElementFindRequest, SurfaceRecord};
+
+    fn runtime() -> ComputerRuntime {
+        ComputerRuntime::new(ComputerConfig {
+            max_encoded_image_bytes: usize::MAX,
+        })
+    }
+
+    fn surface(application: &str, title: &str) -> SurfaceRecord {
+        SurfaceRecord {
+            native_id: 1,
+            pid: 1,
+            identity_hash: [0; 32],
+            application: application.to_string(),
+            title: title.to_string(),
+            width: 800,
+            height: 600,
+        }
+    }
+
+    fn commit(
+        runtime: &ComputerRuntime,
+        surface_id: &str,
+        record: &SurfaceRecord,
+        result: AccessibilityTreeResult,
+    ) -> Value {
+        runtime
+            .finish_accessibility_observation(surface_id, record, result.output, result.elements)
+            .unwrap()
+    }
+
+    fn element_id_for(output: &Value, title: &str) -> String {
+        let nodes = output.get("nodes").or_else(|| output.get("elements")).unwrap();
+        nodes
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["title"] == json!(title))
+            .unwrap_or_else(|| panic!("no node titled {title}"))["element_id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn query_commits_replace_the_surface_generation_and_reissue_the_root() {
+        let runtime = runtime();
+        let record = surface("Browser", "Page");
+        runtime.insert_surface_for_test("surface_a", record.clone());
+        let tree = sample_tree();
+
+        let first = commit(
+            &runtime,
+            "surface_a",
+            &record,
+            observe_tree(&tree, 0, "surface_a", None, bounds(8, 256), TreeMode::Query).unwrap(),
+        );
+        assert_eq!(first["observation_generation"], json!(1));
+        let toolbar_id = element_id_for(&first, "Toolbar");
+
+        // Subtree below Toolbar: ids for the whole surface are replaced.
+        let (_, root) = runtime.prepare_query("surface_a", Some(&toolbar_id)).unwrap();
+        let root = root.unwrap();
+        let second = commit(
+            &runtime,
+            "surface_a",
+            &record,
+            observe_tree(&tree, 1, "surface_a", Some(&root), bounds(4, 16), TreeMode::Query)
+                .unwrap(),
+        );
+        assert_eq!(second["observation_generation"], json!(2));
+        let new_root_id = second["root"]["element_id"].as_str().unwrap().to_string();
+        assert_ne!(new_root_id, toolbar_id);
+        assert_eq!(second["nodes"][0]["element_id"], json!(new_root_id));
+        // The previous generation's handle, including the root that was passed in, is stale.
+        let error = runtime
+            .prepare_query("surface_a", Some(&toolbar_id))
+            .err()
+            .unwrap();
+        assert!(error.starts_with("stale_element:"), "{error}");
+        assert!(runtime.prepare_query("surface_a", Some(&new_root_id)).is_ok());
+
+        // Find with the re-issued root re-issues it again and bumps the generation.
+        let found = commit(
+            &runtime,
+            "surface_a",
+            &record,
+            find(
+                &tree,
+                &tree,
+                1,
+                "surface_a",
+                Some(&root),
+                &query_for_role("AXButton"),
+                find_bounds(8),
+            )
+            .unwrap(),
+        );
+        assert_eq!(found["observation_generation"], json!(3));
+        let reissued = found["root_element_id"].as_str().unwrap().to_string();
+        assert_ne!(reissued, new_root_id);
+        assert!(runtime.prepare_query("surface_a", Some(&reissued)).is_ok());
+        assert!(runtime
+            .prepare_query("surface_a", Some(&new_root_id))
+            .err()
+            .unwrap()
+            .starts_with("stale_element:"));
+        // The match is registered and usable as a handle for later calls.
+        let share_id = element_id_for(&found, "Share");
+        assert!(runtime.prepare_query("surface_a", Some(&share_id)).is_ok());
+    }
+
+    #[test]
+    fn query_root_from_another_surface_or_unknown_is_stale_element() {
+        let runtime = runtime();
+        let a = surface("Browser", "A");
+        let b = surface("Browser", "B");
+        runtime.insert_surface_for_test("surface_a", a.clone());
+        runtime.insert_surface_for_test("surface_b", b.clone());
+        let tree = sample_tree();
+        let b_output = commit(
+            &runtime,
+            "surface_b",
+            &b,
+            observe_tree(&tree, 0, "surface_b", None, bounds(8, 256), TreeMode::Query).unwrap(),
+        );
+        let b_id = element_id_for(&b_output, "Toolbar");
+        for root in [b_id.as_str(), "element_neverissued"] {
+            let error = runtime.prepare_query("surface_a", Some(root)).err().unwrap();
+            assert!(error.starts_with("stale_element:"), "{error}");
+            let error = runtime
+                .accessibility_subtree("surface_a", Some(root), 4, 16)
+                .unwrap_err();
+            assert!(error.starts_with("stale_element:"), "{error}");
+        }
+        let error = runtime
+            .prepare_query("surface_missing", None)
+            .err()
+            .unwrap();
+        assert!(error.starts_with("stale_surface:"), "{error}");
+    }
+
+    #[test]
+    fn protected_secure_and_descendant_roots_are_refused_before_any_native_call() {
+        let runtime = runtime();
+        let record = surface("Browser", "Login");
+        runtime.insert_surface_for_test("surface_a", record.clone());
+        let tree = sample_tree();
+        let output = commit(
+            &runtime,
+            "surface_a",
+            &record,
+            observe_tree(&tree, 0, "surface_a", None, bounds(8, 256), TreeMode::Query).unwrap(),
+        );
+        let nodes = output["nodes"].as_array().unwrap();
+        let ids_by_role_title = |role: &str, title: Option<&str>| -> String {
+            nodes
+                .iter()
+                .find(|node| {
+                    node["role"] == json!(role)
+                        && title.map_or(node["title"].is_null(), |title| node["title"] == json!(title))
+                })
+                .unwrap()["element_id"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        let secure = ids_by_role_title("AXTextField", Some("Password"));
+        // The Vault group and the static texts below protected/secure nodes carry no title.
+        let protected = ids_by_role_title("AXGroup", None);
+        let protected_child = nodes
+            .iter()
+            .filter(|node| node["role"] == json!("AXStaticText") && node["title"].is_null())
+            .map(|node| node["element_id"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(protected_child.len(), 2);
+        let mut refused = vec![secure, protected];
+        refused.extend(protected_child);
+        for root in refused {
+            let error = runtime.prepare_query("surface_a", Some(&root)).err().unwrap();
+            assert!(error.starts_with("permission_denied:"), "{error}");
+            let error = runtime
+                .accessibility_subtree("surface_a", Some(&root), 4, 16)
+                .unwrap_err();
+            assert!(error.starts_with("permission_denied:"), "{error}");
+            let request = ElementFindRequest {
+                root_element_id: Some(root),
+                role: Some("AXButton".into()),
+                limit: 8,
+                max_depth: 32,
+                ..ElementFindRequest::default()
+            };
+            let error = runtime.find_elements("surface_a", &request).unwrap_err();
+            assert!(error.starts_with("permission_denied:"), "{error}");
+        }
+    }
+
+    #[test]
+    fn sensitive_surfaces_are_refused_before_any_native_call() {
+        let runtime = runtime();
+        runtime.insert_surface_for_test("surface_pw", surface("Passwords", "Passwords"));
+        runtime.insert_surface_for_test("surface_auth", surface("Example", "Authorization Required"));
+        let request = ElementFindRequest {
+            role: Some("AXButton".into()),
+            limit: 8,
+            max_depth: 32,
+            ..ElementFindRequest::default()
+        };
+        for surface_id in ["surface_pw", "surface_auth"] {
+            let expected = "permission_denied: sensitive Computer surface cannot be controlled";
+            assert_eq!(
+                runtime
+                    .accessibility_subtree(surface_id, None, 4, 16)
+                    .unwrap_err(),
+                expected
+            );
+            assert_eq!(
+                runtime.find_elements(surface_id, &request).unwrap_err(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn query_inputs_are_validated_before_the_registry_is_consulted() {
+        let runtime = runtime();
+        runtime.insert_surface_for_test("surface_a", surface("Browser", "Page"));
+        for (surface_id, root) in [
+            ("", None),
+            ("surface_a", Some("bogus")),
+            ("surface_a", Some("element_")),
+            ("surface_a", Some(&"element_x".repeat(30)[..])),
+        ] {
+            let error = runtime
+                .accessibility_subtree(surface_id, root, 4, 16)
+                .unwrap_err();
+            assert!(error.starts_with("invalid_request:"), "{error}");
+        }
+        for (max_depth, max_nodes) in [(9, 16), (4, 0), (4, 257)] {
+            let error = runtime
+                .accessibility_subtree("surface_a", None, max_depth, max_nodes)
+                .unwrap_err();
+            assert!(error.starts_with("invalid_request:"), "{error}");
+        }
+    }
+
+    #[test]
+    fn find_requests_are_validated_and_debug_redacts_the_value_needle() {
+        let valid = ElementFindRequest {
+            value: Some("needle-text".into()),
+            limit: 8,
+            max_depth: 32,
+            ..ElementFindRequest::default()
+        };
+        assert!(valid.validate().is_ok());
+        assert!(!format!("{valid:?}").contains("needle-text"));
+        assert!(format!("{valid:?}").contains("value_present: true"));
+
+        let empty = ElementFindRequest {
+            limit: 8,
+            max_depth: 32,
+            ..ElementFindRequest::default()
+        };
+        assert!(empty.validate().unwrap_err().contains("at least one"));
+        for invalid in [
+            ElementFindRequest {
+                value: Some(String::new()),
+                ..valid.clone()
+            },
+            ElementFindRequest {
+                value: Some("x".repeat(257)),
+                ..valid.clone()
+            },
+            ElementFindRequest {
+                role: Some("a\0b".into()),
+                ..valid.clone()
+            },
+            ElementFindRequest {
+                limit: 0,
+                ..valid.clone()
+            },
+            ElementFindRequest {
+                limit: 33,
+                ..valid.clone()
+            },
+            ElementFindRequest {
+                max_depth: 0,
+                ..valid.clone()
+            },
+            ElementFindRequest {
+                max_depth: 49,
+                ..valid.clone()
+            },
+        ] {
+            assert!(
+                invalid.validate().unwrap_err().starts_with("invalid_request:"),
+                "{invalid:?}"
+            );
+        }
+        // A state-only filter is a valid query.
+        assert!(ElementFindRequest {
+            enabled: Some(true),
+            limit: 1,
+            max_depth: 1,
+            ..ElementFindRequest::default()
+        }
+        .validate()
+        .is_ok());
+    }
+}

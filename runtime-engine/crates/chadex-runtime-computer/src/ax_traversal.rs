@@ -13,9 +13,9 @@
 //!   read. `Legacy` mode keeps the historical behavior of the original tree.
 
 use crate::{
-    allocate_selector, ensure_correlated_fingerprint, is_secure_text_fingerprint,
-    AccessibilityTreeResult, ElementFingerprint, ElementRecord, MAX_ACCESSIBILITY_ABSOLUTE_DEPTH,
-    MAX_TEXT_BYTES,
+    allocate_selector, ensure_correlated_fingerprint, ensure_queryable_root,
+    is_secure_text_fingerprint, AccessibilityTreeResult, ElementFingerprint, ElementRecord,
+    MAX_ACCESSIBILITY_ABSOLUTE_DEPTH, MAX_TEXT_BYTES,
 };
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -62,24 +62,6 @@ pub(crate) trait AxClock {
 
 fn is_sensitive(fingerprint: &ElementFingerprint) -> bool {
     fingerprint.protected || is_secure_text_fingerprint(fingerprint)
-}
-
-fn lineage_is_queryable_root(record: &ElementRecord) -> Result<(), String> {
-    if record.target_fingerprint().is_none() {
-        return Err("stale_element: AX element correlation lineage is incomplete".to_string());
-    }
-    if record.contains_protected_content()
-        || record
-            .lineage
-            .iter()
-            .any(|fingerprint| is_secure_text_fingerprint(fingerprint))
-    {
-        return Err(
-            "permission_denied: protected or secure Accessibility content cannot be a query root"
-                .to_string(),
-        );
-    }
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +145,7 @@ pub(crate) fn observe_tree<S: AxSource>(
 ) -> Result<AccessibilityTreeResult, String> {
     let (root_path, root_lineage, root_known) = match prefix {
         Some(prefix) => {
-            lineage_is_queryable_root(prefix)?;
+            ensure_queryable_root(prefix)?;
             let mut lineage = prefix.lineage.clone();
             let known = lineage.pop();
             (prefix.path.clone(), lineage, known)
@@ -318,17 +300,6 @@ pub(crate) struct FindQuery {
     pub(crate) enabled: Option<bool>,
 }
 
-impl FindQuery {
-    pub(crate) fn has_condition(&self) -> bool {
-        self.role.is_some()
-            || self.subrole.is_some()
-            || self.label.is_some()
-            || self.value.is_some()
-            || self.focused.is_some()
-            || self.enabled.is_some()
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct FindBounds {
     pub(crate) limit: usize,
@@ -467,7 +438,7 @@ pub(crate) fn find<S: AxSource, C: AxClock>(
     bounds: FindBounds,
 ) -> Result<AccessibilityTreeResult, String> {
     if let Some(prefix) = prefix {
-        lineage_is_queryable_root(prefix)?;
+        ensure_queryable_root(prefix)?;
     }
     let root_absolute_depth = prefix.map_or(0, |prefix| prefix.path.len());
     let mut arena: Vec<Visited> = Vec::new();

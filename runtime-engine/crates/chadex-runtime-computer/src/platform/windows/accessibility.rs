@@ -614,6 +614,33 @@ pub(crate) fn accessibility_status() -> Result<Value, String> {
     Ok(json!({"platform": "windows", "trusted": true}))
 }
 
+/// Subtree observation is not implemented for UIA yet. The Runner does not advertise
+/// `computer_accessibility_query` on Windows, so this is unreachable through the wire.
+#[cfg(windows)]
+pub(crate) fn accessibility_subtree(
+    _surface_id: &str,
+    _surface: &SurfaceRecord,
+    _root: Option<&ElementRecord>,
+    _max_depth: usize,
+    _max_nodes: usize,
+) -> Result<AccessibilityTreeResult, String> {
+    Err(
+        "unsupported_platform: computer accessibility subtree is unavailable on Windows"
+            .to_string(),
+    )
+}
+
+/// Deep find is not implemented for UIA yet (see [`accessibility_subtree`]).
+#[cfg(windows)]
+pub(crate) fn find_elements(
+    _surface_id: &str,
+    _surface: &SurfaceRecord,
+    _root: Option<&ElementRecord>,
+    _request: &ElementFindRequest,
+) -> Result<AccessibilityTreeResult, String> {
+    Err("unsupported_platform: computer deep find is unavailable on Windows".to_string())
+}
+
 #[cfg(windows)]
 pub(crate) fn accessibility_tree(
     surface_id: &str,

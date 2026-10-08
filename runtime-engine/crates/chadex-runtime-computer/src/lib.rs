@@ -281,7 +281,6 @@ struct ElementRecord {
 }
 
 impl ElementRecord {
-    #[cfg(any(test, target_os = "macos", windows))]
     fn target_fingerprint(&self) -> Option<&ElementFingerprint> {
         (self.lineage.len() == self.path.len() + 1)
             .then(|| self.lineage.last())
@@ -289,7 +288,6 @@ impl ElementRecord {
             .map(Arc::as_ref)
     }
 
-    #[cfg(any(test, target_os = "macos", windows))]
     fn contains_protected_content(&self) -> bool {
         self.lineage.iter().any(|fingerprint| fingerprint.protected)
     }
@@ -458,7 +456,6 @@ fn finish_clipboard_read<T>(
     }
 }
 
-#[cfg(any(test, target_os = "macos"))]
 fn is_secure_text_fingerprint(fingerprint: &ElementFingerprint) -> bool {
     fingerprint.role == "AXSecureTextField"
         || fingerprint
@@ -566,6 +563,108 @@ fn ensure_correlated_fingerprint(
 struct AccessibilityTreeResult {
     output: Value,
     elements: Vec<(String, ElementRecord)>,
+}
+
+/// Roots of subtree and deep-find queries must be ordinary content: a protected or
+/// secure node (or any descendant of one) is never a legal starting point.
+fn ensure_queryable_root(element: &ElementRecord) -> Result<(), String> {
+    if element.target_fingerprint().is_none() {
+        return Err("stale_element: AX element correlation lineage is incomplete".to_string());
+    }
+    if element.contains_protected_content()
+        || element
+            .lineage
+            .iter()
+            .any(|fingerprint| is_secure_text_fingerprint(fingerprint))
+    {
+        return Err(
+            "permission_denied: protected or secure Accessibility content cannot be a query root"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Request for `ComputerRuntime::find_elements`. `value` is a case-sensitive literal
+/// substring matched against `AXValue` of non-secure, non-protected elements only.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct ElementFindRequest {
+    pub root_element_id: Option<String>,
+    pub role: Option<String>,
+    pub subrole: Option<String>,
+    pub label: Option<String>,
+    pub value: Option<String>,
+    pub focused: Option<bool>,
+    pub enabled: Option<bool>,
+    pub limit: usize,
+    /// Search depth below the root (or the window root).
+    pub max_depth: usize,
+}
+
+impl std::fmt::Debug for ElementFindRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ElementFindRequest")
+            .field("root_element_id", &self.root_element_id)
+            .field("role", &self.role)
+            .field("subrole", &self.subrole)
+            .field("label", &self.label)
+            .field("value_present", &self.value.is_some())
+            .field("focused", &self.focused)
+            .field("enabled", &self.enabled)
+            .field("limit", &self.limit)
+            .field("max_depth", &self.max_depth)
+            .finish()
+    }
+}
+
+impl ElementFindRequest {
+    fn validate(&self) -> Result<(), String> {
+        for (name, text) in [
+            ("role", self.role.as_deref()),
+            ("subrole", self.subrole.as_deref()),
+            ("label", self.label.as_deref()),
+            ("value", self.value.as_deref()),
+        ] {
+            if let Some(text) = text {
+                if text.is_empty() || text.len() > MAX_TEXT_BYTES || text.contains('\0') {
+                    return Err(format!(
+                        "invalid_request: computer element finder {name} filter is invalid"
+                    ));
+                }
+            }
+        }
+        if self.role.is_none()
+            && self.subrole.is_none()
+            && self.label.is_none()
+            && self.value.is_none()
+            && self.focused.is_none()
+            && self.enabled.is_none()
+        {
+            return Err(
+                "invalid_request: computer element finder requires at least one semantic or state filter"
+                    .to_string(),
+            );
+        }
+        if !(1..=MAX_FIND_ELEMENTS_LIMIT).contains(&self.limit)
+            || !(1..=MAX_FIND_DEPTH).contains(&self.max_depth)
+        {
+            return Err("invalid_request: computer element finder bounds are invalid".to_string());
+        }
+        Ok(())
+    }
+
+    #[cfg(any(test, target_os = "macos"))]
+    fn query(&self) -> ax_traversal::FindQuery {
+        ax_traversal::FindQuery {
+            role: self.role.clone(),
+            subrole: self.subrole.clone(),
+            label: self.label.clone(),
+            value: self.value.clone(),
+            focused: self.focused,
+            enabled: self.enabled,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -977,6 +1076,14 @@ impl ComputerRuntime {
         }
     }
 
+    #[cfg(test)]
+    fn insert_surface_for_test(&self, surface_id: &str, record: SurfaceRecord) {
+        self.surfaces
+            .lock()
+            .unwrap()
+            .insert(surface_id.to_string(), record);
+    }
+
     pub fn read_clipboard(&self) -> Result<Value, String> {
         platform::read_clipboard()
     }
@@ -1325,15 +1432,113 @@ impl ComputerRuntime {
             .get(surface_id)
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
-        let AccessibilityTreeResult {
-            mut output,
-            elements,
-        } = platform::accessibility_tree(surface_id, &record, max_depth, max_nodes)?;
+        let AccessibilityTreeResult { output, elements } =
+            platform::accessibility_tree(surface_id, &record, max_depth, max_nodes)?;
+        self.finish_accessibility_observation(surface_id, &record, output, elements)
+    }
+
+    /// Subtree observation (`computer_accessibility_subtree`). Unlike the legacy tree
+    /// it refuses sensitive surfaces before any native call, hardens secure fields and
+    /// accepts a previously issued `root_element_id`. The result re-issues ids for the
+    /// whole surface, including the root.
+    pub fn accessibility_subtree(
+        &self,
+        surface_id: &str,
+        root_element_id: Option<&str>,
+        max_depth: usize,
+        max_nodes: usize,
+    ) -> Result<Value, String> {
+        if max_depth > MAX_ACCESSIBILITY_DEPTH
+            || !(1..=MAX_ACCESSIBILITY_NODES).contains(&max_nodes)
+        {
+            return Err("invalid_request: accessibility bounds are invalid".to_string());
+        }
+        let (record, root) = self.prepare_query(surface_id, root_element_id)?;
+        let AccessibilityTreeResult { output, elements } = platform::accessibility_subtree(
+            surface_id,
+            &record,
+            root.as_ref(),
+            max_depth,
+            max_nodes,
+        )?;
+        self.finish_accessibility_observation(surface_id, &record, output, elements)
+    }
+
+    /// Deep element search (`computer_accessibility_find`). Same sensitivity gates as
+    /// [`Self::accessibility_subtree`]; returned elements never carry `AXValue`.
+    pub fn find_elements(
+        &self,
+        surface_id: &str,
+        request: &ElementFindRequest,
+    ) -> Result<Value, String> {
+        request.validate()?;
+        let (record, root) = self.prepare_query(surface_id, request.root_element_id.as_deref())?;
+        let AccessibilityTreeResult { output, elements } =
+            platform::find_elements(surface_id, &record, root.as_ref(), request)?;
+        self.finish_accessibility_observation(surface_id, &record, output, elements)
+    }
+
+    /// Everything a query-style observation must settle before touching the native
+    /// tree: id syntax, surface liveness, sensitive surface, and root eligibility.
+    fn prepare_query(
+        &self,
+        surface_id: &str,
+        root_element_id: Option<&str>,
+    ) -> Result<(SurfaceRecord, Option<ElementRecord>), String> {
+        if surface_id.is_empty() || surface_id.len() > MAX_SURFACE_ID_BYTES {
+            return Err("invalid_request: surface_id is invalid".to_string());
+        }
+        if let Some(root_element_id) = root_element_id {
+            if !root_element_id.starts_with("element_")
+                || root_element_id.len() <= "element_".len()
+                || root_element_id.len() > MAX_ELEMENT_ID_BYTES
+            {
+                return Err("invalid_request: root_element_id is invalid".to_string());
+            }
+        }
+        let record = self
+            .surfaces
+            .lock()
+            .map_err(|_| "computer_state_error: surface registry lock poisoned".to_string())?
+            .get(surface_id)
+            .cloned()
+            .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
+        ensure_surface_not_sensitive(&record)?;
+        let root = match root_element_id {
+            None => None,
+            Some(root_element_id) => {
+                let element = self
+                    .elements
+                    .lock()
+                    .map_err(|_| "computer_state_error: element registry lock poisoned".to_string())?
+                    .get(root_element_id)
+                    .ok_or_else(|| {
+                        "stale_element: unknown, evicted, or stale root_element_id".to_string()
+                    })?;
+                if element.surface_id != surface_id {
+                    return Err(
+                        "stale_element: root_element_id belongs to a different surface".to_string(),
+                    );
+                }
+                ensure_queryable_root(&element)?;
+                Some(element)
+            }
+        };
+        Ok((record, root))
+    }
+
+    fn finish_accessibility_observation(
+        &self,
+        surface_id: &str,
+        record: &SurfaceRecord,
+        mut output: Value,
+        elements: Vec<(String, ElementRecord)>,
+    ) -> Result<Value, String> {
         let surface_registry = self
             .surfaces
             .lock()
             .map_err(|_| "computer_state_error: surface registry lock poisoned".to_string())?;
-        if surface_registry.get(surface_id) != Some(&record) {
+        if surface_registry.get(surface_id) != Some(record) {
             return Err(
                 "stale_surface: surface registry changed during accessibility observation"
                     .to_string(),
@@ -3041,9 +3246,9 @@ struct PlatformWindow {
 #[cfg(not(any(target_os = "macos", windows)))]
 mod platform {
     use super::{
-        AccessibilityTreeResult, ApplicationRecord, ComputerAction, DisplayRecord, ElementRecord,
-        PlatformApplication, PlatformDisplay, PlatformWindow, PointerAction, PointerPlan,
-        SurfaceRecord,
+        AccessibilityTreeResult, ApplicationRecord, ComputerAction, DisplayRecord,
+        ElementFindRequest, ElementRecord, PlatformApplication, PlatformDisplay, PlatformWindow,
+        PointerAction, PointerPlan, SurfaceRecord,
     };
 
     pub(super) fn read_clipboard() -> Result<serde_json::Value, String> {
@@ -3122,6 +3327,31 @@ mod platform {
         _surface: &SurfaceRecord,
         _max_depth: usize,
         _max_nodes: usize,
+    ) -> Result<AccessibilityTreeResult, String> {
+        Err(
+            "unsupported_platform: computer accessibility observation is unavailable on this platform"
+                .to_string(),
+        )
+    }
+
+    pub(super) fn accessibility_subtree(
+        _surface_id: &str,
+        _surface: &SurfaceRecord,
+        _root: Option<&ElementRecord>,
+        _max_depth: usize,
+        _max_nodes: usize,
+    ) -> Result<AccessibilityTreeResult, String> {
+        Err(
+            "unsupported_platform: computer accessibility observation is unavailable on this platform"
+                .to_string(),
+        )
+    }
+
+    pub(super) fn find_elements(
+        _surface_id: &str,
+        _surface: &SurfaceRecord,
+        _root: Option<&ElementRecord>,
+        _request: &ElementFindRequest,
     ) -> Result<AccessibilityTreeResult, String> {
         Err(
             "unsupported_platform: computer accessibility observation is unavailable on this platform"

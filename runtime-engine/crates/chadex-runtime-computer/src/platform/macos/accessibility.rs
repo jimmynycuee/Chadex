@@ -605,6 +605,93 @@ pub(crate) fn accessibility_tree(
     )
 }
 
+/// `computer_accessibility_subtree`: observe below a previously issued root (or the
+/// window root) with the hardened sensitive-content rules.
+#[cfg(target_os = "macos")]
+pub(crate) fn accessibility_subtree(
+    surface_id: &str,
+    surface: &SurfaceRecord,
+    root: Option<&ElementRecord>,
+    max_depth: usize,
+    max_nodes: usize,
+) -> Result<AccessibilityTreeResult, String> {
+    if !unsafe { AXIsProcessTrusted() } {
+        return Err("permission_denied: macOS Accessibility permission is not granted".to_string());
+    }
+    let deadline = AxObservationDeadline::new();
+    let window = exact_ax_window(surface, &deadline)?;
+    let source = MacAxSource {
+        deadline: &deadline,
+    };
+    let start = match root {
+        Some(root) => resolve_element(&source, window, root)?,
+        None => window,
+    };
+    observe_tree(
+        &source,
+        start,
+        surface_id,
+        root,
+        TreeBounds {
+            max_depth,
+            max_nodes,
+        },
+        TreeMode::Query,
+    )
+}
+
+#[cfg(target_os = "macos")]
+struct ObservationClock {
+    started: Instant,
+}
+
+#[cfg(target_os = "macos")]
+impl AxClock for ObservationClock {
+    fn elapsed(&self) -> Duration {
+        self.started.elapsed()
+    }
+}
+
+/// `computer_accessibility_find`: bounded breadth-first search over the live tree.
+#[cfg(target_os = "macos")]
+pub(crate) fn find_elements(
+    surface_id: &str,
+    surface: &SurfaceRecord,
+    root: Option<&ElementRecord>,
+    request: &ElementFindRequest,
+) -> Result<AccessibilityTreeResult, String> {
+    if !unsafe { AXIsProcessTrusted() } {
+        return Err("permission_denied: macOS Accessibility permission is not granted".to_string());
+    }
+    let clock = ObservationClock {
+        started: Instant::now(),
+    };
+    let deadline = AxObservationDeadline::new();
+    let window = exact_ax_window(surface, &deadline)?;
+    let source = MacAxSource {
+        deadline: &deadline,
+    };
+    let start = match root {
+        Some(root) => resolve_element(&source, window, root)?,
+        None => window,
+    };
+    find(
+        &source,
+        &clock,
+        start,
+        surface_id,
+        root,
+        &request.query(),
+        FindBounds {
+            limit: request.limit,
+            max_depth: request.max_depth,
+            max_visited: MAX_FIND_VISITED,
+            max_children_per_node: MAX_FIND_CHILDREN_PER_NODE,
+            soft_budget: FIND_SOFT_BUDGET,
+        },
+    )
+}
+
 #[cfg(target_os = "macos")]
 pub(super) fn resolve_correlated_element(
     surface: &SurfaceRecord,
