@@ -232,9 +232,9 @@ export function SkillsPage({ api, project, helperReady }: { api: DesktopApi; pro
     ? (catalog.discovery_truncated ? `Skill 探索已達上限；另有 ${catalog.invalid_count} 個無效套件未納入 catalog。` : `有 ${catalog.invalid_count} 個無效 Skill 套件未納入 catalog。`) : null;
 
   return <div className="skills-page">
-    <div className="skills-header"><h2>Skills</h2>
-      <div className="skill-actions"><button className="text-button" disabled={skillsLoading || !helperReady} onClick={() => { void loadSkills(); }}>重新整理 ↻</button></div></div>
-    <p className="panel-note">目前專案可用的重複使用流程。Chadex 只探索與比對 metadata，被選中使用時才讀取 SKILL.md。Skills 是流程，不是權限來源；Project Instructions 與 Chadex 的授權邊界仍然有效。</p>
+    {/* The page heading already says "Skills"; this row only carries the explanation and refresh. */}
+    <div className="skills-header"><p className="panel-note">目前專案可用的重複使用流程。Chadex 只探索與比對 metadata，被選中使用時才讀取 SKILL.md。Skills 是流程，不是權限來源；Project Instructions 與 Chadex 的授權邊界仍然有效。</p>
+      <div className="skill-actions"><button className="text-button" disabled={skillsLoading || !helperReady} onClick={() => { void loadSkills(); }}>重新整理</button></div></div>
     {!project && <p className="panel-note">請先到「專案」選擇資料夾，才能查看 Skills 與匯入 ZIP。</p>}
 
     <section className="panel"><div className="panel-heading"><h2>外部 Skill 來源</h2>

@@ -240,6 +240,25 @@ footer { display: flex; justify-content: space-between; gap: 16px; font-size: 12
   .circuit-node { width: 84px; } .circuit-node small { display: none; }
   .facts > div { grid-template-columns: 1fr; gap: 4px; } .filter-row { flex-direction: column; align-items: stretch; gap: 0; } .project-row .badge { display: none; }
 }
+/* Windows 11 Mica: the window backdrop shows through the sidebar; content sits on
+   Fluent's translucent layer. Only set when Windows 11 is detected (backdrop.ts). */
+:root { --layer: transparent; --layer-line: transparent; }
+:root[data-backdrop="mica"] { --layer: rgba(255, 255, 255, .5); --layer-line: rgba(0, 0, 0, .06); }
+:root[data-backdrop="mica"][data-theme="dark"] { --layer: rgba(58, 58, 58, .3); --layer-line: rgba(0, 0, 0, .1); }
+@media (prefers-color-scheme: dark) { :root[data-backdrop="mica"]:not([data-theme="light"]) { --layer: rgba(58, 58, 58, .3); --layer-line: rgba(0, 0, 0, .1); } }
+:root[data-backdrop="mica"], :root[data-backdrop="mica"] body { background: transparent; }
+:root[data-backdrop="mica"] .workspace { background: var(--layer); border-top-left-radius: 8px; border: 1px solid var(--layer-line); border-right: 0; border-bottom: 0; margin-top: 8px; }
+
+/* Fluent ToggleSwitch look for on/off settings; still a native checkbox for keyboard and screen readers. */
+.setting-row input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 40px; height: 20px; border-radius: 10px; margin: 0;
+  border: 1px solid var(--muted); background: transparent; position: relative; flex-shrink: 0; cursor: pointer; transition: background 120ms; }
+.setting-row input[type="checkbox"]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: transform 120ms; }
+.setting-row input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+.setting-row input[type="checkbox"]:checked::after { transform: translateX(20px); background: var(--on-accent); }
+.setting-row input[type="checkbox"]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.row-chevron { color: var(--muted); }
+.empty-glyph .icon { margin: 0 auto; }
+
 .skill-list { list-style: none; margin: 12px 0 0; padding: 0; }
 .skill-row { padding: 14px 0; border-top: 1px solid var(--line); }
 .skill-title { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; font-size: 13px; }
@@ -257,7 +276,7 @@ footer { display: flex; justify-content: space-between; gap: 16px; font-size: 12
 .skill-import-cta { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 14px 16px; border-radius: 8px; background: var(--accent-soft); font-size: 12px; }
 .skill-import-cta p { margin: 0; flex: 1; min-width: 200px; }
 .skills-page { max-width: 960px; margin: 0 auto; }
-.skills-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.skills-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; } .skills-header .panel-note { margin-top: 0; max-width: 760px; }
 .skill-cards { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .skill-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
 .skill-card .skill-meta { margin: 5px 0 0; line-height: 1.5; }

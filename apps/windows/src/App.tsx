@@ -9,6 +9,7 @@ import { isBroadProjectPath } from './projectPath';
 import { ActivityTimeline } from './ActivityTimeline';
 import { ConnectionCircuit } from './ConnectionCircuit';
 import { Icon, type IconName } from './icons';
+import { syncWindowTheme } from './backdrop';
 
 type Page = 'home' | 'projects' | 'project' | 'skills' | 'connection' | 'activity' | 'settings' | 'diagnostics' | 'updates';
 const titles: Record<Page, string> = { home: '總覽', projects: '專案', project: '專案詳情', skills: 'Skills', connection: '連線', activity: '活動紀錄', settings: '設定', diagnostics: '診斷', updates: '版本與更新' };
@@ -33,7 +34,7 @@ function Panel({ title, children, action, className = '' }: { title: string; chi
   return <section className={`panel ${className}`}><div className="panel-heading"><h2>{title}</h2>{action}</div>{children}</section>;
 }
 function Empty({ title, children }: { title: string; children: ReactNode }) {
-  return <div className="empty"><span className="empty-glyph" aria-hidden="true">▱</span><h2>{title}</h2><p>{children}</p></div>;
+  return <div className="empty"><span className="empty-glyph"><Icon name="folder" size={32} /></span><h2>{title}</h2><p>{children}</p></div>;
 }
 function Facts({ items }: { items: [string, ReactNode][] }) {
   return <dl className="facts">{items.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
@@ -98,7 +99,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
     void api.prewarmRuntime().catch((error) => { console.debug('runtime prewarm skipped', safeError(error)); })
       .finally(() => { void store.refresh(); });
   }, [api, store, snapshot, helperRunning, prefs.prepare_service_on_launch]);
-  useEffect(() => { document.documentElement.dataset.theme = prefs.theme; }, [prefs.theme]);
+  useEffect(() => { document.documentElement.dataset.theme = prefs.theme; syncWindowTheme(prefs.theme); }, [prefs.theme]);
   useEffect(() => { setTunnelId(prefs.tunnel_id); }, [prefs.tunnel_id]);
   useEffect(() => { if (page !== 'connection') setCredential(''); }, [page]);
   useEffect(() => {
@@ -189,7 +190,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
       <button className={`version-link ${page === 'updates' ? 'active' : ''}`} onClick={() => setPage('updates')}>Windows Desktop <span>{view.desktop ? `v${view.desktop.version}` : '版本未確認'}</span></button>
     </aside>
     <div className="workspace">
-      <header className="topbar"><div className={`topbar-inner${page === 'skills' ? ' narrow' : ''}`}><span>本地工作空間 <span className="crumb">/ {titles[page]}</span></span><div><Badge tone={connection.tone}>{!snapshot ? '連線狀態未確認' : connection.verified ? 'ChatGPT 已驗證' : !local.ready ? local.label : snapshot.tunnel_ready ? '等待驗證' : '尚未連線'}</Badge><button className="icon-button" title="重新整理狀態" aria-label="重新整理狀態" disabled={Boolean(busy)} onClick={() => { void store.refresh(); }}><Icon name="refresh" size={18} /></button></div></div></header>
+      <header className="topbar"><div className={`topbar-inner${page === 'skills' ? ' narrow' : ''}`}><span /><div><Badge tone={connection.tone}>{!snapshot ? '連線狀態未確認' : connection.verified ? 'ChatGPT 已驗證' : !local.ready ? local.label : snapshot.tunnel_ready ? '等待驗證' : '尚未連線'}</Badge><button className="icon-button" title="重新整理狀態" aria-label="重新整理狀態" disabled={Boolean(busy)} onClick={() => { void store.refresh(); }}><Icon name="refresh" size={18} /></button></div></div></header>
       <main id="main" className={page === 'skills' ? 'narrow' : undefined}><div className="page-heading"><div><h1>{titles[page]}</h1><p>{pageNotes[page]}</p></div>{page === 'projects' && <button className="primary" disabled={!editable} onClick={() => { void chooseProject(); }}>選擇資料夾…</button>}</div>
         {view.error && <div className="notice error" role="alert"><strong>無法取得目前狀態</strong><p>{view.error}</p><button disabled={Boolean(busy)} onClick={() => { void store.refresh(); }}>重試</button></div>}
         {view.desktop && view.desktop.helper.state !== 'running' && <div className="notice error" role="alert"><strong>Helper {view.desktop.helper.state === 'failed' ? '異常結束' : view.desktop.helper.state === 'stopping' ? '正在停止' : '已停止'}</strong><p>{safeError(view.desktop.helper.error ?? '本地服務暫時無法使用。')}</p><button disabled={Boolean(busy) || view.desktop.helper.state === 'stopping'} onClick={() => { void run('重新啟動 Helper', api.restartHelper); }}>重新啟動 Helper</button></div>}
@@ -226,20 +227,20 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
           </div>
         </>}
 
-        {page === 'projects' && <Panel title="本地專案"><p className="panel-note">資料夾的實際存取權限由本地服務檢查。</p>{prefs.recent_projects.length ? <div className="project-list">{prefs.recent_projects.map((path) => <button key={path} className="project-row" disabled={!editable} onClick={() => inspect(path)}><span className="folder-icon" aria-hidden="true">▱</span><span><strong>{basename(path)}</strong><small>{path}</small></span>{path === project?.path && <Badge tone="good">目前專案</Badge>}<span aria-hidden="true">→</span></button>)}</div> : <Empty title="還沒有專案">使用右上角「選擇資料夾」加入本地專案。</Empty>}</Panel>}
+        {page === 'projects' && <Panel title="本地專案"><p className="panel-note">資料夾的實際存取權限由本地服務檢查。</p>{prefs.recent_projects.length ? <div className="project-list">{prefs.recent_projects.map((path) => <button key={path} className="project-row" disabled={!editable} onClick={() => inspect(path)}><span className="folder-icon"><Icon name="folder" size={24} /></span><span><strong>{basename(path)}</strong><small>{path}</small></span>{path === project?.path && <Badge tone="good">目前專案</Badge>}<Icon name="chevron" size={16} className="row-chevron" /></button>)}</div> : <Empty title="還沒有專案">使用右上角「選擇資料夾」加入本地專案。</Empty>}</Panel>}
 
         {page === 'project' && (detail ? <>
           <Panel title={basename(detail.path)} action={<Badge tone={detail.path === project?.path ? 'good' : 'quiet'}>{detail.path === project?.path ? '目前專案' : '檢查結果'}</Badge>}><p className="path-block">{detail.path}</p><Facts items={[
             ['允許操作範圍', <code>{detail.allowed_root}</code>], ['Git 儲存庫', detail.is_git_repository ? '是' : '否'],
             ['讀取權限', detail.readable ? '可讀取' : '不可讀取'], ['寫入權限', detail.writable ? '可寫入' : '不可寫入'],
-          ]} /><div className="button-row"><button className="primary" disabled={!editable || !detail.readable || !detail.writable || detail.path === project?.path} onClick={() => activate(detail.path)}>設為目前專案</button><button disabled={!editable || detail.path !== project?.path} onClick={() => { void run('開啟檔案總管', () => api.openProject(detail.path), false); }}>在檔案總管開啟 ↗</button><button onClick={() => setPage('connection')}>連線設定</button></div></Panel>
+          ]} /><div className="button-row"><button className="primary" disabled={!editable || !detail.readable || !detail.writable || detail.path === project?.path} onClick={() => activate(detail.path)}>設為目前專案</button><button disabled={!editable || detail.path !== project?.path} onClick={() => { void run('開啟檔案總管', () => api.openProject(detail.path), false); }}>在檔案總管開啟<Icon name="external" size={16} /></button><button onClick={() => setPage('connection')}>連線設定</button></div></Panel>
           {detail.path === project?.path && <Panel title="本地服務"><Facts items={statusRows.slice(1)} /><div className="button-row"><button disabled={!editable} onClick={() => { void runtime(snapshot?.runtime_status?.runtime_configured ? 'resumeService' : 'configureLocalSetup', '準備本地服務'); }}>準備／恢復服務</button><button className="danger" disabled={!editable} onClick={() => { void runtime('stopLocalService', '停止本地服務'); }}>停止本地服務</button></div></Panel>}
         </> : <Empty title="尚未選擇專案">到「專案」選擇資料夾，查看實際檢查結果。</Empty>)}
 
         {page === 'skills' && <SkillsPage api={api} project={project?.path ?? null} helperReady={helperRunning} />}
 
         {page === 'connection' && <>
-          <Panel title="ChatGPT 連線" action={<Badge tone={connection.tone}>{connection.label}</Badge>}><Facts items={[
+          <Panel title="ChatGPT 連線" action={<Badge tone={connection.tone}>{connection.label}</Badge>}><ConnectionCircuit snapshot={snapshot} verified={connection.verified} /><Facts items={[
             ['目前專案', project?.path ?? '尚未選擇'], ['本地服務', local.label], ['Tunnel', snapshot?.tunnel_ready ? '可用' : '尚未確認可用'],
             ['連線階段', snapshot?.phase ?? '狀態未確認'], ['最近專案驗證', date(snapshot?.last_verified_at_ms)],
           ]} /><p className="panel-note">Tunnel 可用後，仍需由 ChatGPT 對目前專案進行實際驗證。切換專案後會重新確認。</p><div className="button-row"><button className="primary" disabled={!editable || !project || !view.desktop?.credential_stored || !prefs.tunnel_id || Boolean(snapshot?.current_operation)} onClick={() => { void runtime('connectChatGPT', '連接 ChatGPT'); }}>連接 ChatGPT</button><button disabled={!editable || !project || !view.desktop?.credential_stored || !prefs.tunnel_id} onClick={() => { void runtime('startTunnel', '啟動 Tunnel'); }}>啟動 Tunnel</button><button disabled={!editable || !project} onClick={() => { void runtime('observeChatGPTActivity', '檢查 ChatGPT 驗證'); }}>重新檢查驗證</button><button className="danger" disabled={!editable} onClick={() => { void runtime('disconnectAI', '中斷 AI 連線'); }}>中斷連線</button></div></Panel>
@@ -261,7 +262,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
           </Panel>
           <Panel title="桌面偏好"><form onSubmit={(event) => { event.preventDefault(); if (prefsDraft) void run('儲存偏好', async () => { const latest = store.getSnapshot().desktop?.preferences ?? prefs; await api.savePreferences({ ...latest, restore_project: prefsDraft.restore_project, launch_at_login: prefsDraft.launch_at_login, notifications: prefsDraft.notifications, ferret_visible: prefsDraft.ferret_visible, ferret_motion: prefsDraft.ferret_motion, prepare_service_on_launch: prefsDraft.prepare_service_on_launch ?? true, theme: prefsDraft.theme }); setPrefsDraft(null); }); }}>
             {([['restore_project', '啟動時恢復上次專案', '回到上一次使用的本地工作範圍。'], ['launch_at_login', '登入時啟動 Chadex', '由桌面應用程式管理系統登入設定。'], ['notifications', '桌面通知', '允許桌面應用程式顯示服務通知。'], ['ferret_visible', '顯示 Code Ferret', '在側欄呈現實際任務狀態。'], ['ferret_motion', 'Code Ferret 動畫', '降低動態效果時也會自動停用。'], ['prepare_service_on_launch', '啟動時在背景準備本機服務（加快連接）', '只會恢復你設定過且未手動停止的服務；下次啟動生效。']] as const).map(([key, label, hint]) => <label className="setting-row" key={key}><span><strong>{label}</strong><small>{hint}</small></span><input type="checkbox" disabled={!prefsEditable} checked={(prefsDraft ?? prefs)[key] ?? true} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), [key]: event.target.checked })} /></label>)}
-            <label className="setting-row"><span><strong>外觀</strong><small>選擇淺色、深色或跟隨系統。</small></span><select disabled={!prefsEditable} value={(prefsDraft ?? prefs).theme} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), theme: event.target.value as Preferences['theme'] })}><option value="system">跟隨系統</option><option value="light">淺色</option><option value="dark">深色</option></select></label><div className="button-row"><button className="primary" type="submit" disabled={!prefsEditable || !prefsDraft}>儲存偏好</button><button type="button" disabled={!prefsDraft || Boolean(busy)} onClick={() => setPrefsDraft(null)}>取消變更</button></div></form></Panel>
+            <label className="setting-row"><span><strong>外觀</strong><small>選擇淺色、深色或跟隨系統。</small></span><select disabled={!prefsEditable} value={(prefsDraft ?? prefs).theme} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), theme: event.target.value as Preferences['theme'] })}><option value="dark">深色</option><option value="light">淺色</option><option value="system">跟隨系統</option></select></label><div className="button-row"><button className="primary" type="submit" disabled={!prefsEditable || !prefsDraft}>儲存偏好</button><button type="button" disabled={!prefsDraft || Boolean(busy)} onClick={() => setPrefsDraft(null)}>取消變更</button></div></form></Panel>
           <Panel title="應用程式"><div className="button-row"><button onClick={() => setPage('updates')}>版本與更新</button><button onClick={() => setPage('diagnostics')}>診斷資訊</button><button disabled={Boolean(busy)} onClick={() => { void run('結束 Chadex', api.quitApp, false); }}>結束 Chadex</button></div></Panel>
         </>}
 
