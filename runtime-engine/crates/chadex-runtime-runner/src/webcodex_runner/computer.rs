@@ -19,9 +19,16 @@ use webcodex_core::runner_operation::{RunnerComputerOperation, RunnerComputerOpe
 fn computer_runtime() -> &'static ComputerRuntime {
     static COMPUTER: OnceLock<ComputerRuntime> = OnceLock::new();
     COMPUTER.get_or_init(|| {
-        ComputerRuntime::new(ComputerConfig {
+        let runtime = ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: MAX_MCP_IMAGE_BYTES,
-        })
+        });
+        // The cursor overlay is macOS-only and only active when the helper started
+        // this runner with the private stdout channel (see computer_overlay.rs).
+        #[cfg(target_os = "macos")]
+        if let Some(sink) = super::computer_overlay::installed_sink() {
+            return runtime.with_overlay_sink(sink);
+        }
+        runtime
     })
 }
 

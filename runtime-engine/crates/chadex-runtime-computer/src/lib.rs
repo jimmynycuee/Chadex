@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 #[cfg(any(test, target_os = "macos"))]
 use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -93,6 +94,13 @@ fn validate_key_input(key: &str, modifiers: &[String]) -> Result<(), String> {
 const MAX_ACCESSIBILITY_DEPTH: usize = 8;
 const MAX_ACCESSIBILITY_NODES: usize = 256;
 pub const DEFAULT_ACCESSIBILITY_DEPTH: usize = 6;
+pub mod overlay;
+pub use overlay::{
+    overlay_outcome, ComputerOverlayEvent, ComputerOverlaySink, OverlayAction, OverlayDisplay,
+    OverlayKey, OverlayOutcome, OverlayTarget,
+};
+use overlay::OverlayActionGuard;
+
 pub const DEFAULT_ACCESSIBILITY_NODES: usize = 128;
 const RGBA_BYTES_PER_PIXEL: u64 = 4;
 /// Pre-capture ceiling for the expected complete raw RGBA frame. Standard
@@ -928,6 +936,42 @@ fn dispatch_after_spending_pointer_generation(
     dispatch(snapshots)
 }
 
+/// Overlay frame for a pointer plan: the CG global point plus the display the
+/// runtime mapped it onto. Plain data, no native calls.
+#[cfg(target_os = "macos")]
+fn pointer_plan_overlay_frame(plan: &PointerPlan) -> (OverlayTarget, Option<OverlayDisplay>) {
+    (
+        OverlayTarget::point(plan.target_x, plan.target_y),
+        Some(OverlayDisplay {
+            id: plan.native_display_id,
+            bounds: (
+                plan.bounds_origin_x,
+                plan.bounds_origin_y,
+                plan.bounds_width,
+                plan.bounds_height,
+            ),
+        }),
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn pointer_plan_overlay_frame(_plan: &PointerPlan) -> (OverlayTarget, Option<OverlayDisplay>) {
+    (OverlayTarget::None, None)
+}
+
+/// Orders the overlay around a pointer effect: the final sensitive-surface check
+/// runs first (a refusal emits nothing), then `will_act`, then the dispatch.
+fn pointer_effect_with_overlay<T>(
+    overlay: &mut OverlayActionGuard,
+    ensure_not_sensitive: impl FnOnce() -> Result<(), String>,
+    read_frame: impl FnOnce() -> (OverlayTarget, Option<OverlayDisplay>),
+    dispatch: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    ensure_not_sensitive()?;
+    overlay.begin(read_frame);
+    dispatch()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ComputerConfig {
     pub max_encoded_image_bytes: usize,
@@ -940,6 +984,10 @@ pub struct ComputerRuntime {
     applications: Mutex<HashMap<String, ApplicationRecord>>,
     displays: Mutex<HashMap<String, DisplayRecord>>,
     display_snapshots: Mutex<DisplaySnapshotRegistry>,
+    /// Best-effort cursor overlay receiver. Never part of `ComputerConfig`
+    /// (that is `Copy + PartialEq`); `None` keeps every action overlay-free.
+    overlay: Option<Arc<dyn ComputerOverlaySink>>,
+    overlay_action_ids: AtomicU64,
 }
 
 impl ComputerRuntime {
@@ -951,7 +999,25 @@ impl ComputerRuntime {
             applications: Mutex::new(HashMap::new()),
             displays: Mutex::new(HashMap::new()),
             display_snapshots: Mutex::new(DisplaySnapshotRegistry::default()),
+            overlay: None,
+            overlay_action_ids: AtomicU64::new(0),
         }
+    }
+
+    /// Install the cursor overlay sink. The sink must never block.
+    pub fn with_overlay_sink(mut self, sink: Arc<dyn ComputerOverlaySink>) -> Self {
+        self.overlay = Some(sink);
+        self
+    }
+
+    fn overlay_guard(&self, action: OverlayAction) -> OverlayActionGuard {
+        // Ids are only consumed when a sink exists so the no-overlay path stays untouched.
+        let action_id = if self.overlay.is_some() {
+            self.overlay_action_ids.fetch_add(1, Ordering::Relaxed) + 1
+        } else {
+            0
+        };
+        OverlayActionGuard::new(self.overlay.clone(), action_id, action)
     }
 
     pub fn read_clipboard(&self) -> Result<Value, String> {
@@ -1187,6 +1253,31 @@ impl ComputerRuntime {
         x: u32,
         y: u32,
     ) -> Result<Value, String> {
+        let mut guard = self.overlay_guard(match action {
+            PointerAction::Move => OverlayAction::Move,
+            PointerAction::Click => OverlayAction::Click,
+        });
+        let result = self.pointer_effect_inner(
+            action,
+            display_id,
+            snapshot_generation,
+            x,
+            y,
+            &mut guard,
+        );
+        guard.finish(&result);
+        result
+    }
+
+    fn pointer_effect_inner(
+        &self,
+        action: PointerAction,
+        display_id: &str,
+        snapshot_generation: u32,
+        x: u32,
+        y: u32,
+        overlay: &mut OverlayActionGuard,
+    ) -> Result<Value, String> {
         if !valid_display_id(display_id) || snapshot_generation == 0 {
             return Err(
                 "invalid_request: pointer display_id or snapshot_generation is invalid".to_string(),
@@ -1219,21 +1310,32 @@ impl ComputerRuntime {
 
         // All native identity/mapping/shared-input checks occur before the effect boundary.
         let plan = platform::prepare_pointer(&display, x, y, action)?;
-
+        let frame = pointer_plan_overlay_frame(&plan);
         #[cfg(target_os = "macos")]
-        platform::ensure_pointer_target_not_sensitive(plan.target_x, plan.target_y)?;
+        let (sensitive_x, sensitive_y) = (plan.target_x, plan.target_y);
 
         // Crossing this boundary consumes the snapshot generation before the first native
         // pointer effect, even if dispatch subsequently reports definite not_started or an uncertain outcome.
-        let result = dispatch_after_spending_pointer_generation(
-            &mut snapshot_registry,
-            display_id,
-            snapshot_generation,
-            &display,
-            |_| platform::dispatch_pointer(plan, action),
+        // The overlay `will_act` is emitted after the last sensitive-surface check and
+        // before the generation is spent; it never waits for the App.
+        let result = pointer_effect_with_overlay(
+            overlay,
+            || {
+                #[cfg(target_os = "macos")]
+                platform::ensure_pointer_target_not_sensitive(sensitive_x, sensitive_y)?;
+                Ok(())
+            },
+            move || frame,
+            || {
+                dispatch_after_spending_pointer_generation(
+                    &mut snapshot_registry,
+                    display_id,
+                    snapshot_generation,
+                    &display,
+                    |_| platform::dispatch_pointer(plan, action),
+                )
+            },
         )?;
-        drop(snapshot_registry);
-        drop(display_registry);
         Ok(json!({
             "platform": pointer_output_platform(),
             "display_id": display_id,
@@ -1243,6 +1345,7 @@ impl ComputerRuntime {
             "success": result,
         }))
     }
+
     pub fn launch_application(&self, application_id: &str) -> Result<Value, String> {
         self.with_current_application(application_id, |record| {
             platform::launch_application(application_id, record)
@@ -1384,7 +1487,10 @@ impl ComputerRuntime {
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
         ensure_surface_not_sensitive(&record)?;
-        platform::activate_window(surface_id, &record)
+        let mut guard = self.overlay_guard(OverlayAction::Activate);
+        let result = overlay_platform::activate_window(surface_id, &record, &mut guard);
+        guard.finish(&result);
+        result
     }
 
     pub fn control(
@@ -1420,7 +1526,20 @@ impl ComputerRuntime {
         if element.surface_id != surface_id {
             return Err("stale_element: element_id belongs to a different surface".to_string());
         }
-        platform::control(surface_id, element_id, &record, &element, action)
+        let mut guard = self.overlay_guard(match action {
+            ComputerAction::Press => OverlayAction::Press,
+            ComputerAction::Focus => OverlayAction::Focus,
+        });
+        let result = overlay_platform::control(
+            surface_id,
+            element_id,
+            &record,
+            &element,
+            action,
+            &mut guard,
+        );
+        guard.finish(&result);
+        result
     }
 
     pub fn scroll_to_element(&self, surface_id: &str, element_id: &str) -> Result<Value, String> {
@@ -1451,7 +1570,16 @@ impl ComputerRuntime {
         if element.surface_id != surface_id {
             return Err("stale_element: element_id belongs to a different surface".to_string());
         }
-        platform::scroll_to_element(surface_id, element_id, &record, &element)
+        let mut guard = self.overlay_guard(OverlayAction::Scroll);
+        let result = overlay_platform::scroll_to_element(
+            surface_id,
+            element_id,
+            &record,
+            &element,
+            &mut guard,
+        );
+        guard.finish(&result);
+        result
     }
 
     pub fn key_input(
@@ -1473,7 +1601,15 @@ impl ComputerRuntime {
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
         ensure_surface_not_sensitive(&record)?;
-        platform::key_input(surface_id, &record, key, modifiers)
+        let mut guard = self
+            .overlay_guard(OverlayAction::Key)
+            .with_key(OverlayKey {
+                name: key.to_string(),
+                modifiers: modifiers.to_vec(),
+            });
+        let result = overlay_platform::key_input(surface_id, &record, key, modifiers, &mut guard);
+        guard.finish(&result);
+        result
     }
 
     pub fn input_text(
@@ -1510,7 +1646,17 @@ impl ComputerRuntime {
         if element.surface_id != surface_id {
             return Err("stale_element: element_id belongs to a different surface".to_string());
         }
-        platform::input_text(surface_id, element_id, &record, &element, text)
+        let mut guard = self.overlay_guard(OverlayAction::Input);
+        let result = overlay_platform::input_text(
+            surface_id,
+            element_id,
+            &record,
+            &element,
+            text,
+            &mut guard,
+        );
+        guard.finish(&result);
+        result
     }
 
     pub fn snapshot(
@@ -3325,8 +3471,270 @@ mod unsupported_platform_tests {
     }
 }
 
+#[cfg(test)]
+mod overlay_runtime_tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct LogSink {
+        log: Arc<Mutex<Vec<String>>>,
+        events: Mutex<Vec<ComputerOverlayEvent>>,
+    }
+
+    impl ComputerOverlaySink for LogSink {
+        fn emit(&self, event: ComputerOverlayEvent) {
+            let label = match &event {
+                ComputerOverlayEvent::WillAct { .. } => "will_act",
+                ComputerOverlayEvent::Finished { .. } => "finished",
+            };
+            self.log.lock().unwrap().push(label.to_string());
+            self.events.lock().unwrap().push(event);
+        }
+    }
+
+    fn runtime_with_sink() -> (ComputerRuntime, Arc<LogSink>) {
+        let sink = Arc::new(LogSink::default());
+        let runtime = ComputerRuntime::new(ComputerConfig {
+            max_encoded_image_bytes: usize::MAX,
+        })
+        .with_overlay_sink(sink.clone());
+        (runtime, sink)
+    }
+
+    fn surface(application: &str, title: &str) -> SurfaceRecord {
+        SurfaceRecord {
+            native_id: 1,
+            pid: 1,
+            identity_hash: [0; 32],
+            application: application.to_string(),
+            title: title.to_string(),
+            width: 640,
+            height: 480,
+        }
+    }
+
+    #[test]
+    fn pointer_effect_orders_sensitive_check_then_will_act_then_dispatch_then_finished() {
+        let sink = Arc::new(LogSink::default());
+        let log = sink.log.clone();
+        let dyn_sink: Arc<dyn ComputerOverlaySink> = sink.clone();
+        let mut guard = OverlayActionGuard::new(Some(dyn_sink), 1, OverlayAction::Click);
+        let result = pointer_effect_with_overlay(
+            &mut guard,
+            || {
+                log.lock().unwrap().push("sensitive_check".to_string());
+                Ok(())
+            },
+            || (OverlayTarget::point(10.0, 20.0), None),
+            || {
+                log.lock().unwrap().push("dispatch".to_string());
+                Ok(true)
+            },
+        );
+        guard.finish(&result.map(|success| json!({"success": success})));
+        assert_eq!(
+            *log.lock().unwrap(),
+            ["sensitive_check", "will_act", "dispatch", "finished"]
+        );
+    }
+
+    #[test]
+    fn pointer_effect_refused_by_sensitive_check_emits_nothing_and_never_dispatches() {
+        let sink = Arc::new(LogSink::default());
+        let dyn_sink: Arc<dyn ComputerOverlaySink> = sink.clone();
+        let mut guard = OverlayActionGuard::new(Some(dyn_sink), 1, OverlayAction::Click);
+        let dispatched = std::cell::Cell::new(false);
+        let result: Result<bool, String> = pointer_effect_with_overlay(
+            &mut guard,
+            || {
+                Err("permission_denied: pointer target intersects a sensitive Computer surface"
+                    .to_string())
+            },
+            || panic!("frame must not be read when the check refuses"),
+            || {
+                dispatched.set(true);
+                Ok(true)
+            },
+        );
+        guard.finish(&result.map(|success| json!({"success": success})));
+        drop(guard);
+        assert!(!dispatched.get());
+        assert!(sink.log.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn pointer_effect_dispatch_failure_after_will_act_reports_the_real_outcome() {
+        let sink = Arc::new(LogSink::default());
+        let dyn_sink: Arc<dyn ComputerOverlaySink> = sink.clone();
+        let mut guard = OverlayActionGuard::new(Some(dyn_sink), 1, OverlayAction::Click);
+        let result: Result<bool, String> = pointer_effect_with_overlay(
+            &mut guard,
+            || Ok(()),
+            || (OverlayTarget::None, None),
+            || Err("not_started: macOS click plan is incomplete".to_string()),
+        );
+        guard.finish(&result.map(|success| json!({"success": success})));
+        let events = sink.events.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events[1],
+            ComputerOverlayEvent::Finished {
+                action_id: 1,
+                outcome: OverlayOutcome::NotStarted
+            }
+        );
+    }
+
+    #[test]
+    fn rejected_requests_never_produce_overlay_events() {
+        let (runtime, sink) = runtime_with_sink();
+        assert!(runtime
+            .pointer_effect(PointerAction::Click, "not-a-display", 0, 0, 0)
+            .is_err());
+        assert!(runtime
+            .pointer_effect(PointerAction::Move, "display_missing", 1, 0, 0)
+            .is_err());
+        assert!(runtime.activate_window("surface_unknown").is_err());
+        assert!(runtime
+            .control("surface_unknown", "element_unknown", ComputerAction::Press)
+            .is_err());
+        assert!(runtime
+            .control("", "element_x", ComputerAction::Press)
+            .is_err());
+        assert!(runtime
+            .scroll_to_element("surface_unknown", "element_unknown")
+            .is_err());
+        assert!(runtime.key_input("surface_unknown", "enter", &[]).is_err());
+        assert!(runtime
+            .key_input("surface_unknown", "not_a_key", &[])
+            .is_err());
+        assert!(runtime
+            .input_text("surface_unknown", "element_unknown", "secret text")
+            .is_err());
+        assert!(runtime
+            .input_text("surface_unknown", "element_unknown", "")
+            .is_err());
+        assert!(sink.log.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn sensitive_surfaces_are_refused_before_any_overlay_event() {
+        let (runtime, sink) = runtime_with_sink();
+        runtime.surfaces.lock().unwrap().insert(
+            "surface_sensitive".to_string(),
+            surface("Passwords", "All Items"),
+        );
+        let error = runtime.activate_window("surface_sensitive").unwrap_err();
+        assert!(error.starts_with("permission_denied:"), "{error}");
+        let error = runtime
+            .key_input("surface_sensitive", "enter", &[])
+            .unwrap_err();
+        assert!(error.starts_with("permission_denied:"), "{error}");
+        let error = runtime
+            .control("surface_sensitive", "element_x", ComputerAction::Press)
+            .unwrap_err();
+        assert!(!error.is_empty());
+        assert!(sink.log.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn runtime_without_a_sink_allocates_no_overlay_ids() {
+        let runtime = ComputerRuntime::new(ComputerConfig {
+            max_encoded_image_bytes: usize::MAX,
+        });
+        let mut guard = runtime.overlay_guard(OverlayAction::Press);
+        assert!(!guard.is_enabled());
+        guard.begin(|| panic!("no sink means no frame read"));
+        assert_eq!(runtime.overlay_action_ids.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn runtime_guards_allocate_increasing_action_ids() {
+        let (runtime, sink) = runtime_with_sink();
+        for _ in 0..3 {
+            let mut guard = runtime.overlay_guard(OverlayAction::Press);
+            guard.begin(|| (OverlayTarget::None, None));
+            guard.finish(&Ok(json!({"success": true})));
+        }
+        let ids: Vec<u64> = sink
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|event| match event {
+                ComputerOverlayEvent::WillAct { action_id, .. } => Some(*action_id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ids, [1, 2, 3]);
+    }
+}
+
 #[cfg(any(target_os = "macos", windows))]
 mod platform;
+
+/// Platform entry points that can announce an action to the cursor overlay.
+/// Only macOS emits overlay events; other platforms never install a sink, so
+/// the shim forwards to the unchanged platform functions and ignores the guard.
+#[cfg(target_os = "macos")]
+use platform as overlay_platform;
+
+#[cfg(not(target_os = "macos"))]
+mod overlay_platform {
+    use super::{
+        platform, ComputerAction, ElementRecord, OverlayActionGuard, SurfaceRecord,
+    };
+
+    pub(super) fn activate_window(
+        surface_id: &str,
+        surface: &SurfaceRecord,
+        _overlay: &mut OverlayActionGuard,
+    ) -> Result<serde_json::Value, String> {
+        platform::activate_window(surface_id, surface)
+    }
+
+    pub(super) fn control(
+        surface_id: &str,
+        element_id: &str,
+        surface: &SurfaceRecord,
+        element: &ElementRecord,
+        action: ComputerAction,
+        _overlay: &mut OverlayActionGuard,
+    ) -> Result<serde_json::Value, String> {
+        platform::control(surface_id, element_id, surface, element, action)
+    }
+
+    pub(super) fn scroll_to_element(
+        surface_id: &str,
+        element_id: &str,
+        surface: &SurfaceRecord,
+        element: &ElementRecord,
+        _overlay: &mut OverlayActionGuard,
+    ) -> Result<serde_json::Value, String> {
+        platform::scroll_to_element(surface_id, element_id, surface, element)
+    }
+
+    pub(super) fn key_input(
+        surface_id: &str,
+        surface: &SurfaceRecord,
+        key: &str,
+        modifiers: &[String],
+        _overlay: &mut OverlayActionGuard,
+    ) -> Result<serde_json::Value, String> {
+        platform::key_input(surface_id, surface, key, modifiers)
+    }
+
+    pub(super) fn input_text(
+        surface_id: &str,
+        element_id: &str,
+        surface: &SurfaceRecord,
+        element: &ElementRecord,
+        text: &str,
+        _overlay: &mut OverlayActionGuard,
+    ) -> Result<serde_json::Value, String> {
+        platform::input_text(surface_id, element_id, surface, element, text)
+    }
+}
 
 #[cfg(all(test, windows))]
 #[path = "windows_uia_tests.rs"]

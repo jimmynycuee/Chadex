@@ -105,12 +105,18 @@ fn live_focus_control_smoke(application_matches: impl Fn(&str) -> bool) -> bool 
         })
         .take(16)
     {
+        let mut overlay = crate::overlay::OverlayActionGuard::new(
+            None,
+            0,
+            crate::overlay::OverlayAction::Focus,
+        );
         match platform::control(
             surface_id,
             &element_id,
             &record,
             &element,
             ComputerAction::Focus,
+            &mut overlay,
         ) {
             Ok(output) => {
                 assert_eq!(output["action"], "focus");
