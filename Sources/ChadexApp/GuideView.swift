@@ -148,7 +148,7 @@ struct GuideView: View {
 
                         if model.snapshot.tunnelReady {
                             Label(L10n.string("status.readyToUse"), systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(.primary, .green)
                                 .chadexFont(.callout, weight: .medium)
                         } else if credentialsReady && projectReady {
                             Button(L10n.string("connection.connect")) {

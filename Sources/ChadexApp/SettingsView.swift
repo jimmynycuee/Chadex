@@ -677,7 +677,8 @@ private struct AdvancedSettingsView: View {
 
                     SettingsFormRow(L10n.string("settings.graphify")) {
                         if let graphify = model.snapshot.graphify {
-                            VStack(alignment: .trailing, spacing: 2) {
+                            // Value column reads left-aligned like every other row.
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(graphify.available
                                     ? L10n.string("settings.graphifyAvailable")
                                     : L10n.string("settings.graphifyNotFound"))

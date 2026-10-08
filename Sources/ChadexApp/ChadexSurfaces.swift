@@ -414,6 +414,15 @@ struct ConnectionAmbience: View {
                 startRadius: 0,
                 endRadius: 520
             )
+            // The richest color sits under the sidebar, where there is no
+            // body copy: the thick sidebar glass needs saturated content
+            // beneath it to show the state at all.
+            RadialGradient(
+                colors: [tint.opacity(strength * 2.2), tint.opacity(strength * 0.8), tint.opacity(0)],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 760
+            )
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.8), value: tint)
         .chadexExtendsUnderSidebar()

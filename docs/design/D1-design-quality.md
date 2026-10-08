@@ -146,3 +146,9 @@ A4／B4／C4／D4／E4，無 Critical／High：依第 1 節門檻屬 AI reviewer
 2. **只有連上 ChatGPT 後才有漸層**：未連線原本是灰色洗色，幾乎看不見。洗色改為視窗層級（`RootView` detail 背景），每個狀態都有顏色：未連線為品牌青色（0.7 強度）、連線中青色、已驗證綠色、錯誤紅色；切換頁面時不再閃現或消失（同時解決 L1）。
 3. **Liquid Glass 不明顯**：macOS 26 起不再安裝 `SidebarSplitViewAlignmentBridge`（它會強制調整 split view 位置，與系統浮動側欄衝突），交由系統處理側欄。待實機確認。
 4. **使用指南設計語言不一致**：改用 `ChadexPageHeader`（與其他頁同字級）、每組步驟放進卡片並以 `SectionTitle` 標示、移除群組間分隔線；完成提示由綠色文字改為 primary 文字＋綠色符號。
+
+## 12. 使用者第二次實機回饋（SDK 27 預覽版）
+
+- 確認：每頁都有狀態洗色、按鈕字級隨介面大小放大、toolbar 按鈕為 Liquid Glass。
+- 側欄仍像一片灰：以 SDK 27 探針（`scratchpad/probe`）實測，SwiftUI `NavigationSplitView` 的側欄確實包在 `NSGlassEffectView` 內，detail 也延伸到側欄底下；問題是側欄玻璃較厚，而洗色在左側太淡。改為在左上（側欄下方、沒有內文的區域）加一層較飽和的 radial glow。
+- 使用指南第 4 步「已可開始使用」綠色文字 → primary 文字＋綠色符號；Settings › 進階「Graphify CLI」值改為靠左對齊。
