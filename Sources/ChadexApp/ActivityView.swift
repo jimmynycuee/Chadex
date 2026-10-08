@@ -20,7 +20,7 @@ struct ActivityView: View {
                             model.activitySearch = ""
                             model.activityFilter = .all
                         }
-                        .controlSize(.regular)
+                        .chadexControlSize(.regular)
                         .padding(.top, 4)
                     } else {
                         Text(L10n.string("activity.emptyHint"))
@@ -47,7 +47,7 @@ struct ActivityView: View {
                     Text(L10n.string("activity.warningsErrors")).tag(AppModel.ActivityFilter.warningsAndErrors)
                 }
                 .pickerStyle(.menu)
-                .controlSize(.small)
+                .chadexControlSize(.small)
                 .labelsHidden()
                 .frame(width: 140)
             }

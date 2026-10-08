@@ -44,7 +44,7 @@ struct TaskProgressView: View {
                                 : L10n.string("common.cancel"))
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                         .disabled(!task.canCancel)
                     }
                 }
@@ -199,7 +199,7 @@ private struct TaskPhaseView: View {
         HStack(spacing: 6) {
             if state == .running {
                 ProgressView()
-                    .controlSize(.mini)
+                    .chadexControlSize(.mini)
                     .frame(width: layout.control(12), height: layout.control(12))
             } else {
                 Image(systemName: symbol)

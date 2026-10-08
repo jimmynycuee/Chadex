@@ -20,7 +20,7 @@ struct ProjectMemoryView: View {
 
             if model.projectMemoryLoading && model.projectMemoryCatalog == nil {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().chadexControlSize(.small)
                     Text(L10n.string("memory.loading"))
                         .chadexFont(.callout)
                         .foregroundStyle(.secondary)
@@ -94,7 +94,7 @@ struct ProjectMemoryView: View {
                 editorTarget = MemoryEditorTarget(record: nil)
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
+            .chadexControlSize(.small)
             .disabled(model.isSwitchingProject)
         }
     }
@@ -182,7 +182,7 @@ struct ProjectMemoryView: View {
                 Spacer(minLength: 10)
 
                 if model.projectMemoryMutationInFlightKeys.contains(descriptor.memoryKey) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().chadexControlSize(.small)
                 }
             }
             .contentShape(Rectangle())
@@ -205,7 +205,7 @@ struct ProjectMemoryView: View {
 
             if model.projectMemoryReadLoadingKeys.contains(descriptor.memoryKey) {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().chadexControlSize(.small)
                     Text(L10n.string("memory.loadingBody"))
                         .chadexFont(.caption)
                         .foregroundStyle(.secondary)
@@ -238,14 +238,14 @@ struct ProjectMemoryView: View {
                         editorTarget = MemoryEditorTarget(record: record)
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .chadexControlSize(.small)
                     .disabled(model.projectMemoryMutationInFlightKeys.contains(descriptor.memoryKey))
 
                     Button(L10n.string("memory.delete"), role: .destructive) {
                         deleteTarget = descriptor
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .chadexControlSize(.small)
                     .disabled(model.projectMemoryMutationInFlightKeys.contains(descriptor.memoryKey))
                 }
             }

@@ -307,7 +307,7 @@ private struct GeneralSettingsView: View {
                                     Task { await updateManager.checkForUpdates(userInitiated: true) }
                                 }
                                 .buttonStyle(.bordered)
-                                .controlSize(.small)
+                                .chadexControlSize(.small)
                                 .disabled(updateManager.isBusy)
 
                                 if let release = updateManager.availableRelease {
@@ -319,7 +319,7 @@ private struct GeneralSettingsView: View {
                                         }
                                     }
                                     .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
+                                    .chadexControlSize(.small)
                                     .disabled(updateManager.isBusy || model.hasUpdateBlockingWork)
 
                                     Link(L10n.string("updates.releaseNotes"), destination: release.releasePageURL)
@@ -348,7 +348,7 @@ private struct GeneralSettingsView: View {
                             confirmingGuideReset = true
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                     }
                 }
             }
@@ -473,7 +473,7 @@ struct ConnectionSettingsSheet: View {
 
                     if saving {
                         ProgressView()
-                            .controlSize(.small)
+                            .chadexControlSize(.small)
                     }
 
                     Button(L10n.string("settings.save")) {
@@ -574,7 +574,7 @@ struct ConnectionSettingsView: View {
 
                         if saving {
                             ProgressView()
-                                .controlSize(.small)
+                                .chadexControlSize(.small)
                         }
 
                         Button(L10n.string("settings.saveChanges")) {
@@ -731,13 +731,13 @@ private struct AdvancedSettingsView: View {
                                 Task { await model.refreshDiagnostics() }
                             }
                             .buttonStyle(.bordered)
-                            .controlSize(.small)
+                            .chadexControlSize(.small)
 
                             Button(L10n.string("settings.exportDiagnostics")) {
                                 model.exportDiagnostics()
                             }
                             .buttonStyle(.bordered)
-                            .controlSize(.small)
+                            .chadexControlSize(.small)
                         }
 
                         Text(L10n.string("settings.exportDiagnosticsNote"))
@@ -763,7 +763,7 @@ private struct AdvancedSettingsView: View {
                             model.stopLocalService()
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                         .disabled(model.connectionActionInFlight)
                     }
                 }

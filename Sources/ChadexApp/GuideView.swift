@@ -81,7 +81,7 @@ struct GuideView: View {
 
                         Toggle(L10n.string("guide.confirmOpenAIProject"), isOn: $openAIProjectConfirmed)
                             .toggleStyle(.checkbox)
-                            .controlSize(.small)
+                            .chadexControlSize(.small)
                     }
                 }
                 .id(GuideSection.openAIProject)
@@ -118,8 +118,6 @@ struct GuideView: View {
                 .id(GuideSection.credentials)
             }
 
-            Divider()
-
             GuideGroup(title: L10n.string("guide.groupChadex")) {
                 GuideStep(
                     number: 3,
@@ -131,7 +129,7 @@ struct GuideView: View {
                         model.addProjectFromPanel()
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.regular)
+                    .chadexControlSize(.regular)
                 }
                 .id(GuideSection.localProject)
 
@@ -146,7 +144,7 @@ struct GuideView: View {
                             model.showConnectionSettings()
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.regular)
+                        .chadexControlSize(.regular)
 
                         if model.snapshot.tunnelReady {
                             Label(L10n.string("status.readyToUse"), systemImage: "checkmark.circle.fill")
@@ -157,7 +155,7 @@ struct GuideView: View {
                                 model.primaryAction()
                             }
                             .buttonStyle(.borderedProminent)
-                            .controlSize(.regular)
+                            .chadexControlSize(.regular)
                             .disabled(model.connectionActionInFlight)
                         } else {
                             Text(L10n.string("guide.connectPrerequisite"))
@@ -168,8 +166,6 @@ struct GuideView: View {
                 }
                 .id(GuideSection.connection)
             }
-
-            Divider()
 
             GuideGroup(title: L10n.string("guide.groupChatGPT")) {
                 GuideStep(
@@ -197,13 +193,11 @@ struct GuideView: View {
 
                         Toggle(L10n.string("guide.confirmChatGPTPlugin"), isOn: $chatGPTPluginConfirmed)
                             .toggleStyle(.checkbox)
-                            .controlSize(.small)
+                            .chadexControlSize(.small)
                     }
                 }
                 .id(GuideSection.chatGPTPlugin)
             }
-
-            Divider()
 
             GuideGroup(title: L10n.string("guide.groupUse")) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -236,7 +230,7 @@ struct GuideView: View {
                     if model.snapshot.chatGPTVerifiedForSelectedProject {
                         VStack(alignment: .leading, spacing: 4) {
                             Label(L10n.string("guide.finishTitle"), systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(.primary, .green)
                                 .chadexFont(.callout, weight: .semibold)
 
                             Text(L10n.string("guide.finishMessage"))
@@ -348,15 +342,13 @@ struct GuideView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(L10n.string("guide.title"))
-                .chadexFont(.largeTitle, weight: .semibold)
-                .tracking(-0.4)
-
-            Text(L10n.string("guide.subtitle"))
-                .chadexFont(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 720, alignment: .leading)
+            // Same page header as every other destination.
+            ChadexPageHeader(
+                title: L10n.string("guide.title"),
+                subtitle: L10n.string("guide.subtitle")
+            ) {
+                EmptyView()
+            }
 
             Label(L10n.string("guide.beginnerNote"), systemImage: "hand.wave")
                 .chadexFont(.caption)
@@ -404,9 +396,13 @@ private struct GuideGroup<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: layout.spacing(18)) {
-            SectionEyebrow(title: title)
-            content
+        VStack(alignment: .leading, spacing: layout.spacing(10)) {
+            SectionTitle(title: title)
+            // Steps sit on one raised card, like the groups on other pages.
+            VStack(alignment: .leading, spacing: layout.spacing(22)) {
+                content
+            }
+            .chadexCard(padding: 22)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

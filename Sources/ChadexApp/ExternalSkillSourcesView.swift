@@ -40,10 +40,10 @@ struct ExternalSkillSourcesView: View {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 SectionTitle(title: L10n.string("skills.external.title"))
                 Spacer(minLength: 12)
-                if busy { ProgressView().controlSize(.small) }
+                if busy { ProgressView().chadexControlSize(.small) }
                 Button(L10n.string("skills.external.chooseFolder")) { chooseFolder() }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .chadexControlSize(.small)
                     .disabled(!canEdit)
             }
 
@@ -82,7 +82,7 @@ struct ExternalSkillSourcesView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Button(L10n.string("skills.external.import")) { onImport() }
                         .buttonStyle(.borderedProminent)
-                        .controlSize(.regular)
+                        .chadexControlSize(.regular)
                         .disabled(model.skillInstallInFlight || model.isSwitchingProject)
                         .accessibilityIdentifier("skills.external.import")
                 }
@@ -221,7 +221,7 @@ struct ExternalSkillSourcesView: View {
                 if configured {
                     Button(L10n.string("skills.external.remove")) { setConnected(path, false) }
                         .buttonStyle(.borderless)
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                         .disabled(!canEdit)
                         .accessibilityLabel(L10n.string("skills.external.removeLabel", Self.displayPath(path)))
                 }
@@ -261,7 +261,7 @@ struct ExternalSkillSourcesView: View {
                 ))
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .controlSize(.mini)
+                .chadexControlSize(.mini)
                 .disabled(!canEdit || !connected)
             }
             .chadexPadding(.leading, 14)

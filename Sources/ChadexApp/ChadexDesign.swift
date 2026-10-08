@@ -467,7 +467,7 @@ struct ChadexInlineError: View {
                     Text(L10n.string("common.tryAgain"))
                 }
             }
-            .controlSize(.small)
+            .chadexControlSize(.small)
             .disabled(retrying)
         }
         .chadexFont(font)
@@ -558,5 +558,43 @@ private struct ConnectionNode: View {
         case .error: return .red
         case .inactive: return .secondary
         }
+    }
+}
+
+/// AppKit-backed controls draw their own label font from the control size and
+/// ignore the scaled environment font, so at 120–160% their text stayed at
+/// 11–13 pt next to 16–21 pt body copy. This scales the label with the
+/// interface size and steps the control size up so the bezel fits it.
+private struct ChadexControlSizeModifier: ViewModifier {
+    @Environment(\.chadexLayout) private var layout
+    let base: ControlSize
+
+    func body(content: Content) -> some View {
+        content
+            .controlSize(size)
+            .font(.system(size: max(ChadexFontStyle.minimumSize, baseFontSize * layout.fontScale)))
+    }
+
+    private var baseFontSize: CGFloat {
+        switch base {
+        case .mini: return 10
+        case .small: return 11
+        default: return 13
+        }
+    }
+
+    private var size: ControlSize {
+        guard layout.fontScale >= 1.15 else { return base }
+        switch base {
+        case .mini: return .small
+        case .small: return .regular
+        default: return .large
+        }
+    }
+}
+
+extension View {
+    func chadexControlSize(_ base: ControlSize) -> some View {
+        modifier(ChadexControlSizeModifier(base: base))
     }
 }

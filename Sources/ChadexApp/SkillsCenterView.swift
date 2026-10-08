@@ -81,7 +81,7 @@ struct SkillsCenterView: View {
                 showingSkillDraft = true
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
+            .chadexControlSize(.small)
             .disabled(model.projectSkillWriteInFlight || model.isSwitchingProject)
 
             // With no usable external source the import action moves into the sources block as the primary action.
@@ -90,7 +90,7 @@ struct SkillsCenterView: View {
                     showingSkillInstall = true
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .chadexControlSize(.small)
                 .disabled(model.skillInstallInFlight || model.isSwitchingProject)
             }
         }
@@ -116,7 +116,7 @@ struct SkillsCenterView: View {
 
             if model.skillsLoading && model.skillCatalog == nil {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().chadexControlSize(.small)
                     Text(L10n.string("skills.loading"))
                         .chadexFont(.callout)
                         .foregroundStyle(.secondary)
@@ -211,7 +211,7 @@ struct SkillsCenterView: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .controlSize(.small)
+        .chadexControlSize(.small)
     }
 
     /// Collapsible one-line warning; the longer explanation only shows when opened.
@@ -301,7 +301,7 @@ struct SkillsCenterView: View {
                         }
                     ))
                     .toggleStyle(.switch)
-                    .controlSize(.small)
+                    .chadexControlSize(.small)
                     .labelsHidden()
                     .disabled(inFlight)
                     .help(L10n.string("skills.managedToggleHelp", managed.skillKey))
@@ -313,7 +313,7 @@ struct SkillsCenterView: View {
                         Label(L10n.string("skills.remove"), systemImage: "trash")
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .chadexControlSize(.small)
                     .tint(.red)
                     .disabled(inFlight)
                     .help(L10n.string("skills.removeHelp", managed.skillKey))
@@ -379,7 +379,7 @@ struct SkillsCenterView: View {
                     .foregroundStyle(.secondary)
             } else if model.skillDefinitionLoadingIDs.contains(item.skillId) {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().chadexControlSize(.small)
                     Text(L10n.string("skills.loadingDefinition"))
                         .chadexFont(.caption)
                         .foregroundStyle(.secondary)

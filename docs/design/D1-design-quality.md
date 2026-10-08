@@ -138,3 +138,11 @@ A4／B4／C4／D4／E4，無 Critical／High：依第 1 節門檻屬 AI reviewer
 - 注意（L-new-3）：`swift test`／`swift run` 的產物仍標 `sdk 14.0`，`ui-review/` 的離屏截圖因此是相容外觀，不代表出貨（`build_app.sh` 重標為 SDK 27）的樣子。
 - 後續：待批准請求移到模式卡片上方；模式卡片有跟著圓角的鍵盤焦點環（`keyboardFocusIndicatorColor`，`.focusEffectDisabled()` 避免雙框，需實機確認）；所有模式 icon 改為實色底＋對比符號（L-new-4）；三個 Settings 選單共用最小寬度（L-new-5）。
 - 仍待處理：L1（洗色只在總覽）、L9（錯誤說明文案）。
+
+## 11. 使用者實機回饋（第一次人類評估，2026-10-08，SDK 27 預覽版）
+
+使用者回饋四點，逐項處理：
+1. **按鈕字特別小**：AppKit 控制項依 control size 自帶字級，不吃縮放後的環境字型；120% 時按鈕字仍是 11–13 pt。新增 `chadexControlSize(_:)`：標籤字級隨介面大小縮放，≥115% 時 control size 升一級；全 App 的 `.controlSize` 都改用它（Settings 固定高度列除外）。
+2. **只有連上 ChatGPT 後才有漸層**：未連線原本是灰色洗色，幾乎看不見。洗色改為視窗層級（`RootView` detail 背景），每個狀態都有顏色：未連線為品牌青色（0.7 強度）、連線中青色、已驗證綠色、錯誤紅色；切換頁面時不再閃現或消失（同時解決 L1）。
+3. **Liquid Glass 不明顯**：macOS 26 起不再安裝 `SidebarSplitViewAlignmentBridge`（它會強制調整 split view 位置，與系統浮動側欄衝突），交由系統處理側欄。待實機確認。
+4. **使用指南設計語言不一致**：改用 `ChadexPageHeader`（與其他頁同字級）、每組步驟放進卡片並以 `SectionTitle` 標示、移除群組間分隔線；完成提示由綠色文字改為 primary 文字＋綠色符號。

@@ -166,7 +166,7 @@ struct RootView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.blue)
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                         .disabled(updateManager.isBusy)
                         .help(L10n.string("updates.quickUpdateHint", release.version))
                         .accessibilityLabel(L10n.string("updates.quickUpdateHint", release.version))
@@ -179,8 +179,12 @@ struct RootView: View {
             // horizontal resize range. This also keeps the titlebar tracking
             // separator and the content divider on one stable boundary.
             .background {
-                SidebarSplitViewAlignmentBridge(width: fixedSidebarWidth)
-                    .frame(width: 0, height: 0)
+                // The floating Liquid Glass sidebar (macOS 26+) has no seam to
+                // align, and repositioning its split view fights the system.
+                if #unavailable(macOS 26.0) {
+                    SidebarSplitViewAlignmentBridge(width: fixedSidebarWidth)
+                        .frame(width: 0, height: 0)
+                }
             }
             .navigationSplitViewColumnWidth(
                 min: fixedSidebarWidth,
@@ -188,7 +192,12 @@ struct RootView: View {
                 max: fixedSidebarWidth
             )
         } detail: {
+            // The connection's color is the window's, not one page's: it stays
+            // put while moving between pages and under the sidebar glass.
             detail
+                .background {
+                    ConnectionAmbience(phase: model.connectionPresentationPhase)
+                }
         }
         .navigationSplitViewStyle(.balanced)
         .focusedSceneValue(\.sidebarSelection, $selection)
@@ -199,7 +208,7 @@ struct RootView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 if model.isSwitchingProject {
                     ProgressView()
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                         .help(model.switchingProjectName.map { L10n.string("project.switching", $0) } ?? L10n.string("status.preparing"))
                 } else if selection != .guide && selection != .skills {
                     Button {
@@ -464,7 +473,7 @@ struct RootView: View {
     private func projectSwitchingPlaceholder(_ project: ProjectRecord) -> some View {
         VStack(spacing: layout.spacing(12)) {
             ProgressView()
-                .controlSize(.small)
+                .chadexControlSize(.small)
             Text(L10n.string("project.switching", project.name))
                 .chadexFont(.callout)
                 .foregroundStyle(.secondary)
@@ -696,7 +705,7 @@ private struct EmptyProjectView: View {
 
             Button(L10n.string("project.add")) { model.addProjectFromPanel() }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
+                .chadexControlSize(.regular)
         }
         .frame(maxWidth: 420)
         .chadexPadding(32)

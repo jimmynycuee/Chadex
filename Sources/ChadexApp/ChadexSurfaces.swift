@@ -284,7 +284,7 @@ private struct CircuitNode: View {
                 Circle()
                     .strokeBorder(stroke, lineWidth: state == .waiting || state == .active ? 2 : 1)
                 if state == .active {
-                    ProgressView().controlSize(.small)
+                    ProgressView().chadexControlSize(.small)
                 } else {
                     Image(systemName: displayedSymbol)
                         .font(.system(size: layout.control(15), weight: .semibold))
@@ -365,22 +365,39 @@ private struct CircuitNode: View {
     }
 }
 
-/// The overview's ambient light: a soft wash in the connection's state color
-/// that sits behind the content and, on macOS 26 and later, extends under the
-/// floating Liquid Glass sidebar so the system material picks up the state.
+/// The window's ambient light: a soft wash in the connection's state color
+/// behind every page and, on macOS 26 and later, extended under the floating
+/// Liquid Glass sidebar so the system material picks up the state.
 /// Cards stay opaque on top, so text contrast never depends on the wash.
 struct ConnectionAmbience: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.colorScheme) private var colorScheme
-    let tint: Color
+    let phase: ConnectionPhase
+
+    /// Every state has a color, including idle: the brand hue at rest, then
+    /// stronger while connecting, green once verified, red on error.
+    private var tint: Color {
+        switch phase {
+        case .verified: return .green
+        case .error: return .red
+        case .unconfigured, .stopped, .preparing, .waitingForChatGPTVerification: return ChadexBrand.signal
+        }
+    }
+
+    private var emphasis: Double {
+        switch phase {
+        case .unconfigured, .stopped: return 0.7
+        default: return 1
+        }
+    }
 
     var body: some View {
         // Reduce Transparency and Increase Contrast get the plain window
         // background: the state stays in the pill, circuit and copy.
         let muted = reduceTransparency || contrast == .increased
-        let strength: Double = muted ? 0 : (colorScheme == .dark ? 0.22 : 0.16)
+        let strength: Double = muted ? 0 : (colorScheme == .dark ? 0.22 : 0.16) * emphasis
         ZStack {
             LinearGradient(
                 stops: [
