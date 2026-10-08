@@ -81,19 +81,18 @@ private struct ChadexAttentionCardModifier: ViewModifier {
     let padding: CGFloat
 
     func body(content: Content) -> some View {
-        let radius = layout.control(12)
+        let shape = RoundedRectangle(cornerRadius: layout.control(12), style: .continuous)
         content
-            .chadexCard(padding: padding)
-            .overlay(alignment: .leading) {
-                UnevenRoundedRectangle(
-                    topLeadingRadius: radius,
-                    bottomLeadingRadius: radius,
-                    style: .continuous
-                )
-                .fill(tint)
-                .frame(width: 4)
-                .accessibilityHidden(true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .chadexPadding(padding)
+            .background(ChadexBrand.cardFill)
+            // The rule sits under the stroke and is clipped by the card shape,
+            // so it follows the 12 pt corners instead of poking past them.
+            .background(alignment: .leading) {
+                Rectangle().fill(tint).frame(width: 4).accessibilityHidden(true)
             }
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(ChadexBrand.cardStroke, lineWidth: 1))
     }
 }
 

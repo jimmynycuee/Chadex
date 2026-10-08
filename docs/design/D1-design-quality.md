@@ -128,3 +128,12 @@
 - M4：新增 `chadexAttentionCard(tint:)`（卡片＋狀態色左側色條），用於連線錯誤（紅）與 Computer Use 待批准請求（橘）；錯誤標題改為 primary 文字＋紅色符號。
 - L2 日期分組改用 index 當 id；L3 時間依 App 語言格式化；L7 Settings 標題與卡片內容對齊；L8 Agent 設定（全域）移除「目前專案」膠囊與按鈕上的「→」。
 - 尚未處理：鍵盤焦點環樣式（需實機）、L1（側欄延伸背景只在總覽）、L9 文案。
+
+## 10. AI reviewer 第 5 輪（@cfe907e，非外部驗證）
+
+A4／B4／C4／D4／E4，無 Critical／High：依第 1 節門檻屬 AI reviewer 層級通過，**不等於外部驗證**。本輪後續處理：
+- M-new-1：`chadexAttentionCard` 的色條原本凸出 12 pt 圓角 → 色條放在 stroke 之下並以卡片形狀裁切。
+- L-new-1：Computer Use 模式在請求進行中改為直接忽略（含 VoiceOver 的 radio Picker），不再出現「已存檔但 helper 未切換」。
+- L-new-2：被點選的模式卡片在請求進行中顯示 `ProgressView`。
+- 注意（L-new-3）：`swift test`／`swift run` 的產物仍標 `sdk 14.0`，`ui-review/` 的離屏截圖因此是相容外觀，不代表出貨（`build_app.sh` 重標為 SDK 27）的樣子。
+- 仍待處理：鍵盤焦點環樣式、未選取模式卡片的淡色 icon（L-new-4）、選單寬度隨選項變動（L-new-5）、L1、L9；待批准請求移到模式卡片上方。

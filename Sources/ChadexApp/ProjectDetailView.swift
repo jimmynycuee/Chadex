@@ -10,6 +10,7 @@ struct ProjectDetailView: View {
     /// Navigates to the Skills page; Agent Settings only links to it.
     var onManageSkills: () -> Void = {}
     @State private var showingErrorDetails = false
+    @State private var pendingComputerMode: ComputerControlMode?
 
     var body: some View {
         ChadexPageColumn {
@@ -376,7 +377,8 @@ struct ProjectDetailView: View {
             ForEach(modes) { mode in
                 ComputerModeCard(
                     mode: mode,
-                    isSelected: model.computerSafety.mode == mode
+                    isSelected: model.computerSafety.mode == mode,
+                    isPending: pendingComputerMode == mode
                 ) {
                     computerModeBinding.wrappedValue = mode
                 }
@@ -392,6 +394,7 @@ struct ProjectDetailView: View {
                 }
             }
             .pickerStyle(.radioGroup)
+            .disabled(model.computerSafetyMutationInFlight)
             .accessibilityValue(L10n.string(model.computerSafety.mode.descriptionKey))
         }
     }
@@ -400,12 +403,17 @@ struct ProjectDetailView: View {
         Binding(
             get: { model.computerSafety.mode },
             set: { mode in
+                // Saving the default first and then being turned away by the
+                // in-flight guard would leave the stored and live modes apart.
+                guard !model.computerSafetyMutationInFlight, mode != model.computerSafety.mode else { return }
+                pendingComputerMode = mode
                 Task {
                     if mode == .allowSession {
                         await model.setComputerControlMode(mode)
                     } else {
                         await model.setComputerControlDefaultMode(mode)
                     }
+                    pendingComputerMode = nil
                 }
             }
         )
@@ -876,6 +884,7 @@ private struct ComputerModeCard: View {
     @Environment(\.chadexLayout) private var layout
     let mode: ComputerControlMode
     let isSelected: Bool
+    var isPending = false
     let action: () -> Void
     @State private var hovering = false
 
@@ -893,9 +902,13 @@ private struct ComputerModeCard: View {
                         .chadexFont(.callout, weight: .semibold)
                         .foregroundStyle(.primary)
                     Spacer(minLength: 4)
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: layout.control(15)))
-                        .foregroundStyle(isSelected ? ChadexBrand.signal : Color.secondary.opacity(0.5))
+                    if isPending {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: layout.control(15)))
+                            .foregroundStyle(isSelected ? ChadexBrand.signal : Color.secondary.opacity(0.5))
+                    }
                 }
                 Text(L10n.string(mode.descriptionKey))
                     .chadexFont(.caption)
