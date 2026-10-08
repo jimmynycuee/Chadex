@@ -489,6 +489,8 @@ pub enum ComputerObserveToolCall {
         client_id: String,
         surface_id: String,
         #[serde(default)]
+        root_element_id: Option<String>,
+        #[serde(default)]
         max_depth: Option<usize>,
         #[serde(default)]
         max_nodes: Option<usize>,
@@ -497,17 +499,24 @@ pub enum ComputerObserveToolCall {
         client_id: String,
         surface_id: String,
         #[serde(default)]
+        root_element_id: Option<String>,
+        #[serde(default)]
         role: Option<String>,
         #[serde(default)]
         subrole: Option<String>,
         #[serde(default)]
         label: Option<String>,
+        /// Literal substring of AXValue. Never echoed: audit records only its presence.
+        #[serde(default)]
+        value: Option<String>,
         #[serde(default)]
         focused: Option<bool>,
         #[serde(default)]
         enabled: Option<bool>,
         #[serde(default)]
         limit: Option<usize>,
+        #[serde(default)]
+        max_depth: Option<usize>,
     },
     ElementState {
         client_id: String,
