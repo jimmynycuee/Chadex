@@ -104,6 +104,8 @@
 - **Tide Guide 式狀態色**（`ConnectionAmbience`）：總覽背景隨連線狀態換色（未連線灰、準備中／等待青、已驗證綠、錯誤紅），「減少動態效果」時不做轉場動畫。卡片維持不透明，文字對比不受影響。
 - **Liquid Glass**：依 HIG `liquid-glass.md`「Don't use Liquid Glass in the content layer」，內容卡片不做玻璃。專案以 SDK 27 建置，側欄、toolbar、Settings 已自動採用系統玻璃；macOS 26+ 以 `backgroundExtensionEffect()` 讓狀態色延伸到浮動側欄底下，由系統玻璃折射。刻意不加自訂玻璃按鈕（主要動作在內容卡片內，屬內容層）。
 - **Computer Use 模式卡片**：radio 列表改為可選卡片（符號＋名稱＋這個模式下 ChatGPT 能做什麼），顏色隨交出的控制權增加（灰→青→靛→橘）；選取狀態有 2 pt 外框、勾選符號與 VoiceOver `isSelected`。安全說明與「停止 Computer Use」收進同一張卡片。
+- **Agent 設定／Skills**：Agent 設定有頁首（標題、說明、目前專案膠囊），Global Instructions 與 Skills 入口各為一張卡片；`chadexGroupSurface()` 改成與 `chadexCard` 相同的表面，Skills 來源、列表與 Project Memory 自動統一。
+- **漏網的對比問題**：Skills 外部來源錯誤原為橘色 callout 文字（約 2.3:1）、兩個 Skill 表單錯誤為紅色 caption（3.57:1），改為 primary 文字＋彩色符號。`SKILL 列表`、`PROJECT MEMORY`、`REPOSITORY INSTRUCTIONS` 寫死全大寫，改為 title-style。
 - 連線錯誤時只標記失敗的那一段：Tunnel 失敗時 ChatGPT 節點顯示「尚未連線」而非「錯誤」。
 
 證據（離屏渲染）：`ui-review/d1-v2/`。離屏渲染畫不出 vibrancy／玻璃，側欄折射效果需實機確認，仍屬 **Pending Validation**。

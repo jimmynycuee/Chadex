@@ -85,52 +85,52 @@ struct ProjectDetailView: View {
 
     private var agentSettingsSection: some View {
         VStack(alignment: .leading, spacing: layout.spacing(20)) {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(L10n.string("agentSettings.subtitle"))
-                    .chadexFont(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 7) {
-                    Image(systemName: "folder")
-                        .chadexFont(.caption, weight: .medium)
-                        .foregroundStyle(.secondary)
+            ChadexPageHeader(
+                title: L10n.string("sidebar.agentSettings"),
+                subtitle: L10n.string("agentSettings.subtitle")
+            ) {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.fill")
+                        .foregroundStyle(ChadexBrand.signal)
+                        .accessibilityHidden(true)
                     Text(L10n.string("agentSettings.currentProject", project.name))
-                        .chadexFont(.caption, weight: .medium)
-                    Text(project.path)
-                        .chadexFont(.caption, design: .monospaced)
-                        .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .textSelection(.enabled)
                 }
+                .chadexFont(.caption, weight: .medium)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.secondary.opacity(0.1), in: Capsule())
+                .help(project.path)
+                .accessibilityElement(children: .combine)
             }
 
-            Divider()
             GlobalInstructionsEditor()
-            Divider()
+                .chadexCard(padding: 20)
+
             skillsLink
+                .chadexCard(padding: 16)
         }
     }
 
     private var skillsLink: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Label {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(L10n.string("agentSettings.skillsLink.title"))
-                        .chadexFont(.callout, weight: .semibold)
-                    Text(L10n.string("agentSettings.skillsLink.message"))
-                        .chadexFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } icon: {
-                Image(systemName: "puzzlepiece.extension")
+        HStack(alignment: .center, spacing: layout.spacing(14)) {
+            Image(systemName: "puzzlepiece.extension.fill")
+                .font(.system(size: layout.control(15), weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: layout.control(34), height: layout.control(34))
+                .background(Color.indigo, in: RoundedRectangle(cornerRadius: layout.control(9), style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L10n.string("agentSettings.skillsLink.title"))
+                    .chadexFont(.callout, weight: .semibold)
+                Text(L10n.string("agentSettings.skillsLink.message"))
+                    .chadexFont(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             Button(L10n.string("agentSettings.manageSkills")) { onManageSkills() }
-                .buttonStyle(.link)
-                .chadexFont(.callout)
+                .controlSize(.regular)
         }
     }
 
@@ -795,6 +795,7 @@ struct GlobalInstructionsStandaloneView: View {
     var body: some View {
         ChadexPageColumn {
             GlobalInstructionsEditor()
+                .chadexCard(padding: 20)
         }
         .navigationTitle(L10n.string("sidebar.agentSettings"))
     }

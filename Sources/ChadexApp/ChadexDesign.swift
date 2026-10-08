@@ -147,18 +147,24 @@ extension View {
     }
 }
 
-/// Grouped-content surface (lists of skills, sources, memories): a faint
-/// fill plus a hairline so the group edge stays visible (~1.05:1 fill alone).
-/// One radius for every group so containers read as one family.
+/// Grouped-content surface (lists of skills, sources, memories). One radius
+/// and one fill for every group so containers read as one family.
 private struct ChadexGroupSurfaceModifier: ViewModifier {
     @Environment(\.chadexLayout) private var layout
     var inset = false
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: layout.control(inset ? 6 : 8), style: .continuous)
-        content
-            .background(.quaternary.opacity(inset ? 0.22 : 0.16), in: shape)
-            .overlay(shape.strokeBorder(ChadexSurface.separator.opacity(inset ? 0 : 1), lineWidth: 1))
+        // Top-level groups are the same raised card as `chadexCard`; inset
+        // detail panels stay a faint fill inside them.
+        if inset {
+            let shape = RoundedRectangle(cornerRadius: layout.control(8), style: .continuous)
+            content.background(.quaternary.opacity(0.22), in: shape)
+        } else {
+            let shape = RoundedRectangle(cornerRadius: layout.control(12), style: .continuous)
+            content
+                .background(ChadexBrand.cardFill, in: shape)
+                .overlay(shape.strokeBorder(ChadexBrand.cardStroke, lineWidth: 1))
+        }
     }
 }
 

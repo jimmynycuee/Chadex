@@ -228,6 +228,16 @@ final class VisualReviewTests: XCTestCase {
             to: output.appendingPathComponent("agent-settings-120-dark.png")
         )
         try render(
+            presented(
+                ProjectDetailView(project: project, destination: .skills) {}
+                    .environmentObject(model),
+                interfaceSize: .standard
+            ),
+            size: CGSize(width: 980, height: 820),
+            scheme: .light,
+            to: output.appendingPathComponent("skills-100-light.png")
+        )
+        try render(
             presented(ActivityView().environmentObject(model), interfaceSize: .comfortable),
             size: CGSize(width: 900, height: 520),
             scheme: .light,

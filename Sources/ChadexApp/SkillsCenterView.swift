@@ -108,7 +108,7 @@ struct SkillsCenterView: View {
         let visible = visibleItems
 
         VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(
+            SectionTitle(
                 title: items.isEmpty
                     ? L10n.string("skills.list.title")
                     : L10n.string("skills.list.titleCount", visible.count, items.count)
@@ -500,9 +500,12 @@ private struct SkillDraftSheet: View {
                 .foregroundStyle(.secondary)
 
             if let error = model.skillsError {
-                Text(error)
-                    .chadexFont(.caption)
-                    .foregroundStyle(.red)
+                Label {
+                    Text(error).foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+                }
+                .chadexFont(.caption)
             }
 
             HStack {
@@ -585,9 +588,12 @@ private struct SkillInstallSheet: View {
                 .foregroundStyle(.secondary)
 
             if let error = localError ?? model.skillsError {
-                Text(error)
-                    .chadexFont(.caption)
-                    .foregroundStyle(.red)
+                Label {
+                    Text(error).foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+                }
+                .chadexFont(.caption)
             }
 
             HStack {

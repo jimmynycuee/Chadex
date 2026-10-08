@@ -95,7 +95,7 @@
 "computer.action.clipboardWrite" = "寫入剪貼簿";
 "computer.action.control" = "控制電腦";
 
-"instructions.title" = "REPOSITORY INSTRUCTIONS";
+"instructions.title" = "Repository Instructions";
 "instructions.subtitle" = "唯讀顯示從已註冊專案根目錄解析的原生 repository instructions。Chadex 不在這裡建立或修改 AGENTS.md，專案根目錄之外的 ambient ancestor 也不會被繼承。";
 "instructions.target" = "目標路徑";
 "instructions.refresh" = "重新整理 Repository Instructions";
@@ -214,7 +214,7 @@
 "skills.archive.error.copyFailed" = "Chadex 無法把 ZIP 複製到專案內。請確認專案資料夾可寫入且仍有可用空間後再試。";
 "skills.installEnable" = "安裝並啟用";
 
-"memory.title" = "PROJECT MEMORY";
+"memory.title" = "Project Memory";
 "memory.subtitle" = "保存專案長期有效的架構、決策與工作流程脈絡。Chadex 會先只載入輕量摘要，只有展開單筆 Memory 時才讀取完整內容。";
 "memory.refresh" = "重新整理 Project Memory";
 "memory.loading" = "正在載入 Project Memory…";
@@ -642,8 +642,8 @@
 "agentSettings.skillsLink.title" = "Skills";
 "agentSettings.skillsLink.message" = "重複使用流程、外部 Skill 資料夾與 ZIP 匯入都在獨立的頁面管理。";
 "agentSettings.manageSkills" = "管理 Skills →";
-"skills.list.title" = "SKILL 列表";
-"skills.list.titleCount" = "SKILL 列表 · %d／%d";
+"skills.list.title" = "Skill 列表";
+"skills.list.titleCount" = "Skill 列表 · %d／%d";
 "skills.search.placeholder" = "搜尋名稱或描述";
 "skills.search.label" = "搜尋 Skills";
 "skills.search.clear" = "清除搜尋";

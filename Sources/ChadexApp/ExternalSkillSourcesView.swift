@@ -63,9 +63,13 @@ struct ExternalSkillSourcesView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if let error = model.externalSkillsError {
-                Label(error, systemImage: "exclamationmark.triangle")
+                // Orange text is ~2.3:1 on a light window; only the symbol carries it.
+                Label {
+                    Text(error).foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
                     .chadexFont(.callout)
-                    .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("skills.external.error")
             }

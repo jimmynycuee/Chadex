@@ -95,7 +95,7 @@
 "computer.action.clipboardWrite" = "Write the clipboard";
 "computer.action.control" = "Control the computer";
 
-"instructions.title" = "REPOSITORY INSTRUCTIONS";
+"instructions.title" = "Repository Instructions";
 "instructions.subtitle" = "Read-only repository instructions resolved from the registered project root. Chadex does not create or edit AGENTS.md here, and ambient ancestors outside this project are ignored.";
 "instructions.target" = "Target";
 "instructions.refresh" = "Refresh Repository Instructions";
@@ -214,7 +214,7 @@
 "skills.archive.error.copyFailed" = "Chadex could not copy the ZIP into the project. Check that the project folder is writable and has free space, then try again.";
 "skills.installEnable" = "Install & Enable";
 
-"memory.title" = "PROJECT MEMORY";
+"memory.title" = "Project Memory";
 "memory.subtitle" = "Durable project context for architecture, decisions, and workflow. Chadex lists lightweight summaries first and loads the full body only when you open a Memory.";
 "memory.refresh" = "Refresh Project Memory";
 "memory.loading" = "Loading Project Memory…";
@@ -642,8 +642,8 @@
 "agentSettings.skillsLink.title" = "Skills";
 "agentSettings.skillsLink.message" = "Reusable procedures, external Skill folders and ZIP imports are managed on their own page.";
 "agentSettings.manageSkills" = "Manage Skills →";
-"skills.list.title" = "SKILL LIST";
-"skills.list.titleCount" = "SKILL LIST · %d of %d";
+"skills.list.title" = "Skill List";
+"skills.list.titleCount" = "Skill List · %d of %d";
 "skills.search.placeholder" = "Search name or description";
 "skills.search.label" = "Search Skills";
 "skills.search.clear" = "Clear search";
