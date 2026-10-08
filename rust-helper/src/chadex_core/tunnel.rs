@@ -1,3 +1,4 @@
+use super::computer_overlay::{ClearReason, ComputerOverlayHub};
 use super::computer_safety::{ComputerControlMode, ComputerSafetyController, ComputerSafetySnapshot};
 use super::credentials::CredentialStore;
 use super::performance::PerformanceTraceStore;
@@ -185,6 +186,8 @@ pub struct TunnelManager {
     verification: Arc<VerificationTracker>,
     performance: Arc<PerformanceTraceStore>,
     computer_safety: Arc<ComputerSafetyController>,
+    /// Cursor overlay hub; cleared whenever Computer control stops or a session changes.
+    computer_overlay: Option<Arc<ComputerOverlayHub>>,
     inner: Mutex<TunnelInner>,
     lifecycle: Mutex<()>,
     published: RwLock<TunnelSnapshot>,
@@ -205,6 +208,7 @@ impl TunnelManager {
             verification,
             performance,
             computer_safety: Arc::new(ComputerSafetyController::default()),
+            computer_overlay: None,
             inner: Mutex::new(TunnelInner {
                 credentials: CredentialStore::default(),
                 child: None,
@@ -216,6 +220,17 @@ impl TunnelManager {
             verified_tunnel_client: RwLock::new(None),
             stop_requested: AtomicBool::new(false),
             next_epoch: AtomicU64::new(1),
+        }
+    }
+
+    pub(crate) fn with_computer_overlay(mut self, hub: Arc<ComputerOverlayHub>) -> Self {
+        self.computer_overlay = Some(hub);
+        self
+    }
+
+    fn clear_computer_overlay(&self, reason: ClearReason) {
+        if let Some(hub) = &self.computer_overlay {
+            hub.clear(reason);
         }
     }
 
@@ -331,6 +346,7 @@ impl TunnelManager {
         let _lifecycle = self.lifecycle.lock().await;
         self.stop_requested.store(false, Ordering::SeqCst);
         self.computer_safety.begin_session();
+        self.clear_computer_overlay(ClearReason::SessionEnded);
         let (tunnel_id, api_key) = {
             let inner = self.inner.lock().await;
             if inner.child.is_some() {
@@ -563,7 +579,11 @@ impl TunnelManager {
     }
 
     pub fn set_computer_control_mode(&self, mode: ComputerControlMode) -> ComputerSafetySnapshot {
-        self.computer_safety.set_mode(mode)
+        let snapshot = self.computer_safety.set_mode(mode);
+        if mode == ComputerControlMode::ReadOnly {
+            self.clear_computer_overlay(ClearReason::Stopped);
+        }
+        snapshot
     }
 
     pub fn approve_computer_control(&self, approval_id: &str) -> bool {
@@ -583,11 +603,14 @@ impl TunnelManager {
     }
 
     pub fn stop_computer_control(&self) -> ComputerSafetySnapshot {
-        self.computer_safety.stop()
+        let snapshot = self.computer_safety.stop();
+        self.clear_computer_overlay(ClearReason::Stopped);
+        snapshot
     }
 
     pub async fn stop(&self) -> ChadexResult<TunnelSnapshot> {
         self.stop_requested.store(true, Ordering::SeqCst);
+        self.clear_computer_overlay(ClearReason::SessionEnded);
         let _lifecycle = self.lifecycle.lock().await;
         self.stop_locked().await
     }

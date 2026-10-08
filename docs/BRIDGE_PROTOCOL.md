@@ -4,7 +4,7 @@
 
 - `chadex-helper` 是 App 私有 child process。
 - stdin / stdout 使用 UTF-8、每行一個 JSON object（NDJSON）。
-- stdout 僅允許協定訊息。
+- stdout 僅允許協定訊息：response，以及下方 [Events](#events) 的 event frame。
 - diagnostics 只寫 stderr，經 activity sanitizer 遮蔽 token pattern。
 - API key 不放 argv，也不回傳給 Swift。
 
@@ -169,10 +169,29 @@ Catalog descriptor 的 `scripts_allowed`（bool）表示該 Skill 的腳本資�
 | `denyComputerControl` | `approval_id` | 拒絕單一 pending action |
 | `stopComputerControl` | — | 持久 Stop：deny 所有 pending，直到明確 resume |
 | `resumeComputerControl` | — | 解除 Stop，保留原模式 |
+| `setComputerOverlayEvents` | `enabled`（bool，否則 `invalid_params`） | 開關代理游標 event frame（預設關）。回 `{enabled, runner_channel, counters}`；`runner_channel` 為 `attached`／`detached`／`unsupported`（非 macOS）。關閉時 helper 送一次 `clear(disabled)`，之後丟棄 Runner 事件 |
 
 ### Removed
 
 - `getProjectInstructions`（V042 移除）：只服務 v0.4.1 已移除的 repository instructions 面板。Repository `AGENTS.md` 仍由 runtime `project.instructions` context material 提供給模型；Chadex Global Instructions 由 app 直接讀寫 `global-instructions.md`，不經 bridge RPC。
+
+## Events
+
+Helper 可以在 stdout 送出**不帶 `request_id`** 的 event frame。Client 以「有 `event`、沒有 `request_id`」辨識；解析失敗或不認識的 `event` 一律丟棄，不得影響 pending request。`protocol_version` 維持 `1`，但 helper 預設**不送任何 event**，只有 client 明確啟用（例如 `setComputerOverlayEvents`）之後才送，所以舊 client 不會收到。
+
+### `computer_overlay`
+
+Computer Use 代理游標疊加層（純視覺、best effort；設計見 [computer-use/cursor-overlay-design.md](computer-use/cursor-overlay-design.md)）。
+
+```json
+{"protocol_version":1,"event":"computer_overlay","data":{"v":1,"seq":42,"phase":"will_act","action_id":17,"action":"click","target":{"kind":"point","x":812.5,"y":433.0},"space":"macos_cg_global_pt","display":{"id":69733378,"bounds":{"x":0,"y":0,"width":1512,"height":982}},"ttl_ms":2000,"emitted_at_ms":1791500000123}}
+```
+
+- `data.phase`：`will_act`（動作即將執行）、`finished`（帶 `outcome`：`succeeded`／`failed`／`not_started`／`unknown`）、`clear`（帶 `reason`：`stopped`／`runner_exited`／`overflow`／`disabled`／`session_ended`，App 立即隱藏）。
+- 座標 `space = macos_cg_global_pt`：Quartz 全域座標，單位 points，原點在主螢幕左上，y 向下。`target.kind`：`point`／`rect`／`path`／`none`。`display` 可為 `null`。
+- 事件**不帶**任何文字、應用程式名稱、視窗標題、element／surface id 或錯誤訊息；`key` 只含封閉詞彙的按鍵名稱與 modifier。
+- 來源是 helper 自己 spawn 的 local Runner 的 stdout（每次 spawn 一組新 token，helper 驗證 token、schema、數值範圍、`seq`、`will_act`／`finished` 配對，全部 fail closed）。Helper 不等 App：stdout 寫入前有容量 32 的有界佇列，佇列滿了就丟棄並計數。
+- 同一把 stdout lock 與 response 共用，每次只持有寫一行的時間。
 
 ## Backend Snapshot
 
