@@ -332,11 +332,33 @@ struct ProjectDetailView: View {
                 }
             }
 
+            Divider()
+            computerCursorOverlayToggle
+
             if let error = model.computerSafetyError {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .chadexFont(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var computerCursorOverlayToggle: some View {
+        VStack(alignment: .leading, spacing: layout.spacing(6)) {
+            Toggle(
+                L10n.string("computer.cursorOverlay.title"),
+                isOn: Binding(
+                    get: { model.computerCursorOverlayEnabled },
+                    set: { enabled in
+                        Task { await model.setComputerCursorOverlay(enabled) }
+                    }
+                )
+            )
+            .chadexFont(.callout, weight: .semibold)
+            Text(L10n.string("computer.cursorOverlay.help"))
+                .chadexFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

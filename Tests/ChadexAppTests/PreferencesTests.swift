@@ -50,6 +50,44 @@ final class PreferencesTests: XCTestCase {
         }
     }
 
+    func testCursorOverlayDefaultsOnWhenNeverChosen() throws {
+        XCTAssertNil(ChadexPreferences().computerCursorOverlay)
+        XCTAssertTrue(ChadexPreferences().computerCursorOverlayEnabled)
+        XCTAssertTrue(ChadexPreferences.cursorOverlayEnabled(for: nil))
+        XCTAssertTrue(ChadexPreferences.cursorOverlayEnabled(for: true))
+        XCTAssertFalse(ChadexPreferences.cursorOverlayEnabled(for: false))
+        // Preferences written before the option existed decode as "never chosen".
+        let legacy = #"{"projects":[],"tunnelID":"","restoreConnectionOnLaunch":false,"backgroundCloseHintShown":false}"#
+            .data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(ChadexPreferences.self, from: legacy)
+        XCTAssertNil(decoded.computerCursorOverlay)
+        XCTAssertTrue(decoded.computerCursorOverlayEnabled)
+    }
+
+    func testCursorOverlayChoicePersistsAndSurvivesUnrelatedSaves() throws {
+        var preferences = ChadexPreferences()
+        preferences.computerCursorOverlay = false
+        let decoded = try JSONDecoder().decode(
+            ChadexPreferences.self,
+            from: JSONEncoder().encode(preferences)
+        )
+        XCTAssertEqual(decoded.computerCursorOverlay, false)
+        XCTAssertFalse(decoded.computerCursorOverlayEnabled)
+
+        // Through the real store, in an isolated directory.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ProjectStore(environment: ["CHADEX_PREFERENCES_DIR": root.path])
+        try store.save(preferences)
+        var loaded = store.load()
+        XCTAssertEqual(loaded.computerCursorOverlay, false)
+        loaded.backgroundCloseHintShown = true
+        try store.save(loaded)
+        XCTAssertEqual(store.load().computerCursorOverlay, false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("preferences.json").path))
+    }
+
     func testPrepareServiceChoicePersists() throws {
         var preferences = ChadexPreferences()
         preferences.prepareServiceOnLaunch = false

@@ -77,6 +77,11 @@ final class AppModel: ObservableObject {
     private let helper: HelperClient
     private let keychain: KeychainStore
     private let store: ProjectStore
+    /// Agent cursor overlay (Computer Use). Best effort: the panel is created on the
+    /// first event, and nothing here can fail an action or a request.
+    private let overlayController: ComputerOverlayController
+    private var overlaySystemObservers: ComputerOverlaySystemObservers?
+    private static let overlayLogger = Logger(subsystem: "app.chadex.Chadex", category: "computer-overlay")
     private var cachedAPIKey: String?
     private var didLoadAPIKeyFromKeychain = false
     private let keychainACLVersionKey = "app.chadex.keychain-acl-version"
@@ -125,12 +130,19 @@ final class AppModel: ObservableObject {
         keychain: KeychainStore = KeychainStore(service: FerretReviewMode.enabled
             ? "app.chadex.ferret-review.credentials" : "app.chadex.credentials"),
         store: ProjectStore = ProjectStore(),
+        overlayController: ComputerOverlayController? = nil,
         autostart: Bool = false
     ) {
         self.helper = helper
         self.keychain = keychain
         self.store = store
-        self.preferences = store.load()
+        let loadedPreferences = store.load()
+        self.preferences = loadedPreferences
+        self.overlayController = overlayController ?? ComputerOverlayController(
+            presenter: ComputerOverlayPanelPresenter(),
+            environment: .live(),
+            isEnabled: loadedPreferences.computerCursorOverlayEnabled
+        )
         do {
             self.globalInstructions = try store.loadGlobalInstructions()
         } catch {
@@ -140,6 +152,7 @@ final class AppModel: ObservableObject {
         // Do not touch Keychain during model construction. Bootstrap performs
         // one lazy read and caches it for the lifetime of this AppModel.
         self.hasStoredAPIKey = false
+        installOverlayHooks()
         if autostart {
             Task { @MainActor [weak self] in
                 self?.start()
@@ -322,6 +335,7 @@ final class AppModel: ObservableObject {
         // Stop everything that could talk to (or relaunch) the helper before
         // asking it to quit: the poll loop and any in-flight launch warm-up.
         isShuttingDown = true
+        overlayController.hideImmediately()
         pollingTask?.cancel()
         runtimePrewarmTask?.cancel()
         pollWaker.signal()
@@ -625,6 +639,64 @@ final class AppModel: ObservableObject {
     }
 
 
+    // MARK: - Agent cursor overlay
+
+    private func installOverlayHooks() {
+        // Events arrive on a background thread. DispatchQueue.main.async keeps the
+        // helper's order (separate `Task { @MainActor }` hops would not).
+        helper.onEvent = { [weak self] event in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.overlayController.handle(event) }
+            }
+        }
+        helper.onLifecycle = { [weak self] event in
+            switch event {
+            case .started:
+                // A new helper starts with events off; tell it what the user wants.
+                Task { @MainActor [weak self] in await self?.syncOverlayEvents() }
+            case .terminated:
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { self?.overlayController.hideImmediately() }
+                }
+            }
+        }
+        overlaySystemObservers = ComputerOverlaySystemObservers { [weak self] in
+            self?.overlayController.hideImmediately()
+        }
+    }
+
+    var computerCursorOverlayEnabled: Bool { preferences.computerCursorOverlayEnabled }
+
+    /// Computer Use page toggle. Hides locally first, then tells the helper.
+    func setComputerCursorOverlay(_ enabled: Bool) async {
+        let previous = preferences.computerCursorOverlay
+        preferences.computerCursorOverlay = enabled
+        do {
+            try persist()
+        } catch {
+            preferences.computerCursorOverlay = previous
+            computerSafetyError = error.localizedDescription
+            present(error)
+            return
+        }
+        overlayController.setEnabled(enabled)
+        await syncOverlayEvents()
+    }
+
+    /// Tell the helper whether to forward overlay events. Failures are logged only:
+    /// the overlay is cosmetic, so it never shows an error.
+    func syncOverlayEvents() async {
+        guard !isShuttingDown else { return }
+        do {
+            let _: JSONValue = try await helper.request(
+                method: "setComputerOverlayEvents",
+                params: SetComputerOverlayEventsParams(enabled: preferences.computerCursorOverlayEnabled)
+            )
+        } catch {
+            Self.overlayLogger.debug("setComputerOverlayEvents failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     func refreshComputerSafety() async {
         do {
             let status: ComputerSafetyStatus = try await helper.request(
@@ -722,6 +794,8 @@ final class AppModel: ObservableObject {
     }
 
     func stopComputerControl() async {
+        // Stop means stop: hide the agent cursor now, before the helper answers.
+        overlayController.hideImmediately()
         guard !computerSafetyMutationInFlight else { return }
         computerSafetyMutationInFlight = true
         defer { computerSafetyMutationInFlight = false }

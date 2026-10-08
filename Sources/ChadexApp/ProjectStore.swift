@@ -15,9 +15,21 @@ struct ChadexPreferences: Codable, Sendable {
     var restoreConnectionOnLaunch = false
     var backgroundCloseHintShown = false
     var computerControlDefaultMode: ComputerControlMode?
+    /// Show the agent cursor overlay while Computer Use acts. nil means "never
+    /// chosen", which reads as ON (decision 1; change the default here only).
+    var computerCursorOverlay: Bool?
 
     var prepareServiceOnLaunchEnabled: Bool {
         prepareServiceOnLaunch ?? true
+    }
+
+    var computerCursorOverlayEnabled: Bool {
+        Self.cursorOverlayEnabled(for: computerCursorOverlay)
+    }
+
+    /// Pure default rule, kept separate so the default is unit-tested on its own.
+    static func cursorOverlayEnabled(for stored: Bool?) -> Bool {
+        stored ?? true
     }
 }
 
