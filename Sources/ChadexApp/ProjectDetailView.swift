@@ -271,23 +271,7 @@ struct ProjectDetailView: View {
                     .help(L10n.string("computer.resumeHelp"))
                 }
             } else {
-                VStack(alignment: .leading, spacing: layout.spacing(10)) {
-                    Text(L10n.string("computer.controlModeTitle"))
-                        .chadexFont(.headline, weight: .semibold)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(L10n.string("computer.controlModeHelp"))
-                        .chadexFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    computerControlModePicker
-                        .chadexPadding(.top, 4)
-                    if !model.snapshot.tunnelReady {
-                        Text(L10n.string("computer.sessionUnavailable"))
-                            .chadexFont(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
+                // ChatGPT is waiting on this request, so it leads the page.
                 if let approval = model.computerSafety.pendingApprovals.first {
                     VStack(alignment: .leading, spacing: layout.spacing(10)) {
                         Text(L10n.string("computer.requestTitle"))
@@ -324,6 +308,23 @@ struct ProjectDetailView: View {
                         }
                     }
                     .chadexAttentionCard(tint: .orange, padding: 18)
+                }
+
+                VStack(alignment: .leading, spacing: layout.spacing(10)) {
+                    Text(L10n.string("computer.controlModeTitle"))
+                        .chadexFont(.headline, weight: .semibold)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(L10n.string("computer.controlModeHelp"))
+                        .chadexFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    computerControlModePicker
+                        .chadexPadding(.top, 4)
+                    if !model.snapshot.tunnelReady {
+                        Text(L10n.string("computer.sessionUnavailable"))
+                            .chadexFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 HStack(alignment: .top, spacing: layout.spacing(14)) {
@@ -887,6 +888,7 @@ private struct ComputerModeCard: View {
     var isPending = false
     let action: () -> Void
     @State private var hovering = false
+    @FocusState private var focused: Bool
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: layout.control(12), style: .continuous)
@@ -895,9 +897,9 @@ private struct ComputerModeCard: View {
                 HStack(spacing: layout.spacing(8)) {
                     Image(systemName: symbol)
                         .font(.system(size: layout.control(13), weight: .semibold))
-                        .foregroundStyle(isSelected ? ChadexBrand.glyph(on: tint) : tint)
+                        .foregroundStyle(ChadexBrand.glyph(on: tint))
                         .frame(width: layout.control(28), height: layout.control(28))
-                        .background(isSelected ? tint : tint.opacity(0.14), in: Circle())
+                        .background(tint, in: Circle())
                     Text(L10n.string(mode.titleKey))
                         .chadexFont(.callout, weight: .semibold)
                         .foregroundStyle(.primary)
@@ -928,6 +930,18 @@ private struct ComputerModeCard: View {
             .contentShape(shape)
         }
         .buttonStyle(.plain)
+        // Keyboard navigation gets a ring that follows the card's corners
+        // instead of the default rectangle around a plain button.
+        .focused($focused)
+        .focusEffectDisabled()
+        .overlay {
+            if focused {
+                RoundedRectangle(cornerRadius: layout.control(12) + 3, style: .continuous)
+                    .strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 3)
+                    .padding(-3)
+                    .accessibilityHidden(true)
+            }
+        }
         .onHover { hovering = $0 }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.string(mode.titleKey))

@@ -186,6 +186,7 @@ private extension View {
 }
 
 private struct GeneralSettingsView: View {
+    @Environment(\.chadexLayout) private var layout
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var updateManager: UpdateManager
     @AppStorage(ChadexPreferenceKey.language) private var languageRaw = ChadexLanguage.system.rawValue
@@ -208,6 +209,9 @@ private struct GeneralSettingsView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        // One shared minimum keeps the three menus aligned and
+                        // stops them resizing as the selection changes.
+                        .frame(minWidth: layout.control(170), alignment: .leading)
                         .fixedSize()
                         .settingsPrimaryControl()
                     }
@@ -220,6 +224,9 @@ private struct GeneralSettingsView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        // One shared minimum keeps the three menus aligned and
+                        // stops them resizing as the selection changes.
+                        .frame(minWidth: layout.control(170), alignment: .leading)
                         .fixedSize()
                         .settingsPrimaryControl()
                     }
@@ -232,6 +239,9 @@ private struct GeneralSettingsView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        // One shared minimum keeps the three menus aligned and
+                        // stops them resizing as the selection changes.
+                        .frame(minWidth: layout.control(170), alignment: .leading)
                         .fixedSize()
                         .settingsPrimaryControl()
                     }

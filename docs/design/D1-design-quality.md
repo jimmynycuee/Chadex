@@ -136,4 +136,5 @@ A4／B4／C4／D4／E4，無 Critical／High：依第 1 節門檻屬 AI reviewer
 - L-new-1：Computer Use 模式在請求進行中改為直接忽略（含 VoiceOver 的 radio Picker），不再出現「已存檔但 helper 未切換」。
 - L-new-2：被點選的模式卡片在請求進行中顯示 `ProgressView`。
 - 注意（L-new-3）：`swift test`／`swift run` 的產物仍標 `sdk 14.0`，`ui-review/` 的離屏截圖因此是相容外觀，不代表出貨（`build_app.sh` 重標為 SDK 27）的樣子。
-- 仍待處理：鍵盤焦點環樣式、未選取模式卡片的淡色 icon（L-new-4）、選單寬度隨選項變動（L-new-5）、L1、L9；待批准請求移到模式卡片上方。
+- 後續：待批准請求移到模式卡片上方；模式卡片有跟著圓角的鍵盤焦點環（`keyboardFocusIndicatorColor`，`.focusEffectDisabled()` 避免雙框，需實機確認）；所有模式 icon 改為實色底＋對比符號（L-new-4）；三個 Settings 選單共用最小寬度（L-new-5）。
+- 仍待處理：L1（洗色只在總覽）、L9（錯誤說明文案）。
