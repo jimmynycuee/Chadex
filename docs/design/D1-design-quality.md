@@ -152,3 +152,4 @@ A4／B4／C4／D4／E4，無 Critical／High：依第 1 節門檻屬 AI reviewer
 - 確認：每頁都有狀態洗色、按鈕字級隨介面大小放大、toolbar 按鈕為 Liquid Glass。
 - 側欄仍像一片灰：以 SDK 27 探針（`scratchpad/probe`）實測，SwiftUI `NavigationSplitView` 的側欄確實包在 `NSGlassEffectView` 內，detail 也延伸到側欄底下；問題是側欄玻璃較厚，而洗色在左側太淡。改為在左上（側欄下方、沒有內文的區域）加一層較飽和的 radial glow。
 - 使用指南第 4 步「已可開始使用」綠色文字 → primary 文字＋綠色符號；Settings › 進階「Graphify CLI」值改為靠左對齊。
+- 使用者第三次實機截圖（@d866fc3）：側欄玻璃上半部已透出狀態青色，向下淡出成系統灰；Liquid Glass 側欄效果在真實視窗確認可見。
