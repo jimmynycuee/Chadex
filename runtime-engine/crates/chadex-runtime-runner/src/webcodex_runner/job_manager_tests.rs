@@ -285,6 +285,15 @@ fn job_reconciliation_local_snapshot_advances_before_best_effort_send() {
     assert_eq!(logs.stdout.tail, "one\ntwo\n");
     assert_eq!(logs.stdout.next_line, 3);
 
+    // The receiver can observe the replay before the delivery worker
+    // acknowledges it. A stop issued in that window is deliberately coalesced
+    // into the still-pending identical seq-3 marker (see the deduplicated
+    // terminal replay coverage), so wait for the acknowledgement first: the
+    // scenario under test is a stop that races a terminal update the
+    // transport already accepted and then lost.
+    assert!(wait_until(Duration::from_secs(2), || {
+        !lock_unpoison(&manager.pending_job_updates).contains_key("offline-terminal-job")
+    }));
     manager.stop("offline-terminal-job").unwrap();
     let stopped_race = recv_job_update(
         &mut fresh_rx,
