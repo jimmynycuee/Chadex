@@ -259,6 +259,20 @@ final class VisualReviewTests: XCTestCase {
             scheme: .dark,
             to: output.appendingPathComponent("computer-use-160-dark.png")
         )
+        for scheme in [ColorScheme.light, .dark] {
+            try render(
+                presented(
+                    ComputerPermissionsCard(monitor: ComputerPermissionMonitor(read: {
+                        ComputerPermissionState(accessibility: true, screenRecording: false)
+                    }))
+                    .padding(24),
+                    interfaceSize: .standard
+                ),
+                size: CGSize(width: 760, height: 320),
+                scheme: scheme,
+                to: output.appendingPathComponent("computer-permissions-100-\(scheme == .dark ? "dark" : "light").png")
+            )
+        }
 
         let runningTask = TaskProgressSnapshot(
             taskId: "review-running", project: "Chadex",

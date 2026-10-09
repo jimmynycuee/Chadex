@@ -11,6 +11,7 @@ struct ProjectDetailView: View {
     var onManageSkills: () -> Void = {}
     @State private var showingErrorDetails = false
     @State private var pendingComputerMode: ComputerControlMode?
+    @StateObject private var computerPermissions = ComputerPermissionMonitor()
 
     var body: some View {
         ChadexPageColumn {
@@ -64,7 +65,9 @@ struct ProjectDetailView: View {
     }
 
     private var computerControlNeedsAttention: Bool {
-        model.computerSafety.stopped || !model.computerSafety.pendingApprovals.isEmpty
+        model.computerSafety.stopped
+            || !model.computerSafety.pendingApprovals.isEmpty
+            || !computerPermissions.state.allGranted
     }
 
     private var navigationTitle: String {
@@ -242,7 +245,8 @@ struct ProjectDetailView: View {
                     title: computerControlStatusText,
                     systemImage: model.computerSafety.stopped
                         ? "hand.raised.fill"
-                        : (model.computerSafety.pendingApprovals.isEmpty ? "desktopcomputer" : "exclamationmark.circle.fill"),
+                        : (model.computerSafety.pendingApprovals.isEmpty && computerPermissions.state.allGranted
+                            ? "desktopcomputer" : "exclamationmark.circle.fill"),
                     tint: computerControlNeedsAttention ? .orange : .secondary,
                     emphasized: computerControlNeedsAttention
                 )
@@ -304,6 +308,10 @@ struct ProjectDetailView: View {
                     }
                     .chadexAttentionCard(tint: .orange, padding: 18)
                 }
+
+                // Without these grants every control request fails, so the
+                // card says so before the person picks a mode.
+                ComputerPermissionsCard(monitor: computerPermissions)
 
                 VStack(alignment: .leading, spacing: layout.spacing(10)) {
                     Text(L10n.string("computer.controlModeTitle"))
@@ -446,6 +454,9 @@ struct ProjectDetailView: View {
         }
         if !model.computerSafety.pendingApprovals.isEmpty {
             return L10n.string("computer.status.waiting")
+        }
+        if !computerPermissions.state.allGranted {
+            return L10n.string("computer.status.needsPermission")
         }
         switch model.computerSafety.mode {
         case .readOnly:
