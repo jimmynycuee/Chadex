@@ -232,6 +232,7 @@ impl RuntimeIntegrationBridge {
         command.arg("--stop-on-stdin-eof");
         command.env("WEBCODEX_ENV_FILE", env_file);
         command.env("CHADEX_TASK_STATE_DIR", &self.task_state_dir);
+        disable_direct_shared_key(&mut command);
         remove_tunnel_credentials(&mut command);
         Ok(command)
     }
@@ -854,6 +855,17 @@ fn configure_tunnel_proxy_environment(command: &mut Command, proxy: Option<&str>
     }
 }
 
+/// `server init` writes `WEBCODEX_SHARED_KEY_ENABLED=true` (an upstream hosted
+/// quick-start default), which makes the Server accept any non-`wc_` bearer as
+/// a shared-key principal with model scopes. Desktop authenticates only with
+/// managed credentials (bootstrap, admin/user PAT, Runner agent token), so the
+/// fallback is never needed locally. The Server loads its env file only into
+/// keys absent from the process environment, so this explicit override also
+/// covers env files written by earlier releases without rewriting them.
+fn disable_direct_shared_key(command: &mut Command) {
+    command.env("WEBCODEX_SHARED_KEY_ENABLED", "false");
+}
+
 fn remove_tunnel_credentials(command: &mut Command) {
     for name in [
         "CONTROL_PLANE_API_KEY",
@@ -997,6 +1009,34 @@ mod tests {
         assert!(openai_env.iter().any(|(name, value)| {
             name.to_str() == Some("NO_PROXY")
                 && value.and_then(|value| value.to_str()) == Some("127.0.0.1,localhost,::1")
+        }));
+    }
+
+    #[test]
+    fn local_server_disables_direct_shared_key_over_any_env_file_value() {
+        let binaries = RuntimeToolchain::test_fixture("0.5.0");
+        let adapter = RuntimeIntegrationBridge {
+            binaries: Some(binaries),
+            bundled_runtime_dir: None,
+            task_state_dir: PathBuf::from("task-state"),
+        };
+        let command = adapter
+            .local_server_command(Path::new("webcodex.env"))
+            .unwrap();
+        let env: Vec<_> = command.get_envs().collect();
+        let shared_key: Vec<_> = env
+            .iter()
+            .filter(|(name, _)| name.to_str() == Some("WEBCODEX_SHARED_KEY_ENABLED"))
+            .collect();
+        assert_eq!(shared_key.len(), 1);
+        assert_eq!(
+            shared_key[0].1.and_then(|value| value.to_str()),
+            Some("false"),
+            "the explicit process value must win over a pre-upgrade env file"
+        );
+        assert!(env.iter().any(|(name, value)| {
+            name.to_str() == Some("WEBCODEX_ENV_FILE")
+                && value.and_then(|value| value.to_str()) == Some("webcodex.env")
         }));
     }
 
