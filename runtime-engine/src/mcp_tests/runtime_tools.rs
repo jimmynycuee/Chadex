@@ -4,21 +4,16 @@ use super::*;
 // runtime_status via MCP tools/list and tools/call
 // =========================================================================
 
-// An explicit compact-schema=false override keeps full outputSchema projection.
-// Serialize it with process-global env tests so a concurrent override cannot
-// change the observed contract.
-#[allow(clippy::await_holding_lock)]
+// Full (compact=false) projection keeps outputSchema and the full canonical
+// descriptions. It is requested explicitly, never through the process env.
 #[tokio::test]
 async fn mcp_tools_list_exposes_canonical_coding_bootstrap_and_runtime_status_ux_flags() {
-    let mut env = crate::test_support::TestEnvGuard::new();
-    // Compact discovery is the Adaptive default and shortens direct tool
-    // descriptions; this test asserts the full canonical copy, so opt out.
-    env.set("WEBCODEX_MCP_COMPACT_SCHEMAS", "false");
     let runtime = test_runtime();
-    let outcome = handle_mcp_request(
+    let outcome = handle_mcp_request_with_schema_mode(
         &runtime,
         rpc("tools/list", Some(Value::from(10)), json!({})),
         None,
+        false,
     )
     .await;
     let value = match outcome {

@@ -58,6 +58,15 @@ const OUTPUT_READ_SLEEP: Duration = Duration::from_millis(5);
 const PROCESS_SIGNAL_GRACE: Duration = Duration::from_millis(100);
 const TIMEOUT_RECOVERY_WINDOW: Duration = Duration::from_millis(750);
 const OPEN_INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(30);
+/// A local Windows open starts PowerShell, compiles the C# framing controller
+/// with `Add-Type` (csc.exe under Windows PowerShell 5.1, in-process Roslyn
+/// under PowerShell 7) and opens a private user Runspace before the first
+/// frame can arrive. That one-time cold start is a few seconds on an idle host
+/// but has exceeded 30 s on a loaded or freshly provisioned one, so the local
+/// Windows open gets a larger budget. Command timeouts are unaffected, and a
+/// frame that never arrives still fails closed with `shell_reset_required`.
+#[cfg(windows)]
+const LOCAL_WINDOWS_OPEN_INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(90);
 const DEFAULT_TERMINAL_RECORDS: usize = 128;
 const MIN_OUTPUT_BYTES: usize = 1024;
 
@@ -624,7 +633,11 @@ impl PersistentShellManager {
         });
 
         let initialization = launch.initialization.unwrap_or_default();
-        self.register_and_initialize(&entry, &initialization)
+        #[cfg(windows)]
+        let initialization_timeout = LOCAL_WINDOWS_OPEN_INITIALIZATION_TIMEOUT;
+        #[cfg(not(windows))]
+        let initialization_timeout = OPEN_INITIALIZATION_TIMEOUT;
+        self.register_and_initialize(&entry, &initialization, initialization_timeout)
     }
 
     /// Open a persistent shell backed by an externally-provided transport
@@ -698,13 +711,14 @@ impl PersistentShellManager {
         });
 
         let initialization = initialization.unwrap_or_default();
-        self.register_and_initialize(&entry, &initialization)
+        self.register_and_initialize(&entry, &initialization, OPEN_INITIALIZATION_TIMEOUT)
     }
 
     fn register_and_initialize(
         &self,
         entry: &Arc<ShellEntry>,
         initialization: &str,
+        initialization_timeout: Duration,
     ) -> Result<ShellSummary, ShellError> {
         {
             let mut entries = lock_unpoison(&self.inner.entries);
@@ -752,7 +766,7 @@ impl PersistentShellManager {
         }
         match entry.process.wait_for_completion(
             &init_token,
-            OPEN_INITIALIZATION_TIMEOUT,
+            initialization_timeout,
             &mut completion,
         ) {
             WaitOutcome::Frame(frame) if frame.status == 0 => {
@@ -830,7 +844,7 @@ impl PersistentShellManager {
                     "persistent shell exited during initialization",
                 ))
             }
-            WaitOutcome::TimedOut | WaitOutcome::ControlLost => {
+            outcome @ (WaitOutcome::TimedOut | WaitOutcome::ControlLost) => {
                 self.transition_terminal(
                     entry,
                     ShellState::Poisoned,
@@ -838,9 +852,22 @@ impl PersistentShellManager {
                     Some("initialization_sync_lost".to_string()),
                 );
                 entry.process.shutdown();
+                // Record which synchronization evidence did arrive so a slow
+                // cold start can be told apart from lost framing.
+                let reason = if matches!(outcome, WaitOutcome::TimedOut) {
+                    format!("timed out after {}s", initialization_timeout.as_secs())
+                } else {
+                    "control framing was lost".to_string()
+                };
                 Err(ShellError::new(
                     "shell_reset_required",
-                    "persistent shell initialization did not reach a synchronized state",
+                    format!(
+                        "persistent shell initialization did not reach a synchronized state \
+                         ({reason}; stdout_synced={}, stderr_synced={}, control_frame={})",
+                        completion.stdout_synced,
+                        completion.stderr_synced,
+                        completion.control.is_some(),
+                    ),
                 ))
             }
         }
@@ -2334,6 +2361,137 @@ pub fn canonical_dialect(program: &str) -> Option<&'static str> {
         "bash" => Some("bash"),
         "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe" => Some("powershell"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod initialization_sync_tests {
+    use super::*;
+
+    /// Transport whose initialization frame never completes. It reports a
+    /// fixed partial synchronization state and records the budget it was given.
+    struct UnsynchronizedTransport {
+        outcome_is_timeout: bool,
+        observed_timeout: Arc<Mutex<Option<Duration>>>,
+        shutdowns: Arc<AtomicUsize>,
+        stdout: Arc<Mutex<BoundedBuffer>>,
+        stderr: Arc<Mutex<BoundedBuffer>>,
+    }
+
+    impl ShellTransport for UnsynchronizedTransport {
+        fn set_expected_token(&self, _token: &str) {}
+
+        fn write_command(&self, _command: &str, _token: &str) -> Result<(), ShellError> {
+            Ok(())
+        }
+
+        fn wait_for_completion(
+            &self,
+            _token: &str,
+            timeout: Duration,
+            progress: &mut CompletionProgress,
+        ) -> WaitOutcome {
+            *lock_unpoison(&self.observed_timeout) = Some(timeout);
+            progress.stdout_synced = true;
+            if self.outcome_is_timeout {
+                WaitOutcome::TimedOut
+            } else {
+                WaitOutcome::ControlLost
+            }
+        }
+
+        fn try_wait(&self) -> Option<ExitStatus> {
+            None
+        }
+
+        fn interrupt(&self) {}
+
+        fn shutdown(&self) {
+            self.shutdowns.fetch_add(1, Ordering::SeqCst);
+        }
+
+        fn terminate_remaining_group_after_exit(&self) {}
+
+        fn stdout(&self) -> &Arc<Mutex<BoundedBuffer>> {
+            &self.stdout
+        }
+
+        fn stderr(&self) -> &Arc<Mutex<BoundedBuffer>> {
+            &self.stderr
+        }
+    }
+
+    fn open_unsynchronized(
+        outcome_is_timeout: bool,
+    ) -> (ShellError, Option<Duration>, usize, ShellState) {
+        let observed_timeout = Arc::new(Mutex::new(None));
+        let shutdowns = Arc::new(AtomicUsize::new(0));
+        let transport = UnsynchronizedTransport {
+            outcome_is_timeout,
+            observed_timeout: Arc::clone(&observed_timeout),
+            shutdowns: Arc::clone(&shutdowns),
+            stdout: Arc::new(Mutex::new(BoundedBuffer::new(MIN_OUTPUT_BYTES))),
+            stderr: Arc::new(Mutex::new(BoundedBuffer::new(MIN_OUTPUT_BYTES))),
+        };
+        let manager = PersistentShellManager::new(ShellLimits::default());
+        let error = manager
+            .open_with_transport(
+                ShellIdentity {
+                    shell_id: "wc_shell_init_sync".to_string(),
+                    workflow_session_id: "wc_sess_init_sync".to_string(),
+                    runtime_project_id: "agent:oe:test".to_string(),
+                    executor: "agent".to_string(),
+                    client_id: None,
+                },
+                "bash".to_string(),
+                None,
+                PathBuf::new(),
+                None,
+                Box::new(transport),
+            )
+            .unwrap_err();
+        let state = lock_unpoison(&manager.inner.entries)
+            .get("wc_shell_init_sync")
+            .map(|entry| *lock_unpoison(&entry.state))
+            .expect("failed open keeps a terminal record");
+        let observed = *lock_unpoison(&observed_timeout);
+        (error, observed, shutdowns.load(Ordering::SeqCst), state)
+    }
+
+    #[test]
+    fn initialization_timeout_fails_closed_with_sync_diagnostics() {
+        let (error, observed_timeout, shutdowns, state) = open_unsynchronized(true);
+        assert_eq!(error.code, "shell_reset_required");
+        assert!(
+            error.message.starts_with(
+                "persistent shell initialization did not reach a synchronized state (timed out after 30s;"
+            ),
+            "{}",
+            error.message
+        );
+        assert!(
+            error
+                .message
+                .ends_with("stdout_synced=true, stderr_synced=false, control_frame=false)"),
+            "{}",
+            error.message
+        );
+        assert_eq!(observed_timeout, Some(OPEN_INITIALIZATION_TIMEOUT));
+        assert!(shutdowns >= 1);
+        assert_eq!(state, ShellState::Poisoned);
+    }
+
+    #[test]
+    fn initialization_control_loss_is_distinguished_from_timeout() {
+        let (error, _, shutdowns, state) = open_unsynchronized(false);
+        assert_eq!(error.code, "shell_reset_required");
+        assert!(
+            error.message.contains("(control framing was lost;"),
+            "{}",
+            error.message
+        );
+        assert!(shutdowns >= 1);
+        assert_eq!(state, ShellState::Poisoned);
     }
 }
 

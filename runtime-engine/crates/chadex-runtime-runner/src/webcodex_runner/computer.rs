@@ -61,7 +61,71 @@ fn optional_snapshot_dimension(payload: &Value, field: &str) -> Result<Option<u3
     }
 }
 
+/// Structured per-action timing record. Carries only the action name, the
+/// elapsed time and a result class; never payload, window titles, AX text or
+/// image content.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ComputerActionTiming {
+    pub(crate) action: &'static str,
+    pub(crate) duration_ms: u64,
+    pub(crate) outcome: String,
+}
+
+/// Result class: "ok", or the leading `code:` token of the error
+/// (for example `stale_surface`), falling back to "error".
+fn computer_outcome(error: Option<&str>) -> String {
+    let Some(error) = error else {
+        return "ok".to_string();
+    };
+    match error.split_once(':') {
+        Some((code, _))
+            if !code.is_empty()
+                && code
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_') =>
+        {
+            code.to_string()
+        }
+        _ => "error".to_string(),
+    }
+}
+
+fn emit_computer_action_timing(timing: &ComputerActionTiming) {
+    tracing::info!(
+        target: "chadex::computer",
+        action = timing.action,
+        duration_ms = timing.duration_ms,
+        outcome = %timing.outcome,
+        "computer action finished"
+    );
+}
+
 pub(crate) fn handle_computer_operation(operation: &RunnerComputerOperation) -> CommandResult {
+    time_computer_action(
+        operation.kind.wire_kind(),
+        || run_computer_operation(operation),
+        emit_computer_action_timing,
+    )
+}
+
+/// Shared dispatch wrapper for every computer action: runs it and records one
+/// timing entry through `sink`.
+fn time_computer_action(
+    action: &'static str,
+    run: impl FnOnce() -> CommandResult,
+    sink: impl FnOnce(&ComputerActionTiming),
+) -> CommandResult {
+    let started = Instant::now();
+    let result = run();
+    sink(&ComputerActionTiming {
+        action,
+        duration_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+        outcome: computer_outcome(result.error.as_deref()),
+    });
+    result
+}
+
+fn run_computer_operation(operation: &RunnerComputerOperation) -> CommandResult {
     let start = Instant::now();
     let payload = match serde_json::from_str::<Value>(&operation.payload) {
         Ok(value) => value,
