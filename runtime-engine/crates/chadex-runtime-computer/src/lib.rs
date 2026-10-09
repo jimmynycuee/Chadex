@@ -670,8 +670,8 @@ struct ApplicationRecord {
 }
 
 fn sensitive_application_name(name: &str) -> bool {
-    let normalized = name.trim().to_ascii_lowercase();
-    matches!(
+    let normalized = name.trim().to_lowercase();
+    if matches!(
         normalized.as_str(),
         "passwords"
             | "keychain access"
@@ -679,21 +679,110 @@ fn sensitive_application_name(name: &str) -> bool {
             | "security agent"
             | "authorizationhost"
             | "authorization host"
-    )
+            // macOS Chinese UI names for Passwords and Keychain Access.
+            | "密碼"
+            | "鑰匙圈存取"
+            // Third-party password managers. Exact match on purpose: a
+            // prefix such as "keeper" would also block unrelated apps.
+            | "bitwarden"
+            | "lastpass"
+            | "dashlane"
+            | "keepassxc"
+            | "keepass"
+            | "enpass"
+            | "proton pass"
+            | "nordpass"
+            | "keeper"
+            | "keeper password manager"
+    ) {
+        return true;
+    }
+    // 1Password ships as "1Password", "1Password 7", "1Password 8", ...
+    // Prefix match, but only up to a non-alphanumeric boundary so that a
+    // name such as "1Passwordless" is not caught.
+    normalized.strip_prefix("1password").is_some_and(|rest| {
+        rest.chars()
+            .next()
+            .map_or(true, |next| !next.is_alphanumeric())
+    })
 }
 
+/// Window-title markers that mark a surface as an authentication screen.
+///
+/// Browser tab titles are page titles, so login pages ("Sign in - Google
+/// Accounts", "Log in to GitHub") must be blocked the same way as native
+/// authentication dialogs. Policy: prefer blocking too much, because the user
+/// can always operate a login page themselves.
+///
+/// Known and accepted false positives (blocked even though harmless):
+/// - documents or pages whose title merely mentions a password, e.g.
+///   "password-policy.md", "Password strength guide", "密碼學筆記";
+/// - settings panes and pages named after logins, e.g. "Passwords & Security".
+///
+/// Known and deliberately avoided false positives:
+/// - ASCII markers need word boundaries, so "Designing Interfaces" (contains
+///   "signin") and "Blogin" do not match; a trailing plural "s" is allowed;
+/// - the macOS System Settings pane "Login Items & Extensions" is not an
+///   authentication screen and is stripped before matching.
 fn sensitive_auth_title(title: &str) -> bool {
-    let normalized = title.trim().to_ascii_lowercase();
-    [
+    let normalized = title.trim().to_lowercase();
+    if [
         "authentication",
         "authorization",
         "authenticate",
         "enter password",
         "password required",
         "requires a password",
+        // CJK markers have no word boundaries, so plain contains is used.
+        "登入",
+        "登錄",
+        "登录",
+        "密碼",
+        "密码",
+        "驗證碼",
+        "验证码",
+        "ログイン",
+        "パスワード",
     ]
     .iter()
     .any(|marker| normalized.contains(marker))
+    {
+        return true;
+    }
+    let scanned = normalized.replace("login items", " ");
+    [
+        "sign in",
+        "sign-in",
+        "signin",
+        "log in",
+        "log-in",
+        "login",
+        "sign on",
+        "single sign-on",
+        "password",
+        "passcode",
+        "two-factor",
+        "2-step verification",
+        "verification code",
+        "one-time code",
+    ]
+    .iter()
+    .any(|marker| contains_word_marker(&scanned, marker))
+}
+
+/// True when `marker` occurs in `haystack` starting at a word boundary and
+/// ending at a word boundary (an optional plural "s" is tolerated).
+fn contains_word_marker(haystack: &str, marker: &str) -> bool {
+    haystack.match_indices(marker).any(|(start, _)| {
+        let before_ok = haystack[..start]
+            .chars()
+            .next_back()
+            .map_or(true, |c| !c.is_alphanumeric());
+        let rest = &haystack[start + marker.len()..];
+        let rest = rest.strip_prefix('s').unwrap_or(rest);
+        let after_ok = rest.chars().next().map_or(true, |c| !c.is_alphanumeric());
+        before_ok && after_ok
+    })
 }
 
 #[cfg(any(test, target_os = "macos"))]
@@ -3216,6 +3305,110 @@ mod sensitive_surface_tests {
         };
         assert!(ensure_application_not_sensitive(&application).is_ok());
         assert!(ensure_surface_not_sensitive(&surface("TextEdit", "Notes")).is_ok());
+    }
+
+    #[test]
+    fn browser_login_pages_and_second_factor_titles_are_blocked() {
+        for title in [
+            "Sign in - Google Accounts",
+            "Log in to GitHub",
+            "Sign-in | Example",
+            "Signin",
+            "Login",
+            "Please log-in",
+            "Sign on to your account",
+            "Single sign-on",
+            "Reset your password",
+            "Passwords",
+            "password-policy.md",
+            "Enter your passcode",
+            "Two-Factor Authentication Setup",
+            "Two-factor settings",
+            "2-Step Verification",
+            "Enter the verification code",
+            "Your one-time code",
+            "登入 - 某網站",
+            "登錄帳號",
+            "登录",
+            "輸入密碼",
+            "输入密码",
+            "驗證碼",
+            "验证码",
+            "ログイン",
+            "パスワードの変更",
+        ] {
+            assert!(sensitive_auth_title(title), "should block: {title}");
+            assert!(
+                ensure_surface_not_sensitive(&surface("Google Chrome", title)).is_err(),
+                "should block: {title}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_titles_are_not_caught_by_login_markers() {
+        for title in [
+            "Google Sheets",
+            "Inbox",
+            "Inbox (3) - user@example.com",
+            "Designing Interfaces",
+            "Assigning tasks",
+            "Blogin notes",
+            "Login Items & Extensions",
+            "Wikipedia - Sign language",
+            "Notes",
+            "Quarterly report",
+            "設定",
+            "メール",
+        ] {
+            assert!(!sensitive_auth_title(title), "should allow: {title}");
+        }
+    }
+
+    #[test]
+    fn password_manager_applications_are_blocked_without_overblocking() {
+        for name in [
+            "1Password",
+            "1password 7",
+            "1Password 8",
+            "1Password-Helper",
+            "Bitwarden",
+            "LastPass",
+            "Dashlane",
+            "KeePassXC",
+            "KeePass",
+            "Enpass",
+            "Proton Pass",
+            "NordPass",
+            "Keeper",
+            "Keeper Password Manager",
+            "密碼",
+            "鑰匙圈存取",
+            "  bitwarden  ",
+        ] {
+            let application = ApplicationRecord {
+                display_name: name.to_string(),
+                native_identity: vec![1],
+            };
+            assert!(sensitive_application_name(name), "should block: {name}");
+            assert!(
+                ensure_application_not_sensitive(&application).is_err(),
+                "should block: {name}"
+            );
+        }
+        for name in [
+            "TextEdit",
+            "Keeper of Time",
+            "Keepers",
+            "KeePassium Reader",
+            "1Passwordless",
+            "Proton Mail",
+            "Proton Drive",
+            "Dash",
+            "Notes",
+        ] {
+            assert!(!sensitive_application_name(name), "should allow: {name}");
+        }
     }
 
     #[test]
