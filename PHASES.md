@@ -300,7 +300,7 @@ phases:
   - id: D1
     name: macOS design v2 (Liquid Glass sidebar, connection circuit, activity timeline, dark default)
     branch: feature/d1-design-v2
-    status: pending_validation
+    status: in_progress  # PR #2 open; design pending validation (AI review only)
     owner: claude
     depends_on: []
     # PR #2。只有 AI 評審，沒有外部設計驗證，也沒有使用者實機驗收；不可宣稱得獎水準。
@@ -315,7 +315,7 @@ phases:
   - id: W-design
     name: Windows design v2 (Fluent type, connection circuit, activity timeline, Mica, dark default)
     branch: feature/w-design-v2
-    status: in_review
+    status: in_progress  # PR #1 open; CI-only validation
     owner: claude
     depends_on: []
     # PR #1。只有 CI 驗證，沒有 Windows 實機測試。
