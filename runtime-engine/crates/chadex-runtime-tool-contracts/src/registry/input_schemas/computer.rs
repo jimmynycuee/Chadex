@@ -78,7 +78,8 @@ pub fn computer_accessibility_tree_input_schema() -> Value {
         "properties": {
             "client_id": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Exact Runner client_id whose desktop is inspected."},
             "surface_id": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Opaque process-local surface_id returned by computer_observe(action=windows)."},
-            "max_depth": {"type": "integer", "minimum": 0, "description": "Maximum AX descendant depth; values above 8 are accepted and clamped to 8."},
+            "root_element_id": {"type": "string", "minLength": 9, "maxLength": 128, "description": "Optional fresh element_id from the same surface; observe its descendants instead of the window root. Re-issues ids for the whole surface."},
+            "max_depth": {"type": "integer", "minimum": 0, "description": "Maximum AX descendant depth below the root; values above 8 are accepted and clamped to 8."},
             "max_nodes": {"type": "integer", "minimum": 1, "description": "Maximum semantic AX elements returned; values above 256 are accepted and clamped to 256."}
         },
         "required": ["client_id", "surface_id"]
@@ -94,10 +95,13 @@ pub fn computer_find_elements_input_schema() -> Value {
             "surface_id": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Opaque process-local surface_id returned by computer_observe(action=windows)."},
             "role": {"type": "string", "minLength": 1, "maxLength": 256, "description": "Optional exact Accessibility role match."},
             "subrole": {"type": "string", "minLength": 1, "maxLength": 256, "description": "Optional exact Accessibility subrole match."},
-            "label": {"type": "string", "minLength": 1, "maxLength": 256, "description": "Optional case-sensitive literal substring matched only against title, description, or placeholder; AXValue is never searched."},
+            "label": {"type": "string", "minLength": 1, "maxLength": 256, "description": "Optional case-sensitive literal substring matched only against title, description, or placeholder; use value for AXValue."},
+            "value": {"type": "string", "minLength": 1, "maxLength": 256, "description": "Optional case-sensitive literal substring matched against AXValue of non-secure, non-protected elements only; values are never returned."},
+            "root_element_id": {"type": "string", "minLength": 9, "maxLength": 128, "description": "Optional fresh element_id from the same surface; search only below it. Re-issues ids for the whole surface."},
             "focused": {"type": "boolean", "description": "Optional exact focused-state match; unknown/null state does not match."},
             "enabled": {"type": "boolean", "description": "Optional exact enabled-state match; unknown/null state does not match."},
-            "limit": {"type": "integer", "minimum": 1, "description": "Maximum matching elements returned; defaults to 8 and values above 32 are accepted and clamped to 32."}
+            "limit": {"type": "integer", "minimum": 1, "description": "Maximum matching elements returned; defaults to 8 and values above 32 are accepted and clamped to 32."},
+            "max_depth": {"type": "integer", "minimum": 1, "description": "Search depth below the root; defaults to 32, values above 48 are clamped to 48."}
         },
         "required": ["client_id", "surface_id"]
     })

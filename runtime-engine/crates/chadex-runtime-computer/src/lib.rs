@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 #[cfg(any(test, target_os = "macos"))]
 use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -94,12 +94,36 @@ const MAX_ACCESSIBILITY_DEPTH: usize = 8;
 const MAX_ACCESSIBILITY_NODES: usize = 256;
 pub const DEFAULT_ACCESSIBILITY_DEPTH: usize = 6;
 pub const DEFAULT_ACCESSIBILITY_NODES: usize = 128;
+/// Absolute (window-root relative) depth ceiling for subtree and deep-find walks.
+/// It also bounds the cost of re-resolving a handle (about nine AX calls per level).
+#[cfg(any(test, target_os = "macos"))]
+const MAX_ACCESSIBILITY_ABSOLUTE_DEPTH: usize = 64;
+pub const DEFAULT_FIND_DEPTH: usize = 32;
+pub const MAX_FIND_DEPTH: usize = 48;
+pub const DEFAULT_FIND_ELEMENTS_LIMIT: usize = 8;
+pub const MAX_FIND_ELEMENTS_LIMIT: usize = 32;
+/// Nodes read per deep search (not exposed as a request parameter).
+pub const MAX_FIND_VISITED: usize = 4000;
+/// Children expanded for any single node (large lists and tables).
+#[cfg(target_os = "macos")]
+const MAX_FIND_CHILDREN_PER_NODE: usize = 512;
+/// Soft wall-clock budget for a deep search, measured from the start of the
+/// observation. Reaching it returns the partial result as a success.
+#[cfg(target_os = "macos")]
+const FIND_SOFT_BUDGET: Duration = Duration::from_secs(6);
 const RGBA_BYTES_PER_PIXEL: u64 = 4;
 /// Pre-capture ceiling for the expected complete raw RGBA frame. Standard
 /// 8K UHD (7680x4320x4) fits while malformed/extreme dimensions fail closed
 /// before xcap is allowed to allocate the native capture image.
 const MAX_RAW_CAPTURE_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION: u32 = 4096;
+
+#[cfg(any(test, target_os = "macos"))]
+mod ax_traversal;
+mod web_accessibility;
+use web_accessibility::{WebAxContext, WebAxRegistry};
+#[cfg(any(test, target_os = "macos"))]
+use web_accessibility::WebAxState;
 
 #[cfg(any(test, target_os = "macos"))]
 const AX_MESSAGING_TIMEOUT_SECS: f32 = 2.0;
@@ -138,6 +162,11 @@ impl AxObservationDeadline {
     #[cfg(target_os = "macos")]
     fn ensure_remaining(&self) -> Result<(), String> {
         self.ensure_remaining_at(Instant::now())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn remaining(&self) -> Duration {
+        self.expires_at.saturating_duration_since(Instant::now())
     }
 
     fn remaining_timeout_secs_at(&self, now: Instant) -> Result<f32, String> {
@@ -255,18 +284,19 @@ impl ElementFingerprint {
 struct ElementRecord {
     surface_id: String,
     path: Vec<usize>,
-    lineage: Vec<ElementFingerprint>,
+    /// Root-to-target fingerprints. `Arc` keeps deep (up to
+    /// `MAX_ACCESSIBILITY_ABSOLUTE_DEPTH`) lineages shared between sibling records.
+    lineage: Vec<Arc<ElementFingerprint>>,
 }
 
 impl ElementRecord {
-    #[cfg(any(test, target_os = "macos", windows))]
     fn target_fingerprint(&self) -> Option<&ElementFingerprint> {
         (self.lineage.len() == self.path.len() + 1)
             .then(|| self.lineage.last())
             .flatten()
+            .map(Arc::as_ref)
     }
 
-    #[cfg(any(test, target_os = "macos", windows))]
     fn contains_protected_content(&self) -> bool {
         self.lineage.iter().any(|fingerprint| fingerprint.protected)
     }
@@ -435,7 +465,6 @@ fn finish_clipboard_read<T>(
     }
 }
 
-#[cfg(any(test, target_os = "macos"))]
 fn is_secure_text_fingerprint(fingerprint: &ElementFingerprint) -> bool {
     fingerprint.role == "AXSecureTextField"
         || fingerprint
@@ -464,7 +493,7 @@ fn validate_text_input_target(element: &ElementRecord) -> Result<&ElementFingerp
                 .to_string(),
         );
     }
-    if element.lineage.iter().any(is_secure_text_fingerprint) {
+    if element.lineage.iter().any(|fp| is_secure_text_fingerprint(fp)) {
         return Err(
             "permission_denied: secure Accessibility text elements cannot receive text input"
                 .to_string(),
@@ -543,6 +572,108 @@ fn ensure_correlated_fingerprint(
 struct AccessibilityTreeResult {
     output: Value,
     elements: Vec<(String, ElementRecord)>,
+}
+
+/// Roots of subtree and deep-find queries must be ordinary content: a protected or
+/// secure node (or any descendant of one) is never a legal starting point.
+fn ensure_queryable_root(element: &ElementRecord) -> Result<(), String> {
+    if element.target_fingerprint().is_none() {
+        return Err("stale_element: AX element correlation lineage is incomplete".to_string());
+    }
+    if element.contains_protected_content()
+        || element
+            .lineage
+            .iter()
+            .any(|fingerprint| is_secure_text_fingerprint(fingerprint))
+    {
+        return Err(
+            "permission_denied: protected or secure Accessibility content cannot be a query root"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Request for `ComputerRuntime::find_elements`. `value` is a case-sensitive literal
+/// substring matched against `AXValue` of non-secure, non-protected elements only.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct ElementFindRequest {
+    pub root_element_id: Option<String>,
+    pub role: Option<String>,
+    pub subrole: Option<String>,
+    pub label: Option<String>,
+    pub value: Option<String>,
+    pub focused: Option<bool>,
+    pub enabled: Option<bool>,
+    pub limit: usize,
+    /// Search depth below the root (or the window root).
+    pub max_depth: usize,
+}
+
+impl std::fmt::Debug for ElementFindRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ElementFindRequest")
+            .field("root_element_id", &self.root_element_id)
+            .field("role", &self.role)
+            .field("subrole", &self.subrole)
+            .field("label", &self.label)
+            .field("value_present", &self.value.is_some())
+            .field("focused", &self.focused)
+            .field("enabled", &self.enabled)
+            .field("limit", &self.limit)
+            .field("max_depth", &self.max_depth)
+            .finish()
+    }
+}
+
+impl ElementFindRequest {
+    fn validate(&self) -> Result<(), String> {
+        for (name, text) in [
+            ("role", self.role.as_deref()),
+            ("subrole", self.subrole.as_deref()),
+            ("label", self.label.as_deref()),
+            ("value", self.value.as_deref()),
+        ] {
+            if let Some(text) = text {
+                if text.is_empty() || text.len() > MAX_TEXT_BYTES || text.contains('\0') {
+                    return Err(format!(
+                        "invalid_request: computer element finder {name} filter is invalid"
+                    ));
+                }
+            }
+        }
+        if self.role.is_none()
+            && self.subrole.is_none()
+            && self.label.is_none()
+            && self.value.is_none()
+            && self.focused.is_none()
+            && self.enabled.is_none()
+        {
+            return Err(
+                "invalid_request: computer element finder requires at least one semantic or state filter"
+                    .to_string(),
+            );
+        }
+        if !(1..=MAX_FIND_ELEMENTS_LIMIT).contains(&self.limit)
+            || !(1..=MAX_FIND_DEPTH).contains(&self.max_depth)
+        {
+            return Err("invalid_request: computer element finder bounds are invalid".to_string());
+        }
+        Ok(())
+    }
+
+    #[cfg(any(test, target_os = "macos"))]
+    fn query(&self) -> ax_traversal::FindQuery {
+        ax_traversal::FindQuery {
+            role: self.role.clone(),
+            subrole: self.subrole.clone(),
+            label: self.label.clone(),
+            value: self.value.clone(),
+            focused: self.focused,
+            enabled: self.enabled,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -1017,9 +1148,33 @@ fn dispatch_after_spending_pointer_generation(
     dispatch(snapshots)
 }
 
+/// Whether observations may switch on web accessibility (`AXManualAccessibility`) of
+/// Chromium/Electron apps so their page content appears in the Accessibility tree.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WebAccessibilityPolicy {
+    #[default]
+    Auto,
+    Off,
+}
+
+impl WebAccessibilityPolicy {
+    /// Environment variable consulted by the Runner.
+    pub const ENV_VAR: &'static str = "CHADEX_COMPUTER_WEB_ACCESSIBILITY";
+
+    /// `off` (case-insensitive, surrounding whitespace ignored) disables the feature;
+    /// any other value, or none, keeps the default.
+    pub fn from_env_value(value: Option<&str>) -> Self {
+        match value {
+            Some(value) if value.trim().eq_ignore_ascii_case("off") => Self::Off,
+            _ => Self::Auto,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ComputerConfig {
     pub max_encoded_image_bytes: usize,
+    pub web_accessibility: WebAccessibilityPolicy,
 }
 
 pub struct ComputerRuntime {
@@ -1029,18 +1184,42 @@ pub struct ComputerRuntime {
     applications: Mutex<HashMap<String, ApplicationRecord>>,
     displays: Mutex<HashMap<String, DisplayRecord>>,
     display_snapshots: Mutex<DisplaySnapshotRegistry>,
+    web_ax: WebAxRegistry,
 }
 
 impl ComputerRuntime {
     pub fn new(config: ComputerConfig) -> Self {
         Self {
             config,
+            web_ax: WebAxRegistry::default(),
             surfaces: Mutex::new(HashMap::new()),
             elements: Mutex::new(ElementRegistry::default()),
             applications: Mutex::new(HashMap::new()),
             displays: Mutex::new(HashMap::new()),
             display_snapshots: Mutex::new(DisplaySnapshotRegistry::default()),
         }
+    }
+
+    /// Web accessibility context for observing `record`. A sensitive surface never gets
+    /// the attribute written (and its tree stops at the `AXWebArea` boundary).
+    fn web_context_for(&self, record: &SurfaceRecord) -> WebAxContext<'_> {
+        self.web_context(ensure_surface_not_sensitive(record).is_err())
+    }
+
+    fn web_context(&self, sensitive_surface: bool) -> WebAxContext<'_> {
+        WebAxContext {
+            policy: self.config.web_accessibility,
+            sensitive_surface,
+            registry: &self.web_ax,
+        }
+    }
+
+    #[cfg(test)]
+    fn insert_surface_for_test(&self, surface_id: &str, record: SurfaceRecord) {
+        self.surfaces
+            .lock()
+            .unwrap()
+            .insert(surface_id.to_string(), record);
     }
 
     pub fn read_clipboard(&self) -> Result<Value, String> {
@@ -1391,15 +1570,127 @@ impl ComputerRuntime {
             .get(surface_id)
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
-        let AccessibilityTreeResult {
-            mut output,
-            elements,
-        } = platform::accessibility_tree(surface_id, &record, max_depth, max_nodes)?;
+        // The legacy tree keeps its historical sensitive-surface behavior; it merely
+        // never switches on web accessibility for a sensitive surface.
+        let web = self.web_context_for(&record);
+        let AccessibilityTreeResult { output, elements } =
+            platform::observe_accessibility_tree(surface_id, &record, max_depth, max_nodes, &web)?;
+        self.finish_accessibility_observation(surface_id, &record, output, elements)
+    }
+
+    /// Subtree observation (`computer_accessibility_subtree`). With a
+    /// `root_element_id` it refuses sensitive surfaces before any native call and
+    /// hardens secure fields. Without one it behaves exactly like the legacy tree
+    /// (sensitive surfaces are observable, secure descendants are handled as before) and
+    /// only never enables web accessibility on a sensitive surface. The result
+    /// re-issues ids for the whole surface, including the root.
+    pub fn accessibility_subtree(
+        &self,
+        surface_id: &str,
+        root_element_id: Option<&str>,
+        max_depth: usize,
+        max_nodes: usize,
+    ) -> Result<Value, String> {
+        if max_depth > MAX_ACCESSIBILITY_DEPTH
+            || !(1..=MAX_ACCESSIBILITY_NODES).contains(&max_nodes)
+        {
+            return Err("invalid_request: accessibility bounds are invalid".to_string());
+        }
+        let (record, root) =
+            self.prepare_query(surface_id, root_element_id, root_element_id.is_some())?;
+        let web = self.web_context_for(&record);
+        let AccessibilityTreeResult { output, elements } = platform::accessibility_subtree(
+            surface_id,
+            &record,
+            root.as_ref(),
+            max_depth,
+            max_nodes,
+            &web,
+        )?;
+        self.finish_accessibility_observation(surface_id, &record, output, elements)
+    }
+
+    /// Deep element search (`computer_accessibility_find`). Same sensitivity gates as
+    /// [`Self::accessibility_subtree`]; returned elements never carry `AXValue`.
+    pub fn find_elements(
+        &self,
+        surface_id: &str,
+        request: &ElementFindRequest,
+    ) -> Result<Value, String> {
+        request.validate()?;
+        let (record, root) =
+            self.prepare_query(surface_id, request.root_element_id.as_deref(), true)?;
+        let web = self.web_context_for(&record);
+        let AccessibilityTreeResult { output, elements } =
+            platform::find_elements(surface_id, &record, root.as_ref(), request, &web)?;
+        self.finish_accessibility_observation(surface_id, &record, output, elements)
+    }
+
+    /// Everything a query-style observation must settle before touching the native
+    /// tree: id syntax, surface liveness, sensitive surface (when `enforce_sensitive`),
+    /// and root eligibility.
+    fn prepare_query(
+        &self,
+        surface_id: &str,
+        root_element_id: Option<&str>,
+        enforce_sensitive: bool,
+    ) -> Result<(SurfaceRecord, Option<ElementRecord>), String> {
+        if surface_id.is_empty() || surface_id.len() > MAX_SURFACE_ID_BYTES {
+            return Err("invalid_request: surface_id is invalid".to_string());
+        }
+        if let Some(root_element_id) = root_element_id {
+            if !root_element_id.starts_with("element_")
+                || root_element_id.len() <= "element_".len()
+                || root_element_id.len() > MAX_ELEMENT_ID_BYTES
+            {
+                return Err("invalid_request: root_element_id is invalid".to_string());
+            }
+        }
+        let record = self
+            .surfaces
+            .lock()
+            .map_err(|_| "computer_state_error: surface registry lock poisoned".to_string())?
+            .get(surface_id)
+            .cloned()
+            .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
+        if enforce_sensitive {
+            ensure_surface_not_sensitive(&record)?;
+        }
+        let root = match root_element_id {
+            None => None,
+            Some(root_element_id) => {
+                let element = self
+                    .elements
+                    .lock()
+                    .map_err(|_| "computer_state_error: element registry lock poisoned".to_string())?
+                    .get(root_element_id)
+                    .ok_or_else(|| {
+                        "stale_element: unknown, evicted, or stale root_element_id".to_string()
+                    })?;
+                if element.surface_id != surface_id {
+                    return Err(
+                        "stale_element: root_element_id belongs to a different surface".to_string(),
+                    );
+                }
+                ensure_queryable_root(&element)?;
+                Some(element)
+            }
+        };
+        Ok((record, root))
+    }
+
+    fn finish_accessibility_observation(
+        &self,
+        surface_id: &str,
+        record: &SurfaceRecord,
+        mut output: Value,
+        elements: Vec<(String, ElementRecord)>,
+    ) -> Result<Value, String> {
         let surface_registry = self
             .surfaces
             .lock()
             .map_err(|_| "computer_state_error: surface registry lock poisoned".to_string())?;
-        if surface_registry.get(surface_id) != Some(&record) {
+        if surface_registry.get(surface_id) != Some(record) {
             return Err(
                 "stale_surface: surface registry changed during accessibility observation"
                     .to_string(),
@@ -1669,6 +1960,7 @@ mod public_runtime_bounds_tests {
     fn runtime() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -2234,7 +2526,7 @@ mod element_registry_tests {
         let fingerprint = fingerprint(label);
         ElementRecord {
             surface_id: surface_id.to_string(),
-            lineage: vec![fingerprint; path.len() + 1],
+            lineage: vec![Arc::new(fingerprint); path.len() + 1],
             path,
         }
     }
@@ -2244,7 +2536,7 @@ mod element_registry_tests {
         let element = ElementRecord {
             surface_id: "surface_test".to_string(),
             path: Vec::new(),
-            lineage: vec![fingerprint("")],
+            lineage: vec![Arc::new(fingerprint(""))],
         };
         assert_eq!(
             validate_element_state_target(&element).unwrap_err(),
@@ -2384,7 +2676,7 @@ mod element_registry_tests {
         let mut element = record("surface_test", "target", vec![0, 1]);
         assert!(element.target_fingerprint().is_some());
         assert!(!element.contains_protected_content());
-        element.lineage[1].protected = true;
+        Arc::make_mut(&mut element.lineage[1]).protected = true;
         assert!(element.contains_protected_content());
         element.lineage.pop();
         assert!(element.target_fingerprint().is_none());
@@ -2406,47 +2698,49 @@ mod element_registry_tests {
     #[test]
     fn computer_text_input_target_preflight_fails_closed() {
         let mut text_target = record("surface_test", "target", vec![0]);
-        text_target.lineage[1].role = "AXTextArea".to_string();
+        Arc::make_mut(&mut text_target.lineage[1]).role = "AXTextArea".to_string();
         assert!(validate_text_input_target(&text_target).is_ok());
 
         let mut protected = text_target.clone();
-        protected.lineage[0].protected = true;
+        Arc::make_mut(&mut protected.lineage[0]).protected = true;
         assert!(validate_text_input_target(&protected)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut secure = text_target.clone();
-        secure.lineage[1].role = "AXSecureTextField".to_string();
+        Arc::make_mut(&mut secure.lineage[1]).role = "AXSecureTextField".to_string();
         assert!(validate_text_input_target(&secure)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut secure_subrole = text_target.clone();
-        secure_subrole.lineage[1].subrole = Some("AXSecureTextField".to_string());
+        Arc::make_mut(&mut secure_subrole.lineage[1]).subrole =
+            Some("AXSecureTextField".to_string());
         assert!(validate_text_input_target(&secure_subrole)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut secure_ancestor = text_target.clone();
-        secure_ancestor.lineage[0].role = "AXSecureTextField".to_string();
+        Arc::make_mut(&mut secure_ancestor.lineage[0]).role = "AXSecureTextField".to_string();
         assert!(validate_text_input_target(&secure_ancestor)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut search_field = text_target.clone();
-        search_field.lineage[1].role = "AXTextField".to_string();
-        search_field.lineage[1].subrole = Some("AXSearchField".to_string());
+        Arc::make_mut(&mut search_field.lineage[1]).role = "AXTextField".to_string();
+        Arc::make_mut(&mut search_field.lineage[1]).subrole = Some("AXSearchField".to_string());
         assert!(validate_text_input_target(&search_field).is_ok());
 
         let mut unsupported_subrole = text_target.clone();
-        unsupported_subrole.lineage[1].role = "AXTextField".to_string();
-        unsupported_subrole.lineage[1].subrole = Some("AXUnknownTextSubrole".to_string());
+        Arc::make_mut(&mut unsupported_subrole.lineage[1]).role = "AXTextField".to_string();
+        Arc::make_mut(&mut unsupported_subrole.lineage[1]).subrole =
+            Some("AXUnknownTextSubrole".to_string());
         assert!(validate_text_input_target(&unsupported_subrole)
             .unwrap_err()
             .starts_with("input_failed:"));
 
         let mut non_text = text_target.clone();
-        non_text.lineage[1].role = "AXButton".to_string();
+        Arc::make_mut(&mut non_text.lineage[1]).role = "AXButton".to_string();
         assert!(validate_text_input_target(&non_text)
             .unwrap_err()
             .starts_with("input_failed:"));
@@ -2497,6 +2791,7 @@ mod application_runtime_tests {
     fn observer() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -2629,6 +2924,7 @@ mod display_runtime_tests {
     fn observer() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -3105,9 +3401,9 @@ struct PlatformWindow {
 #[cfg(not(any(target_os = "macos", windows)))]
 mod platform {
     use super::{
-        AccessibilityTreeResult, ApplicationRecord, ComputerAction, DisplayRecord, ElementRecord,
-        PlatformApplication, PlatformDisplay, PlatformWindow, PointerAction, PointerPlan,
-        SurfaceRecord,
+        AccessibilityTreeResult, ApplicationRecord, ComputerAction, DisplayRecord,
+        ElementFindRequest, ElementRecord, PlatformApplication, PlatformDisplay, PlatformWindow,
+        PointerAction, PointerPlan, SurfaceRecord, WebAxContext,
     };
 
     pub(super) fn read_clipboard() -> Result<serde_json::Value, String> {
@@ -3181,11 +3477,39 @@ mod platform {
         )
     }
 
-    pub(super) fn accessibility_tree(
+    pub(super) fn observe_accessibility_tree(
         _surface_id: &str,
         _surface: &SurfaceRecord,
         _max_depth: usize,
         _max_nodes: usize,
+        _web: &WebAxContext<'_>,
+    ) -> Result<AccessibilityTreeResult, String> {
+        Err(
+            "unsupported_platform: computer accessibility observation is unavailable on this platform"
+                .to_string(),
+        )
+    }
+
+    pub(super) fn accessibility_subtree(
+        _surface_id: &str,
+        _surface: &SurfaceRecord,
+        _root: Option<&ElementRecord>,
+        _max_depth: usize,
+        _max_nodes: usize,
+        _web: &WebAxContext<'_>,
+    ) -> Result<AccessibilityTreeResult, String> {
+        Err(
+            "unsupported_platform: computer accessibility observation is unavailable on this platform"
+                .to_string(),
+        )
+    }
+
+    pub(super) fn find_elements(
+        _surface_id: &str,
+        _surface: &SurfaceRecord,
+        _root: Option<&ElementRecord>,
+        _request: &ElementFindRequest,
+        _web: &WebAxContext<'_>,
     ) -> Result<AccessibilityTreeResult, String> {
         Err(
             "unsupported_platform: computer accessibility observation is unavailable on this platform"
@@ -3470,6 +3794,7 @@ mod unsupported_platform_tests {
     fn runtime() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -3509,7 +3834,7 @@ mod unsupported_platform_tests {
         let element = ElementRecord {
             surface_id: "surface_test".to_string(),
             path: Vec::new(),
-            lineage: vec![fingerprint],
+            lineage: vec![Arc::new(fingerprint)],
         };
         let error =
             platform::input_text("surface_test", "element_test", &surface, &element, "hello")

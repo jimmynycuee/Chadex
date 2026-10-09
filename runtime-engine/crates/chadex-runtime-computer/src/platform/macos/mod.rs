@@ -1,10 +1,18 @@
 use super::{map_error, resolve_surface_window};
+use crate::ax_traversal::{
+    find, observe_tree, probe_web_content, resolve as resolve_element, subtree_mode, AxClock,
+    AxSource, FindBounds, TreeBounds, TreeMode,
+};
+use crate::web_accessibility::{
+    classify_web_engine, enable_web_accessibility, should_omit_web_content, ProcessKey,
+    SetOutcome, WebAxEnvironment, WebAxRegistry, WebEngine, WebProbe,
+};
 use crate::validate_key_input;
 use crate::{
     bounded_text, ensure_raw_capture_bound, prepare_clipboard_write_text, validate_input_text,
     AccessibilityTreeResult, ApplicationRecord, ClipboardWriteEffectState, ComputerAction,
-    DisplayRecord, ElementRecord, PlatformApplication, PlatformDisplay, PointerAction, PointerPlan,
-    SurfaceRecord,
+    DisplayRecord, ElementFindRequest, ElementRecord, PlatformApplication, PlatformDisplay,
+    PointerAction, PointerPlan, SurfaceRecord,
 };
 use crate::{is_supported_text_input_fingerprint, ElementFingerprint};
 use serde_json::{json, Value};
@@ -15,10 +23,11 @@ use xcap::Window;
 
 #[cfg(target_os = "macos")]
 use crate::{
-    clipboard_read_result, ensure_correlated_fingerprint, is_secure_text_fingerprint,
-    run_macos_clipboard_write_effect_steps, select_exact_ax_window_index,
-    validate_element_state_target, validate_key_modifiers, validate_text_input_preflight,
-    validate_text_input_target, AxObservationDeadline,
+    clipboard_read_result, is_secure_text_fingerprint, run_macos_clipboard_write_effect_steps,
+    select_exact_ax_window_index, validate_element_state_target, validate_key_modifiers,
+    validate_text_input_preflight, validate_text_input_target, AxObservationDeadline,
+    WebAccessibilityPolicy, WebAxContext, WebAxState, FIND_SOFT_BUDGET,
+    MAX_FIND_CHILDREN_PER_NODE, MAX_FIND_VISITED,
 };
 
 #[cfg(target_os = "macos")]
@@ -101,8 +110,8 @@ pub(crate) fn permission_readiness() -> Result<Value, String> {
 }
 
 pub(crate) use accessibility::{
-    accessibility_status, accessibility_tree, activate_window, control, element_state,
-    scroll_to_element,
+    accessibility_status, accessibility_subtree, activate_window, control, element_state,
+    find_elements, observe_accessibility_tree, scroll_to_element,
 };
 use accessibility::{
     ax_attribute_settable, checked_surface_pid, exact_ax_window, optional_ax_bool,

@@ -2109,6 +2109,10 @@ fn runner_register_capabilities(cfg: &RunnerConfig) -> RunnerCapabilities {
     // Bounded Accessibility text input is a separate rolling-upgrade fence;
     // older native Runners with computer_control must not be treated as capable.
     capabilities.computer_text_input = cfg!(any(target_os = "macos", windows));
+    // Subtree/deep-find observation is implemented by the macOS traversal engine only.
+    // Windows UIA keeps using the legacy tree request, so it must not advertise this:
+    // the Server falls back to `computer_accessibility_tree` when it is absent.
+    capabilities.computer_accessibility_query = cfg!(target_os = "macos");
     capabilities.job_state_reconciliation = !disable_job_state_reconciliation_for_test();
 
     // New agents always advertise read-only LSP navigation. Older agents omit

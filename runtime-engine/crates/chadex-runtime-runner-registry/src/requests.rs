@@ -2221,6 +2221,10 @@ impl RunnerRegistry {
             "computer_accessibility_status" | "computer_accessibility_tree" => {
                 &[RunnerFeature::ComputerAccessibilityObserve]
             }
+            "computer_accessibility_subtree" | "computer_accessibility_find" => &[
+                RunnerFeature::ComputerAccessibilityObserve,
+                RunnerFeature::ComputerAccessibilityQuery,
+            ],
             "computer_element_state" => &[RunnerFeature::ComputerElementState],
             "computer_control" => &[RunnerFeature::ComputerControl],
             "computer_scroll_to_element" => &[RunnerFeature::ComputerScrollToElement],

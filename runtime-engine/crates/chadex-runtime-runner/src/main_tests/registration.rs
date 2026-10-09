@@ -138,6 +138,7 @@ fn computer_register_request_announces_platform_capabilities_and_generation() {
         computer_key_input: true,
         computer_window_activate: true,
         computer_text_input: true,
+        computer_accessibility_query: true,
         project_lifecycle: false,
         project_path_registration: false,
         ..Default::default()
@@ -263,6 +264,11 @@ fn computer_register_request_announces_platform_capabilities_and_generation() {
         caps.computer_text_input,
         cfg!(any(target_os = "macos", windows)),
         "computer text input is independently advertised only by native macOS/Windows implementations"
+    );
+    assert_eq!(
+        caps.computer_accessibility_query,
+        cfg!(target_os = "macos"),
+        "accessibility subtree/find is advertised only by the native macOS implementation"
     );
 }
 
