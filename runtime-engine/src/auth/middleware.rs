@@ -604,7 +604,13 @@ fn configured_public_origin() -> Option<HttpOrigin> {
     if value.is_empty() {
         return None;
     }
-    parse_http_origin(value)
+    // A public URL may carry a base path (`https://host/webcodex`); only its
+    // origin matters for Host/Origin checks.
+    let mut parsed = url::Url::parse(value).ok()?;
+    parsed.set_path("");
+    parsed.set_query(None);
+    parsed.set_fragment(None);
+    parse_http_origin(parsed.as_str())
 }
 
 fn authority_matches_configured_origin(authority: &HttpAuthority, origin: &HttpOrigin) -> bool {
@@ -649,22 +655,45 @@ fn origin_matches_request_authority(origin: &HttpOrigin, authority: &HttpAuthori
     }
 }
 
+/// Longest raw Host value echoed into a rejection log line.
+const REJECTED_HOST_LOG_MAX_CHARS: usize = 128;
+
+fn log_rejected_host(raw_host: Option<&str>, reason: &str) {
+    let host: String = raw_host
+        .unwrap_or("<missing>")
+        .chars()
+        .take(REJECTED_HOST_LOG_MAX_CHARS)
+        .collect();
+    tracing::warn!(
+        host = %host.escape_debug(),
+        reason,
+        "rejected request Host; if this Server is reached through a reverse proxy or tunnel \
+that preserves the public Host, set WEBCODEX_PUBLIC_URL to that public origin"
+    );
+}
+
 /// Parse the request Host (or the absolute-form URI authority when Host is
 /// absent) and require it to be a loopback name, the configured public origin,
-/// or the exact non-wildcard bound address. This is the DNS-rebinding guard:
-/// a rebound attacker name always arrives as its own Host value.
+/// or the exact non-wildcard bound address (plus any IP literal when
+/// `allow_ip_literal`). This is the DNS-rebinding guard: a rebound attacker
+/// name always arrives as its own host name, never as an IP literal.
 fn require_allowed_request_host(
     req: &Request,
     config: &Config,
     public_origin: Option<&HttpOrigin>,
+    allow_ip_literal: bool,
 ) -> Result<HttpAuthority, (u16, &'static str, &'static str)> {
-    let host = match req.headers().get("host") {
+    let raw_host = match req.headers().get("host") {
         Some(value) => value.to_str().ok(),
         None => req.uri().authority().map(|authority| authority.as_str()),
-    }
-    .and_then(parse_http_authority)
-    .ok_or((400, "invalid_request_authority", "invalid Host header"))?;
-    if !request_authority_allowed(&host, config, public_origin) {
+    };
+    let Some(host) = raw_host.and_then(parse_http_authority) else {
+        log_rejected_host(raw_host, "invalid Host header");
+        return Err((400, "invalid_request_authority", "invalid Host header"));
+    };
+    let ip_literal_allowed = allow_ip_literal && host.host.parse::<std::net::IpAddr>().is_ok();
+    if !ip_literal_allowed && !request_authority_allowed(&host, config, public_origin) {
+        log_rejected_host(raw_host, "Host is not an allowed WebCodex authority");
         return Err((
             403,
             "untrusted_request_authority",
@@ -679,7 +708,7 @@ pub(crate) fn require_mcp_request_authority(
     config: &Config,
 ) -> Result<(), (u16, &'static str, &'static str)> {
     let public_origin = configured_public_origin();
-    let host = require_allowed_request_host(req, config, public_origin.as_ref())?;
+    let host = require_allowed_request_host(req, config, public_origin.as_ref(), false)?;
 
     let Some(raw_origin) = req.headers().get("origin") else {
         return Ok(());
@@ -713,26 +742,32 @@ pub(crate) fn require_mcp_request_authority(
     Ok(())
 }
 
-/// Host allow-list for `/api/*` on a loopback-bound Server.
+/// Host allow-list for `/api/*`.
 ///
-/// A loopback bind is the "only this machine can reach me" case that DNS
-/// rebinding defeats, and there every legitimate caller uses a loopback name
-/// (Desktop, local Runner, OpenAI tunnel-client) or the configured
-/// `WEBCODEX_PUBLIC_URL` (Quick Share Cloudflare tunnel, externally managed
-/// tunnel). A Server bound to a wildcard or LAN address is reached by whatever
-/// name or address the operator's clients use (remote pairing, remote Runner
-/// over HTTP/WebSocket), so it is left unchanged rather than guessing.
+/// - Loopback bind: the "only this machine can reach me" case that DNS
+///   rebinding defeats. Every legitimate caller uses a loopback name (Desktop,
+///   local Runner, OpenAI tunnel-client) or the configured
+///   `WEBCODEX_PUBLIC_URL` (Quick Share Cloudflare tunnel, externally managed
+///   tunnel), so only those (and the bound address) are accepted.
+/// - Wildcard/LAN bind without a token requirement (`--open`, or auth
+///   disabled): a rebound page needs no credential at all, so the guard still
+///   applies, but any IP literal is also accepted because LAN clients often
+///   connect by address and a rebound Host is always a name.
+/// - Wildcard/LAN bind that requires a token: left unchanged, because remote
+///   pairing and remote Runners reach it by whatever name the operator uses.
 pub(crate) fn require_api_request_authority(
     req: &Request,
     config: &Config,
 ) -> Result<(), (u16, &'static str, &'static str)> {
     let bound_to_loopback =
         parse_http_authority(&config.addr).is_some_and(|bound| is_loopback_host(&bound.host));
-    if !bound_to_loopback {
+    let token_required = config.is_auth_enabled() && !allow_anonymous_enabled();
+    if !bound_to_loopback && token_required {
         return Ok(());
     }
     let public_origin = configured_public_origin();
-    require_allowed_request_host(req, config, public_origin.as_ref()).map(|_| ())
+    require_allowed_request_host(req, config, public_origin.as_ref(), !bound_to_loopback)
+        .map(|_| ())
 }
 
 /// Salvo hoop applying [`require_api_request_authority`] before any `/api/*`
@@ -753,17 +788,21 @@ impl Handler for ApiRequestAuthorityGuard {
             return;
         };
         if let Err((status, code, message)) = require_api_request_authority(req, &config) {
-            res.status_code(StatusCode::from_u16(status).unwrap_or(StatusCode::FORBIDDEN));
-            res.render(Json(serde_json::json!({"error": message, "code": code})));
+            let status = StatusCode::from_u16(status).unwrap_or(StatusCode::FORBIDDEN);
+            let Json(mut body) = json_error(status, message);
+            body["code"] = serde_json::Value::from(code);
+            res.status_code(status);
+            res.render(Json(body));
             ctrl.skip_rest();
         }
     }
 }
 
-/// CORS origin allow-list: loopback origins (any scheme/port) and the exact
-/// configured public origin. The runtime's own pages are same-origin, the
-/// Windows webview reaches the runtime only through the Rust helper, and the
-/// macOS app uses URLSession, so no first-party caller needs another origin.
+/// CORS origin allow-list: `http`/`https` loopback origins (any port) and the
+/// exact configured public origin (scheme, host and effective port). The
+/// runtime's own pages are same-origin, the Windows webview reaches the runtime
+/// only through the Rust helper, and the macOS app uses URLSession, so no
+/// first-party caller needs another origin.
 pub(crate) fn cors_origin_allowed(raw_origin: &str) -> bool {
     let Some(origin) = parse_http_origin(raw_origin) else {
         return false;

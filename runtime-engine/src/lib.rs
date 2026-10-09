@@ -251,7 +251,6 @@ only for local/trusted-network demos."
     // Set max payload size to 2MB for text messages
     salvo::http::request::set_global_secure_max_size(config.max_text_size);
 
-    let cors = runtime_cors();
     let config = Arc::new(config);
     let db = Arc::new(db);
     // First-party authorize browser session store (in-memory, short-lived).
@@ -340,6 +339,89 @@ only for local/trusted-network demos."
         }
     }
 
+    let router = build_http_router(HttpRouterState {
+        config: config.clone(),
+        db: db.clone(),
+        authorize_session_store,
+        runner_registry: runner_registry.clone(),
+        tool_runtime,
+        project_auth,
+        console_asset_source,
+        shutdown_coordinator: shutdown_coordinator.clone(),
+    });
+    tracing::info!("WebCodex Server is running.");
+    let port = addr.split(':').next_back().unwrap_or("8080");
+    let base = format!("http://localhost:{}", port);
+    tracing::info!("Runtime base: {}", base);
+    tracing::info!("MCP endpoint: {}/mcp", base);
+    tracing::info!(
+        "Next: create a one-time login code in another terminal with `webcodex pairing create`."
+    );
+    tracing::info!(
+        tool_request_trace = crate::config::tool_request_trace_enabled(),
+        "tool_request_trace"
+    );
+    tracing::info!(
+        mcp_compact_schemas = crate::model_surface::effective_mcp_compact_schemas(
+            crate::config::mcp_compact_schemas_override(),
+        ),
+        "mcp_compact_schemas"
+    );
+    tracing::info!("OpenAPI (GPT Actions): {}/openapi.json", base);
+    tracing::info!("Runtime console: {}/runtime", base);
+    tracing::info!("Runtime status: {}/api/runtime/status", base);
+    tracing::info!("Runner WebSocket: {}/api/agents/ws", base);
+    tracing::info!("Runner polling (fallback): {}/api/shell/agent/poll", base);
+    tracing::info!("Audit API (read-only): {}/api/audit/sessions", base);
+    // Periodic recovery-timeout sweep for disconnected reconciliation-capable
+    // runners. A job whose runner disconnected enters `recovering`; if that
+    // runner never reconnects and nobody queries the job, the on-demand
+    // deadline check would never run. This background task bounds `recovering`
+    // to the grace window independently of request traffic. It is pure
+    // in-memory, holds the registry mutex only for bounded HashMap work, and
+    // dies with the process. A server restart resets the in-memory registry;
+    // the deadline is re-anchored only when a runner reconnects and submits its
+    // inventory. See docs/RUNNER.md (reconnect and recovery).
+    let sweep_registry = runner_registry.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+            runner_http::RECOVERY_SWEEP_INTERVAL_SECS,
+        ));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // Skip the first (immediate) tick so a sweep does not race startup
+        // reconciliation before any runner has had a chance to re-register.
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            runner_http::recovery_timeout_sweep(&sweep_registry).await;
+        }
+    });
+    server_shutdown::serve_until_termination(
+        Server::new(acceptor),
+        router,
+        shutdown_coordinator,
+        std::time::Duration::from_secs(SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_SECS),
+        stop_on_stdin_eof,
+    )
+    .await?;
+    Ok(())
+}
+
+/// Shared state injected into every HTTP request.
+pub(crate) struct HttpRouterState {
+    pub(crate) config: Arc<Config>,
+    pub(crate) db: Arc<Database>,
+    pub(crate) authorize_session_store: Arc<oauth_http::AuthorizeSessionStore>,
+    pub(crate) runner_registry: Arc<runner_http::RunnerRegistry>,
+    pub(crate) tool_runtime: Arc<tool_runtime::ToolRuntime>,
+    pub(crate) project_auth: Arc<auth::ProjectAuthState>,
+    pub(crate) console_asset_source: Arc<console_web::ConsoleAssetSource>,
+    pub(crate) shutdown_coordinator: Arc<server_shutdown::ShutdownCoordinator>,
+}
+
+/// The production HTTP router. Kept separate from `run()` so tests exercise
+/// the real route wiring (hoop placement, mount points) instead of a copy.
+pub(crate) fn build_http_router(state: HttpRouterState) -> Router {
     let authed_api_router = Router::new()
         .hoop(AuthMiddleware)
         .push(runtime_console_http::routes())
@@ -557,6 +639,21 @@ only for local/trusted-network demos."
         .push(
             Router::with_path(route_metadata::api_path(RouteId::RunnerWs))
                 .get(runner_ws::runner_ws),
+        )
+        // Read-only audit query API. Admin/debug surface only: NOT part of the
+        // GPT Actions OpenAPI schema. All endpoints are POST + Bearer auth.
+        // Mounted under /api so the /api Host guard covers them as well.
+        .push(
+            Router::with_path(route_metadata::api_path(RouteId::AuditSessions))
+                .post(audit_http::audit_sessions),
+        )
+        .push(
+            Router::with_path(route_metadata::api_path(RouteId::AuditSession))
+                .post(audit_http::audit_session),
+        )
+        .push(
+            Router::with_path(route_metadata::api_path(RouteId::AuditStats))
+                .post(audit_http::audit_stats),
         );
 
     let api_router = Router::with_path("api")
@@ -611,9 +708,9 @@ only for local/trusted-network demos."
             .get(console_web::admin_styles_css),
         );
 
-    let mut router = Router::new()
+    Router::new()
         .hoop(server_shutdown::DrainAdmission::new(
-            shutdown_coordinator.clone(),
+            state.shutdown_coordinator,
         ))
         // Whole-service backstop: no handler may hold an HTTP request open
         // forever. Sized well above every legitimate request — sync agent
@@ -625,14 +722,14 @@ only for local/trusted-network demos."
         .hoop(salvo::timeout::Timeout::new(
             std::time::Duration::from_secs(REQUEST_HARD_TIMEOUT_SECS),
         ))
-        .hoop(affix_state::inject(config.clone()))
-        .hoop(affix_state::inject(db.clone()))
-        .hoop(affix_state::inject(authorize_session_store.clone()))
-        .hoop(affix_state::inject(runner_registry.clone()))
-        .hoop(affix_state::inject(tool_runtime.clone()))
-        .hoop(affix_state::inject(project_auth.clone()))
-        .hoop(affix_state::inject(console_asset_source))
-        .hoop(cors.into_handler())
+        .hoop(affix_state::inject(state.config))
+        .hoop(affix_state::inject(state.db))
+        .hoop(affix_state::inject(state.authorize_session_store))
+        .hoop(affix_state::inject(state.runner_registry))
+        .hoop(affix_state::inject(state.tool_runtime))
+        .hoop(affix_state::inject(state.project_auth))
+        .hoop(affix_state::inject(state.console_asset_source))
+        .hoop(runtime_cors().into_handler())
         .push(api_router)
         .push(openapi_router)
         .push(runtime_console_router)
@@ -696,82 +793,7 @@ only for local/trusted-network demos."
             .hoop(AuthMiddleware)
             .get(mcp::mcp_info)
             .post(mcp::mcp_post),
-        );
-
-    // Read-only audit query API. Admin/debug surface only: NOT part of the
-    // GPT Actions OpenAPI schema. All endpoints are POST + Bearer auth.
-    router = router.push(
-        Router::new()
-            .hoop(AuthMiddleware)
-            .push(
-                Router::with_path(route_metadata::root_path(RouteId::AuditSessions))
-                    .post(audit_http::audit_sessions),
-            )
-            .push(
-                Router::with_path(route_metadata::root_path(RouteId::AuditSession))
-                    .post(audit_http::audit_session),
-            )
-            .push(
-                Router::with_path(route_metadata::root_path(RouteId::AuditStats))
-                    .post(audit_http::audit_stats),
-            ),
-    );
-    tracing::info!("WebCodex Server is running.");
-    let port = addr.split(':').next_back().unwrap_or("8080");
-    let base = format!("http://localhost:{}", port);
-    tracing::info!("Runtime base: {}", base);
-    tracing::info!("MCP endpoint: {}/mcp", base);
-    tracing::info!(
-        "Next: create a one-time login code in another terminal with `webcodex pairing create`."
-    );
-    tracing::info!(
-        tool_request_trace = crate::config::tool_request_trace_enabled(),
-        "tool_request_trace"
-    );
-    tracing::info!(
-        mcp_compact_schemas = crate::model_surface::effective_mcp_compact_schemas(
-            crate::config::mcp_compact_schemas_override(),
-        ),
-        "mcp_compact_schemas"
-    );
-    tracing::info!("OpenAPI (GPT Actions): {}/openapi.json", base);
-    tracing::info!("Runtime console: {}/runtime", base);
-    tracing::info!("Runtime status: {}/api/runtime/status", base);
-    tracing::info!("Runner WebSocket: {}/api/agents/ws", base);
-    tracing::info!("Runner polling (fallback): {}/api/shell/agent/poll", base);
-    tracing::info!("Audit API (read-only): {}/api/audit/sessions", base);
-    // Periodic recovery-timeout sweep for disconnected reconciliation-capable
-    // runners. A job whose runner disconnected enters `recovering`; if that
-    // runner never reconnects and nobody queries the job, the on-demand
-    // deadline check would never run. This background task bounds `recovering`
-    // to the grace window independently of request traffic. It is pure
-    // in-memory, holds the registry mutex only for bounded HashMap work, and
-    // dies with the process. A server restart resets the in-memory registry;
-    // the deadline is re-anchored only when a runner reconnects and submits its
-    // inventory. See docs/RUNNER.md (reconnect and recovery).
-    let sweep_registry = runner_registry.clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(
-            runner_http::RECOVERY_SWEEP_INTERVAL_SECS,
-        ));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        // Skip the first (immediate) tick so a sweep does not race startup
-        // reconciliation before any runner has had a chance to re-register.
-        interval.tick().await;
-        loop {
-            interval.tick().await;
-            runner_http::recovery_timeout_sweep(&sweep_registry).await;
-        }
-    });
-    server_shutdown::serve_until_termination(
-        Server::new(acceptor),
-        router,
-        shutdown_coordinator,
-        std::time::Duration::from_secs(SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_SECS),
-        stop_on_stdin_eof,
-    )
-    .await?;
-    Ok(())
+        )
 }
 
 /// CORS policy for the whole HTTP surface. Only loopback origins and the
