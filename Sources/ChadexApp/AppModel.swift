@@ -210,6 +210,11 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Newest first, ignoring the Activity page's search and filter.
+    var recentActivities: [ActivityEntry] {
+        activities.sorted { $0.sequence > $1.sequence }
+    }
+
     var filteredActivities: [ActivityEntry] {
         activities.filter { entry in
             let levelMatches = activityFilter == .all || entry.level == .warning || entry.level == .error
@@ -1414,6 +1419,48 @@ final class AppModel: ObservableObject {
         await refreshPerformanceTraces()
     }
 
+    /// Title for the primary connection action, shared by the project
+    /// overview, the main menu and the menu bar extra so one action keeps
+    /// one name everywhere.
+    var primaryActionTitle: String {
+        if let actionText = connectionActionStatusText { return actionText }
+        switch connectionPresentationPhase {
+        case .unconfigured: return L10n.string("connection.configure")
+        case .preparing: return snapshot.currentOperation?.cancellable == true ? L10n.string("connection.cancel") : L10n.string("status.preparing")
+        case .waitingForChatGPTVerification: return L10n.string("connection.disconnect")
+        case .verified: return L10n.string("connection.disconnect")
+        case .stopped: return L10n.string("connection.connect")
+        case .error: return L10n.string("connection.retry")
+        }
+    }
+
+    /// Whether the primary connection action can run now. Shared by the
+    /// overview button, the File menu and the menu bar extra so none of them
+    /// can trigger a connection the others deliberately block.
+    var primaryActionEnabled: Bool {
+        guard selectedProject != nil, !connectionActionInFlight, !isSwitchingProject else { return false }
+        if connectionPresentationPhase == .preparing {
+            // Bootstrap can present `.error` as `.preparing`; only a real,
+            // cancellable operation is actionable here.
+            return snapshot.phase == .preparing && snapshot.currentOperation?.cancellable == true
+        }
+        return true
+    }
+
+    /// Menu titles name their object, since a bare "Cancel" or "Retry"
+    /// is ambiguous outside the overview.
+    var primaryMenuActionTitle: String {
+        if let actionText = connectionActionStatusText { return actionText }
+        switch connectionPresentationPhase {
+        case .preparing:
+            return snapshot.currentOperation?.cancellable == true
+                ? L10n.string("connection.cancelMenu")
+                : L10n.string("status.preparing")
+        case .error: return L10n.string("connection.retryMenu")
+        default: return primaryActionTitle
+        }
+    }
+
     func primaryAction() {
         guard !isSwitchingProject else { return }
         Task {
@@ -1670,7 +1717,7 @@ final class AppModel: ObservableObject {
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
         let language = UserDefaults.standard.string(forKey: ChadexPreferenceKey.language) ?? ChadexLanguage.system.rawValue
         let interfaceSize = UserDefaults.standard.string(forKey: ChadexPreferenceKey.interfaceSize) ?? ChadexInterfaceSize.comfortable.rawValue
-        let appearance = UserDefaults.standard.string(forKey: ChadexPreferenceKey.appearance) ?? ChadexAppearance.system.rawValue
+        let appearance = UserDefaults.standard.string(forKey: ChadexPreferenceKey.appearance) ?? ChadexAppearance.defaultValue.rawValue
 
         var lines: [String] = [
             "Chadex Diagnostics",
@@ -2186,6 +2233,14 @@ final class AppModel: ObservableObject {
         }
     }
 
+#if DEBUG
+    /// Visual review only: present a fixed backend state without a helper.
+    func presentForReview(snapshot: BackendSnapshot, activities: [ActivityEntry]) {
+        self.snapshot = snapshot
+        self.activities = activities
+    }
+#endif
+
     @discardableResult
     private func applySnapshot(_ candidate: BackendSnapshot, requestSequence: UInt64? = nil) -> Bool {
         if let requestSequence {
@@ -2263,15 +2318,16 @@ final class AppModel: ObservableObject {
         objectWillChange.send()
     }
 
-    private static func isValidTunnelID(_ value: String) -> Bool {
-        let bytes = Array(value.utf8)
-        guard !bytes.isEmpty, bytes.count <= 256 else { return false }
-        return bytes.allSatisfy { byte in
-            (byte >= 48 && byte <= 57)
-                || (byte >= 65 && byte <= 90)
-                || (byte >= 97 && byte <= 122)
-                || byte == 95
-                || byte == 45
+    /// Mirrors the helper's `validate_tunnel_id` (`tunnel_` followed by 32
+    /// lowercase hexadecimal characters). A looser check here let IDs the
+    /// helper rejects be saved, so every launch then failed `credential_push`
+    /// and the connection stayed unconfigured.
+    nonisolated static func isValidTunnelID(_ value: String) -> Bool {
+        let prefix = "tunnel_"
+        guard value.hasPrefix(prefix) else { return false }
+        let suffix = value.utf8.dropFirst(prefix.utf8.count)
+        return suffix.count == 32 && suffix.allSatisfy { byte in
+            (byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102)
         }
     }
 

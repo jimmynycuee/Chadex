@@ -659,3 +659,62 @@ fn computer_web_accessibility_policy_comes_from_the_environment_value() {
     );
     assert_eq!(WebAccessibilityPolicy::ENV_VAR, "CHADEX_COMPUTER_WEB_ACCESSIBILITY");
 }
+
+fn timed(
+    action: &'static str,
+    run: impl FnOnce() -> CommandResult,
+) -> (CommandResult, ComputerActionTiming) {
+    let mut recorded = None;
+    let result = time_computer_action(action, run, |timing| recorded = Some(timing.clone()));
+    (result, recorded.expect("timing recorded exactly once"))
+}
+
+#[test]
+fn computer_action_timing_records_success() {
+    let (result, timing) = timed("computer_input_text", || {
+        ok_cmd(Instant::now(), serde_json::json!({"typed": "SECRET-TEXT"}))
+    });
+    assert!(result.error.is_none());
+    assert_eq!(timing.action, "computer_input_text");
+    assert_eq!(timing.outcome, "ok");
+}
+
+#[test]
+fn computer_action_timing_records_failure_code() {
+    let (_, timing) = timed("computer_snapshot", || {
+        err_cmd(
+            Instant::now(),
+            "stale_surface: window 'Secret Title' is gone".to_string(),
+        )
+    });
+    assert_eq!(timing.outcome, "stale_surface");
+    let (_, timing) = timed("computer_snapshot", || {
+        err_cmd(Instant::now(), "no code here".to_string())
+    });
+    assert_eq!(timing.outcome, "error");
+}
+
+#[test]
+fn computer_action_timing_through_real_dispatch_omits_user_content() {
+    let operation = match request(
+        "computer_input_text",
+        r#"{"surface_id":"surface_missing","text":"SECRET-TEXT"}"#,
+    )
+    .decode_operation()
+    {
+        Ok(RunnerOperation::Computer(operation)) => operation,
+        other => panic!("unexpected decode: {other:?}"),
+    };
+    let mut recorded = None;
+    let _ = time_computer_action(
+        operation.kind.wire_kind(),
+        || run_computer_operation(&operation),
+        |timing| recorded = Some(timing.clone()),
+    );
+    let timing = recorded.expect("timing recorded");
+    assert_eq!(timing.action, "computer_input_text");
+    assert_ne!(timing.outcome, "ok");
+    let rendered = format!("{timing:?}");
+    assert!(!rendered.contains("SECRET-TEXT"));
+    assert!(!rendered.contains("surface_missing"));
+}

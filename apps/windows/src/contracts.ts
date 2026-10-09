@@ -102,5 +102,5 @@ export interface SkillInventory { project: string; total_count: number; skills: 
 
 export const defaultPreferences: Preferences = {
   restore_project: true, launch_at_login: false, notifications: false,
-  ferret_visible: true, ferret_motion: true, theme: 'system', recent_projects: [], last_project: null, tunnel_id: '', prepare_service_on_launch: true,
+  ferret_visible: true, ferret_motion: true, theme: 'dark', recent_projects: [], last_project: null, tunnel_id: '', prepare_service_on_launch: true,
 };

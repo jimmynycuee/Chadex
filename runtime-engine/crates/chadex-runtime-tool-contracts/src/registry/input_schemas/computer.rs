@@ -124,6 +124,7 @@ pub fn computer_activate_window_input_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
+        "description": "Raises the exact window to the foreground, which interrupts the user. Call it only immediately before key or pointer_move/pointer_click, or after a frontmost/foreground error from another action (then retry once). Do not call it before press, focus, input_text, scroll_to_element, or computer_observe actions; on Windows focus and input_text also need the foreground window.",
         "properties": {
             "client_id": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Exact Runner client_id whose already-observed window is activated."},
             "surface_id": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Exact opaque process-local surface_id returned by computer_observe(action=windows)."}

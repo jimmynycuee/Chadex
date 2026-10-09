@@ -42,7 +42,7 @@ enum L10n {
 #endif
     }
 
-    private static var selectedLanguage: ChadexLanguage {
+    static var selectedLanguage: ChadexLanguage {
         let raw = UserDefaults.standard.string(forKey: ChadexPreferenceKey.language)
             ?? ChadexLanguage.system.rawValue
         return ChadexLanguage(rawValue: raw) ?? .system

@@ -78,7 +78,7 @@ struct ChadexApp: App {
     @StateObject private var updateManager = UpdateManager()
     @AppStorage(ChadexPreferenceKey.language) private var languageRaw = ChadexLanguage.system.rawValue
     @AppStorage(ChadexPreferenceKey.interfaceSize) private var interfaceSizeRaw = ChadexInterfaceSize.comfortable.rawValue
-    @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.system.rawValue
+    @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.defaultValue.rawValue
 
     init() {
         guard let status = ChadexStartupPreflight.resourceExitStatus() else { return }
@@ -121,11 +121,20 @@ struct ChadexApp: App {
                 }
                 .keyboardShortcut("o", modifiers: .command)
 
+                Button(model.primaryMenuActionTitle) {
+                    model.primaryAction()
+                }
+                // Shift keeps a one-chord disconnect from firing by accident.
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .disabled(!model.primaryActionEnabled)
+
                 Button(L10n.string("settings.refresh")) {
                     Task { await model.refreshStatus(force: true) }
                 }
                 .keyboardShortcut("r", modifiers: .command)
             }
+
+            ChadexNavigationCommands(model: model)
 
             CommandGroup(after: .toolbar) {
                 Divider()
@@ -189,7 +198,7 @@ struct ChadexApp: App {
     }
 
     private var appearance: ChadexAppearance {
-        ChadexAppearance(rawValue: appearanceRaw) ?? .system
+        ChadexAppearance(rawValue: appearanceRaw) ?? .defaultValue
     }
 }
 
@@ -206,7 +215,7 @@ private struct MainWindowContent: View {
             })
             .task {
                 appDelegate.reopenHandler = {
-                    openWindow(id: "main")
+                    MainWindowPresenter.show(using: openWindow)
                 }
                 appDelegate.shutdownHandler = { [model] in
                     await model.shutdown()

@@ -114,6 +114,9 @@ enum ChadexAppearance: String, CaseIterable, Identifiable {
     case light
     case dark
 
+    /// Dark is the designed default; a saved choice always wins.
+    static let defaultValue: ChadexAppearance = .dark
+
     var id: String { rawValue }
 
     var colorScheme: ColorScheme? {

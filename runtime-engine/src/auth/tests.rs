@@ -2340,6 +2340,70 @@ async fn auth_middleware_direct_shared_key_and_oauth_bridge_flags_are_independen
         .contains("no declared scope policy"));
 }
 
+/// Desktop launches its local Server with `WEBCODEX_SHARED_KEY_ENABLED=false`
+/// in the process environment while the env file written by `server init`
+/// (including files from earlier releases) still says `true`. The process
+/// value must win, so arbitrary bearer strings get no scopes, while the
+/// managed credentials Desktop actually uses keep working.
+#[tokio::test]
+async fn desktop_process_override_disables_shared_key_from_env_file() {
+    let mut env = crate::test_support::TestEnvGuard::new();
+    env.remove("WEBCODEX_ALLOW_ANONYMOUS");
+    env.remove("WEBCODEX_OAUTH2_SHARED_KEY_BRIDGE");
+    let dir = tempfile::tempdir().unwrap();
+    let env_file = dir.path().join("webcodex.env");
+    std::fs::write(&env_file, "WEBCODEX_SHARED_KEY_ENABLED=true\n").unwrap();
+    env.set("WEBCODEX_ENV_FILE", &env_file);
+
+    // Without the override, the pre-upgrade file enables the fallback.
+    env.remove("WEBCODEX_SHARED_KEY_ENABLED");
+    crate::config::load_startup_env_files().unwrap();
+    assert!(shared_key_enabled());
+
+    // With Desktop's explicit process value, the file no longer applies.
+    env.set("WEBCODEX_SHARED_KEY_ENABLED", "false");
+    crate::config::load_startup_env_files().unwrap();
+    assert!(!shared_key_enabled());
+
+    let config = gate_test_config(Some("secret"));
+    let (_tmp, db) = gate_test_db();
+    let user = gate_seed_user(&db, "desktop");
+    let user_token = gate_mint_user_token(&db, &user);
+    for arbitrary in ["x", "anything-at-all", "wck_self_chosen"] {
+        assert!(
+            authenticate_bearer(&config, Some(&db), Some(arbitrary))
+                .await
+                .is_none(),
+            "{arbitrary} must not authenticate on the QUIC/Runner surface"
+        );
+    }
+    let service = salvo::Service::new(gate_router(config.clone(), db.clone()));
+    for path in [
+        "/api/runtime/status",
+        "/api/projects/run_job",
+        "/api/shell/agent/register",
+        "/mcp",
+    ] {
+        let (status, body) = gate_send(&service, path, Some("anything-at-all")).await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "arbitrary bearer must be rejected on {path}: {body:?}"
+        );
+    }
+
+    let (status, body) = gate_send(&service, "/api/runtime/status", Some("secret")).await;
+    assert_eq!(status, StatusCode::OK, "bootstrap must still work: {body:?}");
+    let (status, body) = gate_send(&service, "/api/projects/run_job", Some("secret")).await;
+    assert_eq!(status, StatusCode::OK, "bootstrap must still work: {body:?}");
+    let (status, body) = gate_send(&service, "/api/runtime/status", Some(&user_token)).await;
+    assert_eq!(status, StatusCode::OK, "user PAT must still work: {body:?}");
+    let ctx = authenticate_bearer(&config, Some(&db), Some("secret"))
+        .await
+        .expect("bootstrap must authenticate on the Runner surface");
+    assert!(ctx.is_bootstrap());
+}
+
 #[tokio::test]
 async fn auth_middleware_forbidden_uses_insufficient_scope_challenge() {
     let config = gate_test_config_oauth2(Some("test-token"));

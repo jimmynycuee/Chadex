@@ -91,23 +91,17 @@ async fn run_direct_mcp_computer_step(
     value["result"].clone()
 }
 
-// The compact switch is read per tools/list request, so `WEBCODEX_MCP_COMPACT_SCHEMAS`
-// must stay stable (and serialized against other env-mutating tests) for the whole
-// async body below. Adaptive Runtime is fixed; only schema projection varies.
-#[allow(clippy::await_holding_lock)]
+// Adaptive Runtime is fixed; only schema projection varies. The projection is
+// passed explicitly per request, so the process env is never involved.
 #[tokio::test]
 async fn mcp_tools_list_uses_adaptive_inventory_in_both_schema_modes() {
-    let mut env = crate::test_support::TestEnvGuard::new();
     let runtime = test_runtime();
     for compact in [false, true] {
-        env.set(
-            "WEBCODEX_MCP_COMPACT_SCHEMAS",
-            if compact { "true" } else { "false" },
-        );
-        let outcome = handle_mcp_request(
+        let outcome = handle_mcp_request_with_schema_mode(
             &runtime,
             rpc("tools/list", Some(Value::from(3)), json!({})),
             None,
+            compact,
         )
         .await;
         let McpOutcome::Ok(value) = outcome else {
@@ -132,7 +126,7 @@ async fn mcp_tools_list_uses_adaptive_inventory_in_both_schema_modes() {
             );
         }
 
-        let stateless = handle_mcp_request(
+        let stateless = handle_mcp_request_with_schema_mode(
             &runtime,
             rpc(
                 "tools/list",
@@ -140,6 +134,7 @@ async fn mcp_tools_list_uses_adaptive_inventory_in_both_schema_modes() {
                 mcp_2026_params(json!({})),
             ),
             None,
+            compact,
         )
         .await;
         let McpOutcome::Ok(stateless_value) = stateless else {
@@ -2941,15 +2936,11 @@ fn mcp_tools_list_compact_is_smaller_than_full_serialized() {
 }
 
 // The compact switch is the tested product behavior: `tools/call` must be
-// unaffected while `WEBCODEX_MCP_COMPACT_SCHEMAS` is set, so the env must stay
-// stable (and serialized against other env-mutating tests) for the whole call.
-#[allow(clippy::await_holding_lock)]
+// unaffected while compact schemas are on, so compact is passed explicitly.
 #[tokio::test]
 async fn mcp_tools_call_still_returns_structured_content_under_compact_flag() {
-    let mut env = crate::test_support::TestEnvGuard::new();
-    env.set("WEBCODEX_MCP_COMPACT_SCHEMAS", "true");
     let runtime = test_runtime();
-    let outcome = handle_mcp_request(
+    let outcome = handle_mcp_request_with_schema_mode(
         &runtime,
         rpc(
             "tools/call",
@@ -2957,6 +2948,7 @@ async fn mcp_tools_call_still_returns_structured_content_under_compact_flag() {
             adaptive_runtime_gateway_params("list_projects", json!({})),
         ),
         None,
+        true,
     )
     .await;
     let McpOutcome::Ok(value) = outcome else {
@@ -2967,13 +2959,10 @@ async fn mcp_tools_call_still_returns_structured_content_under_compact_flag() {
     assert!(value["result"]["structuredContent"]["success"].is_boolean());
 }
 
-#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn session_tools_stay_registered_and_follow_adaptive_routes() {
-    // The direct description assertion below targets the default compact
-    // discovery projection; pin it so env-mutating tests cannot flip it.
-    let mut env = crate::test_support::TestEnvGuard::new();
-    env.remove("WEBCODEX_MCP_COMPACT_SCHEMAS");
+    // `handle_mcp_request` pins the default compact discovery projection that
+    // the direct description assertion below targets.
     let runtime = test_runtime();
     let specs = registered_tool_specs();
     let registry_names: Vec<&str> = specs.iter().map(|spec| spec.name.as_str()).collect();

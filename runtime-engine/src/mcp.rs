@@ -1045,17 +1045,41 @@ pub async fn mcp_post(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 /// Business logic stays in `ToolRuntime`; this function only frames the
 /// JSON-RPC envelope and translates tool results into MCP content blocks.
 /// Test-friendly wrapper: no lifecycle hooks.
+///
+/// The test entry never reads `WEBCODEX_MCP_COMPACT_SCHEMAS` or
+/// `WEBCODEX_MCP_APPS_ENABLED`: it pins the defaults (compact discovery, apps
+/// enabled) so concurrent env-mutating tests cannot flip the `tools/list`
+/// projection or app admission. Tests that need the full projection call
+/// [`handle_mcp_request_with_schema_mode`] with `compact_schemas = false`.
 #[cfg(test)]
 async fn handle_mcp_request(
     runtime: &ToolRuntime,
     request: JsonRpcRequest,
     auth: Option<&AuthContext>,
 ) -> McpOutcome {
+    handle_mcp_request_with_schema_mode(runtime, request, auth, TEST_COMPACT_SCHEMAS_DEFAULT).await
+}
+
+/// Compact discovery is the Adaptive default when the operator override is unset.
+#[cfg(test)]
+const TEST_COMPACT_SCHEMAS_DEFAULT: bool = true;
+
+/// MCP Apps are enabled by default when `WEBCODEX_MCP_APPS_ENABLED` is unset.
+/// The test entry pins this instead of reading the env, for the same reason.
+#[cfg(test)]
+const TEST_MCP_APPS_ENABLED_DEFAULT: bool = true;
+
+/// Like [`handle_mcp_request`], with the `tools/list` schema projection chosen
+/// explicitly (`true` = compact, `false` = full) instead of through the env.
+#[cfg(test)]
+async fn handle_mcp_request_with_schema_mode(
+    runtime: &ToolRuntime,
+    request: JsonRpcRequest,
+    auth: Option<&AuthContext>,
+    compact_schemas: bool,
+) -> McpOutcome {
     let protocol_era = inferred_protocol_era(&request);
-    let compact_schemas = crate::model_surface::effective_mcp_compact_schemas(
-        crate::config::mcp_compact_schemas_override(),
-    );
-    let server_mcp_apps_enabled = crate::config::mcp_apps_enabled();
+    let server_mcp_apps_enabled = TEST_MCP_APPS_ENABLED_DEFAULT;
     let outcome = handle_mcp_request_with_lifecycle(
         runtime,
         request,

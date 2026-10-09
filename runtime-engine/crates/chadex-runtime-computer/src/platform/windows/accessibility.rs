@@ -562,7 +562,7 @@ pub(super) fn validate_windows_key_input_target(
     let hwnd = win_hwnd(surface.native_id)?;
     if unsafe { GetForegroundWindow() != hwnd } {
         return Err(
-            "key_input_failed: exact Windows surface must already be the foreground window"
+            "key_input_failed: exact Windows surface must already be the foreground window; call computer_control(action=activate_window) for this surface first"
                 .to_string(),
         );
     }
@@ -1023,7 +1023,7 @@ pub(crate) fn control(
             let hwnd = win_hwnd(surface.native_id)?;
             if unsafe { GetForegroundWindow() != hwnd } {
                 return Err(
-                    "control_failed: exact Windows surface must already be foreground before element focus"
+                    "control_failed: exact Windows surface must already be foreground before element focus; call computer_control(action=activate_window) for this surface first"
                         .to_string(),
                 );
             }
