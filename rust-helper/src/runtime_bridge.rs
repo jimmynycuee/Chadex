@@ -1,4 +1,5 @@
 use crate::chadex_core::activity::{sanitize_message, RuntimeActivityEntry};
+use crate::chadex_core::computer_overlay::{self, ComputerOverlayHub};
 use crate::chadex_core::computer_safety::ComputerControlMode;
 use crate::chadex_core::external_skills::{discover_external_skill_sources, DiscoveryEnv};
 use crate::chadex_core::graphify::GraphifyStatus;
@@ -17,8 +18,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, RwLock};
 use std::time::Instant;
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{watch, Mutex};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::sync::{mpsc, watch, Mutex};
 use tokio::task::JoinSet;
 use zeroize::Zeroizing;
 
@@ -700,6 +701,9 @@ struct Bridge {
     runtime: ChadexRuntimeCore,
     graphify: GraphifyStatus,
     tunnel: Arc<TunnelManager>,
+    /// Computer Use cursor overlay: runner events in, `computer_overlay` event frames out.
+    overlay: Arc<ComputerOverlayHub>,
+    overlay_events: StdMutex<Option<mpsc::Receiver<Value>>>,
     verification: Arc<VerificationTracker>,
     performance: Arc<PerformanceTraceStore>,
     target_project: RwLock<Option<ProjectInspection>>,
@@ -733,15 +737,21 @@ impl Bridge {
         let graphify = GraphifyStatus::detect();
         let verification = Arc::new(VerificationTracker::default());
         let performance = Arc::new(PerformanceTraceStore::default());
-        let tunnel = Arc::new(TunnelManager::new(
-            data_dir,
-            Arc::clone(&verification),
-            Arc::clone(&performance),
-        ));
+        let (overlay, overlay_events) = ComputerOverlayHub::new();
+        let tunnel = Arc::new(
+            TunnelManager::new(
+                data_dir,
+                Arc::clone(&verification),
+                Arc::clone(&performance),
+            )
+            .with_computer_overlay(Arc::clone(&overlay)),
+        );
         Ok(Self {
             runtime,
             graphify,
             tunnel,
+            overlay,
+            overlay_events: StdMutex::new(Some(overlay_events)),
             verification,
             performance,
             target_project: RwLock::new(None),
@@ -752,6 +762,14 @@ impl Bridge {
             prewarm: PrewarmTracker::new(),
             started_at: Instant::now(),
         })
+    }
+
+    /// The stdout event writer owns the receiving end; it can be taken once.
+    fn take_overlay_events(&self) -> Option<mpsc::Receiver<Value>> {
+        self.overlay_events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
     }
 
     fn target_project(&self) -> Option<ProjectInspection> {
@@ -1845,7 +1863,13 @@ async fn read_bounded_ndjson_line<R: AsyncBufRead + Unpin>(
 
 async fn run_async() -> Result<(), String> {
     let bridge = Arc::new(Bridge::new().map_err(|error| error.message)?);
+    // Runners spawned from here on get the overlay channel (macOS); the hub
+    // stays silent until the App calls `setComputerOverlayEvents`.
+    computer_overlay::install_shared_hub(Arc::clone(&bridge.overlay));
     let stdout = Arc::new(Mutex::new(tokio::io::stdout()));
+    let overlay_writer = bridge
+        .take_overlay_events()
+        .map(|events| tokio::spawn(write_overlay_events(Arc::clone(&stdout), events)));
     let mut stdin = BufReader::new(tokio::io::stdin());
     let mut tasks = JoinSet::new();
 
@@ -1895,6 +1919,9 @@ async fn run_async() -> Result<(), String> {
 
         if request.method == "shutdown" {
             abort_and_drain_request_tasks(&mut tasks).await;
+            if let Some(writer) = &overlay_writer {
+                writer.abort();
+            }
             let response = handle_request(Arc::clone(&bridge), request).await;
             write_response(Arc::clone(&stdout), &response)
                 .await
@@ -1916,6 +1943,9 @@ async fn run_async() -> Result<(), String> {
     }
 
     abort_and_drain_request_tasks(&mut tasks).await;
+    if let Some(writer) = &overlay_writer {
+        writer.abort();
+    }
     bridge.tunnel.shutdown().await;
     bridge.runtime.shutdown().await;
     Ok(())
@@ -2290,6 +2320,27 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
             )),
             Err(error) => Err(error),
         },
+        "setComputerOverlayEvents" => match request.params.get("enabled").and_then(Value::as_bool) {
+            Some(enabled) => {
+                bridge.overlay.set_enabled(enabled);
+                Ok(ResponseResult::Json(json!({
+                    "enabled": bridge.overlay.is_enabled(),
+                    "runner_channel": bridge.overlay.runner_channel(),
+                    "counters": bridge.overlay.counters(),
+                })))
+            }
+            None => Err(ErrorPayload::new(
+                "invalid_params",
+                "setComputerOverlayEvents needs a boolean enabled",
+                "Send {\"enabled\": true} or {\"enabled\": false}.",
+            )),
+        },
+        // Read-only: unlike setComputerOverlayEvents it never changes the enabled state.
+        "getComputerOverlayStatus" => Ok(ResponseResult::Json(json!({
+            "enabled": bridge.overlay.is_enabled(),
+            "runner_channel": bridge.overlay.runner_channel(),
+            "counters": bridge.overlay.counters(),
+        }))),
         "stopComputerControl" => serde_json::to_value(bridge.tunnel.stop_computer_control())
             .map(ResponseResult::Json)
             .map_err(|_| {
@@ -2518,6 +2569,22 @@ fn error_response(request_id: String, error: ErrorPayload) -> Response {
         request_id,
         result: None,
         error: Some(error),
+    }
+}
+
+/// Writes `computer_overlay` event frames to stdout, one line each, sharing the
+/// stdout lock with responses (each write holds it only for one line).
+async fn write_overlay_events<W: AsyncWrite + Unpin>(
+    stdout: Arc<Mutex<W>>,
+    mut events: mpsc::Receiver<Value>,
+) {
+    while let Some(data) = events.recv().await {
+        let encoded = computer_overlay::encode_event_frame(&data);
+        let mut stdout = stdout.lock().await;
+        if stdout.write_all(&encoded).await.is_err() || stdout.flush().await.is_err() {
+            // Best effort: the App going away ends the helper through stdin EOF.
+            break;
+        }
     }
 }
 
@@ -3704,5 +3771,172 @@ mod tests {
         .expect_err("activation errors pass through");
         assert_eq!(error.code, "project_not_readable", "a real failure keeps its own reason");
         assert!(!cancel_called.load(std::sync::atomic::Ordering::SeqCst));
+    }
+}
+
+#[cfg(test)]
+mod computer_overlay_bridge_tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn request(method: &str, params: Value) -> Request {
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "overlay-test".to_string(),
+            method: method.to_string(),
+            params,
+        }
+    }
+
+    fn temp_bridge(tag: &str) -> (Arc<Bridge>, PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "chadex-overlay-{tag}-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let bridge = Bridge::with_dirs(root.join("data"), root.join("resources")).unwrap();
+        (Arc::new(bridge), root)
+    }
+
+    async fn call(bridge: &Arc<Bridge>, method: &str, params: Value) -> Value {
+        let response = handle_request(Arc::clone(bridge), request(method, params)).await;
+        serde_json::to_value(&response).unwrap()
+    }
+
+    #[tokio::test]
+    async fn set_overlay_events_requires_a_boolean() {
+        let (bridge, root) = temp_bridge("params");
+        for params in [
+            json!({}),
+            json!({"enabled": "true"}),
+            json!({"enabled": 1}),
+            json!({"enabled": null}),
+            json!(null),
+        ] {
+            let response = call(&bridge, "setComputerOverlayEvents", params.clone()).await;
+            assert_eq!(response["error"]["code"], "invalid_params", "{params}");
+            assert!(!bridge.overlay.is_enabled(), "{params}");
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn set_overlay_events_toggles_and_reports_channel_state() {
+        let (bridge, root) = temp_bridge("toggle");
+        let mut events = bridge.take_overlay_events().unwrap();
+        assert!(bridge.take_overlay_events().is_none(), "the receiver is single-owner");
+
+        let on = call(&bridge, "setComputerOverlayEvents", json!({"enabled": true})).await;
+        assert_eq!(on["result"]["enabled"], true);
+        let expected_channel = if cfg!(target_os = "macos") { "detached" } else { "unsupported" };
+        assert_eq!(on["result"]["runner_channel"], expected_channel);
+        assert_eq!(on["result"]["counters"]["forwarded"], 0);
+        assert!(events.try_recv().is_err(), "enabling alone sends no frame");
+
+        let off = call(&bridge, "setComputerOverlayEvents", json!({"enabled": false})).await;
+        assert_eq!(off["result"]["enabled"], false);
+        let frame = events.try_recv().expect("clear(disabled)");
+        assert_eq!(frame["phase"], "clear");
+        assert_eq!(frame["reason"], "disabled");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn get_overlay_status_is_read_only_and_numbers_only() {
+        let (bridge, root) = temp_bridge("status");
+        let mut events = bridge.take_overlay_events().unwrap();
+
+        let off = call(&bridge, "getComputerOverlayStatus", json!({})).await;
+        assert_eq!(off["result"]["enabled"], false);
+        assert_eq!(off["result"]["counters"]["forwarded"], 0);
+
+        let _ = call(&bridge, "setComputerOverlayEvents", json!({"enabled": true})).await;
+        let on = call(&bridge, "getComputerOverlayStatus", json!({"enabled": false})).await;
+        assert_eq!(on["result"]["enabled"], true, "params are ignored; the query never toggles");
+        let expected_channel = if cfg!(target_os = "macos") { "detached" } else { "unsupported" };
+        assert_eq!(on["result"]["runner_channel"], expected_channel);
+        assert!(events.try_recv().is_err(), "querying sends no frame");
+
+        let mut keys: Vec<_> = on["result"].as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["counters", "enabled", "runner_channel"]);
+        for value in on["result"]["counters"].as_object().unwrap().values() {
+            assert!(value.is_u64(), "counters are plain numbers: {value}");
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn no_event_frames_exist_unless_the_app_enabled_them() {
+        let (bridge, root) = temp_bridge("silent");
+        let mut events = bridge.take_overlay_events().unwrap();
+        // Kill-switch style calls while disabled must not produce frames either.
+        let _ = call(&bridge, "stopComputerControl", json!({})).await;
+        let _ = call(&bridge, "setComputerControlMode", json!({"mode": "read_only"})).await;
+        assert!(events.try_recv().is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn stop_and_read_only_clear_the_overlay_and_resume_does_not() {
+        let (bridge, root) = temp_bridge("killswitch");
+        let mut events = bridge.take_overlay_events().unwrap();
+        let _ = call(&bridge, "setComputerOverlayEvents", json!({"enabled": true})).await;
+
+        let _ = call(&bridge, "stopComputerControl", json!({})).await;
+        let frame = events.try_recv().expect("clear(stopped) after Stop");
+        assert_eq!(frame, json!({"v": 1, "phase": "clear", "reason": "stopped"}));
+
+        let _ = call(&bridge, "setComputerControlMode", json!({"mode": "read_only"})).await;
+        assert_eq!(events.try_recv().expect("clear after read_only")["reason"], "stopped");
+
+        let _ = call(&bridge, "setComputerControlMode", json!({"mode": "ask_before_control"})).await;
+        let _ = call(&bridge, "resumeComputerControl", json!({})).await;
+        assert!(events.try_recv().is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn an_unread_overlay_channel_never_slows_other_requests() {
+        let (bridge, root) = temp_bridge("ingress");
+        // Nobody drains `overlay_events`, like an App that stopped reading stdout.
+        let _ = call(&bridge, "setComputerOverlayEvents", json!({"enabled": true})).await;
+        for _ in 0..500 {
+            bridge.overlay.clear(computer_overlay::ClearReason::Stopped);
+        }
+        for method in ["getComputerSafety", "getStatus"] {
+            let response = tokio::time::timeout(
+                Duration::from_secs(5),
+                call(&bridge, method, json!({})),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{method} must answer while overlay frames are backed up"));
+            assert!(response.get("result").is_some(), "{method}: {response}");
+        }
+        let counters = bridge.overlay.counters();
+        assert!(counters.dropped_backpressure >= 400, "{counters:?}");
+        assert!(counters.forwarded <= computer_overlay::OUT_CAPACITY as u64);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn event_writer_emits_one_ndjson_frame_per_event_and_stops_with_the_channel() {
+        let (client, server) = tokio::io::duplex(4096);
+        let (tx, rx) = mpsc::channel(8);
+        let writer = tokio::spawn(write_overlay_events(Arc::new(Mutex::new(server)), rx));
+        tx.send(json!({"v": 1, "phase": "clear", "reason": "stopped"})).await.unwrap();
+        tx.send(json!({"v": 1, "phase": "finished", "seq": 2})).await.unwrap();
+        drop(tx);
+        writer.await.unwrap();
+
+        let mut lines = BufReader::new(client).lines();
+        let first: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+        assert_eq!(first["protocol_version"], 1);
+        assert_eq!(first["event"], "computer_overlay");
+        assert!(first.get("request_id").is_none(), "event frames carry no request_id");
+        assert_eq!(first["data"]["reason"], "stopped");
+        let second: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+        assert_eq!(second["data"]["phase"], "finished");
+        assert!(lines.next_line().await.unwrap().is_none());
     }
 }

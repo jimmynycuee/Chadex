@@ -96,6 +96,8 @@
 "computer.requestTitle" = "CURRENT REQUEST";
 "computer.safetyTitle" = "Safety";
 "computer.safetyNote" = "Passwords, Keychain, secure text fields, and authentication surfaces remain blocked. Approval details never include typed or clipboard text.";
+"computer.cursorOverlay.title" = "Show agent cursor";
+"computer.cursorOverlay.help" = "Shows where ChatGPT is acting on your Mac. It appears only on this Mac, and Chadex asks macOS to keep it out of screenshots and screen recordings.";
 "computer.action.launch" = "Launch an application";
 "computer.action.activate" = "Activate a window";
 "computer.action.press" = "Press a control";

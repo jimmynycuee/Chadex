@@ -70,6 +70,53 @@ final class HelperClient: @unchecked Sendable {
     private var stdoutBuffer = Data()
     private var latencySamples: [HelperLatencySample] = []
     private(set) var stderrTail = ""
+    private var eventHandler: (@Sendable (HelperEvent) -> Void)?
+    private var lifecycleHandler: (@Sendable (HelperLifecycleEvent) -> Void)?
+    private var discardedEventFrames = 0
+
+    /// Receives typed helper events (currently only the cursor overlay). Called on a
+    /// background thread, in the order the helper wrote them; hop to the main
+    /// queue with `DispatchQueue.main.async` (not separate Tasks) to keep that order.
+    var onEvent: (@Sendable (HelperEvent) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return eventHandler
+        }
+        set {
+            lock.lock()
+            eventHandler = newValue
+            lock.unlock()
+        }
+    }
+
+    /// Called after the helper process started and after it terminated, outside any lock.
+    var onLifecycle: (@Sendable (HelperLifecycleEvent) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return lifecycleHandler
+        }
+        set {
+            lock.lock()
+            lifecycleHandler = newValue
+            lock.unlock()
+        }
+    }
+
+    /// Whether a helper process is currently running. Never launches one.
+    var isRunning: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return process?.isRunning == true
+    }
+
+    /// Event frames that were malformed or unknown and therefore ignored.
+    var discardedEventFrameCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return discardedEventFrames
+    }
 
     init(executableURL: URL? = nil) {
         self.executableOverride = executableURL
@@ -86,9 +133,17 @@ final class HelperClient: @unchecked Sendable {
     }
 
     func startIfNeeded() throws {
+        let didStart = try startIfNeededLocked()
+        if didStart {
+            onLifecycle?(.started)
+        }
+    }
+
+    /// Returns true when this call launched a new helper process.
+    private func startIfNeededLocked() throws -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        if process?.isRunning == true { return }
+        if process?.isRunning == true { return false }
         if isShutDown { throw HelperClientError.disconnected }
 
         let executableURL = try executableOverride ?? Self.resolveExecutableURL()
@@ -128,6 +183,7 @@ final class HelperClient: @unchecked Sendable {
         } catch {
             throw HelperClientError.launchFailed(error.localizedDescription)
         }
+        return true
     }
 
     func request<Params: Encodable, Result: Decodable>(
@@ -316,6 +372,7 @@ final class HelperClient: @unchecked Sendable {
     }
 
     private func handleProcessTermination(generation: UInt64) {
+        onLifecycle?(.terminated)
         failPending(generation: generation, with: HelperClientError.disconnected)
         lock.lock()
         guard processGeneration == generation else {
@@ -341,12 +398,41 @@ final class HelperClient: @unchecked Sendable {
         lock.unlock()
 
         for line in lines where !line.isEmpty {
+            // Event frames (an `event`, no `request_id`) are routed first. A bad or
+            // unknown event frame is discarded and counted; it must never be treated
+            // as a protocol error that fails the requests in flight.
+            if let envelope = try? JSONDecoder.chadex.decode(HelperFrameEnvelope.self, from: line),
+               envelope.isEventFrame {
+                dispatchEventFrame(envelope, line: line)
+                continue
+            }
             guard let response = try? JSONDecoder.chadex.decode(HelperResponse.self, from: line) else {
                 failAllPending(with: HelperClientError.malformedResponse)
                 continue
             }
             resolve(requestId: response.requestId, result: .success(response))
         }
+    }
+
+    private func dispatchEventFrame(_ envelope: HelperFrameEnvelope, line: Data) {
+        switch envelope.event {
+        case "computer_overlay":
+            guard let frame = try? JSONDecoder.chadex.decode(ComputerOverlayFrame.self, from: line),
+                  frame.protocolVersion == Self.protocolVersion
+            else {
+                countDiscardedEventFrame()
+                return
+            }
+            onEvent?(.computerOverlay(frame.data))
+        default:
+            countDiscardedEventFrame()
+        }
+    }
+
+    private func countDiscardedEventFrame() {
+        lock.lock()
+        discardedEventFrames += 1
+        lock.unlock()
     }
 
     private func consumeStderr(_ data: Data) {

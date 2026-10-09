@@ -29,7 +29,14 @@ fn computer_runtime() -> &'static ComputerRuntime {
         // `CHADEX_COMPUTER_WEB_ACCESSIBILITY=off` stops Chadex from switching on web
         // accessibility of Chromium/Electron apps; anything else keeps the default.
         let web_accessibility = std::env::var(WebAccessibilityPolicy::ENV_VAR).ok();
-        ComputerRuntime::new(computer_config(web_accessibility.as_deref()))
+        let runtime = ComputerRuntime::new(computer_config(web_accessibility.as_deref()));
+        // The cursor overlay is macOS-only and only active when the helper started
+        // this runner with the private stdout channel (see computer_overlay.rs).
+        #[cfg(target_os = "macos")]
+        if let Some(sink) = super::computer_overlay::installed_sink() {
+            return runtime.with_overlay_sink(sink);
+        }
+        runtime
     })
 }
 

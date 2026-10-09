@@ -14,6 +14,7 @@ use crate::{
     DisplayRecord, ElementFindRequest, ElementRecord, PlatformApplication, PlatformDisplay,
     PointerAction, PointerPlan, SurfaceRecord,
 };
+use crate::overlay::{display_containing_point, OverlayActionGuard, OverlayDisplay, OverlayTarget};
 use crate::{is_supported_text_input_fingerprint, ElementFingerprint};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -115,7 +116,8 @@ pub(crate) use accessibility::{
 };
 use accessibility::{
     ax_attribute_settable, checked_surface_pid, exact_ax_window, optional_ax_bool,
-    optional_ax_string, prepare_ax_call, resolve_correlated_element, validate_key_input_target,
+    optional_ax_string, overlay_frame_for_element, prepare_ax_call, resolve_correlated_element,
+    validate_key_input_target,
 };
 #[cfg(test)]
 pub(crate) use applications::{

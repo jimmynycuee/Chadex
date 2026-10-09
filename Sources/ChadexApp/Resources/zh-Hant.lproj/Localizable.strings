@@ -96,6 +96,8 @@
 "computer.requestTitle" = "目前請求";
 "computer.safetyTitle" = "安全";
 "computer.safetyNote" = "密碼、鑰匙圈、安全文字欄位與驗證視窗一律不可被操作；批准畫面也不會顯示你輸入的文字或剪貼簿內容。";
+"computer.cursorOverlay.title" = "顯示代理游標";
+"computer.cursorOverlay.help" = "顯示 ChatGPT 正在操作的位置。只會顯示在這台 Mac 上，Chadex 會請 macOS 不要把它放進截圖與螢幕錄影。";
 "computer.action.launch" = "開啟應用程式";
 "computer.action.activate" = "切換到視窗";
 "computer.action.press" = "按下控制項";

@@ -361,11 +361,33 @@ struct ProjectDetailView: View {
                 .chadexCard(padding: 18)
             }
 
+            Divider()
+            computerCursorOverlayToggle
+
             if let error = model.computerSafetyError {
                 ChadexInlineError(message: error) {
                     await model.refreshComputerSafety()
                 }
             }
+        }
+    }
+
+    private var computerCursorOverlayToggle: some View {
+        VStack(alignment: .leading, spacing: layout.spacing(6)) {
+            Toggle(
+                L10n.string("computer.cursorOverlay.title"),
+                isOn: Binding(
+                    get: { model.computerCursorOverlayEnabled },
+                    set: { enabled in
+                        Task { await model.setComputerCursorOverlay(enabled) }
+                    }
+                )
+            )
+            .chadexFont(.callout, weight: .semibold)
+            Text(L10n.string("computer.cursorOverlay.help"))
+                .chadexFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

@@ -369,6 +369,72 @@ fn ax_window_geometry_matches(
         && (size.height - f64::from(height)).abs() <= TOLERANCE)
 }
 
+/// Wall-clock budget for reading one element frame for the overlay. This is a
+/// separate deadline object, but the time still passes on the wall clock and
+/// therefore counts against the action's own AX deadline. That is why the read
+/// happens before the final validation (`OverlayActionGuard::prepare_frame`).
+#[cfg(target_os = "macos")]
+const OVERLAY_FRAME_READ_BUDGET: Duration = Duration::from_millis(150);
+
+/// Read `AXPosition` + `AXSize` as an overlay rect (CG global points). Any
+/// failure, missing value, non-finite number or empty size yields
+/// `OverlayTarget::None`; this never fails the action.
+#[cfg(target_os = "macos")]
+pub(super) fn overlay_frame_for_element(
+    element: &AXUIElement,
+) -> (OverlayTarget, Option<OverlayDisplay>) {
+    let deadline = AxObservationDeadline::from_now(Instant::now(), OVERLAY_FRAME_READ_BUDGET);
+    let read = || -> Result<OverlayTarget, String> {
+        let Some(position) = optional_ax_point(&deadline, element, "AXPosition")? else {
+            return Ok(OverlayTarget::None);
+        };
+        let Some(size) = optional_ax_size(&deadline, element, "AXSize")? else {
+            return Ok(OverlayTarget::None);
+        };
+        Ok(OverlayTarget::rect(
+            position.x,
+            position.y,
+            size.width,
+            size.height,
+        ))
+    };
+    let target = read().unwrap_or(OverlayTarget::None);
+    let display = target
+        .center()
+        .and_then(|(x, y)| macos_overlay_display_at(x, y));
+    (target, display)
+}
+
+/// Active display containing a CG global point, with the bounds the runtime sees now.
+#[cfg(target_os = "macos")]
+fn macos_overlay_display_at(x: f64, y: f64) -> Option<OverlayDisplay> {
+    const MAX_OVERLAY_DISPLAYS: u32 = 16;
+    let mut ids = [0 as CGDirectDisplayID; MAX_OVERLAY_DISPLAYS as usize];
+    let mut count = 0u32;
+    let error =
+        unsafe { CGGetActiveDisplayList(MAX_OVERLAY_DISPLAYS, ids.as_mut_ptr(), &mut count) };
+    if error != CGError::Success {
+        return None;
+    }
+    let displays: Vec<OverlayDisplay> = ids
+        .iter()
+        .take((count as usize).min(ids.len()))
+        .map(|&id| {
+            let bounds = CGDisplayBounds(id);
+            OverlayDisplay {
+                id,
+                bounds: (
+                    bounds.origin.x,
+                    bounds.origin.y,
+                    bounds.size.width,
+                    bounds.size.height,
+                ),
+            }
+        })
+        .collect();
+    display_containing_point(&displays, x, y)
+}
+
 #[cfg(target_os = "macos")]
 fn ax_array_count(
     deadline: &AxObservationDeadline,
@@ -882,7 +948,11 @@ pub(crate) fn element_state(
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn activate_window(surface_id: &str, surface: &SurfaceRecord) -> Result<Value, String> {
+pub(crate) fn activate_window(
+    surface_id: &str,
+    surface: &SurfaceRecord,
+    overlay: &mut OverlayActionGuard,
+) -> Result<Value, String> {
     if !unsafe { AXIsProcessTrusted() } {
         return Err("permission_denied: macOS Accessibility permission is not granted".to_string());
     }
@@ -891,6 +961,8 @@ pub(crate) fn activate_window(surface_id: &str, surface: &SurfaceRecord) -> Resu
     // any effect so an opaque stale surface cannot drift to another window.
     let deadline = AxObservationDeadline::new();
     let window = exact_ax_window(surface, &deadline)?;
+    // Overlay frame: before the capability reads below, never between them and the effect.
+    let overlay_frame = overlay.prepare_frame(|| overlay_frame_for_element(&window));
     let application = unsafe { AXUIElement::new_application(surface.pid as _) };
     let frontmost = optional_ax_bool(&deadline, &application, "AXFrontmost")?;
     if frontmost != Some(true) && !ax_attribute_settable(&deadline, &application, "AXFrontmost")? {
@@ -901,6 +973,9 @@ pub(crate) fn activate_window(surface_id: &str, surface: &SurfaceRecord) -> Resu
     if !ax_supports_action(&deadline, &window, "AXRaise")? {
         return Err("control_failed: exact AX window does not support AXRaise".to_string());
     }
+
+    // Last point before the first mutation: announce the window to the overlay.
+    overlay.begin_prepared(overlay_frame);
 
     // Prepare both native call sites before the first mutation. After the
     // application becomes frontmost, any later failure is a partial effect.
@@ -946,6 +1021,7 @@ pub(crate) fn control(
     surface: &SurfaceRecord,
     element: &ElementRecord,
     action: ComputerAction,
+    overlay: &mut OverlayActionGuard,
 ) -> Result<Value, String> {
     if !unsafe { AXIsProcessTrusted() } {
         return Err("permission_denied: macOS Accessibility permission is not granted".to_string());
@@ -966,6 +1042,8 @@ pub(crate) fn control(
     }
     let deadline = AxObservationDeadline::new();
     let current = resolve_correlated_element(surface, element, &deadline)?;
+    // Overlay frame: before the capability checks, never between them and the effect.
+    let overlay_frame = overlay.prepare_frame(|| overlay_frame_for_element(&current));
 
     match action {
         ComputerAction::Press if !ax_supports_action(&deadline, &current, "AXPress")? => {
@@ -981,6 +1059,8 @@ pub(crate) fn control(
         _ => {}
     }
 
+    // Capability checks passed; the next call is the native effect.
+    overlay.begin_prepared(overlay_frame);
     prepare_ax_call(&deadline, &current)?;
     let error = match action {
         ComputerAction::Press => unsafe {
@@ -1017,6 +1097,7 @@ pub(crate) fn scroll_to_element(
     element_id: &str,
     surface: &SurfaceRecord,
     element: &ElementRecord,
+    overlay: &mut OverlayActionGuard,
 ) -> Result<Value, String> {
     if !unsafe { AXIsProcessTrusted() } {
         return Err("permission_denied: macOS Accessibility permission is not granted".to_string());
@@ -1038,11 +1119,13 @@ pub(crate) fn scroll_to_element(
     }
     let deadline = AxObservationDeadline::new();
     let current = resolve_correlated_element(surface, element, &deadline)?;
+    let overlay_frame = overlay.prepare_frame(|| overlay_frame_for_element(&current));
     if !ax_supports_action(&deadline, &current, "AXScrollToVisible")? {
         return Err(
             "scroll_failed: AX element does not support the AXScrollToVisible action".to_string(),
         );
     }
+    overlay.begin_prepared(overlay_frame);
     prepare_ax_call(&deadline, &current)?;
     let error = unsafe { current.perform_action(&CFString::from_static_str("AXScrollToVisible")) };
     if error != AXError::Success {

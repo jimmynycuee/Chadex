@@ -1,0 +1,264 @@
+import Foundation
+import XCTest
+@testable import ChadexApp
+
+/// AppModel wiring for the cursor overlay: the helper is told the user's choice,
+/// the choice persists, events reach the controller and Stop hides at once.
+@MainActor
+final class ComputerOverlayAppModelTests: XCTestCase {
+    private final class CountingPresenter: ComputerOverlayPresenting {
+        private(set) var presented = 0
+        private(set) var hiddenImmediately = 0
+        func present(_ presentation: ComputerOverlayPresentation, plan: OverlayAnimationPlan) { presented += 1 }
+        func showOutcome(_ outcome: OverlayOutcomeKind) {}
+        func hide(fadeDuration: TimeInterval) {}
+        func hideImmediately() { hiddenImmediately += 1 }
+    }
+
+    private struct Fixture {
+        let model: AppModel
+        let store: ProjectStore
+        let log: URL
+        let presenter: CountingPresenter
+    }
+
+    private func makeFixture(
+        overlayPreference: Bool? = nil,
+        eventLine: String? = nil
+    ) throws -> Fixture {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("chadex-overlay-model-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+
+        let log = root.appendingPathComponent("helper.log")
+        let executable = root.appendingPathComponent("fake-helper")
+        let emit = eventLine.map { "printf '%s\\n' '\($0)'" } ?? ":"
+        let script = """
+        #!/bin/sh
+        SAFETY='{"mode":"ask_before_control","stopped":false,"generation":1,"pending_approvals":[],"audit":[]}'
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\\([^"]*\\)".*/\\1/p')
+          method=$(printf '%s' "$line" | sed -n 's/.*"method":"\\([^"]*\\)".*/\\1/p')
+          printf '%s\\n' "$line" >> '\(log.path)'
+          case "$method" in
+            setComputerOverlayEvents)
+              \(emit)
+              printf '{"protocol_version":1,"request_id":"%s","result":{"enabled":true,"runner_channel":"detached"}}\\n' "$id" ;;
+            getComputerOverlayStatus)
+              printf '{"protocol_version":1,"request_id":"%s","result":{"enabled":true,"runner_channel":"detached","counters":{"forwarded":7,"dropped_invalid":2,"dropped_disabled":3,"dropped_backpressure":4,"overflows":1}}}\\n' "$id" ;;
+            *) printf '{"protocol_version":1,"request_id":"%s","result":%s}\\n' "$id" "$SAFETY" ;;
+          esac
+          if [ "$method" = "shutdown" ]; then exit 0; fi
+        done
+        """
+        try script.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            ofItemAtPath: executable.path
+        )
+
+        // Isolated preferences: never the real Application Support folder.
+        let store = ProjectStore(environment: ["CHADEX_PREFERENCES_DIR": root.path])
+        var preferences = ChadexPreferences()
+        preferences.computerCursorOverlay = overlayPreference
+        try store.save(preferences)
+
+        let presenter = CountingPresenter()
+        let controller = ComputerOverlayController(
+            presenter: presenter,
+            environment: .live(),
+            isEnabled: preferences.computerCursorOverlayEnabled
+        )
+        let model = AppModel(
+            helper: HelperClient(executableURL: executable),
+            store: store,
+            overlayController: controller,
+            autostart: false
+        )
+        return Fixture(model: model, store: store, log: log, presenter: presenter)
+    }
+
+    private func logged(_ fixture: Fixture, method: String) -> [String] {
+        ((try? String(contentsOf: fixture.log, encoding: .utf8)) ?? "")
+            .split(separator: "\n").map(String.init)
+            .filter { $0.contains("\"method\":\"\(method)\"") }
+    }
+
+    private func waitUntil(_ timeout: TimeInterval = 5, _ condition: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return condition()
+    }
+
+    func testStartingTheHelperSyncsTheDefaultOnChoice() async throws {
+        let fixture = try makeFixture()
+        await fixture.model.refreshComputerSafety() // first request starts the helper
+        let synced = await waitUntil { !logged(fixture, method: "setComputerOverlayEvents").isEmpty }
+        await fixture.model.shutdown()
+        XCTAssertTrue(synced, "a new helper must be told whether to forward overlay events")
+        XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents")[0].contains("\"enabled\":true"))
+    }
+
+    func testSavedOffChoiceIsSentToANewHelper() async throws {
+        let fixture = try makeFixture(overlayPreference: false)
+        XCTAssertFalse(fixture.model.computerCursorOverlayEnabled)
+        await fixture.model.refreshComputerSafety()
+        let synced = await waitUntil { !logged(fixture, method: "setComputerOverlayEvents").isEmpty }
+        await fixture.model.shutdown()
+        XCTAssertTrue(synced)
+        XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents")[0].contains("\"enabled\":false"))
+    }
+
+    private func startHelperAndWaitForInitialSync(_ fixture: Fixture) async -> Bool {
+        await fixture.model.refreshComputerSafety() // first request starts the helper
+        return await waitUntil { !logged(fixture, method: "setComputerOverlayEvents").isEmpty }
+    }
+
+    func testTogglePersistsHidesAndTellsTheHelper() async throws {
+        let fixture = try makeFixture()
+        let started = await startHelperAndWaitForInitialSync(fixture)
+        XCTAssertTrue(started)
+
+        await fixture.model.setComputerCursorOverlay(false)
+        XCTAssertFalse(fixture.model.computerCursorOverlayEnabled)
+        XCTAssertEqual(fixture.store.load().computerCursorOverlay, false, "the choice is saved")
+        XCTAssertGreaterThan(fixture.presenter.hiddenImmediately, 0, "switching off hides at once")
+        let sentOff = logged(fixture, method: "setComputerOverlayEvents").last
+        XCTAssertTrue(sentOff?.contains("\"enabled\":false") == true, sentOff ?? "nothing sent")
+
+        await fixture.model.setComputerCursorOverlay(true)
+        XCTAssertEqual(fixture.store.load().computerCursorOverlay, true)
+        XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents").last?.contains("\"enabled\":true") == true)
+        await fixture.model.shutdown()
+    }
+
+    func testRapidTogglesEndWithTheHelperMatchingThePreference() async throws {
+        let fixture = try makeFixture()
+        let started = await startHelperAndWaitForInitialSync(fixture)
+        XCTAssertTrue(started)
+
+        let flips = [false, true, false, true, false]
+        let tasks = flips.map { value in
+            Task { await fixture.model.setComputerCursorOverlay(value) }
+        }
+        for task in tasks { await task.value }
+
+        XCTAssertEqual(fixture.model.computerCursorOverlayEnabled, false)
+        let sent = logged(fixture, method: "setComputerOverlayEvents")
+        XCTAssertTrue(sent.last?.contains("\"enabled\":false") == true, "last request must carry the final preference: \(sent)")
+        XCTAssertLessThanOrEqual(sent.count, 1 + flips.count)
+        await fixture.model.shutdown()
+    }
+
+    func testTogglingWithoutARunningHelperSavesButDoesNotLaunchIt() async throws {
+        let fixture = try makeFixture()
+        await fixture.model.setComputerCursorOverlay(false)
+        XCTAssertEqual(fixture.store.load().computerCursorOverlay, false)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: fixture.log.path),
+            "syncing the overlay must not start the helper"
+        )
+
+        // The saved choice reaches the helper when it starts for another reason.
+        await fixture.model.refreshComputerSafety()
+        let synced = await waitUntil { !logged(fixture, method: "setComputerOverlayEvents").isEmpty }
+        XCTAssertTrue(synced)
+        XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents")[0].contains("\"enabled\":false"))
+        await fixture.model.shutdown()
+    }
+
+    func testStopHidesTheOverlayBeforeAskingTheHelper() async throws {
+        let fixture = try makeFixture()
+        let before = fixture.presenter.hiddenImmediately
+        await fixture.model.stopComputerControl()
+        XCTAssertGreaterThan(fixture.presenter.hiddenImmediately, before)
+        await fixture.model.shutdown()
+    }
+
+    func testOverlayEventFromTheHelperReachesTheController() async throws {
+        // The helper answers setComputerOverlayEvents with an event frame, like a
+        // runner event forwarded after the App enabled events. emitted_at_ms is
+        // "now" so it is not stale; the display is omitted so the point picks a screen.
+        let nowMs = UInt64(Date().timeIntervalSince1970 * 1000)
+        let line = #"{"protocol_version":1,"event":"computer_overlay","data":{"v":1,"seq":1,"phase":"will_act","action_id":1,"action":"click","target":{"kind":"point","x":5.0,"y":5.0},"space":"macos_cg_global_pt","ttl_ms":500,"emitted_at_ms":\#(nowMs)}}"#
+        let fixture = try makeFixture(eventLine: line)
+        await fixture.model.refreshComputerSafety()
+        let presented = await waitUntil { fixture.presenter.presented > 0 }
+        await fixture.model.shutdown()
+        // Headless CI can have no display; then the controller correctly drops the
+        // event instead of guessing. Either way nothing may crash or fail a request.
+        if NSScreen.screens.isEmpty {
+            XCTAssertFalse(presented)
+        } else {
+            XCTAssertTrue(presented, "a valid event on a real screen is presented")
+        }
+    }
+
+    func testDiagnosticsReportTheOverlayWithoutStartingTheHelper() async throws {
+        let fixture = try makeFixture(overlayPreference: false)
+        let lines = await fixture.model.computerOverlayDiagnosticsLines()
+        XCTAssertTrue(lines.contains("Preference enabled: false"))
+        XCTAssertTrue(lines.contains("Helper running: false"))
+        XCTAssertTrue(lines.contains("Helper status: unavailable"))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: fixture.log.path),
+            "exporting diagnostics must not start the helper"
+        )
+        await fixture.model.shutdown()
+    }
+
+    func testDiagnosticsUseTheReadOnlyStatusMethod() async throws {
+        let fixture = try makeFixture()
+        let started = await startHelperAndWaitForInitialSync(fixture)
+        XCTAssertTrue(started)
+        let setBefore = logged(fixture, method: "setComputerOverlayEvents").count
+
+        let lines = await fixture.model.computerOverlayDiagnosticsLines()
+        let text = lines.joined(separator: "\n")
+        await fixture.model.shutdown()
+
+        XCTAssertEqual(lines.first, "Computer cursor overlay")
+        XCTAssertTrue(text.contains("Runner channel: detached"), text)
+        XCTAssertTrue(text.contains("Helper forwarded: 7"), text)
+        XCTAssertTrue(text.contains("Helper dropped (invalid): 2"), text)
+        XCTAssertTrue(text.contains("Helper dropped (backpressure): 4"), text)
+        XCTAssertEqual(logged(fixture, method: "getComputerOverlayStatus").count, 1)
+        XCTAssertEqual(
+            logged(fixture, method: "setComputerOverlayEvents").count, setBefore,
+            "the diagnostics query must not change the enabled state"
+        )
+    }
+
+    func testDiagnosticsSectionHasNoCoordinatesOrContent() {
+        let status = ComputerOverlayHelperStatus(
+            enabled: true,
+            runnerChannel: "attached\u{0}x=123.5,y=456.5",
+            counters: .init(forwarded: 1, droppedInvalid: 2, droppedDisabled: 3, droppedBackpressure: 4, overflows: 5)
+        )
+        let lines = ComputerOverlayDiagnostics.lines(
+            preferenceEnabled: true,
+            helper: status,
+            helperRunning: true,
+            discardedEventFrames: 6,
+            controllerDroppedEvents: 7
+        )
+        let text = lines.joined(separator: "\n")
+        XCTAssertTrue(text.contains("Runner channel: unknown"), "an unexpected value is not echoed")
+        XCTAssertTrue(text.contains("App discarded event frames: 6"))
+        XCTAssertTrue(text.contains("App dropped events (stale or no matching screen): 7"))
+        XCTAssertFalse(text.contains("123.5"))
+        XCTAssertFalse(text.contains("456.5"))
+        for line in lines.dropFirst() {
+            let value = line.split(separator: ":", maxSplits: 1).last.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+            XCTAssertTrue(
+                Int(value) != nil || ["true", "false", "attached", "detached", "unsupported", "unknown", "unavailable"].contains(value),
+                "only numbers and enum values: \(line)"
+            )
+        }
+    }
+}

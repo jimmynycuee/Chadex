@@ -1868,7 +1868,7 @@ impl RuntimeCoordinator {
                 self.snapshot.readiness.runner = RunnerReadiness::Connecting;
                 self.publish_snapshot();
                 let command = self.adapter.local_runner_command(&identity.runner_config)?;
-                self.spawn_owned(ProcessKind::LocalRunner, command, false, cancellation)
+                self.spawn_local_runner(command, cancellation)
                     .await?;
                 true
             } else {
@@ -1955,7 +1955,7 @@ impl RuntimeCoordinator {
                     let command = self
                         .adapter
                         .local_runner_command(&legacy_identity.runner_config)?;
-                    self.spawn_owned(ProcessKind::LocalRunner, command, false, cancellation)
+                    self.spawn_local_runner(command, cancellation)
                         .await?;
                     self.wait_for_runner(&legacy_identity, cancellation, legacy_deadline, true)
                         .await?;
@@ -2240,7 +2240,7 @@ impl RuntimeCoordinator {
                 ));
             }
             let command = self.adapter.local_runner_command(&identity.runner_config)?;
-            self.spawn_owned(ProcessKind::LocalRunner, command, false, cancellation)
+            self.spawn_local_runner(command, cancellation)
                 .await?;
             true
         } else {
@@ -2286,7 +2286,7 @@ impl RuntimeCoordinator {
                 let command = self
                     .adapter
                     .local_runner_command(&legacy_identity.runner_config)?;
-                self.spawn_owned(ProcessKind::LocalRunner, command, false, cancellation)
+                self.spawn_local_runner(command, cancellation)
                     .await?;
                 self.wait_for_runner(&legacy_identity, cancellation, legacy_deadline, true)
                     .await?;
@@ -2839,6 +2839,27 @@ impl RuntimeCoordinator {
 
     async fn process_logs(&self, kind: ProcessKind) -> Vec<String> {
         self.supervisor.lock().await.logs(kind)
+    }
+
+    /// Spawn the Desktop-owned Runner. When the process-wide cursor overlay hub
+    /// exists (macOS), the Runner gets a private per-spawn event channel on its
+    /// stdout and the hub starts forwarding it. Otherwise this is the plain spawn.
+    async fn spawn_local_runner(
+        &self,
+        mut command: std::process::Command,
+        cancellation: &CancellationContext,
+    ) -> DesktopResult<()> {
+        let hub = crate::chadex_core::computer_overlay::shared_hub();
+        let token = hub
+            .as_ref()
+            .and_then(|hub| hub.prepare_runner_command(&mut command));
+        let inbox = self
+            .spawn_owned(ProcessKind::LocalRunner, command, token.is_some(), cancellation)
+            .await?;
+        if let (Some(hub), Some(token), Some(inbox)) = (hub, token, inbox) {
+            hub.attach_runner(inbox, token);
+        }
+        Ok(())
     }
 
     async fn spawn_owned(
