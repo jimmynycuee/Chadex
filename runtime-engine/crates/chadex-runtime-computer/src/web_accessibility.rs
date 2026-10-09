@@ -335,14 +335,13 @@ pub(crate) fn enable_web_accessibility(
         Err(_) => return Ok(WebAxState::Unsupported),
     }
     let registry = context.registry;
-    if let Some(memo) = registry.memo(process) {
+    if registry.memo(process).is_some() {
         // Waited (or confirmed) before: never sleep again, verify with one probe.
         let budget = single_probe_budget(env);
         if budget.is_zero() {
-            return Ok(match memo {
-                WebMemo::Confirmed => WebAxState::AlreadyEnabled,
-                WebMemo::Waited => WebAxState::Pending,
-            });
+            // No evidence this time: never claim `already_enabled` unverified,
+            // and leave the memo as it is.
+            return Ok(WebAxState::Pending);
         }
         return match env.probe(budget) {
             Ok(WebProbe::Content | WebProbe::NoWebArea) => {

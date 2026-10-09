@@ -2082,7 +2082,7 @@ pub struct RunnerPollPayload {
     pub project_inventory_page: Option<ShellProjectInventoryPage>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RunnerRequest {
     pub request_id: String,
     pub client_id: String,
@@ -2157,6 +2157,43 @@ pub struct RunnerRequest {
     /// to the Runner and is never accepted through this transport.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coding_agent: Option<crate::coding_agent::CodingAgentRequest>,
+}
+
+/// `stdin` can carry typed computer payloads (typed text, find values,
+/// clipboard content), so Debug reports only its size.
+impl std::fmt::Debug for RunnerRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RunnerRequest")
+            .field("request_id", &self.request_id)
+            .field("client_id", &self.client_id)
+            .field("kind", &self.kind)
+            .field("job_id", &self.job_id)
+            .field("cwd", &self.cwd)
+            .field("path", &self.path)
+            .field("content", &self.content)
+            .field("max_bytes", &self.max_bytes)
+            .field("expected_sha256", &self.expected_sha256)
+            .field("expected_prefix", &self.expected_prefix)
+            .field("start_line", &self.start_line)
+            .field("end_line", &self.end_line)
+            .field("create_dirs", &self.create_dirs)
+            .field("command", &self.command)
+            .field("process", &self.process)
+            .field("script", &self.script)
+            .field("stdin_bytes", &self.stdin.as_ref().map(String::len))
+            .field("timeout_secs", &self.timeout_secs)
+            .field("requested_by", &self.requested_by)
+            .field("created_at", &self.created_at)
+            .field("validation", &self.validation)
+            .field("lsp", &self.lsp)
+            .field("job_context", &self.job_context)
+            .field("persistent_shell", &self.persistent_shell)
+            .field("mcp_gateway", &self.mcp_gateway)
+            .field("plugin_gateway", &self.plugin_gateway)
+            .field("coding_agent", &self.coding_agent)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -3188,6 +3225,16 @@ mod envelope_tests {
         assert_eq!(payload.job_inventory.as_ref(), Some(&inventory));
         assert_eq!(payload.job_concurrency_limit, Some(4));
         assert_eq!(auth_token.as_deref(), Some("test-only-token"));
+    }
+
+    #[test]
+    fn request_debug_output_hides_stdin_content() {
+        let mut request = sample_process_request();
+        request.stdin = Some("secret-clipboard-text".to_string());
+        let debug = format!("{request:?}");
+        assert!(!debug.contains("secret-clipboard-text"));
+        assert!(debug.contains("stdin_bytes: Some(21)"));
+        assert!(debug.contains(&request.request_id));
     }
 
     #[test]

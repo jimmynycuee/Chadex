@@ -338,14 +338,14 @@ fn waited_process_probes_once_without_sleeping_and_never_claims_unconfirmed_cont
 fn memoized_process_without_probe_budget_reports_only_what_it_knows() {
     let registry = WebAxRegistry::default();
     let ctx = context(&registry, WebAccessibilityPolicy::Auto, false);
-    for (memo, expected) in [
-        (WebMemo::Confirmed, WebAxState::AlreadyEnabled),
-        (WebMemo::Waited, WebAxState::Pending),
-    ] {
+    for memo in [WebMemo::Confirmed, WebMemo::Waited] {
         registry.set_memo(PROCESS, memo);
         let env = FakeEnvironment::new(vec![WebProbe::Content]);
         env.remaining.set(WAIT_RESERVE);
-        assert_eq!(enable_web_accessibility(&env, &ctx, chromium).unwrap(), expected);
+        assert_eq!(
+            enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+            WebAxState::Pending
+        );
         assert_eq!(env.probe_calls.get(), 0);
         assert_eq!(registry.memo(PROCESS), Some(memo));
     }

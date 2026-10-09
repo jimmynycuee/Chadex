@@ -495,8 +495,8 @@ cargo clippy --workspace --all-targets
 17. 錯誤處理：probe 與設定屬性的錯誤，除了 `permission_denied` 與 deadline 逾時以外，一律視為暫時性錯誤（Chromium 重建樹時會回 `InvalidUIElement`、`CannotComplete`），繼續等待，最後回 `pending`／`unsupported`，觀察照常成功（符合 §1.3）。
 18. memo 分兩種狀態（`WebMemo`）：`Confirmed`（probe 看到內容，或確定沒有 web area）和 `Waited`（等過一次但沒有確認，包含整輪排程跑完和預算用完兩種情況）。
     - 沒有 memo：照 §1.4 等待。看到內容寫 `Confirmed` 並回 `enabled`；否則寫 `Waited` 並回 `pending`。
-    - 命中任何一種 memo：不 sleep，只做一次有預算的 probe（預算為剩餘時間扣掉 3 秒保留，最多 3 秒）。看到內容就升級成 `Confirmed` 並回 `already_enabled`；沒看到就降成 `Waited` 並回 `pending`；暫時性錯誤也當作沒有確認。沒有 probe 預算時，`Confirmed` 回 `already_enabled`、`Waited` 回 `pending`。
-    - 所以 `already_enabled` 現在一定是「剛剛 probe 過」的結果（唯一例外是完全沒有預算可以 probe），`pending` 的網頁每次觀察最多多花一次 probe，不會再花整段等待。這同時處理了 Chromium 閒置後 auto-disable 的情況（L9），仍建議實機確認。
+    - 命中任何一種 memo：不 sleep，只做一次有預算的 probe（預算為剩餘時間扣掉 3 秒保留，最多 3 秒）。看到內容就升級成 `Confirmed` 並回 `already_enabled`；沒看到就降成 `Waited` 並回 `pending`；暫時性錯誤也當作沒有確認。沒有 probe 預算時，兩種 memo 都回 `pending`，memo 不變（沒有新證據）。
+    - 所以 `already_enabled` 現在一定是「這次 probe 確認過內容」的結果（沒有預算可以 probe 時回 `pending`），`pending` 的網頁每次觀察最多多花一次 probe，不會再花整段等待。這同時處理了 Chromium 閒置後 auto-disable 的情況（L9），仍建議實機確認。
 19. 見 §6 第 6 點（sensitive 視窗不展開 `AXWebArea`）。這對舊 kind 是刻意加嚴：sensitive 視窗加上 Chromium／Electron 時，即使使用者自己開了 VoiceOver（其他工具先打開 accessibility），該視窗的網頁內容也不會出現在 Chadex 的 tree 裡；原生 app 與純 WebKit app 不受影響。
 20. `ComputerObserveToolCall::FindElements.value` 改用 `RedactedString`（序列化與一般字串相同，`Debug` 只印位元組數）。`RunnerComputerOperation` 的 `Debug` 對 `InputText`、`WriteClipboard`、`AccessibilityFind` 不印 payload。`RunnerRequest.stdin` 的 `Debug` 是既有行為，所有 kind 都會印，這次沒有改。
 21. `web_context_for(record)` 把「sensitive surface 就不開啟」的決定集中到一處並有測試；tree_filter 的 `value` 可以命中 secure 欄位的子孫（舊 tree 本來就公開這些資料），註解已說明。
