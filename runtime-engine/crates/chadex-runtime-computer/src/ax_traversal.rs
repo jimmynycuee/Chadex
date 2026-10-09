@@ -113,10 +113,13 @@ pub(crate) fn resolve<S: AxSource>(
 
 /// Cheap readiness check used after enabling web accessibility: is there an
 /// `AXWebArea` that already has children? Reads only role and child counts, never any
-/// text, and stays within 12 levels / 200 nodes. An inconclusive search (budget cut)
+/// text, and stays within 12 levels / 200 nodes / `budget` of elapsed time (`clock` starts
+/// when the probe starts). An inconclusive search (budget cut)
 /// counts as "still empty" so the caller keeps waiting instead of assuming absence.
-pub(crate) fn probe_web_content<S: AxSource>(
+pub(crate) fn probe_web_content<S: AxSource, C: AxClock>(
     source: &S,
+    clock: &C,
+    budget: Duration,
     window: S::Node,
 ) -> Result<WebProbe, String> {
     let mut queue = VecDeque::from([(window, 0usize)]);
@@ -125,7 +128,7 @@ pub(crate) fn probe_web_content<S: AxSource>(
     let mut inconclusive = false;
     while let Some((node, depth)) = queue.pop_front() {
         source.check_deadline()?;
-        if visited >= PROBE_MAX_VISITED {
+        if visited >= PROBE_MAX_VISITED || clock.elapsed() >= budget {
             inconclusive = true;
             break;
         }
@@ -195,6 +198,10 @@ pub(crate) fn subtree_mode(root: Option<&ElementRecord>) -> TreeMode {
 pub(crate) struct TreeBounds {
     pub(crate) max_depth: usize,
     pub(crate) max_nodes: usize,
+    /// Report `AXWebArea` nodes but do not expand their subtree (marks the result
+    /// truncated). Used for sensitive surfaces of web engines, see
+    /// `web_accessibility::should_omit_web_content`.
+    pub(crate) omit_web_content: bool,
 }
 
 struct PendingNode<N> {
@@ -232,6 +239,7 @@ pub(crate) fn observe_tree<S: AxSource>(
     let TreeBounds {
         max_depth,
         max_nodes,
+        omit_web_content,
     } = bounds;
     let mut queue = VecDeque::from([PendingNode {
         node: root,
@@ -284,7 +292,14 @@ pub(crate) fn observe_tree<S: AxSource>(
         let focused = source.focused(&node)?;
         let child_count = source.child_count(&node)?;
         let absolute_depth = root_absolute_depth + depth;
-        if depth < max_depth && absolute_depth < MAX_ACCESSIBILITY_ABSOLUTE_DEPTH && child_count > 0
+        if omit_web_content && role == "AXWebArea" {
+            // Keep the node, drop its page content.
+            if child_count > 0 {
+                truncated = true;
+            }
+        } else if depth < max_depth
+            && absolute_depth < MAX_ACCESSIBILITY_ABSOLUTE_DEPTH
+            && child_count > 0
         {
             let reserved = nodes.len() + queue.len() + 1;
             let remaining = max_nodes.saturating_sub(reserved);
@@ -542,7 +557,9 @@ pub(crate) fn find<S: AxSource, C: AxClock>(
             visit_cap = true;
             break;
         }
-        if clock.elapsed() >= bounds.soft_budget {
+        // Always read the first node (the root), so a result reports at least one
+        // scanned node even when the observation started late.
+        if !arena.is_empty() && clock.elapsed() >= bounds.soft_budget {
             time_hit = true;
             break;
         }

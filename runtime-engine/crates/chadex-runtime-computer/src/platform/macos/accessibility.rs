@@ -607,6 +607,7 @@ pub(crate) fn observe_accessibility_tree(
         TreeBounds {
             max_depth,
             max_nodes,
+            omit_web_content: omit_web_content_for(web, surface),
         },
         TreeMode::Legacy,
     )
@@ -639,11 +640,15 @@ impl WebAxEnvironment for MacWebEnvironment<'_> {
         })
     }
 
-    fn probe(&self) -> Result<WebProbe, String> {
+    fn probe(&self, budget: Duration) -> Result<WebProbe, String> {
         probe_web_content(
             &MacAxSource {
                 deadline: self.deadline,
             },
+            &ObservationClock {
+                started: Instant::now(),
+            },
+            budget,
             self.window.clone(),
         )
     }
@@ -684,6 +689,15 @@ fn identify_web_process(
         }
     };
     Some((engine, process))
+}
+
+/// Whether a sensitive surface of a web-engine app must not expose page content.
+#[cfg(target_os = "macos")]
+fn omit_web_content_for(web: &WebAxContext<'_>, surface: &SurfaceRecord) -> bool {
+    web.sensitive_surface
+        && web.policy == WebAccessibilityPolicy::Auto
+        && identify_web_process(surface, web.registry)
+            .is_some_and(|(engine, _)| should_omit_web_content(web.policy, true, engine))
 }
 
 /// Applies the web accessibility policy for `window`'s application. Must run after the
@@ -738,6 +752,7 @@ pub(crate) fn accessibility_subtree(
         TreeBounds {
             max_depth,
             max_nodes,
+            omit_web_content: omit_web_content_for(web, surface),
         },
         subtree_mode(root),
     )?;

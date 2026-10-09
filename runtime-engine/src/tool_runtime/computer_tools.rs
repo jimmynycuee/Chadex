@@ -2107,8 +2107,13 @@ fn validate_root_element_id(root_element_id: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-/// `value` is matched against the tree node's `value` field. The Runner never reports a
-/// value for secure or protected nodes, so those can never match.
+/// `value` is matched against the tree node's `value` field. The legacy tree never
+/// reports a value for a secure text field or an `AXProtectedContent` subtree, so those
+/// nodes cannot match. It does, however, report values of the *descendants* of a secure
+/// field (the legacy walk only propagates `AXProtectedContent`), so in this fallback a
+/// descendant of a secure field can match. That is the same data the legacy tree has
+/// always returned to the model directly; the deep-find path (which hardens those
+/// descendants) never matches them.
 fn node_matches_find_query(
     node: &Value,
     role: Option<&str>,

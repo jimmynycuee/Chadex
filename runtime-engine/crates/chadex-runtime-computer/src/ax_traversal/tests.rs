@@ -133,6 +133,7 @@ impl AxSource for FakeTree {
 
     fn role(&self, node: &usize) -> Result<Option<String>, String> {
         self.calls.borrow_mut().push(Call::Role(*node));
+        self.clock.set(self.clock.get() + self.clock_step.get());
         Ok(Some(self.nodes[*node].role.clone()))
     }
 
@@ -238,6 +239,7 @@ fn bounds(max_depth: usize, max_nodes: usize) -> TreeBounds {
     TreeBounds {
         max_depth,
         max_nodes,
+        omit_web_content: false,
     }
 }
 
@@ -1031,6 +1033,18 @@ fn find_absolute_depth_bound_applies_below_a_deep_root() {
 }
 
 #[test]
+fn find_always_reads_the_root_even_when_the_soft_budget_is_already_spent() {
+    let tree = sample_tree();
+    tree.clock.set(Duration::from_secs(100));
+    let result = find(&tree, &tree, 0, "surface_x", None, &query_for_role("AXButton"), find_bounds(8))
+        .unwrap();
+    assert_eq!(result.output["scanned_nodes"], json!(1));
+    assert_eq!(result.output["stop_reason"], json!("time_budget"));
+    assert_eq!(result.output["truncated"], json!(true));
+    assert_eq!(result.output["count"], json!(0));
+}
+
+#[test]
 fn find_deadline_error_is_propagated() {
     let tree = sample_tree();
     tree.deadline_checks_left.set(3);
@@ -1220,7 +1234,7 @@ fn find_children_cap_limits_children_requested_from_the_source() {
 // ---------------------------------------------------------------------------
 
 fn probe(tree: &FakeTree) -> WebProbe {
-    probe_web_content(tree, 0).unwrap()
+    probe_web_content(tree, tree, Duration::from_secs(3600), 0).unwrap()
 }
 
 #[test]
@@ -1273,6 +1287,25 @@ fn probe_distinguishes_empty_absent_and_inconclusive() {
 }
 
 #[test]
+fn probe_stops_on_its_own_when_the_time_budget_is_spent() {
+    let mut tree = FakeTree::new("AXWindow");
+    for _ in 0..50 {
+        tree.add(0, "AXGroup");
+    }
+    tree.add(0, "AXWebArea");
+    tree.clock_step.set(Duration::from_secs(1));
+    let result = probe_web_content(&tree, &tree, Duration::from_secs(3), 0).unwrap();
+    // Out of time before the web area was reached: inconclusive, i.e. "still empty".
+    assert_eq!(result, WebProbe::Empty);
+    let roles = tree
+        .calls()
+        .into_iter()
+        .filter(|call| matches!(call, Call::Role(_)))
+        .count();
+    assert!(roles <= 3, "{roles}");
+}
+
+#[test]
 fn probe_is_bounded_and_honors_the_deadline() {
     let mut wide = FakeTree::new("AXWindow");
     for _ in 0..1000 {
@@ -1288,8 +1321,64 @@ fn probe_is_bounded_and_honors_the_deadline() {
 
     let tree = chain_tree(5);
     tree.deadline_checks_left.set(1);
-    let error = probe_web_content(&tree, 0).unwrap_err();
+    let error = probe_web_content(&tree, &tree, Duration::from_secs(3600), 0).unwrap_err();
     assert!(error.contains("deadline exceeded"), "{error}");
+}
+
+/// window > AXWebArea (3 children, one nested) next to a toolbar.
+fn web_tree() -> FakeTree {
+    let mut tree = FakeTree::new("AXWindow");
+    let toolbar = tree.titled(0, "AXToolbar", "Main");
+    tree.titled(toolbar, "AXButton", "Back");
+    let area = tree.titled(0, "AXWebArea", "Private Page");
+    let group = tree.titled(area, "AXGroup", "Inside");
+    tree.nodes[group].value = Some("page text".to_string());
+    let text = tree.add(group, "AXStaticText");
+    tree.nodes[text].value = Some("page text".to_string());
+    tree.add(area, "AXLink");
+    tree
+}
+
+fn omit_bounds() -> TreeBounds {
+    TreeBounds {
+        omit_web_content: true,
+        ..bounds(8, 256)
+    }
+}
+
+#[test]
+fn omitting_web_content_keeps_the_web_area_node_but_not_its_page() {
+    for mode in [TreeMode::Legacy, TreeMode::LegacyRootless] {
+        let tree = web_tree();
+        let result = observe_tree(&tree, 0, "surface_x", None, omit_bounds(), mode).unwrap();
+        let nodes = nodes_of(&result);
+        let roles: Vec<&str> = nodes.iter().map(|n| n["role"].as_str().unwrap()).collect();
+        assert_eq!(roles, vec!["AXWindow", "AXToolbar", "AXWebArea", "AXButton"], "{mode:?}");
+        let area = nodes.iter().find(|n| n["role"] == "AXWebArea").unwrap();
+        assert_eq!(area["child_count"], json!(2));
+        assert_eq!(result.output["truncated"], json!(true));
+        // The page's nodes are never even requested from the source.
+        let area_index = 3;
+        assert!(!tree.calls().contains(&Call::Children(area_index, 2)));
+        assert!(!tree
+            .calls()
+            .iter()
+            .any(|call| matches!(call, Call::Fingerprint { node, .. } if *node > 3)));
+        assert!(!result.output.to_string().contains("page text"));
+        assert!(!result.output.to_string().contains("Inside"));
+    }
+
+    // Without the option the same tree exposes the page, exactly as before.
+    let tree = web_tree();
+    let result = observe_tree(&tree, 0, "surface_x", None, bounds(8, 256), TreeMode::Legacy).unwrap();
+    assert_eq!(nodes_of(&result).len(), 7);
+    assert_eq!(result.output["truncated"], json!(false));
+
+    // An empty web area is not reported as truncated.
+    let mut empty = FakeTree::new("AXWindow");
+    empty.add(0, "AXWebArea");
+    let result = observe_tree(&empty, 0, "surface_x", None, omit_bounds(), TreeMode::Legacy).unwrap();
+    assert_eq!(result.output["truncated"], json!(false));
 }
 
 // ---------------------------------------------------------------------------
@@ -1637,18 +1726,40 @@ mod runtime {
                 error,
                 "permission_denied: sensitive Computer surface cannot be controlled"
             );
-            // And the legacy kind reaches the same native layer with the same error class.
-            let legacy = runtime.accessibility_tree(surface_id, 4, 16).unwrap_err();
-            assert_eq!(
-                error.split(':').next(),
-                legacy.split(':').next(),
-                "{error} vs {legacy}"
-            );
+            // On macOS the legacy kind reaches the same native layer with the same error
+            // class. Other platforms answer these two requests from different layers
+            // (`unsupported_platform` vs `stale_surface`/`accessibility_failed`), so
+            // only the absence of the sensitive refusal is portable.
+            #[cfg(target_os = "macos")]
+            {
+                let legacy = runtime.accessibility_tree(surface_id, 4, 16).unwrap_err();
+                assert_eq!(
+                    error.split(':').next(),
+                    legacy.split(':').next(),
+                    "{error} vs {legacy}"
+                );
+            }
         }
-        // Web accessibility is still never enabled on a sensitive surface.
-        assert!(
-            ensure_surface_not_sensitive(&surface("Passwords", "Passwords")).is_err()
-        );
+    }
+
+    #[test]
+    fn web_context_for_marks_sensitive_surfaces_and_carries_the_policy() {
+        let off = ComputerRuntime::new(ComputerConfig {
+            max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Off,
+        });
+        for (record, sensitive) in [
+            (surface("Passwords", "Passwords"), true),
+            (surface("Example", "Authorization Required"), true),
+            (surface("Browser", "Docs"), false),
+        ] {
+            assert_eq!(ensure_surface_not_sensitive(&record).is_err(), sensitive);
+            let auto = runtime();
+            let context = auto.web_context_for(&record);
+            assert_eq!(context.sensitive_surface, sensitive);
+            assert_eq!(context.policy, WebAccessibilityPolicy::Auto);
+            assert_eq!(off.web_context_for(&record).policy, WebAccessibilityPolicy::Off);
+        }
     }
 
     #[test]

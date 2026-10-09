@@ -305,7 +305,8 @@ server 新增 `validate_accessibility_subtree`（重用 `validate_accessibility_
 3. **Chromium 開啟**：sensitive surface 不設定；`Off` 時完全不設定。
 4. **敏感欄位**：§3.2 第 2–5 點。另外，`root_element_id` 指向 protected 或 secure 節點時拒絕（§2.2）。
 5. **Control 類完全不變**：deep find 拿到的 id 和一般 id 一樣，之後的 `press`／`focus`／`input_text`／`scroll_to_element` 仍然要經過 `ensure_surface_not_sensitive`、`has_positive_evidence`、`validate_text_input_target`（必須是空欄位、≤ 2048 bytes），以及 key 白名單。
-6. **已知缺口（不在這次修）**：瀏覽器的登入頁標題（例如 “Sign in – Google Accounts”）和密碼管理頁（`chrome://password-manager`）不在 `sensitive_auth_title` 的 marker 裡。深層搜尋會讓這些頁面能被讀得更深（密碼本身仍是 secure 欄位，不會讀出；但「顯示密碼」後的明文是 `AXStaticText`）。要不要加 marker（例如 `password manager`、`sign in`、`log in`）列為決策 D6。
+6. **開啟是 app 層級，sensitive 是視窗層級**（實作後補充）：`AXManualAccessibility` 設在 application 元素上，所以同一個 Chromium／Electron app 的另一個一般視窗被觀察過之後，這個 app 的 sensitive 視窗（例如標題含 authentication）也會開始提供網頁內容。為了讓放行的範圍和開啟前一樣，對 sensitive surface 做的不帶 root 的 tree（新舊 kind 都一樣），在 `AXWebArea` 節點停止展開：保留 `AXWebArea` 節點本身（`child_count` 照實回報），子樹省略並標示 `truncated = true`。只在 Chadex 會開啟的情況下才這樣做（`Auto`、sensitive、判定為 Chromium／Electron），原生 app 與純 WebKit app 不受影響。帶 root 的 subtree 和 find 本來就擋 sensitive surface。
+7. **已知缺口（不在這次修）**：瀏覽器的登入頁標題（例如 “Sign in – Google Accounts”）和密碼管理頁（`chrome://password-manager`）不在 `sensitive_auth_title` 的 marker 裡。深層搜尋會讓這些頁面能被讀得更深（密碼本身仍是 secure 欄位，不會讀出；但「顯示密碼」後的明文是 `AXStaticText`）。要不要加 marker（例如 `password manager`、`sign in`、`log in`）列為決策 D6。
 
 ---
 
@@ -486,6 +487,21 @@ cargo clippy --workspace --all-targets
 12. `objc2-app-kit` 加了 `libc` feature、`objc2-foundation` 加了 `NSDate` feature（`runningApplicationWithProcessIdentifier`、`launchDate` 需要）。`Cargo.lock` 沒有變動。
 13. 沒有實作 `AXUIElementCopyMultipleAttributeValues` 合併（設計標示為可選）。
 14. 新增兩個 `#[ignore]` live 測試：`computer_macos_find_deep_chromium_live_smoke`、`computer_macos_subtree_chromium_live_smoke`。
+
+### 12.3.1 審查後的修正
+
+15. 等待時間（`web_accessibility.rs`）：整段等待（sleep 加 probe）有 3 秒的硬上限（`WAIT_TOTAL_BUDGET`），而且每一輪都用 `remaining()` 重新檢查，不會用到保留給走訪的 3 秒（`WAIT_RESERVE`）。probe 自己也收到剩餘預算，並在超時後以「無法確定」結束（`probe_web_content` 接收 clock 與 budget）。沒有剩餘預算時不 probe、不 sleep。
+16. deep find 的軟預算：至少處理第一個節點（root）之後才檢查（`ax_traversal.rs`），所以 `scanned_nodes` 一定 ≥ 1，server 的驗證（1..=4000）不用改。選這個而不是放寬 server，是因為「回報 0 個節點的成功結果」本身就沒有意義。
+17. 錯誤處理：probe 與設定屬性的錯誤，除了 `permission_denied` 與 deadline 逾時以外，一律視為暫時性錯誤（Chromium 重建樹時會回 `InvalidUIElement`、`CannotComplete`），繼續等待，最後回 `pending`／`unsupported`，觀察照常成功（符合 §1.3）。
+18. memo：完整跑完一輪等待後（不論有沒有看到內容）就寫入 memo，之後同一個 process 回 `already_enabled`、不再等待。預算不足而沒等完時不寫。注意 `already_enabled` 只代表「我們已經設定過並等過一次」，不保證 renderer 現在有樹（Chromium 可能已經 auto-disable，見 L9）。
+19. 見 §6 第 6 點（sensitive 視窗不展開 `AXWebArea`）。
+20. `ComputerObserveToolCall::FindElements.value` 改用 `RedactedString`（序列化與一般字串相同，`Debug` 只印位元組數）。`RunnerComputerOperation` 的 `Debug` 對 `InputText`、`WriteClipboard`、`AccessibilityFind` 不印 payload。`RunnerRequest.stdin` 的 `Debug` 是既有行為，所有 kind 都會印，這次沒有改。
+21. `web_context_for(record)` 把「sensitive surface 就不開啟」的決定集中到一處並有測試；tree_filter 的 `value` 可以命中 secure 欄位的子孫（舊 tree 本來就公開這些資料），註解已說明。
+
+### 12.3.2 需要使用者確認或實機驗證的行為
+
+- 新 macOS runner 上，不帶 root 的 `find_elements` 對 sensitive surface 會回 `permission_denied`（find 一律加嚴）。以前走 server 的 tree_filter 時可以搜，這是既有 action 的行為改變。
+- memo 命中之後，Chromium 可能已經 auto-disable，`already_enabled` 不一定代表有樹，留給實機測試 L9。
 
 ### 12.4 實機測試結果（§9）
 

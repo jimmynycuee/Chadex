@@ -148,19 +148,28 @@ fn state_strings_match_the_wire_vocabulary() {
 struct FakeEnvironment {
     set_calls: Cell<usize>,
     set_outcome: RefCell<Result<SetOutcome, String>>,
-    probes: RefCell<Vec<WebProbe>>,
+    probes: RefCell<Vec<Result<WebProbe, String>>>,
     probe_calls: Cell<usize>,
+    probe_budgets: RefCell<Vec<Duration>>,
+    /// Time one probe takes (capped by the budget it is given, like the real probe).
+    probe_cost: Cell<Duration>,
     sleeps: RefCell<Vec<Duration>>,
     remaining: Cell<Duration>,
 }
 
 impl FakeEnvironment {
     fn new(probes: Vec<WebProbe>) -> Self {
+        Self::with_results(probes.into_iter().map(Ok).collect())
+    }
+
+    fn with_results(probes: Vec<Result<WebProbe, String>>) -> Self {
         Self {
             set_calls: Cell::new(0),
             set_outcome: RefCell::new(Ok(SetOutcome::Set)),
             probes: RefCell::new(probes),
             probe_calls: Cell::new(0),
+            probe_budgets: RefCell::new(Vec::new()),
+            probe_cost: Cell::new(Duration::ZERO),
             sleeps: RefCell::new(Vec::new()),
             remaining: Cell::new(Duration::from_secs(10)),
         }
@@ -177,14 +186,17 @@ impl WebAxEnvironment for FakeEnvironment {
         self.set_outcome.borrow().clone()
     }
 
-    fn probe(&self) -> Result<WebProbe, String> {
+    fn probe(&self, budget: Duration) -> Result<WebProbe, String> {
         self.probe_calls.set(self.probe_calls.get() + 1);
+        self.probe_budgets.borrow_mut().push(budget);
+        let spent = self.probe_cost.get().min(budget);
+        self.remaining.set(self.remaining.get().saturating_sub(spent));
         let mut probes = self.probes.borrow_mut();
-        Ok(if probes.len() > 1 {
+        if probes.len() > 1 {
             probes.remove(0)
         } else {
-            *probes.first().unwrap_or(&WebProbe::Empty)
-        })
+            probes.first().cloned().unwrap_or(Ok(WebProbe::Empty))
+        }
     }
 
     fn sleep(&self, duration: Duration) {
@@ -256,7 +268,7 @@ fn recycled_pid_with_a_different_launch_time_is_not_remembered() {
 }
 
 #[test]
-fn never_ready_content_stays_pending_within_the_wait_schedule() {
+fn never_ready_content_stays_pending_within_the_wait_schedule_and_is_remembered() {
     let registry = WebAxRegistry::default();
     let env = FakeEnvironment::new(vec![WebProbe::Empty]);
     let ctx = context(&registry, WebAccessibilityPolicy::Auto, false);
@@ -264,9 +276,17 @@ fn never_ready_content_stays_pending_within_the_wait_schedule() {
     assert_eq!(state, WebAxState::Pending);
     assert_eq!(env.probe_calls.get(), WAIT_SCHEDULE.len());
     assert_eq!(env.total_sleep(), Duration::from_millis(1950));
-    assert!(env.total_sleep() <= Duration::from_millis(1950));
-    // Pending is not remembered, so the next observation waits again.
-    assert!(!registry.is_enabled(PROCESS));
+    // The full schedule already ran once, so later observations do not pay it again
+    // (the attribute is still re-applied every time).
+    assert!(registry.is_enabled(PROCESS));
+    let again = FakeEnvironment::new(vec![WebProbe::Empty]);
+    assert_eq!(
+        enable_web_accessibility(&again, &ctx, chromium).unwrap(),
+        WebAxState::AlreadyEnabled
+    );
+    assert_eq!(again.set_calls.get(), 1);
+    assert_eq!(again.probe_calls.get(), 0);
+    assert!(again.sleeps.borrow().is_empty());
 }
 
 #[test]
@@ -296,8 +316,10 @@ fn waiting_shrinks_to_leave_the_traversal_reserve() {
     assert!(env.total_sleep() <= Duration::from_millis(200), "{:?}", env.total_sleep());
     assert!(env.remaining() >= WAIT_RESERVE);
     assert!(env.probe_calls.get() < WAIT_SCHEDULE.len());
+    // Ran out of budget before finishing the schedule: not remembered.
+    assert!(!registry.is_enabled(PROCESS));
 
-    // No spare time at all: a single immediate probe, no sleeping.
+    // No spare time at all: no sleeping and no probing.
     let env = FakeEnvironment::new(vec![WebProbe::Empty]);
     env.remaining.set(WAIT_RESERVE);
     assert_eq!(
@@ -305,7 +327,42 @@ fn waiting_shrinks_to_leave_the_traversal_reserve() {
         WebAxState::Pending
     );
     assert!(env.sleeps.borrow().is_empty());
-    assert_eq!(env.probe_calls.get(), 1);
+    assert_eq!(env.probe_calls.get(), 0);
+    assert_eq!(env.set_calls.get(), 1);
+    assert!(!registry.is_enabled(PROCESS));
+}
+
+#[test]
+fn slow_probes_count_against_the_wait_budget_and_the_traversal_reserve() {
+    let registry = WebAxRegistry::default();
+    let ctx = context(&registry, WebAccessibilityPolicy::Auto, false);
+    // A slow browser: every probe burns whatever budget it is given (up to 2 s).
+    let env = FakeEnvironment::new(vec![WebProbe::Empty]);
+    env.probe_cost.set(Duration::from_secs(2));
+    let before = env.remaining();
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::Pending
+    );
+    let used = before - env.remaining();
+    assert!(used <= WAIT_TOTAL_BUDGET, "{used:?}");
+    assert!(env.remaining() >= WAIT_RESERVE);
+    // No probe was ever given more time than was left in the budget.
+    for budget in env.probe_budgets.borrow().iter() {
+        assert!(*budget <= WAIT_TOTAL_BUDGET && !budget.is_zero(), "{budget:?}");
+    }
+    assert!(env.probe_calls.get() < WAIT_SCHEDULE.len());
+    assert!(!registry.is_enabled(PROCESS));
+
+    // Even with a tight deadline the probe budget never reaches into the reserve.
+    let env = FakeEnvironment::new(vec![WebProbe::Empty]);
+    env.probe_cost.set(Duration::from_secs(5));
+    env.remaining.set(WAIT_RESERVE + Duration::from_secs(1));
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::Pending
+    );
+    assert!(env.remaining() >= WAIT_RESERVE, "{:?}", env.remaining());
 }
 
 #[test]
@@ -377,16 +434,63 @@ fn unsupported_attribute_degrades_to_a_successful_observation() {
 }
 
 #[test]
-fn missing_accessibility_permission_and_native_errors_propagate() {
+fn only_permission_and_deadline_errors_abort_the_observation() {
     let registry = WebAxRegistry::default();
     let ctx = context(&registry, WebAccessibilityPolicy::Auto, false);
+    let deadline = "accessibility_failed: macOS Accessibility observation deadline exceeded";
+    let transient = "accessibility_failed: AXUIElementCopyAttributeValue failed with AXError(-25202)";
+
+    // Setting the attribute.
     let env = FakeEnvironment::new(vec![WebProbe::Empty]);
     *env.set_outcome.borrow_mut() = Ok(SetOutcome::PermissionDenied);
     let error = enable_web_accessibility(&env, &ctx, chromium).unwrap_err();
     assert!(error.starts_with("permission_denied:"), "{error}");
-    *env.set_outcome.borrow_mut() = Err("accessibility_failed: deadline exceeded".to_string());
+    *env.set_outcome.borrow_mut() = Err(deadline.to_string());
     let error = enable_web_accessibility(&env, &ctx, chromium).unwrap_err();
     assert!(error.contains("deadline exceeded"), "{error}");
+    *env.set_outcome.borrow_mut() = Err(transient.to_string());
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::Unsupported
+    );
+
+    // Probing.
+    for fatal in [deadline, "permission_denied: macOS Accessibility permission is not granted"] {
+        let env = FakeEnvironment::with_results(vec![Err(fatal.to_string())]);
+        let error = enable_web_accessibility(&env, &ctx, chromium).unwrap_err();
+        assert_eq!(error, fatal);
+    }
+    // Chromium rebuilding its tree answers with transient errors: keep waiting.
+    let env = FakeEnvironment::with_results(vec![
+        Err(transient.to_string()),
+        Err(transient.to_string()),
+        Ok(WebProbe::Content),
+    ]);
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::Enabled
+    );
+    assert_eq!(env.probe_calls.get(), 3);
+    let registry = WebAxRegistry::default();
+    let ctx = context(&registry, WebAccessibilityPolicy::Auto, false);
+    let env = FakeEnvironment::with_results(vec![Err(transient.to_string())]);
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::Pending
+    );
+    assert_eq!(env.probe_calls.get(), WAIT_SCHEDULE.len());
+}
+
+#[test]
+fn sensitive_web_surfaces_stop_at_the_web_area_boundary_only_when_we_enable_things() {
+    use WebAccessibilityPolicy::{Auto, Off};
+    for engine in [WebEngine::Chromium, WebEngine::Electron] {
+        assert!(should_omit_web_content(Auto, true, engine));
+        assert!(!should_omit_web_content(Auto, false, engine));
+        assert!(!should_omit_web_content(Off, true, engine));
+    }
+    // Native apps and WebKit-only apps keep their historical exposure.
+    assert!(!should_omit_web_content(Auto, true, WebEngine::None));
 }
 
 #[test]

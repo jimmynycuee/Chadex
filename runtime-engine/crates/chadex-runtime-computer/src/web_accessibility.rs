@@ -50,6 +50,9 @@ pub(crate) const WAIT_SCHEDULE: [Duration; 5] = [
 ];
 /// Time that must stay available for the actual traversal; waiting never eats it.
 pub(crate) const WAIT_RESERVE: Duration = Duration::from_secs(3);
+/// Hard cap for the whole wait (sleeps and probes together), so a slow browser cannot
+/// consume the deep-find soft budget before the first node is read.
+pub(crate) const WAIT_TOTAL_BUDGET: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WebEngine {
@@ -131,7 +134,9 @@ pub(crate) type ProcessKey = (u32, Option<i64>);
 
 /// Process-wide bookkeeping. It only decides whether to *wait*; the attribute itself is
 /// re-applied on every observation because Chromium auto-disables accessibility after a
-/// period without assistive-technology requests.
+/// period without assistive-technology requests. "Enabled" here means "we already
+/// applied the attribute and waited for this process once"; it does not prove that the
+/// renderer tree is currently populated (Chromium may have auto-disabled since).
 #[derive(Default)]
 pub(crate) struct WebAxRegistry {
     enabled: Mutex<VecDeque<ProcessKey>>,
@@ -206,35 +211,81 @@ pub(crate) enum WebProbe {
 pub(crate) trait WebAxEnvironment {
     /// Writes `AXManualAccessibility = true` on the application element.
     fn set_manual_accessibility(&self) -> Result<SetOutcome, String>;
-    fn probe(&self) -> Result<WebProbe, String>;
+    /// One readiness probe that must stop on its own after roughly `budget`.
+    fn probe(&self, budget: Duration) -> Result<WebProbe, String>;
     fn sleep(&self, duration: Duration);
     /// Time left on the observation deadline.
     fn remaining(&self) -> Duration;
 }
 
-/// Bounded wait for the renderer to publish its tree. Never sleeps into the time
-/// reserved for the real traversal.
-pub(crate) fn wait_for_web_content(env: &impl WebAxEnvironment) -> Result<WebAxState, String> {
+/// Errors that must abort the observation: a missing Accessibility permission and the
+/// observation deadline. Everything else (Chromium rebuilding its tree answers with
+/// `InvalidUIElement`, `CannotComplete`, ...) only affects this best-effort feature.
+fn is_fatal_web_error(error: &str) -> bool {
+    error.starts_with("permission_denied:") || error.contains("deadline exceeded")
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WaitOutcome {
+    Ready,
+    /// The whole schedule ran without seeing content.
+    Exhausted,
+    /// The time budget ran out before the schedule could finish.
+    OutOfBudget,
+}
+
+/// Bounded wait for the renderer to publish its tree. Both sleeping and probing count
+/// against `WAIT_TOTAL_BUDGET` and never reach into `WAIT_RESERVE`.
+fn wait_for_web_content_outcome(env: &impl WebAxEnvironment) -> Result<WaitOutcome, String> {
+    let started_remaining = env.remaining();
+    let spare = || {
+        let used = started_remaining.saturating_sub(env.remaining());
+        env.remaining()
+            .saturating_sub(WAIT_RESERVE)
+            .min(WAIT_TOTAL_BUDGET.saturating_sub(used))
+    };
     for delay in WAIT_SCHEDULE {
-        let spare = env.remaining().saturating_sub(WAIT_RESERVE);
-        let delay = delay.min(spare);
+        let available = spare();
+        if available.is_zero() {
+            return Ok(WaitOutcome::OutOfBudget);
+        }
+        let delay = delay.min(available);
         if !delay.is_zero() {
             env.sleep(delay);
         }
-        match env.probe()? {
-            WebProbe::Content | WebProbe::NoWebArea => return Ok(WebAxState::Enabled),
-            WebProbe::Empty => {}
+        let probe_budget = spare();
+        if probe_budget.is_zero() {
+            return Ok(WaitOutcome::OutOfBudget);
         }
-        if spare.is_zero() {
-            break;
+        match env.probe(probe_budget) {
+            Ok(WebProbe::Content | WebProbe::NoWebArea) => return Ok(WaitOutcome::Ready),
+            Ok(WebProbe::Empty) => {}
+            Err(error) if is_fatal_web_error(&error) => return Err(error),
+            // Transient AX errors while the tree is rebuilt: keep waiting.
+            Err(_) => {}
         }
     }
-    Ok(WebAxState::Pending)
+    Ok(WaitOutcome::Exhausted)
+}
+
+/// Whether the (legacy, rootless) tree of a sensitive surface must stop at the
+/// `AXWebArea` boundary. Accessibility is enabled per application but sensitivity is per
+/// window, so once another window of a Chromium/Electron app has had web accessibility
+/// switched on, a sensitive window of the same app would otherwise start exposing its
+/// page content, which it did not before Chadex enabled the feature.
+pub(crate) fn should_omit_web_content(
+    policy: WebAccessibilityPolicy,
+    sensitive_surface: bool,
+    engine: WebEngine,
+) -> bool {
+    policy == WebAccessibilityPolicy::Auto && sensitive_surface && engine != WebEngine::None
 }
 
 /// Enables web accessibility for the observed application when appropriate.
 /// `identify` is only invoked once policy and surface sensitivity allow a write, so
-/// disabled/sensitive observations never even read the bundle.
+/// disabled/sensitive observations never even read the bundle. Failures of this
+/// best-effort step never fail the observation, except a missing Accessibility
+/// permission and the observation deadline.
 pub(crate) fn enable_web_accessibility(
     env: &impl WebAxEnvironment,
     context: &WebAxContext<'_>,
@@ -252,23 +303,33 @@ pub(crate) fn enable_web_accessibility(
     if engine == WebEngine::None {
         return Ok(WebAxState::NotApplicable);
     }
-    match env.set_manual_accessibility()? {
-        SetOutcome::Set => {}
-        SetOutcome::Unsupported => return Ok(WebAxState::Unsupported),
-        SetOutcome::PermissionDenied => {
+    match env.set_manual_accessibility() {
+        Ok(SetOutcome::Set) => {}
+        Ok(SetOutcome::Unsupported) => return Ok(WebAxState::Unsupported),
+        Ok(SetOutcome::PermissionDenied) => {
             return Err(
                 "permission_denied: macOS Accessibility permission is not granted".to_string(),
             )
         }
+        Err(error) if is_fatal_web_error(&error) => return Err(error),
+        Err(_) => return Ok(WebAxState::Unsupported),
     }
     if context.registry.is_enabled(process) {
         return Ok(WebAxState::AlreadyEnabled);
     }
-    let state = wait_for_web_content(env)?;
-    if state == WebAxState::Enabled {
-        context.registry.mark_enabled(process);
+    match wait_for_web_content_outcome(env)? {
+        WaitOutcome::Ready => {
+            context.registry.mark_enabled(process);
+            Ok(WebAxState::Enabled)
+        }
+        WaitOutcome::Exhausted => {
+            // Waited the full schedule once: remember it so later observations do not
+            // pay the wait again (the attribute itself is still re-applied each time).
+            context.registry.mark_enabled(process);
+            Ok(WebAxState::Pending)
+        }
+        WaitOutcome::OutOfBudget => Ok(WebAxState::Pending),
     }
-    Ok(state)
 }
 
 #[cfg(test)]

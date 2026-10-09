@@ -1111,6 +1111,12 @@ impl ComputerRuntime {
         }
     }
 
+    /// Web accessibility context for observing `record`. A sensitive surface never gets
+    /// the attribute written (and its tree stops at the `AXWebArea` boundary).
+    fn web_context_for(&self, record: &SurfaceRecord) -> WebAxContext<'_> {
+        self.web_context(ensure_surface_not_sensitive(record).is_err())
+    }
+
     fn web_context(&self, sensitive_surface: bool) -> WebAxContext<'_> {
         WebAxContext {
             policy: self.config.web_accessibility,
@@ -1477,7 +1483,7 @@ impl ComputerRuntime {
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
         // The legacy tree keeps its historical sensitive-surface behavior; it merely
         // never switches on web accessibility for a sensitive surface.
-        let web = self.web_context(ensure_surface_not_sensitive(&record).is_err());
+        let web = self.web_context_for(&record);
         let AccessibilityTreeResult { output, elements } =
             platform::observe_accessibility_tree(surface_id, &record, max_depth, max_nodes, &web)?;
         self.finish_accessibility_observation(surface_id, &record, output, elements)
@@ -1503,7 +1509,7 @@ impl ComputerRuntime {
         }
         let (record, root) =
             self.prepare_query(surface_id, root_element_id, root_element_id.is_some())?;
-        let web = self.web_context(ensure_surface_not_sensitive(&record).is_err());
+        let web = self.web_context_for(&record);
         let AccessibilityTreeResult { output, elements } = platform::accessibility_subtree(
             surface_id,
             &record,
@@ -1525,7 +1531,7 @@ impl ComputerRuntime {
         request.validate()?;
         let (record, root) =
             self.prepare_query(surface_id, request.root_element_id.as_deref(), true)?;
-        let web = self.web_context(false);
+        let web = self.web_context_for(&record);
         let AccessibilityTreeResult { output, elements } =
             platform::find_elements(surface_id, &record, root.as_ref(), request, &web)?;
         self.finish_accessibility_observation(surface_id, &record, output, elements)

@@ -2894,7 +2894,7 @@ mod computer_privacy_tests {
             role: None,
             subrole: None,
             label: None,
-            value: Some(needle.to_string()),
+            value: Some(needle.to_string().into()),
             focused: None,
             enabled: None,
             limit: None,
@@ -2903,6 +2903,30 @@ mod computer_privacy_tests {
         .session_log_arguments();
         assert_eq!(parsed["value_present"], true);
         assert!(!serde_json::to_string(&parsed).unwrap().contains(needle));
+
+        // Debug (logs, panic messages) never prints the needle either, and the
+        // wrapper is wire-transparent.
+        let call = ComputerObserveToolCall::FindElements {
+            client_id: "mini".to_string(),
+            surface_id: "surface_safe".to_string(),
+            root_element_id: None,
+            role: None,
+            subrole: None,
+            label: None,
+            value: Some(needle.to_string().into()),
+            focused: None,
+            enabled: None,
+            limit: None,
+            max_depth: None,
+        };
+        assert!(!format!("{call:?}").contains(needle), "{call:?}");
+        assert!(!format!("{:?}", ToolCall::ComputerObserve(call.clone())).contains(needle));
+        assert_eq!(serde_json::to_value(&call).unwrap()["value"], needle);
+        let reparsed: ComputerObserveToolCall = serde_json::from_value(
+            serde_json::json!({"action":"find_elements","client_id":"mini","surface_id":"surface_safe","value":needle}),
+        )
+        .unwrap();
+        assert_eq!(reparsed, call);
 
         // An explicit null is not "present".
         let null_value = ToolCall::ComputerObserve(ComputerObserveToolCall::FindElements {

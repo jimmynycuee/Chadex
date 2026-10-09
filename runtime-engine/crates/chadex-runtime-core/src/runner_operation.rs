@@ -502,12 +502,36 @@ impl RunnerComputerOperationKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct RunnerComputerOperation {
     pub kind: RunnerComputerOperationKind,
     /// Existing bounded JSON payload carried in `stdin`.
     pub payload: String,
     pub timeout_secs: u64,
+}
+
+impl RunnerComputerOperationKind {
+    /// Kinds whose payload carries caller text that must never reach logs
+    /// (typed text, clipboard text, the `AXValue` search needle).
+    fn payload_is_private(self) -> bool {
+        matches!(
+            self,
+            Self::InputText | Self::WriteClipboard | Self::AccessibilityFind
+        )
+    }
+}
+
+impl std::fmt::Debug for RunnerComputerOperation {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = formatter.debug_struct("RunnerComputerOperation");
+        debug.field("kind", &self.kind);
+        if self.kind.payload_is_private() {
+            debug.field("payload_bytes", &self.payload.len());
+        } else {
+            debug.field("payload", &self.payload);
+        }
+        debug.field("timeout_secs", &self.timeout_secs).finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1694,6 +1718,28 @@ fn ensure_lsp_legacy_compatible_generic_fields(wire: &RunnerRequest) -> Result<(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn computer_operation_debug_never_prints_private_payloads() {
+        for (kind, private) in [
+            (RunnerComputerOperationKind::AccessibilityFind, true),
+            (RunnerComputerOperationKind::InputText, true),
+            (RunnerComputerOperationKind::WriteClipboard, true),
+            (RunnerComputerOperationKind::AccessibilityTree, false),
+            (RunnerComputerOperationKind::ElementState, false),
+        ] {
+            let operation = RunnerComputerOperation {
+                kind,
+                payload: r#"{"value":"PRIVATE NEEDLE"}"#.to_string(),
+                timeout_secs: 5,
+            };
+            let rendered = format!("{operation:?}");
+            assert_eq!(rendered.contains("PRIVATE NEEDLE"), !private, "{kind:?}: {rendered}");
+            if private {
+                assert!(rendered.contains("payload_bytes"), "{rendered}");
+            }
+        }
+    }
+
     use super::*;
 
     fn metadata() -> RunnerInvocationMetadata {
