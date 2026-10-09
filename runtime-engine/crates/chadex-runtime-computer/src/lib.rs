@@ -968,7 +968,9 @@ fn pointer_effect_with_overlay<T>(
     dispatch: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
     ensure_not_sensitive()?;
-    overlay.begin(read_frame);
+    // The pointer frame comes from the already prepared plan (plain data, no native call).
+    let frame = overlay.prepare_frame(read_frame);
+    overlay.begin_prepared(frame);
     dispatch()
 }
 
@@ -3630,10 +3632,27 @@ mod overlay_runtime_tests {
             .key_input("surface_sensitive", "enter", &[])
             .unwrap_err();
         assert!(error.starts_with("permission_denied:"), "{error}");
-        let error = runtime
-            .control("surface_sensitive", "element_x", ComputerAction::Press)
-            .unwrap_err();
-        assert!(!error.is_empty());
+        for (name, result) in [
+            (
+                "control press",
+                runtime.control("surface_sensitive", "element_x", ComputerAction::Press),
+            ),
+            (
+                "control focus",
+                runtime.control("surface_sensitive", "element_x", ComputerAction::Focus),
+            ),
+            (
+                "scroll_to_element",
+                runtime.scroll_to_element("surface_sensitive", "element_x"),
+            ),
+            (
+                "input_text",
+                runtime.input_text("surface_sensitive", "element_x", "secret"),
+            ),
+        ] {
+            let error = result.unwrap_err();
+            assert!(error.starts_with("permission_denied:"), "{name}: {error}");
+        }
         assert!(sink.log.lock().unwrap().is_empty());
     }
 

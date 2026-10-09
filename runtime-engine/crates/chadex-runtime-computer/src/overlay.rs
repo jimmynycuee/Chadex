@@ -289,6 +289,9 @@ pub fn display_containing_point(
     })
 }
 
+/// A frame read ahead of time (see [`OverlayActionGuard::prepare_frame`]).
+pub(crate) struct PreparedFrame(Option<(OverlayTarget, Option<OverlayDisplay>)>);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GuardState {
     Idle,
@@ -333,20 +336,34 @@ impl OverlayActionGuard {
         self
     }
 
-    /// Whether a sink is installed. Platform code may use this to skip work
-    /// that only the overlay needs.
+    /// Whether a sink is installed.
     #[allow(dead_code)]
     pub(crate) fn is_enabled(&self) -> bool {
         self.sink.is_some()
     }
 
-    /// Emit `WillAct`. `read_frame` runs only when a sink exists and only on
-    /// the first call. It must be infallible: failures become
-    /// `(OverlayTarget::None, None)`.
-    pub(crate) fn begin(
-        &mut self,
+    /// Read the target frame for `begin_prepared`. `read_frame` runs only when a
+    /// sink exists (so a runtime without overlay never pays for it) and must be
+    /// infallible: failures become `(OverlayTarget::None, None)`.
+    ///
+    /// Call this BEFORE the final validation of the action. The frame read can
+    /// involve slow native IPC; doing it between the last safety check and the
+    /// effect would open a window in which the checked state can change.
+    pub(crate) fn prepare_frame(
+        &self,
         read_frame: impl FnOnce() -> (OverlayTarget, Option<OverlayDisplay>),
-    ) {
+    ) -> PreparedFrame {
+        if self.sink.is_none() {
+            return PreparedFrame(None);
+        }
+        PreparedFrame(Some(
+            catch_unwind(AssertUnwindSafe(read_frame)).unwrap_or((OverlayTarget::None, None)),
+        ))
+    }
+
+    /// Emit `WillAct` with a frame read earlier. Does no native work: the only
+    /// thing between the last validation and the effect is a non-blocking send.
+    pub(crate) fn begin_prepared(&mut self, frame: PreparedFrame) {
         if self.state != GuardState::Idle {
             return;
         }
@@ -354,8 +371,7 @@ impl OverlayActionGuard {
             return;
         };
         self.state = GuardState::Begun;
-        let (target, display) =
-            catch_unwind(AssertUnwindSafe(read_frame)).unwrap_or((OverlayTarget::None, None));
+        let (target, display) = frame.0.unwrap_or((OverlayTarget::None, None));
         safe_emit(
             &sink,
             ComputerOverlayEvent::WillAct {
@@ -367,6 +383,21 @@ impl OverlayActionGuard {
                 ttl_ms: DEFAULT_OVERLAY_TTL_MS,
             },
         );
+    }
+
+    /// Test shorthand for `prepare_frame` + `begin_prepared`. Not available to
+    /// production code on purpose: reading and beginning in one step is exactly
+    /// the pattern that put native IPC after the last validation.
+    #[cfg(test)]
+    pub(crate) fn begin(
+        &mut self,
+        read_frame: impl FnOnce() -> (OverlayTarget, Option<OverlayDisplay>),
+    ) {
+        if self.state != GuardState::Idle {
+            return;
+        }
+        let frame = self.prepare_frame(read_frame);
+        self.begin_prepared(frame);
     }
 
     pub(crate) fn finish(&mut self, result: &Result<Value, String>) {
@@ -739,6 +770,60 @@ mod tests {
                 outcome: OverlayOutcome::Failed
             }
         );
+    }
+
+    #[test]
+    fn frame_is_read_before_validation_and_begin_does_no_native_work() {
+        // Records the order of everything that happens around one effect. The frame
+        // read (slow native IPC in production) must come before the final validation;
+        // after validation only `will_act` (a non-blocking send) may precede the effect.
+        struct LogSink(Arc<Mutex<Vec<&'static str>>>);
+        impl ComputerOverlaySink for LogSink {
+            fn emit(&self, event: ComputerOverlayEvent) {
+                if matches!(event, ComputerOverlayEvent::WillAct { .. }) {
+                    self.0.lock().unwrap().push("will_act");
+                }
+            }
+        }
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let sink: Arc<dyn ComputerOverlaySink> = Arc::new(LogSink(log.clone()));
+        let mut guard = OverlayActionGuard::new(Some(sink), 1, OverlayAction::Key);
+
+        let frame = guard.prepare_frame(|| {
+            log.lock().unwrap().push("read_frame");
+            (OverlayTarget::rect(1.0, 2.0, 3.0, 4.0), None)
+        });
+        log.lock().unwrap().push("validate");
+        guard.begin_prepared(frame);
+        log.lock().unwrap().push("effect");
+
+        assert_eq!(*log.lock().unwrap(), ["read_frame", "validate", "will_act", "effect"]);
+    }
+
+    #[test]
+    fn prepared_frame_reaches_the_event_and_a_disabled_runtime_reads_nothing() {
+        let sink = Arc::new(RecordingSink::default());
+        let mut guard = guard_with(&sink, OverlayAction::Press);
+        let frame = guard.prepare_frame(|| (OverlayTarget::rect(1.0, 2.0, 3.0, 4.0), None));
+        guard.begin_prepared(frame);
+        guard.finish(&ok_success(true));
+        let events = sink.take();
+        assert!(matches!(
+            events[0],
+            ComputerOverlayEvent::WillAct {
+                target: OverlayTarget::Rect { .. },
+                ..
+            }
+        ));
+
+        let reads = AtomicUsize::new(0);
+        let mut disabled = OverlayActionGuard::new(None, 0, OverlayAction::Press);
+        let frame = disabled.prepare_frame(|| {
+            reads.fetch_add(1, Ordering::SeqCst);
+            (OverlayTarget::None, None)
+        });
+        disabled.begin_prepared(frame);
+        assert_eq!(reads.load(Ordering::SeqCst), 0);
     }
 
     #[test]

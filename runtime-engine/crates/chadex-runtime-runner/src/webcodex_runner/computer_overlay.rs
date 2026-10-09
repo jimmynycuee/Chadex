@@ -169,26 +169,51 @@ impl ComputerOverlaySink for StdoutOverlaySink {
     }
 }
 
+/// Result of [`install_from_process_env`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OverlayInstall {
+    /// No overlay channel; stdout is untouched.
+    Disabled,
+    /// Channel active: fd 1 points at `/dev/null`, events flow through the private fd.
+    Active,
+    /// fd 1 was already redirected to `/dev/null` but the channel could not be
+    /// completed (writer thread failed). Nothing is emitted, and stdout is gone.
+    RedirectedWithoutChannel,
+}
+
+impl OverlayInstall {
+    /// Where `tracing` must write. Once fd 1 is redirected, stdout would swallow
+    /// every log line, so any redirect (even a half-installed one) selects stderr.
+    pub(crate) fn logs_to_stderr(self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+}
+
 /// Called first thing in `run_cli`, before any thread is created (the
 /// environment mutation below is only sound while the process is single
-/// threaded). Returns whether the overlay channel is active.
+/// threaded).
 ///
 /// Both environment variables are always removed so no child process inherits
 /// the token, even when the channel ends up disabled.
-pub(crate) fn install_from_process_env() -> bool {
+pub(crate) fn install_from_process_env() -> OverlayInstall {
     let config = channel_config(|name| std::env::var(name).ok());
     std::env::remove_var(ENV_CHANNEL);
     std::env::remove_var(ENV_TOKEN);
     let Some(config) = config else {
-        return false;
+        return OverlayInstall::Disabled;
     };
     let Ok(channel) = isolate_stdout_channel(1) else {
-        return false;
+        return OverlayInstall::Disabled;
     };
+    // From here on fd 1 is /dev/null.
     let Ok(sink) = StdoutOverlaySink::spawn(channel, config.token) else {
-        return false;
+        return OverlayInstall::RedirectedWithoutChannel;
     };
-    INSTALLED_SINK.set(Arc::new(sink)).is_ok()
+    if INSTALLED_SINK.set(Arc::new(sink)).is_ok() {
+        OverlayInstall::Active
+    } else {
+        OverlayInstall::RedirectedWithoutChannel
+    }
 }
 
 /// The sink installed by [`install_from_process_env`], if any.
@@ -385,6 +410,57 @@ mod tests {
         let mut text = String::new();
         reader.read_to_string(&mut text).unwrap();
         assert_eq!(text, "ok\n");
+    }
+
+    #[test]
+    fn tracing_goes_to_stderr_whenever_fd_one_was_redirected() {
+        assert!(!OverlayInstall::Disabled.logs_to_stderr());
+        assert!(OverlayInstall::Active.logs_to_stderr());
+        // fd 1 is /dev/null but there is no channel: logs must still not vanish.
+        assert!(OverlayInstall::RedirectedWithoutChannel.logs_to_stderr());
+    }
+
+    /// Child half of `spawned_children_cannot_see_overlay_env`: only does anything
+    /// when the parent test re-executes this binary with the probe marker.
+    #[test]
+    fn child_probe() {
+        if std::env::var("CHADEX_OVERLAY_PROBE").as_deref() != Ok("1") {
+            return;
+        }
+        let install = install_from_process_env();
+        let own_env_left = std::env::var(ENV_CHANNEL).is_ok() || std::env::var(ENV_TOKEN).is_ok();
+        let output = Command::new("sh").arg("-c").arg("env").output().unwrap();
+        let child_env = String::from_utf8_lossy(&output.stdout);
+        eprintln!(
+            "PROBE install={install:?} own_env_left={own_env_left} leaked={} logs_to_stderr={}",
+            child_env.contains("CHADEX_COMPUTER_OVERLAY"),
+            install.logs_to_stderr()
+        );
+    }
+
+    #[test]
+    fn spawned_children_cannot_see_overlay_env() {
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "webcodex_runner::computer_overlay::tests::child_probe",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("CHADEX_OVERLAY_PROBE", "1")
+            .env(ENV_CHANNEL, ENV_CHANNEL_VALUE)
+            .env(ENV_TOKEN, TOKEN)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "probe failed: {stderr}");
+        assert!(
+            stderr.contains(
+                "PROBE install=Active own_env_left=false leaked=false logs_to_stderr=true"
+            ),
+            "unexpected probe output: {stderr}"
+        );
     }
 
     #[test]

@@ -292,8 +292,10 @@ fn ax_window_geometry_matches(
         && (size.height - f64::from(height)).abs() <= TOLERANCE)
 }
 
-/// Wall-clock budget for reading one element frame for the overlay. It uses its
-/// own deadline so the overlay can never consume the action's AX budget.
+/// Wall-clock budget for reading one element frame for the overlay. This is a
+/// separate deadline object, but the time still passes on the wall clock and
+/// therefore counts against the action's own AX deadline. That is why the read
+/// happens before the final validation (`OverlayActionGuard::prepare_frame`).
 #[cfg(target_os = "macos")]
 const OVERLAY_FRAME_READ_BUDGET: Duration = Duration::from_millis(150);
 
@@ -782,6 +784,8 @@ pub(crate) fn activate_window(
     // any effect so an opaque stale surface cannot drift to another window.
     let deadline = AxObservationDeadline::new();
     let window = exact_ax_window(surface, &deadline)?;
+    // Overlay frame: before the capability reads below, never between them and the effect.
+    let overlay_frame = overlay.prepare_frame(|| overlay_frame_for_element(&window));
     let application = unsafe { AXUIElement::new_application(surface.pid as _) };
     let frontmost = optional_ax_bool(&deadline, &application, "AXFrontmost")?;
     if frontmost != Some(true) && !ax_attribute_settable(&deadline, &application, "AXFrontmost")? {
@@ -794,7 +798,7 @@ pub(crate) fn activate_window(
     }
 
     // Last point before the first mutation: announce the window to the overlay.
-    overlay.begin(|| overlay_frame_for_element(&window));
+    overlay.begin_prepared(overlay_frame);
 
     // Prepare both native call sites before the first mutation. After the
     // application becomes frontmost, any later failure is a partial effect.
@@ -861,6 +865,8 @@ pub(crate) fn control(
     }
     let deadline = AxObservationDeadline::new();
     let current = resolve_correlated_element(surface, element, &deadline)?;
+    // Overlay frame: before the capability checks, never between them and the effect.
+    let overlay_frame = overlay.prepare_frame(|| overlay_frame_for_element(&current));
 
     match action {
         ComputerAction::Press if !ax_supports_action(&deadline, &current, "AXPress")? => {
@@ -877,7 +883,7 @@ pub(crate) fn control(
     }
 
     // Capability checks passed; the next call is the native effect.
-    overlay.begin(|| overlay_frame_for_element(&current));
+    overlay.begin_prepared(overlay_frame);
     prepare_ax_call(&deadline, &current)?;
     let error = match action {
         ComputerAction::Press => unsafe {
@@ -936,12 +942,13 @@ pub(crate) fn scroll_to_element(
     }
     let deadline = AxObservationDeadline::new();
     let current = resolve_correlated_element(surface, element, &deadline)?;
+    let overlay_frame = overlay.prepare_frame(|| overlay_frame_for_element(&current));
     if !ax_supports_action(&deadline, &current, "AXScrollToVisible")? {
         return Err(
             "scroll_failed: AX element does not support the AXScrollToVisible action".to_string(),
         );
     }
-    overlay.begin(|| overlay_frame_for_element(&current));
+    overlay.begin_prepared(overlay_frame);
     prepare_ax_call(&deadline, &current)?;
     let error = unsafe { current.perform_action(&CFString::from_static_str("AXScrollToVisible")) };
     if error != AXError::Success {

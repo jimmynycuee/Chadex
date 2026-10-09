@@ -5832,9 +5832,10 @@ pub fn run_cli() {
     // Must stay first: it rewires fd 1 and edits the environment while the
     // process is still single threaded (cursor overlay channel, macOS only).
     #[cfg(target_os = "macos")]
-    let overlay_channel = webcodex_runner::computer_overlay::install_from_process_env();
+    let logs_to_stderr =
+        webcodex_runner::computer_overlay::install_from_process_env().logs_to_stderr();
     #[cfg(not(target_os = "macos"))]
-    let overlay_channel = false;
+    let logs_to_stderr = false;
     if let Some(code) =
         webcodex_runner::detached_job::maybe_run_internal_mode(std::env::args().skip(1))
     {
@@ -5847,8 +5848,9 @@ pub fn run_cli() {
     let log_builder = tracing_subscriber::fmt().with_env_filter(
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
     );
-    if overlay_channel {
-        // fd 1 now points at /dev/null; keep diagnostics in the helper log via stderr.
+    if logs_to_stderr {
+        // fd 1 may now point at /dev/null (also when the channel itself failed to
+        // start); keep diagnostics in the helper log via stderr.
         let _ = log_builder.with_writer(std::io::stderr).try_init();
     } else {
         let _ = log_builder.try_init();
