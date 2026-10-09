@@ -4,6 +4,13 @@ project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
 updated: 2026-10-09
 updated_by: claude           # codex | webcodex | chadex | claude | human
+tracks:
+  W: Windows 版
+  AP: Agents.md與 Skills 功能
+  CM: Computer Use
+  V: 版本發佈
+  LS: 啟動速度
+  D: 介面設計
 current_phase: V060
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
