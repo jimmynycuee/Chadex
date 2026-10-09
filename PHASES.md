@@ -281,7 +281,7 @@ phases:
   - id: V050
     name: v0.5.0 release (Skills page, external sources, launch speed)
     branch: integration/skill-parity
-    status: in_progress
+    status: done
     owner: claude
     depends_on: [AP5, LS1, AP6a, AP6b, AP6c, LS2, V043]
     # 驗收修正：ZIP 任意位置匯入＋自動放平、獨立 Skills 頁、啟用開關＋移除、
@@ -296,7 +296,7 @@ phases:
       - cmd: "manual acceptance (dist/Chadex.app)"
         expect: "Skills page, ZIP import, enable/remove, script gate, Project Memory, connect speed"
         result: "passed: user acceptance 2026-10-07 @ 9f708ea (Skills) and @ d5f2042 (project switch/remove, broad-folder warning); diagnostics Chadex-Diagnostics-20261007-025823"
-    closed_commit: null
+    closed_commit: dd74d05  # v0.5.0 tag, released 2026-10-08
   - id: D1
     name: macOS design v2 (Liquid Glass sidebar, connection circuit, activity timeline, dark default)
     branch: feature/d1-design-v2
