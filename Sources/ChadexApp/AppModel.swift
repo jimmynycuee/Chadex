@@ -2318,15 +2318,16 @@ final class AppModel: ObservableObject {
         objectWillChange.send()
     }
 
-    private static func isValidTunnelID(_ value: String) -> Bool {
-        let bytes = Array(value.utf8)
-        guard !bytes.isEmpty, bytes.count <= 256 else { return false }
-        return bytes.allSatisfy { byte in
-            (byte >= 48 && byte <= 57)
-                || (byte >= 65 && byte <= 90)
-                || (byte >= 97 && byte <= 122)
-                || byte == 95
-                || byte == 45
+    /// Mirrors the helper's `validate_tunnel_id` (`tunnel_` followed by 32
+    /// lowercase hexadecimal characters). A looser check here let IDs the
+    /// helper rejects be saved, so every launch then failed `credential_push`
+    /// and the connection stayed unconfigured.
+    nonisolated static func isValidTunnelID(_ value: String) -> Bool {
+        let prefix = "tunnel_"
+        guard value.hasPrefix(prefix) else { return false }
+        let suffix = value.utf8.dropFirst(prefix.utf8.count)
+        return suffix.count == 32 && suffix.allSatisfy { byte in
+            (byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102)
         }
     }
 

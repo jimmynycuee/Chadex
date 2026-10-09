@@ -451,7 +451,7 @@
 "error.tunnelIDMissing" = "將 API key 提供給本機輔助程式前必須先填入 Tunnel ID。";
 "error.enterTunnelID" = "請先輸入 Tunnel ID，再重新儲存 API key。";
 "error.tunnelIDInvalid" = "Tunnel ID 格式無效。";
-"error.enterValidTunnelID" = "Tunnel ID 僅能使用英文字母、數字、連字號與底線。";
+"error.enterValidTunnelID" = "請使用 OpenAI 的 Tunnel ID：tunnel_ 後接 32 個小寫十六進位字元。";
 "error.apiKeyInvalid" = "API key 格式無效。";
 "error.enterValidAPIKey" = "請輸入有效的單行 API key 後再儲存。";
 
