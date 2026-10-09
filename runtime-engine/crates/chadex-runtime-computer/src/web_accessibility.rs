@@ -132,33 +132,46 @@ impl WebAxState {
 /// inheriting another process's "already enabled" memo.
 pub(crate) type ProcessKey = (u32, Option<i64>);
 
-/// Process-wide bookkeeping. It only decides whether to *wait*; the attribute itself is
+/// What we know about a process we already applied the attribute to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WebMemo {
+    /// A readiness probe saw web content (or definitively no web area).
+    Confirmed,
+    /// We waited for this process before but never saw content (the schedule ran out or
+    /// the time budget did). Later observations only probe once, without sleeping.
+    Waited,
+}
+
+/// Process-wide bookkeeping. It only decides how long to *wait*; the attribute itself is
 /// re-applied on every observation because Chromium auto-disables accessibility after a
-/// period without assistive-technology requests. "Enabled" here means "we already
-/// applied the attribute and waited for this process once"; it does not prove that the
-/// renderer tree is currently populated (Chromium may have auto-disabled since).
+/// period without assistive-technology requests, so even a `Confirmed` memo is
+/// re-verified with one non-sleeping probe each time.
 #[derive(Default)]
 pub(crate) struct WebAxRegistry {
-    enabled: Mutex<VecDeque<ProcessKey>>,
+    memos: Mutex<VecDeque<(ProcessKey, WebMemo)>>,
     engines: Mutex<HashMap<PathBuf, WebEngine>>,
 }
 
 impl WebAxRegistry {
-    pub(crate) fn is_enabled(&self, key: ProcessKey) -> bool {
-        self.enabled
-            .lock()
-            .is_ok_and(|enabled| enabled.contains(&key))
+    pub(crate) fn memo(&self, key: ProcessKey) -> Option<WebMemo> {
+        self.memos.lock().ok().and_then(|memos| {
+            memos
+                .iter()
+                .find(|(candidate, _)| *candidate == key)
+                .map(|(_, memo)| *memo)
+        })
     }
 
-    pub(crate) fn mark_enabled(&self, key: ProcessKey) {
-        if let Ok(mut enabled) = self.enabled.lock() {
-            if enabled.contains(&key) {
+    pub(crate) fn set_memo(&self, key: ProcessKey, memo: WebMemo) {
+        if let Ok(mut memos) = self.memos.lock() {
+            if let Some(entry) = memos.iter_mut().find(|(candidate, _)| *candidate == key) {
+                entry.1 = memo;
                 return;
             }
-            if enabled.len() >= MEMO_CAPACITY {
-                enabled.pop_front();
+            if memos.len() >= MEMO_CAPACITY {
+                memos.pop_front();
             }
-            enabled.push_back(key);
+            memos.push_back((key, memo));
         }
     }
 
@@ -281,10 +294,17 @@ pub(crate) fn should_omit_web_content(
     policy == WebAccessibilityPolicy::Auto && sensitive_surface && engine != WebEngine::None
 }
 
+/// Budget for the single non-sleeping probe used when a process is already memoized.
+fn single_probe_budget(env: &impl WebAxEnvironment) -> Duration {
+    env.remaining()
+        .saturating_sub(WAIT_RESERVE)
+        .min(WAIT_TOTAL_BUDGET)
+}
+
 /// Enables web accessibility for the observed application when appropriate.
-/// `identify` is only invoked once policy and surface sensitivity allow a write, so
-/// disabled/sensitive observations never even read the bundle. Failures of this
-/// best-effort step never fail the observation, except a missing Accessibility
+/// `identify` is only invoked once policy and surface sensitivity allow a write (the
+/// `Off` policy and a sensitive surface return before reading the bundle). Failures of
+/// this best-effort step never fail the observation, except a missing Accessibility
 /// permission and the observation deadline.
 pub(crate) fn enable_web_accessibility(
     env: &impl WebAxEnvironment,
@@ -314,21 +334,44 @@ pub(crate) fn enable_web_accessibility(
         Err(error) if is_fatal_web_error(&error) => return Err(error),
         Err(_) => return Ok(WebAxState::Unsupported),
     }
-    if context.registry.is_enabled(process) {
-        return Ok(WebAxState::AlreadyEnabled);
+    let registry = context.registry;
+    if let Some(memo) = registry.memo(process) {
+        // Waited (or confirmed) before: never sleep again, verify with one probe.
+        let budget = single_probe_budget(env);
+        if budget.is_zero() {
+            return Ok(match memo {
+                WebMemo::Confirmed => WebAxState::AlreadyEnabled,
+                WebMemo::Waited => WebAxState::Pending,
+            });
+        }
+        return match env.probe(budget) {
+            Ok(WebProbe::Content | WebProbe::NoWebArea) => {
+                registry.set_memo(process, WebMemo::Confirmed);
+                Ok(WebAxState::AlreadyEnabled)
+            }
+            Ok(WebProbe::Empty) => {
+                registry.set_memo(process, WebMemo::Waited);
+                Ok(WebAxState::Pending)
+            }
+            Err(error) if is_fatal_web_error(&error) => Err(error),
+            // Transient AX error: cannot confirm, so do not claim availability.
+            Err(_) => {
+                registry.set_memo(process, WebMemo::Waited);
+                Ok(WebAxState::Pending)
+            }
+        };
     }
     match wait_for_web_content_outcome(env)? {
         WaitOutcome::Ready => {
-            context.registry.mark_enabled(process);
+            registry.set_memo(process, WebMemo::Confirmed);
             Ok(WebAxState::Enabled)
         }
-        WaitOutcome::Exhausted => {
-            // Waited the full schedule once: remember it so later observations do not
-            // pay the wait again (the attribute itself is still re-applied each time).
-            context.registry.mark_enabled(process);
+        // Either the schedule ran out or the budget did: remember that we waited so
+        // later observations only pay for one probe, not the whole wait again.
+        WaitOutcome::Exhausted | WaitOutcome::OutOfBudget => {
+            registry.set_memo(process, WebMemo::Waited);
             Ok(WebAxState::Pending)
         }
-        WaitOutcome::OutOfBudget => Ok(WebAxState::Pending),
     }
 }
 

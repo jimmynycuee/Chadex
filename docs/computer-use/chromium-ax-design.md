@@ -493,15 +493,18 @@ cargo clippy --workspace --all-targets
 15. 等待時間（`web_accessibility.rs`）：整段等待（sleep 加 probe）有 3 秒的硬上限（`WAIT_TOTAL_BUDGET`），而且每一輪都用 `remaining()` 重新檢查，不會用到保留給走訪的 3 秒（`WAIT_RESERVE`）。probe 自己也收到剩餘預算，並在超時後以「無法確定」結束（`probe_web_content` 接收 clock 與 budget）。沒有剩餘預算時不 probe、不 sleep。
 16. deep find 的軟預算：至少處理第一個節點（root）之後才檢查（`ax_traversal.rs`），所以 `scanned_nodes` 一定 ≥ 1，server 的驗證（1..=4000）不用改。選這個而不是放寬 server，是因為「回報 0 個節點的成功結果」本身就沒有意義。
 17. 錯誤處理：probe 與設定屬性的錯誤，除了 `permission_denied` 與 deadline 逾時以外，一律視為暫時性錯誤（Chromium 重建樹時會回 `InvalidUIElement`、`CannotComplete`），繼續等待，最後回 `pending`／`unsupported`，觀察照常成功（符合 §1.3）。
-18. memo：完整跑完一輪等待後（不論有沒有看到內容）就寫入 memo，之後同一個 process 回 `already_enabled`、不再等待。預算不足而沒等完時不寫。注意 `already_enabled` 只代表「我們已經設定過並等過一次」，不保證 renderer 現在有樹（Chromium 可能已經 auto-disable，見 L9）。
-19. 見 §6 第 6 點（sensitive 視窗不展開 `AXWebArea`）。
+18. memo 分兩種狀態（`WebMemo`）：`Confirmed`（probe 看到內容，或確定沒有 web area）和 `Waited`（等過一次但沒有確認，包含整輪排程跑完和預算用完兩種情況）。
+    - 沒有 memo：照 §1.4 等待。看到內容寫 `Confirmed` 並回 `enabled`；否則寫 `Waited` 並回 `pending`。
+    - 命中任何一種 memo：不 sleep，只做一次有預算的 probe（預算為剩餘時間扣掉 3 秒保留，最多 3 秒）。看到內容就升級成 `Confirmed` 並回 `already_enabled`；沒看到就降成 `Waited` 並回 `pending`；暫時性錯誤也當作沒有確認。沒有 probe 預算時，`Confirmed` 回 `already_enabled`、`Waited` 回 `pending`。
+    - 所以 `already_enabled` 現在一定是「剛剛 probe 過」的結果（唯一例外是完全沒有預算可以 probe），`pending` 的網頁每次觀察最多多花一次 probe，不會再花整段等待。這同時處理了 Chromium 閒置後 auto-disable 的情況（L9），仍建議實機確認。
+19. 見 §6 第 6 點（sensitive 視窗不展開 `AXWebArea`）。這對舊 kind 是刻意加嚴：sensitive 視窗加上 Chromium／Electron 時，即使使用者自己開了 VoiceOver（其他工具先打開 accessibility），該視窗的網頁內容也不會出現在 Chadex 的 tree 裡；原生 app 與純 WebKit app 不受影響。
 20. `ComputerObserveToolCall::FindElements.value` 改用 `RedactedString`（序列化與一般字串相同，`Debug` 只印位元組數）。`RunnerComputerOperation` 的 `Debug` 對 `InputText`、`WriteClipboard`、`AccessibilityFind` 不印 payload。`RunnerRequest.stdin` 的 `Debug` 是既有行為，所有 kind 都會印，這次沒有改。
 21. `web_context_for(record)` 把「sensitive surface 就不開啟」的決定集中到一處並有測試；tree_filter 的 `value` 可以命中 secure 欄位的子孫（舊 tree 本來就公開這些資料），註解已說明。
 
 ### 12.3.2 需要使用者確認或實機驗證的行為
 
 - 新 macOS runner 上，不帶 root 的 `find_elements` 對 sensitive surface 會回 `permission_denied`（find 一律加嚴）。以前走 server 的 tree_filter 時可以搜，這是既有 action 的行為改變。
-- memo 命中之後，Chromium 可能已經 auto-disable，`already_enabled` 不一定代表有樹，留給實機測試 L9。
+- memo 命中後 Chromium 可能已經 auto-disable：現在每次命中都會再 probe 一次（見 §12.3.1 第 18 點），`already_enabled` 代表剛剛確認過有內容；實機行為仍留給 L9。
 
 ### 12.4 實機測試結果（§9）
 

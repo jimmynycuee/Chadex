@@ -241,34 +241,127 @@ fn first_observation_waits_for_content_then_remembers_the_process() {
         *env.sleeps.borrow(),
         vec![Duration::from_millis(150), Duration::from_millis(300)]
     );
-    assert!(registry.is_enabled(PROCESS));
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Confirmed));
 }
 
 #[test]
-fn known_process_is_re_enabled_without_waiting_or_probing() {
+fn confirmed_process_is_re_verified_with_one_non_sleeping_probe() {
     let registry = WebAxRegistry::default();
-    registry.mark_enabled(PROCESS);
-    let env = FakeEnvironment::new(vec![WebProbe::Empty]);
+    registry.set_memo(PROCESS, WebMemo::Confirmed);
     let ctx = context(&registry, WebAccessibilityPolicy::Auto, false);
-    let state = enable_web_accessibility(&env, &ctx, chromium).unwrap();
-    assert_eq!(state, WebAxState::AlreadyEnabled);
-    // Chromium can auto-disable accessibility, so the attribute is still re-applied.
+
+    // Content still there: already_enabled, no waiting.
+    let env = FakeEnvironment::new(vec![WebProbe::Content]);
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::AlreadyEnabled
+    );
+    // Chromium can auto-disable accessibility, so the attribute is re-applied each time.
     assert_eq!(env.set_calls.get(), 1);
-    assert_eq!(env.probe_calls.get(), 0);
+    assert_eq!(env.probe_calls.get(), 1);
     assert!(env.sleeps.borrow().is_empty());
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Confirmed));
+
+    // The tree went away (auto-disable): pending, no waiting, memo downgraded.
+    let env = FakeEnvironment::new(vec![WebProbe::Empty]);
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::Pending
+    );
+    assert_eq!(env.probe_calls.get(), 1);
+    assert!(env.sleeps.borrow().is_empty());
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Waited));
+
+    // And it comes back: upgraded again.
+    let env = FakeEnvironment::new(vec![WebProbe::Content]);
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::AlreadyEnabled
+    );
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Confirmed));
+}
+
+#[test]
+fn waited_process_probes_once_without_sleeping_and_never_claims_unconfirmed_content() {
+    let registry = WebAxRegistry::default();
+    registry.set_memo(PROCESS, WebMemo::Waited);
+    let ctx = context(&registry, WebAccessibilityPolicy::Auto, false);
+
+    let env = FakeEnvironment::new(vec![WebProbe::Empty]);
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::Pending
+    );
+    assert_eq!((env.set_calls.get(), env.probe_calls.get()), (1, 1));
+    assert!(env.sleeps.borrow().is_empty());
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Waited));
+
+    let env = FakeEnvironment::new(vec![WebProbe::Content]);
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::AlreadyEnabled
+    );
+    assert!(env.sleeps.borrow().is_empty());
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Confirmed));
+
+    // A definite "no web area" also confirms (native Electron windows).
+    registry.set_memo(PROCESS, WebMemo::Waited);
+    let env = FakeEnvironment::new(vec![WebProbe::NoWebArea]);
+    assert_eq!(
+        enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+        WebAxState::AlreadyEnabled
+    );
+
+    // Transient probe errors cannot confirm anything.
+    for memo in [WebMemo::Waited, WebMemo::Confirmed] {
+        registry.set_memo(PROCESS, memo);
+        let env = FakeEnvironment::with_results(vec![Err(
+            "accessibility_failed: x failed with AXError(-25202)".to_string(),
+        )]);
+        assert_eq!(
+            enable_web_accessibility(&env, &ctx, chromium).unwrap(),
+            WebAxState::Pending
+        );
+        assert_eq!(registry.memo(PROCESS), Some(WebMemo::Waited));
+    }
+
+    // Fatal errors still abort.
+    let env = FakeEnvironment::with_results(vec![Err(
+        "accessibility_failed: macOS Accessibility observation deadline exceeded".to_string(),
+    )]);
+    assert!(enable_web_accessibility(&env, &ctx, chromium)
+        .unwrap_err()
+        .contains("deadline exceeded"));
+}
+
+#[test]
+fn memoized_process_without_probe_budget_reports_only_what_it_knows() {
+    let registry = WebAxRegistry::default();
+    let ctx = context(&registry, WebAccessibilityPolicy::Auto, false);
+    for (memo, expected) in [
+        (WebMemo::Confirmed, WebAxState::AlreadyEnabled),
+        (WebMemo::Waited, WebAxState::Pending),
+    ] {
+        registry.set_memo(PROCESS, memo);
+        let env = FakeEnvironment::new(vec![WebProbe::Content]);
+        env.remaining.set(WAIT_RESERVE);
+        assert_eq!(enable_web_accessibility(&env, &ctx, chromium).unwrap(), expected);
+        assert_eq!(env.probe_calls.get(), 0);
+        assert_eq!(registry.memo(PROCESS), Some(memo));
+    }
 }
 
 #[test]
 fn recycled_pid_with_a_different_launch_time_is_not_remembered() {
     let registry = WebAxRegistry::default();
-    registry.mark_enabled((4242, Some(1)));
-    assert!(!registry.is_enabled((4242, Some(2))));
-    assert!(!registry.is_enabled((4242, None)));
-    assert!(registry.is_enabled((4242, Some(1))));
+    registry.set_memo((4242, Some(1)), WebMemo::Confirmed);
+    assert_eq!(registry.memo((4242, Some(2))), None);
+    assert_eq!(registry.memo((4242, None)), None);
+    assert_eq!(registry.memo((4242, Some(1))), Some(WebMemo::Confirmed));
 }
 
 #[test]
-fn never_ready_content_stays_pending_within_the_wait_schedule_and_is_remembered() {
+fn never_ready_content_stays_pending_and_later_observations_do_not_wait_again() {
     let registry = WebAxRegistry::default();
     let env = FakeEnvironment::new(vec![WebProbe::Empty]);
     let ctx = context(&registry, WebAccessibilityPolicy::Auto, false);
@@ -276,17 +369,18 @@ fn never_ready_content_stays_pending_within_the_wait_schedule_and_is_remembered(
     assert_eq!(state, WebAxState::Pending);
     assert_eq!(env.probe_calls.get(), WAIT_SCHEDULE.len());
     assert_eq!(env.total_sleep(), Duration::from_millis(1950));
-    // The full schedule already ran once, so later observations do not pay it again
-    // (the attribute is still re-applied every time).
-    assert!(registry.is_enabled(PROCESS));
-    let again = FakeEnvironment::new(vec![WebProbe::Empty]);
-    assert_eq!(
-        enable_web_accessibility(&again, &ctx, chromium).unwrap(),
-        WebAxState::AlreadyEnabled
-    );
-    assert_eq!(again.set_calls.get(), 1);
-    assert_eq!(again.probe_calls.get(), 0);
-    assert!(again.sleeps.borrow().is_empty());
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Waited));
+    // Every later observation costs one probe, no sleeping, and still says pending.
+    for _ in 0..3 {
+        let again = FakeEnvironment::new(vec![WebProbe::Empty]);
+        assert_eq!(
+            enable_web_accessibility(&again, &ctx, chromium).unwrap(),
+            WebAxState::Pending
+        );
+        assert_eq!(again.set_calls.get(), 1);
+        assert_eq!(again.probe_calls.get(), 1);
+        assert!(again.sleeps.borrow().is_empty());
+    }
 }
 
 #[test]
@@ -300,7 +394,7 @@ fn definite_absence_of_a_web_area_counts_as_enabled_without_waiting() {
     );
     assert_eq!(env.probe_calls.get(), 1);
     assert!(env.sleeps.borrow().is_empty());
-    assert!(registry.is_enabled(PROCESS));
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Confirmed));
 }
 
 #[test]
@@ -316,10 +410,13 @@ fn waiting_shrinks_to_leave_the_traversal_reserve() {
     assert!(env.total_sleep() <= Duration::from_millis(200), "{:?}", env.total_sleep());
     assert!(env.remaining() >= WAIT_RESERVE);
     assert!(env.probe_calls.get() < WAIT_SCHEDULE.len());
-    // Ran out of budget before finishing the schedule: not remembered.
-    assert!(!registry.is_enabled(PROCESS));
+    // Ran out of budget before finishing the schedule: remembered as "waited", so the
+    // next observation costs one probe instead of the same budget again.
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Waited));
 
     // No spare time at all: no sleeping and no probing.
+    let registry = WebAxRegistry::default();
+    let ctx = context(&registry, WebAccessibilityPolicy::Auto, false);
     let env = FakeEnvironment::new(vec![WebProbe::Empty]);
     env.remaining.set(WAIT_RESERVE);
     assert_eq!(
@@ -329,7 +426,7 @@ fn waiting_shrinks_to_leave_the_traversal_reserve() {
     assert!(env.sleeps.borrow().is_empty());
     assert_eq!(env.probe_calls.get(), 0);
     assert_eq!(env.set_calls.get(), 1);
-    assert!(!registry.is_enabled(PROCESS));
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Waited));
 }
 
 #[test]
@@ -352,7 +449,7 @@ fn slow_probes_count_against_the_wait_budget_and_the_traversal_reserve() {
         assert!(*budget <= WAIT_TOTAL_BUDGET && !budget.is_zero(), "{budget:?}");
     }
     assert!(env.probe_calls.get() < WAIT_SCHEDULE.len());
-    assert!(!registry.is_enabled(PROCESS));
+    assert_eq!(registry.memo(PROCESS), Some(WebMemo::Waited));
 
     // Even with a tight deadline the probe budget never reaches into the reserve.
     let env = FakeEnvironment::new(vec![WebProbe::Empty]);
@@ -497,14 +594,16 @@ fn sensitive_web_surfaces_stop_at_the_web_area_boundary_only_when_we_enable_thin
 fn registry_memo_and_engine_cache_are_bounded() {
     let registry = WebAxRegistry::default();
     for pid in 0..(MEMO_CAPACITY as u32 + 10) {
-        registry.mark_enabled((pid, None));
+        registry.set_memo((pid, None), WebMemo::Confirmed);
     }
-    assert!(!registry.is_enabled((0, None)), "oldest entry is evicted");
-    assert!(registry.is_enabled((MEMO_CAPACITY as u32 + 9, None)));
-    assert_eq!(registry.enabled.lock().unwrap().len(), MEMO_CAPACITY);
-    // Marking twice does not duplicate.
-    registry.mark_enabled((MEMO_CAPACITY as u32 + 9, None));
-    assert_eq!(registry.enabled.lock().unwrap().len(), MEMO_CAPACITY);
+    assert_eq!(registry.memo((0, None)), None, "oldest entry is evicted");
+    let newest = (MEMO_CAPACITY as u32 + 9, None);
+    assert_eq!(registry.memo(newest), Some(WebMemo::Confirmed));
+    assert_eq!(registry.memos.lock().unwrap().len(), MEMO_CAPACITY);
+    // Setting twice updates in place instead of duplicating.
+    registry.set_memo(newest, WebMemo::Waited);
+    assert_eq!(registry.memo(newest), Some(WebMemo::Waited));
+    assert_eq!(registry.memos.lock().unwrap().len(), MEMO_CAPACITY);
 
     for index in 0..(ENGINE_CACHE_CAPACITY + 5) {
         registry.cache_engine(Path::new(&format!("/apps/{index}.app")), WebEngine::Chromium);
