@@ -10,6 +10,7 @@ struct ProjectDetailView: View {
     /// Navigates to the Skills page; Agent Settings only links to it.
     var onManageSkills: () -> Void = {}
     @State private var showingErrorDetails = false
+    @State private var pendingComputerMode: ComputerControlMode?
 
     var body: some View {
         ChadexPageColumn {
@@ -34,21 +35,21 @@ struct ProjectDetailView: View {
         switch destination {
         case .overview:
             header
-            Divider()
             connectionSection
+                .chadexCard(padding: 22)
 
             if let error = model.connectionError {
                 errorSection(error)
+                    .chadexAttentionCard(tint: .red)
             }
 
             if let task = model.snapshot.taskProgress {
-                Divider()
                 TaskProgressView(task: task) {
                     Task { await model.cancelTask(task) }
                 }
+                .chadexCard()
             }
 
-            Divider()
             recentActivity
 
         case .agentSettings:
@@ -60,6 +61,10 @@ struct ProjectDetailView: View {
         case .computerUse:
             computerControlSection
         }
+    }
+
+    private var computerControlNeedsAttention: Bool {
+        model.computerSafety.stopped || !model.computerSafety.pendingApprovals.isEmpty
     }
 
     private var navigationTitle: String {
@@ -77,161 +82,169 @@ struct ProjectDetailView: View {
 
     private var agentSettingsSection: some View {
         VStack(alignment: .leading, spacing: layout.spacing(20)) {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(L10n.string("agentSettings.subtitle"))
-                    .chadexFont(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 7) {
-                    Image(systemName: "folder")
-                        .chadexFont(.caption, weight: .medium)
-                        .foregroundStyle(.secondary)
-                    Text(L10n.string("agentSettings.currentProject", project.name))
-                        .chadexFont(.caption, weight: .medium)
-                    Text(project.path)
-                        .chadexFont(.caption, design: .monospaced)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .textSelection(.enabled)
-                }
+            ChadexPageHeader(
+                title: L10n.string("sidebar.agentSettings"),
+                subtitle: L10n.string("agentSettings.subtitle")
+            ) {
+                // Global settings: no per-project context in the header.
+                EmptyView()
             }
 
-            Divider()
             GlobalInstructionsEditor()
-            Divider()
+                .chadexCard(padding: 20)
+
             skillsLink
+                .chadexCard(padding: 16)
         }
     }
 
     private var skillsLink: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Label {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(L10n.string("agentSettings.skillsLink.title"))
-                        .chadexFont(.callout, weight: .semibold)
-                    Text(L10n.string("agentSettings.skillsLink.message"))
-                        .chadexFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } icon: {
-                Image(systemName: "puzzlepiece.extension")
+        HStack(alignment: .center, spacing: layout.spacing(14)) {
+            Image(systemName: "puzzlepiece.extension.fill")
+                .font(.system(size: layout.control(15), weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: layout.control(34), height: layout.control(34))
+                .background(Color.indigo, in: RoundedRectangle(cornerRadius: layout.control(9), style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L10n.string("agentSettings.skillsLink.title"))
+                    .chadexFont(.callout, weight: .semibold)
+                Text(L10n.string("agentSettings.skillsLink.message"))
+                    .chadexFont(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             Button(L10n.string("agentSettings.manageSkills")) { onManageSkills() }
-                .buttonStyle(.link)
-                .chadexFont(.callout)
+                .chadexControlSize(.regular)
         }
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "folder")
-                .chadexFont(.callout, weight: .semibold)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: layout.control(22), height: layout.control(24), alignment: .top)
+        VStack(alignment: .leading, spacing: layout.spacing(8)) {
+            Text(project.name)
+                .chadexFont(.title, weight: .semibold)
+                .tracking(-0.3)
+                .accessibilityAddTraits(.isHeader)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text(project.name)
-                    .chadexFont(.title2, weight: .semibold)
-                    .tracking(-0.2)
-
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Text(project.path)
-                        .chadexFont(.callout, design: .monospaced)
-                        .foregroundStyle(.tertiary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(project.path, forType: .string)
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .chadexFont(.caption2, weight: .medium)
-                    }
-                    .buttonStyle(.borderless)
-                    .help(L10n.string("project.copyPath"))
-                    .accessibilityLabel(L10n.string("project.copyPath"))
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(project.path, forType: .string)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder")
+                        .foregroundStyle(.secondary)
+                    Text(abbreviatedPath)
+                        .chadexFont(.caption, design: .monospaced)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "doc.on.doc")
+                        .foregroundStyle(.secondary)
                 }
+                .chadexFont(.caption)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Color.secondary.opacity(0.1), in: Capsule())
+                .contentShape(Capsule())
             }
-
-            Spacer(minLength: 20)
+            .buttonStyle(.plain)
+            .help(L10n.string("project.copyPath") + " — " + project.path)
+            .accessibilityLabel(L10n.string("project.copyPath"))
+            .accessibilityValue(project.path)
         }
     }
 
+    private func inlineMetadata(
+        _ title: String,
+        value: String,
+        monospaced: Bool = false,
+        copyValue: String? = nil
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: ChadexFontStyle.caption.size(at: layout.fontScale), design: monospaced ? .monospaced : .default))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            if let copyValue {
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(copyValue, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .help(L10n.string("common.copy"))
+                .accessibilityLabel(L10n.string("common.copy") + " " + title)
+            }
+        }
+        .chadexFont(.caption)
+        .fixedSize()
+        .accessibilityElement(children: .combine)
+    }
+
+    private var abbreviatedPath: String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return project.path.hasPrefix(home) ? "~" + project.path.dropFirst(home.count) : project.path
+    }
+
     private var connectionSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionEyebrow(title: L10n.string("connection.title"))
-
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: layout.spacing(24)) {
-                    connectionStatusCopy
-                    Spacer(minLength: 20)
-                    connectionActions
-                }
-
-                VStack(alignment: .leading, spacing: layout.spacing(16)) {
-                    connectionStatusCopy
-                    connectionActions
-                }
+        VStack(alignment: .leading, spacing: layout.spacing(20)) {
+            // Copy wraps inside its own column so the action stays pinned to
+            // the card's top-right corner at every width.
+            HStack(alignment: .top, spacing: layout.spacing(24)) {
+                connectionStatusCopy
+                    .frame(maxWidth: layout.control(560), alignment: .leading)
+                Spacer(minLength: 0)
+                connectionActions
+                    .fixedSize()
             }
 
-            ConnectionPathView(
+            ConnectionCircuitView(
+                projectName: project.name,
                 phase: model.connectionPresentationPhase,
                 tunnelReady: model.isSwitchingProject ? false : model.snapshot.tunnelReady,
                 chatGPTConnected: model.isSwitchingProject ? false : model.snapshot.chatGPTConnected,
                 chatGPTVerified: model.isSwitchingProject ? false : model.snapshot.chatGPTVerifiedForSelectedProject,
-                isConnecting: model.connectionAction == .connecting
+                isConnecting: model.connectionAction == .connecting,
+                accent: model.connectionPresentationPhase == .verified ? .green : ChadexBrand.signal
             )
-            .chadexPadding(.vertical, 1)
+            .frame(maxWidth: .infinity)
+            .chadexPadding(.vertical, 4)
 
             Divider()
 
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(minimum: layout.control(220)), spacing: layout.spacing(32), alignment: .leading),
-                    GridItem(.flexible(minimum: layout.control(180)), spacing: layout.spacing(32), alignment: .leading)
-                ],
-                alignment: .leading,
-                spacing: layout.spacing(12)
-            ) {
-                TechnicalMetadataItem(
-                    title: L10n.string("settings.tunnelID"),
+            HStack(alignment: .firstTextBaseline, spacing: layout.spacing(24)) {
+                inlineMetadata(
+                    L10n.string("settings.tunnelID"),
                     value: tunnelIDDisplayValue,
                     monospaced: true,
                     copyValue: model.preferences.tunnelID.isEmpty ? nil : model.preferences.tunnelID
                 )
                 if model.snapshot.lastVerifiedAtMs != nil {
-                    TechnicalMetadataItem(
-                        title: L10n.string("connection.lastVerifiedLabel"),
-                        value: lastVerifiedValue,
-                        monospaced: true
-                    )
+                    inlineMetadata(L10n.string("connection.lastVerifiedLabel"), value: lastVerifiedValue)
                 }
+                Spacer(minLength: 0)
             }
         }
     }
 
-
     private var computerControlSection: some View {
         VStack(alignment: .leading, spacing: layout.spacing(22)) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                SectionEyebrow(title: L10n.string("computer.title"))
+                SectionTitle(title: L10n.string("computer.title"))
                 Spacer(minLength: 12)
-                Label(
-                    computerControlStatusText,
+                ChadexStatusLabel(
+                    title: computerControlStatusText,
                     systemImage: model.computerSafety.stopped
                         ? "hand.raised.fill"
-                        : (model.computerSafety.pendingApprovals.isEmpty ? "desktopcomputer" : "exclamationmark.circle.fill")
-                )
-                .chadexFont(.caption, weight: .medium)
-                .foregroundStyle(
-                    model.computerSafety.stopped || !model.computerSafety.pendingApprovals.isEmpty
-                        ? Color.orange
-                        : Color.secondary
+                        : (model.computerSafety.pendingApprovals.isEmpty ? "desktopcomputer" : "exclamationmark.circle.fill"),
+                    tint: computerControlNeedsAttention ? .orange : .secondary,
+                    emphasized: computerControlNeedsAttention
                 )
             }
 
@@ -248,33 +261,13 @@ struct ProjectDetailView: View {
                         Label(L10n.string("computer.resume"), systemImage: "play.fill")
                     }
                     .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
+                    .chadexControlSize(.regular)
                     .disabled(model.computerSafetyMutationInFlight)
                     .help(L10n.string("computer.resumeHelp"))
                 }
             } else {
-                VStack(alignment: .leading, spacing: layout.spacing(10)) {
-                    Text(L10n.string("computer.controlModeTitle"))
-                        .chadexFont(.callout, weight: .semibold)
-                    Text(L10n.string("computer.controlModeHelp"))
-                        .chadexFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    computerControlModePicker
-                        .chadexPadding(.top, 2)
-                    Text(computerControlModeDescription)
-                        .chadexFont(.caption)
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if !model.snapshot.tunnelReady {
-                        Text(L10n.string("computer.sessionUnavailable"))
-                            .chadexFont(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-
+                // ChatGPT is waiting on this request, so it leads the page.
                 if let approval = model.computerSafety.pendingApprovals.first {
-                    Divider()
                     VStack(alignment: .leading, spacing: layout.spacing(10)) {
                         Text(L10n.string("computer.requestTitle"))
                             .chadexFont(.caption, weight: .semibold)
@@ -306,67 +299,120 @@ struct ProjectDetailView: View {
                                 model.computerSafety.pendingApprovals.count - 1
                             ))
                             .chadexFont(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                         }
                     }
+                    .chadexAttentionCard(tint: .orange, padding: 18)
                 }
 
-                Divider()
                 VStack(alignment: .leading, spacing: layout.spacing(10)) {
-                    Text(L10n.string("computer.safetyTitle"))
-                        .chadexFont(.callout, weight: .semibold)
-                    Text(L10n.string("computer.safetyNote"))
+                    Text(L10n.string("computer.controlModeTitle"))
+                        .chadexFont(.headline, weight: .semibold)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(L10n.string("computer.controlModeHelp"))
                         .chadexFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    computerControlModePicker
+                        .chadexPadding(.top, 4)
+                    if !model.snapshot.tunnelReady {
+                        Text(L10n.string("computer.sessionUnavailable"))
+                            .chadexFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
+                HStack(alignment: .top, spacing: layout.spacing(14)) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: layout.control(16), weight: .semibold))
+                        .foregroundStyle(ChadexBrand.onSignal)
+                        .frame(width: layout.control(34), height: layout.control(34))
+                        .background(ChadexBrand.signal, in: RoundedRectangle(cornerRadius: layout.control(9), style: .continuous))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: layout.spacing(6)) {
+                        Text(L10n.string("computer.safetyTitle"))
+                            .chadexFont(.headline, weight: .semibold)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(L10n.string("computer.safetyNote"))
+                            .chadexFont(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: layout.spacing(12))
                     Button(role: .destructive) {
                         Task { await model.stopComputerControl() }
                     } label: {
                         Label(L10n.string("computer.stop"), systemImage: "stop.circle.fill")
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.regular)
+                    .chadexControlSize(.regular)
+                    .fixedSize()
                     .disabled(model.computerSafetyMutationInFlight)
                     .help(L10n.string("computer.stopHelp"))
                 }
+                .chadexCard(padding: 18)
             }
 
             if let error = model.computerSafetyError {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .chadexFont(.caption)
-                    .foregroundStyle(.secondary)
+                ChadexInlineError(message: error) {
+                    await model.refreshComputerSafety()
+                }
             }
         }
     }
 
     private var computerControlModePicker: some View {
-        Picker(
-            L10n.string("computer.controlModeTitle"),
-            selection: Binding(
-                get: { model.computerSafety.mode },
-                set: { mode in
-                    Task {
-                        if mode == .allowSession {
-                            await model.setComputerControlMode(mode)
-                        } else {
-                            await model.setComputerControlDefaultMode(mode)
-                        }
-                    }
-                }
-            )
+        let modes: [ComputerControlMode] = model.snapshot.tunnelReady
+            ? [.readOnly, .askBeforeControl, .allowSession, .alwaysAllow]
+            : [.readOnly, .askBeforeControl, .alwaysAllow]
+        return LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: layout.control(220)), spacing: layout.spacing(12), alignment: .top)],
+            alignment: .leading,
+            spacing: layout.spacing(12)
         ) {
-            Text(L10n.string("computer.mode.ask")).tag(ComputerControlMode.askBeforeControl)
-            if model.snapshot.tunnelReady {
-                Text(L10n.string("computer.mode.allowSession")).tag(ComputerControlMode.allowSession)
+            ForEach(modes) { mode in
+                ComputerModeCard(
+                    mode: mode,
+                    isSelected: model.computerSafety.mode == mode,
+                    isPending: pendingComputerMode == mode
+                ) {
+                    computerModeBinding.wrappedValue = mode
+                }
+                .disabled(model.computerSafetyMutationInFlight)
             }
-            Text(L10n.string("computer.mode.alwaysAllow")).tag(ComputerControlMode.alwaysAllow)
-            Text(L10n.string("computer.mode.readOnly")).tag(ComputerControlMode.readOnly)
         }
-        .pickerStyle(.radioGroup)
-        .labelsHidden()
-        .disabled(model.computerSafetyMutationInFlight)
-        .accessibilityLabel(L10n.string("computer.controlModeTitle"))
+        // VoiceOver keeps hearing one native radio group (count, selection,
+        // arrow keys) instead of three or four unrelated buttons.
+        .accessibilityRepresentation {
+            Picker(L10n.string("computer.controlModeTitle"), selection: computerModeBinding) {
+                ForEach(modes) { mode in
+                    Text(L10n.string(mode.titleKey)).tag(mode)
+                }
+            }
+            .pickerStyle(.radioGroup)
+            .disabled(model.computerSafetyMutationInFlight)
+            .accessibilityValue(L10n.string(model.computerSafety.mode.descriptionKey))
+        }
+    }
+
+    private var computerModeBinding: Binding<ComputerControlMode> {
+        Binding(
+            get: { model.computerSafety.mode },
+            set: { mode in
+                // Saving the default first and then being turned away by the
+                // in-flight guard would leave the stored and live modes apart.
+                guard !model.computerSafetyMutationInFlight, mode != model.computerSafety.mode else { return }
+                pendingComputerMode = mode
+                Task {
+                    if mode == .allowSession {
+                        await model.setComputerControlMode(mode)
+                    } else {
+                        await model.setComputerControlDefaultMode(mode)
+                    }
+                    pendingComputerMode = nil
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -375,21 +421,21 @@ struct ProjectDetailView: View {
             Task { await model.denyComputerControl(approval) }
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
+        .chadexControlSize(.small)
         .disabled(model.computerSafetyMutationInFlight)
 
         Button(L10n.string("computer.allowOnce")) {
             Task { await model.approveComputerControl(approval) }
         }
         .buttonStyle(.borderedProminent)
-        .controlSize(.small)
+        .chadexControlSize(.small)
         .disabled(model.computerSafetyMutationInFlight)
 
         Button(L10n.string("computer.alwaysAllow")) {
             Task { await model.alwaysAllowComputerControl(approval) }
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
+        .chadexControlSize(.small)
         .disabled(model.computerSafetyMutationInFlight)
         .help(L10n.string("computer.alwaysAllowHelp"))
     }
@@ -413,19 +459,6 @@ struct ProjectDetailView: View {
         }
     }
 
-    private var computerControlModeDescription: String {
-        switch model.computerSafety.mode {
-        case .readOnly:
-            return L10n.string("computer.description.readOnly")
-        case .askBeforeControl:
-            return L10n.string("computer.description.ask")
-        case .allowSession:
-            return L10n.string("computer.description.allowSession")
-        case .alwaysAllow:
-            return L10n.string("computer.description.alwaysAllow")
-        }
-    }
-
     private func computerActionLabel(_ action: String) -> String {
         switch action {
         case "launch_application": return L10n.string("computer.action.launch")
@@ -443,18 +476,17 @@ struct ProjectDetailView: View {
     }
 
     private var connectionStatusCopy: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
-                if model.connectionActionInFlight {
-                    ProgressView()
-                        .controlSize(.small)
-                } else if connectionIsUsable {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                }
-                Text(connectionStatusTitle)
-            }
-            .chadexFont(.title3, weight: .semibold)
+        VStack(alignment: .leading, spacing: 8) {
+            ChadexStatusPill(
+                title: L10n.string("connection.title"),
+                tint: connectionPillTint,
+                pulsing: model.connectionActionInFlight || model.connectionPresentationPhase == .waitingForChatGPTVerification
+            )
+            .padding(.bottom, 2)
+
+            Text(connectionStatusTitle)
+                .chadexFont(.title2, weight: .semibold)
+                .tracking(-0.2)
 
             Text(statusExplanation)
                 .chadexFont(.callout)
@@ -463,12 +495,16 @@ struct ProjectDetailView: View {
                 .frame(maxWidth: layout.control(620), alignment: .leading)
 
             if let message = model.connectionCheckMessage {
-                Label(
-                    message,
-                    systemImage: model.connectionCheckSucceeded == false ? "exclamationmark.circle" : "checkmark.circle"
-                )
+                let failed = model.connectionCheckSucceeded == false
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Image(systemName: failed ? "exclamationmark.circle.fill" : "checkmark.circle")
+                        .foregroundStyle(failed ? Color.red : Color.secondary)
+                    Text(message)
+                        .foregroundStyle(failed ? Color.primary : Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 .chadexFont(.caption)
-                .foregroundStyle(model.connectionCheckSucceeded == false ? Color.red : Color.secondary)
+                .accessibilityElement(children: .combine)
                 .chadexPadding(.top, 2)
             }
         }
@@ -483,7 +519,7 @@ struct ProjectDetailView: View {
                     model.showConnectionSettings()
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
+                .chadexControlSize(.regular)
             } else if model.connectionPresentationPhase == .waitingForChatGPTVerification || model.connectionPresentationPhase == .verified {
                 Button(role: .destructive) {
                     model.primaryAction()
@@ -491,13 +527,13 @@ struct ProjectDetailView: View {
                     HStack(spacing: 6) {
                         if model.connectionAction == .disconnecting {
                             ProgressView()
-                                .controlSize(.mini)
+                                .chadexControlSize(.mini)
                         }
                         Text(primaryActionTitle)
                     }
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.regular)
+                .chadexControlSize(.regular)
                 .help(L10n.string("connection.disconnect"))
                 .disabled(model.connectionActionInFlight || model.isSwitchingProject)
             } else {
@@ -507,18 +543,14 @@ struct ProjectDetailView: View {
                     HStack(spacing: 6) {
                         if model.connectionActionInFlight {
                             ProgressView()
-                                .controlSize(.mini)
+                                .chadexControlSize(.mini)
                         }
                         Text(primaryActionTitle)
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                .disabled(
-                    model.connectionActionInFlight
-                        || model.isSwitchingProject
-                        || (model.connectionPresentationPhase == .preparing && model.snapshot.currentOperation?.cancellable != true)
-                )
+                .chadexControlSize(.regular)
+                .disabled(!model.primaryActionEnabled)
             }
         }
     }
@@ -532,7 +564,7 @@ struct ProjectDetailView: View {
                 systemImage: "exclamationmark.triangle.fill"
             )
                 .chadexFont(.headline)
-                .foregroundStyle(.red)
+                .foregroundStyle(.primary, .red)
 
             Text(
                 error.code == "tunnel_credentials_rejected"
@@ -564,7 +596,7 @@ struct ProjectDetailView: View {
                                 .textSelection(.enabled)
                         }
                     }
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .chadexPadding(.top, 6)
                 }
             }
@@ -579,38 +611,41 @@ struct ProjectDetailView: View {
     }
 
     private var recentActivity: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: layout.spacing(10)) {
             HStack(alignment: .firstTextBaseline) {
-                Text(L10n.string("activity.recent"))
-                    .chadexFont(.headline)
+                SectionTitle(title: L10n.string("activity.recent"))
                 Spacer()
-                if !model.filteredActivities.isEmpty {
-                    Button(L10n.string("activity.viewAll"), action: onShowAllActivity)
-                        .buttonStyle(.link)
-                        .chadexFont(.callout)
+                if !model.recentActivities.isEmpty {
+                    Button {
+                        onShowAllActivity()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(L10n.string("activity.viewAll"))
+                            Image(systemName: "chevron.right")
+                                .imageScale(.small)
+                        }
+                    }
+                    .buttonStyle(.link)
+                    .chadexFont(.callout)
                 }
             }
 
-            if model.filteredActivities.isEmpty {
-                HStack(spacing: 9) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundStyle(.tertiary)
-                    Text(L10n.string("activity.empty"))
-                        .chadexFont(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .chadexPadding(.vertical, 12)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(model.filteredActivities.prefix(4))) { activity in
-                        ActivityRow(entry: activity)
-                            .chadexPadding(.vertical, 5)
-                        if activity.id != model.filteredActivities.prefix(4).last?.id {
-                            Divider()
-                        }
+            Group {
+                if model.recentActivities.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                        Text(L10n.string("activity.empty"))
+                            .chadexFont(.callout)
+                            .foregroundStyle(.secondary)
                     }
+                    .chadexPadding(.vertical, 6)
+                } else {
+                    ActivityTimeline(entries: Array(model.recentActivities.prefix(5)))
                 }
             }
+            .chadexCard(padding: 16)
         }
     }
 
@@ -628,15 +663,7 @@ struct ProjectDetailView: View {
     }
 
     private var primaryActionTitle: String {
-        if let actionText = model.connectionActionStatusText { return actionText }
-        switch model.connectionPresentationPhase {
-        case .unconfigured: return L10n.string("connection.configure")
-        case .preparing: return model.snapshot.currentOperation?.cancellable == true ? L10n.string("connection.cancel") : L10n.string("status.preparing")
-        case .waitingForChatGPTVerification: return L10n.string("connection.disconnect")
-        case .verified: return L10n.string("connection.disconnect")
-        case .stopped: return L10n.string("connection.connect")
-        case .error: return L10n.string("connection.retry")
-        }
+        model.primaryActionTitle
     }
 
     private var connectionStatusTitle: String {
@@ -657,6 +684,15 @@ struct ProjectDetailView: View {
         !model.isSwitchingProject
             && (model.snapshot.chatGPTConnected
                 || model.snapshot.chatGPTVerifiedForSelectedProject)
+    }
+
+    private var connectionPillTint: Color {
+        switch model.connectionPresentationPhase {
+        case .verified: return .green
+        case .waitingForChatGPTVerification, .preparing: return ChadexBrand.signal
+        case .error: return .red
+        case .unconfigured, .stopped: return .secondary
+        }
     }
 
     private var statusExplanation: String {
@@ -694,7 +730,7 @@ struct GlobalInstructionsEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                SectionEyebrow(title: L10n.string("globalInstructions.title"))
+                SectionTitle(title: L10n.string("globalInstructions.title"))
                 Spacer(minLength: 12)
                 if saved {
                     Label(L10n.string("globalInstructions.saved"), systemImage: "checkmark")
@@ -705,13 +741,13 @@ struct GlobalInstructionsEditor: View {
                     saved = model.saveGlobalInstructions(draft)
                 } label: {
                     if model.globalInstructionsSaving {
-                        ProgressView().controlSize(.small)
+                        ProgressView().chadexControlSize(.small)
                     } else {
                         Text(L10n.string("globalInstructions.save"))
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+                .chadexControlSize(.small)
                 .disabled(!canSave)
             }
 
@@ -724,7 +760,7 @@ struct GlobalInstructionsEditor: View {
                 .font(.system(.body, design: .monospaced))
                 .frame(minHeight: layout.control(180), maxHeight: layout.control(320))
                 .padding(7)
-                .background(.quaternary.opacity(0.16), in: RoundedRectangle(cornerRadius: layout.control(9), style: .continuous))
+                .chadexEditorSurface()
                 .onChange(of: draft) { _, _ in saved = false }
 
             HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -732,14 +768,19 @@ struct GlobalInstructionsEditor: View {
                     .chadexFont(.caption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 10)
-                Text("\(byteCount) / \(ProjectStore.maxGlobalInstructionsBytes) bytes")
+                Text(L10n.string(
+                    "globalInstructions.byteCount",
+                    byteCount.formatted(),
+                    ProjectStore.maxGlobalInstructionsBytes.formatted()
+                ))
                     .chadexFont(.caption, design: .monospaced)
                     .foregroundStyle(byteCount > ProjectStore.maxGlobalInstructionsBytes ? Color.red : Color.secondary)
+                    .fontWeight(byteCount > ProjectStore.maxGlobalInstructionsBytes ? .bold : .regular)
             }
 
             Text(L10n.string("globalInstructions.precedence"))
                 .chadexFont(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let error = model.globalInstructionsError {
@@ -767,6 +808,7 @@ struct GlobalInstructionsStandaloneView: View {
     var body: some View {
         ChadexPageColumn {
             GlobalInstructionsEditor()
+                .chadexCard(padding: 20)
         }
         .navigationTitle(L10n.string("sidebar.agentSettings"))
     }
@@ -784,9 +826,44 @@ enum ActivityPresentation {
                 return L10n.string("activity.event.processStarted", pid)
             }
             return L10n.string("activity.event.processStartedGeneric")
+        case "project_activated":
+            return L10n.string("activity.event.projectActivated", entry.message)
+        case "operation_started":
+            return operationMessage(entry.message)
         default:
             return entry.message
         }
+    }
+
+    /// Symbol that says what kind of thing happened, not just its severity.
+    static func symbol(for entry: ActivityEntry) -> String {
+        switch entry.level {
+        case .warning: return "exclamationmark.triangle.fill"
+        case .error: return "xmark.octagon.fill"
+        case .info: break
+        }
+        switch entry.eventKind {
+        case "project_activated": return "folder.fill"
+        case "operation_started": return "play.fill"
+        case "local_runtime_ready": return "checkmark"
+        case "local_setup_preparing": return "hammer.fill"
+        case "process_started": return "gearshape.2.fill"
+        default:
+            if entry.eventKind.contains("tunnel") || entry.eventKind.contains("connect") { return "link" }
+            if entry.eventKind.contains("tool") || entry.eventKind.contains("mcp") { return "wrench.and.screwdriver.fill" }
+            return "circle.fill"
+        }
+    }
+
+    private static func operationMessage(_ message: String) -> String {
+        let marker = "operation started: "
+        guard let range = message.range(of: marker) else { return message }
+        let operation = String(message[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        let key = "activity.operation.\(operation)"
+        let localized = L10n.string(key)
+        return localized == key
+            ? L10n.string("activity.operation.generic", operation)
+            : localized
     }
 
     private static func processID(in message: String) -> String? {
@@ -797,64 +874,112 @@ enum ActivityPresentation {
     }
 }
 
-struct ActivityRow: View {
-    let entry: ActivityEntry
+/// One Computer Use mode as a selectable card: the symbol and title name the
+/// mode, the description says what ChatGPT can do under it.
+private struct ComputerModeCard: View {
+    @Environment(\.chadexLayout) private var layout
+    let mode: ComputerControlMode
+    let isSelected: Bool
+    var isPending = false
+    let action: () -> Void
+    @State private var hovering = false
+    @FocusState private var focused: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: symbol)
-                .chadexFont(.caption2, weight: .medium)
-                .frame(width: 16, height: 16)
-                .foregroundStyle(iconColor)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(ActivityPresentation.message(for: entry))
-                        .chadexFont(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: 12)
-
-                    Text(entry.date.formatted(date: .omitted, time: .shortened))
-                        .chadexFont(.caption, design: .monospaced)
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
+        let shape = RoundedRectangle(cornerRadius: layout.control(12), style: .continuous)
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: layout.spacing(8)) {
+                HStack(spacing: layout.spacing(8)) {
+                    Image(systemName: symbol)
+                        .font(.system(size: layout.control(13), weight: .semibold))
+                        .foregroundStyle(ChadexBrand.glyph(on: tint))
+                        .frame(width: layout.control(28), height: layout.control(28))
+                        .background(tint, in: Circle())
+                    Text(L10n.string(mode.titleKey))
+                        .chadexFont(.callout, weight: .semibold)
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 4)
+                    if isPending {
+                        ProgressView().chadexControlSize(.small)
+                    } else {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: layout.control(15)))
+                            .foregroundStyle(isSelected ? ChadexBrand.signal : Color.secondary.opacity(0.5))
+                    }
                 }
-
-                Text("\(entry.source) · \(entry.eventKind)")
-                    .chadexFont(.caption, design: .monospaced)
-                    .foregroundStyle(.tertiary)
+                Text(L10n.string(mode.descriptionKey))
+                    .chadexFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-        }
-        .contextMenu {
-            Button(L10n.string("activity.copyMessage")) {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(ActivityPresentation.message(for: entry), forType: .string)
-            }
-            Button(L10n.string("activity.copyDetails")) {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(
-                    "\(entry.source) · \(entry.eventKind) · \(entry.date.formatted(date: .abbreviated, time: .standard))",
-                    forType: .string
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .chadexPadding(14)
+            .background(ChadexBrand.cardFill, in: shape)
+            .overlay(
+                shape.strokeBorder(
+                    isSelected ? ChadexBrand.signal : (hovering ? Color.secondary.opacity(0.45) : ChadexBrand.cardStroke),
+                    lineWidth: isSelected ? 2 : 1
                 )
+            )
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        // Keyboard navigation gets a ring that follows the card's corners
+        // instead of the default rectangle around a plain button.
+        .focused($focused)
+        .focusEffectDisabled()
+        .overlay {
+            if focused {
+                RoundedRectangle(cornerRadius: layout.control(12) + 3, style: .continuous)
+                    .strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 3)
+                    .padding(-3)
+                    .accessibilityHidden(true)
             }
         }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var iconColor: Color {
-        switch entry.level {
-        case .info: return .secondary
-        case .warning: return .orange
-        case .error: return .red
-        }
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.string(mode.titleKey))
+        .accessibilityHint(L10n.string(mode.descriptionKey))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     private var symbol: String {
-        switch entry.level {
-        case .info: return "info.circle"
-        case .warning: return "exclamationmark.triangle"
-        case .error: return "xmark.octagon"
+        switch mode {
+        case .askBeforeControl: return "hand.raised.fill"
+        case .allowSession: return "clock.fill"
+        case .alwaysAllow: return "bolt.fill"
+        case .readOnly: return "eye.fill"
+        }
+    }
+
+    /// Hue grows with how much control the mode hands over.
+    private var tint: Color {
+        switch mode {
+        case .readOnly: return .gray
+        case .askBeforeControl: return ChadexBrand.signal
+        case .allowSession: return .indigo
+        case .alwaysAllow: return .orange
+        }
+    }
+}
+
+private extension ComputerControlMode {
+    var titleKey: String {
+        switch self {
+        case .askBeforeControl: return "computer.mode.ask"
+        case .allowSession: return "computer.mode.allowSession"
+        case .alwaysAllow: return "computer.mode.alwaysAllow"
+        case .readOnly: return "computer.mode.readOnly"
+        }
+    }
+
+    var descriptionKey: String {
+        switch self {
+        case .askBeforeControl: return "computer.description.ask"
+        case .allowSession: return "computer.description.allowSession"
+        case .alwaysAllow: return "computer.description.alwaysAllow"
+        case .readOnly: return "computer.description.readOnly"
         }
     }
 }

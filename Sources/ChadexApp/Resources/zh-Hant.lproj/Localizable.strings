@@ -7,6 +7,7 @@
 "common.cancel" = "取消";
 "common.done" = "完成";
 "common.copy" = "複製";
+"common.tryAgain" = "再試一次";
 "view.zoomIn" = "放大介面";
 "view.zoomOut" = "縮小介面";
 "view.actualSize" = "重設介面大小";
@@ -40,15 +41,15 @@
 "project.emptyTitle" = "尚未選擇專案";
 "project.emptyMessage" = "加入一個本機資料夾，準備讓 ChatGPT 存取。";
 
-"agentSettings.subtitle" = "設定套用於每個專案 agent 的 Chadex 全域行為。";
+"agentSettings.subtitle" = "設定所有專案的 agent 共用的 Chadex 全域行為。";
 "agentSettings.currentProject" = "目前專案：%@";
 
-"computer.title" = "COMPUTER USE";
+"computer.title" = "Computer Use";
 "computer.defaultPolicy" = "預設控制政策";
 "computer.currentSession" = "目前工作階段";
 "computer.sessionUnavailable" = "「本次工作階段允許」只會在 ChatGPT 已連線時出現；持久模式可隨時調整。";
 "computer.allowSessionHelp" = "只在目前已連線的工作階段中允許 Computer Control 不逐次詢問。";
-"computer.mode" = "Computer control 模式";
+"computer.mode" = "Computer Use 模式";
 "computer.mode.readOnly" = "僅讀取";
 "computer.mode.ask" = "控制前詢問";
 "computer.mode.allowSession" = "本次工作階段允許";
@@ -60,8 +61,8 @@
 "computer.status.allowSession" = "本次工作階段已允許";
 "computer.status.alwaysAllow" = "永遠允許";
 "computer.description.stopped" = "Computer Use 已停止；在你恢復前，所有控制請求都不會被送出。";
-"computer.description.readOnly" = "ChatGPT 仍可觀察支援的 UI 狀態，但所有 Computer control 動作都會在送出前被阻擋。";
-"computer.description.ask" = "每一個 Computer control 動作都必須先取得你的明確批准，才會送出執行。";
+"computer.description.readOnly" = "ChatGPT 仍可觀察支援的畫面狀態，但所有 Computer Use 操作都會在送出前被阻擋。";
+"computer.description.ask" = "ChatGPT 每次要操作你的 Mac 前，都會先請你批准。";
 "computer.description.allowSession" = "只在目前已連線的工作階段允許控制；下次連線會回到你儲存的持久模式。";
 "computer.description.alwaysAllow" = "一般 Computer Use 動作在之後的工作階段也不需逐次批准；Chadex 的硬性安全封鎖仍然有效。";
 "computer.approvalTitle" = "ChatGPT 想要控制你的 Mac";
@@ -72,16 +73,16 @@
 "computer.deny" = "拒絕";
 "computer.moreApprovals" = "另有 %lld 個控制請求等待處理。";
 "computer.stop" = "停止 Computer Use";
-"computer.stopHelp" = "立即阻擋新的 Computer control 動作，並使所有待批准請求失效。";
+"computer.stopHelp" = "立即阻擋新的 Computer Use 操作，並使所有待批准請求失效。";
 "computer.resume" = "恢復 Computer Use";
 "computer.resumeHelp" = "恢復 Computer Use，並回到停止前使用的模式。";
 "computer.resumeAsk" = "以詢問模式恢復";
-"computer.resumeAskHelp" = "用「控制前詢問」模式重新啟用 Computer control。";
+"computer.resumeAskHelp" = "用「控制前詢問」模式重新啟用 Computer Use。";
 "computer.controlModeTitle" = "控制模式";
 "computer.controlModeHelp" = "決定 Chadex 如何處理 Computer Use 請求。「永遠允許」會持久保存；「本次工作階段允許」只在目前連線有效。";
 "computer.requestTitle" = "目前請求";
 "computer.safetyTitle" = "安全";
-"computer.safetyNote" = "Passwords、Keychain、安全文字欄位與驗證視窗一律禁止控制；批准畫面不會顯示輸入文字或剪貼簿內容。";
+"computer.safetyNote" = "密碼、鑰匙圈、安全文字欄位與驗證視窗一律不可被操作；批准畫面也不會顯示你輸入的文字或剪貼簿內容。";
 "computer.action.launch" = "開啟應用程式";
 "computer.action.activate" = "切換到視窗";
 "computer.action.press" = "按下控制項";
@@ -94,7 +95,7 @@
 "computer.action.clipboardWrite" = "寫入剪貼簿";
 "computer.action.control" = "控制電腦";
 
-"instructions.title" = "REPOSITORY INSTRUCTIONS";
+"instructions.title" = "Repository Instructions";
 "instructions.subtitle" = "唯讀顯示從已註冊專案根目錄解析的原生 repository instructions。Chadex 不在這裡建立或修改 AGENTS.md，專案根目錄之外的 ambient ancestor 也不會被繼承。";
 "instructions.target" = "目標路徑";
 "instructions.refresh" = "重新整理 Repository Instructions";
@@ -114,15 +115,15 @@
 "instructions.summary.sources" = "來源：%d";
 "instructions.summary.unavailable" = "詳細資訊暫不可用";
 
-"globalInstructions.title" = "CHADEX GLOBAL INSTRUCTIONS";
-"globalInstructions.subtitle" = "作為所有 Chadex 專案共用、可編輯的行為偏好。內容由 Chadex 自己儲存，不會讀取或寫入任何父資料夾或 repository 的 AGENTS.md。";
+"globalInstructions.title" = "Chadex Global Instructions";
+"globalInstructions.subtitle" = "所有 Chadex 專案共用、可編輯的行為偏好。內容由 Chadex 自己保存，不會讀取或改寫任何上層資料夾或專案裡的 AGENTS.md。";
 "globalInstructions.save" = "儲存";
 "globalInstructions.saved" = "已儲存";
-"globalInstructions.storageNote" = "儲存在 Chadex App 資料中，不屬於任何 repository（上限 8 KiB）。";
-"globalInstructions.precedence" = "行為偏好優先序：目前要求 → nested／repository AGENTS.md → Global Instructions → built-in baseline。System／platform safety、authority、approval 與 sensitive-content 保護永遠不可被覆寫；Global Instructions 留白也不影響安全運作。";
+"globalInstructions.storageNote" = "保存在 Chadex App 資料中，不屬於任何專案（上限 8 KiB）。";
+"globalInstructions.precedence" = "規則衝突時，越具體的越優先：你當下的要求，其次是專案內的 AGENTS.md，再來才是這裡的 Global Instructions。安全保護與操作批准不受任何指示影響；這裡留白也能安全運作。";
 
 "skills.title" = "Skills";
-"skills.subtitle" = "目前專案可用的重複使用流程。Chadex 先比對 metadata，Skill 被展開或實際使用時才讀取 SKILL.md。";
+"skills.subtitle" = "目前專案可重複使用的工作流程。Chadex 平常只比對各 Skill 的名稱與摘要，展開或實際使用時才讀取 SKILL.md。";
 "skills.refresh" = "重新整理 Skills";
 "skills.loading" = "正在探索 Skills…";
 "skills.none" = "目前沒有可用的 Skill。Project Skill 放在 .agents/skills/<skill>/SKILL.md。";
@@ -180,8 +181,8 @@
 "skills.external.error.rootSensitive" = "此資料夾受保護，無法連接：%@";
 "skills.external.error.rejected" = "Runner 拒絕了新的 Skill 資料夾設定。";
 "skills.external.error.reload" = "Runner 無法重新載入設定，未做任何變更。";
-"skills.external.error.restart" = "請重新啟動本機 runtime 以套用 Skill 資料夾變更。";
-"skills.external.error.notReady" = "本機 runtime 尚未就緒，請先完成設定並等到閒置。";
+"skills.external.error.restart" = "請重新啟動本機執行環境以套用 Skill 資料夾變更。";
+"skills.external.error.notReady" = "本機執行環境尚未就緒，請先完成設定並等到閒置。";
 "skills.external.error.unverified" = "無法驗證新的 Skill 資料夾，變更未保留。";
 "skills.external.error.stateUnknown" = "Runner 可能仍在使用新的資料夾。請重新載入後再套用一次。";
 "skills.managedToggleHelp" = "切換已安裝 Skill %@ 的啟用狀態";
@@ -213,7 +214,7 @@
 "skills.archive.error.copyFailed" = "Chadex 無法把 ZIP 複製到專案內。請確認專案資料夾可寫入且仍有可用空間後再試。";
 "skills.installEnable" = "安裝並啟用";
 
-"memory.title" = "PROJECT MEMORY";
+"memory.title" = "Project Memory";
 "memory.subtitle" = "保存專案長期有效的架構、決策與工作流程脈絡。Chadex 會先只載入輕量摘要，只有展開單筆 Memory 時才讀取完整內容。";
 "memory.refresh" = "重新整理 Project Memory";
 "memory.loading" = "正在載入 Project Memory…";
@@ -329,15 +330,15 @@
 "connection.notVerifiedShort" = "尚未驗證";
 "connection.awaitingFirstUseShort" = "等待首次操作";
 "connection.explainUnconfigured" = "專案存取或連線設定尚未完成。";
-"connection.explainPreparing" = "Chadex 正在準備目前專案或本機 runtime。";
+"connection.explainPreparing" = "Chadex 正在準備目前專案或本機執行環境。";
 "connection.explainConnecting" = "Chadex 正在啟動本機服務與安全 Tunnel。連線檢查可能需要一些時間，執行期間會在此顯示進度。";
 "connection.explainDisconnecting" = "Chadex 正在關閉安全 Tunnel；目前選擇的本機專案會保留，方便下次重新連線。";
 "connection.explainWaiting" = "安全 Tunnel 已就緒，Chadex 正在等待 ChatGPT 連入。";
-"connection.explainReadyToUse" = "連線已就緒，可以到 ChatGPT 開始使用；ChatGPT 第一次呼叫後這裡會轉為已連線，成功讀取專案後完成驗證。";
+"connection.explainReadyToUse" = "可以到 ChatGPT 開始使用了。ChatGPT 第一次讀取這個專案後，這裡會顯示已驗證。";
 "connection.explainConnected" = "已偵測到 ChatGPT；第一次成功存取目前專案後會完成驗證。";
 "connection.explainVerified" = "Tunnel 與 ChatGPT 存取都正常，可以直接從 ChatGPT 使用目前專案。";
 "connection.explainStopped" = "本機專案已就緒，但尚未建立安全 Tunnel。";
-"connection.explainError" = "後端回報了真實錯誤；請依下方修復動作處理後再重試。";
+"connection.explainError" = "連線發生問題，請依下方說明處理後再試一次。";
 "connection.checkTunnelReady" = "Tunnel 狀態正常，可以從 ChatGPT 使用 Chadex。";
 "connection.checkChatGPTSeen" = "連線正常，已偵測到 ChatGPT 活動。";
 "connection.checkVerified" = "連線正常，ChatGPT 與目前專案都已驗證。";
@@ -434,7 +435,7 @@
 "error.technicalDetails" = "技術細節";
 "error.projectUnreadable" = "Chadex 無法讀取所選資料夾。";
 "error.chooseAnotherProject" = "請選擇目前 Mac 使用者有權存取的資料夾。";
-"error.tunnelIDMissing" = "將 API key 提供給 helper 前必須先填入 Tunnel ID。";
+"error.tunnelIDMissing" = "將 API key 提供給本機輔助程式前必須先填入 Tunnel ID。";
 "error.enterTunnelID" = "請先輸入 Tunnel ID，再重新儲存 API key。";
 "error.tunnelIDInvalid" = "Tunnel ID 格式無效。";
 "error.enterValidTunnelID" = "Tunnel ID 僅能使用英文字母、數字、連字號與底線。";
@@ -449,10 +450,10 @@
 "onboarding.projectTitle" = "選擇專案";
 "onboarding.projectMessage" = "選擇要允許 ChatGPT 操作的本機資料夾；不要求一定是 Git 專案。";
 "onboarding.authorizedPath" = "實際授權路徑";
-"onboarding.gitOptionalDetected" = "偵測到 Git repository；Git 不是必要條件。";
-"onboarding.gitOptionalNotDetected" = "未偵測到 Git repository；仍可正常使用。";
+"onboarding.gitOptionalDetected" = "偵測到 Git 儲存庫；Git 不是必要條件。";
+"onboarding.gitOptionalNotDetected" = "未偵測到 Git 儲存庫；仍可正常使用。";
 "onboarding.connectionTitle" = "設定 ChatGPT 連線";
-"onboarding.connectionMessage" = "若已有 Tunnel ID 與 API key，可在此輸入；API key 只會保存於 Keychain。";
+"onboarding.connectionMessage" = "若已有 Tunnel ID 與 API key，可在此輸入；API key 只會保存於「鑰匙圈」。";
 "onboarding.openChatGPT" = "開啟 ChatGPT";
 "onboarding.openTunnels" = "開啟 OpenAI Tunnels";
 "onboarding.openAPIKeys" = "開啟 OpenAI API keys";
@@ -482,7 +483,7 @@
 "settings.interfaceSize.comfortable" = "舒適";
 "settings.interfaceSize.large" = "大";
 "settings.interfaceSize.extraLarge" = "特大";
-"settings.interfaceSizeNote" = "介面大小會調整文字、控制項、間距與側邊欄密度；較大字級不會等比例放大整個視窗。也可使用 ⌘+、⌘− 與 ⌘0。";
+"settings.interfaceSizeNote" = "用 ⌘+／⌘−／⌘0 隨時調整。介面大小會改變文字、控制項、間距與側邊欄密度，但不會等比例放大整個視窗。";
 "settings.colorScheme" = "外觀";
 "settings.colorScheme.system" = "跟隨系統";
 "settings.colorScheme.light" = "淺色";
@@ -500,15 +501,15 @@
 "settings.apiKey" = "API key";
 "settings.apiKeyPlaceholder" = "留白即可保留已儲存的金鑰";
 "settings.apiKeyStatus" = "已儲存金鑰";
-"settings.apiKeyStored" = "已安全儲存於 Keychain";
+"settings.apiKeyStored" = "已安全儲存於「鑰匙圈」";
 "settings.apiKeyNotStored" = "尚未儲存 API key";
-"settings.secretNote" = "API key 只保存於 Keychain，不會寫入 Chadex 設定檔或日誌。";
+"settings.secretNote" = "API key 只保存於「鑰匙圈」，不會寫入 Chadex 設定檔或日誌。";
 "settings.resources" = "OpenAI 資源";
 "settings.save" = "儲存";
 "settings.saveChanges" = "儲存變更";
 "settings.clearAPIKey" = "移除已儲存 API key";
 "settings.clearAPIKeyTitle" = "要移除已儲存的 API key 嗎？";
-"settings.clearAPIKeyMessage" = "Chadex 會停止安全 Tunnel，並從 Keychain 與 helper 記憶體移除 API key；本機 runtime 服務與 Tunnel ID 會保留。";
+"settings.clearAPIKeyMessage" = "Chadex 會停止安全 Tunnel，並從「鑰匙圈」與本機輔助程式的記憶體移除 API key；本機執行環境與 Tunnel ID 會保留。";
 "settings.restore" = "啟動與恢復";
 "settings.prepareService" = "啟動時在背景準備本機服務（更快連線）";
 "settings.prepareServiceNote" = "啟動 Chadex 時預先啟動上次使用的本機 runtime，連線時只需開啟安全 Tunnel。關閉後會等到你連線時才啟動。";
@@ -529,7 +530,7 @@
 "settings.exportDiagnosticsNote" = "匯出的文字檔包含 App / macOS 版本、連線狀態、最近活動與有限筆數的效能計時；效能 trace 不包含請求內容或檔案路徑，API key 永遠不會包含在內。";
 "settings.export" = "匯出";
 "settings.serviceControl" = "本機服務";
-"settings.serviceControlNote" = "停止本機服務會停止 Chadex 管理的 runtime 程序；中斷 AI 連線則只停止安全 Tunnel。";
+"settings.serviceControlNote" = "停止本機服務會結束 Chadex 管理的本機執行環境；中斷 AI 連線則只停止安全 Tunnel。";
 "settings.stopService" = "停止本機服務";
 
 "updates.section" = "更新";
@@ -640,9 +641,9 @@
 "sidebar.skills" = "Skills";
 "agentSettings.skillsLink.title" = "Skills";
 "agentSettings.skillsLink.message" = "重複使用流程、外部 Skill 資料夾與 ZIP 匯入都在獨立的頁面管理。";
-"agentSettings.manageSkills" = "管理 Skills →";
-"skills.list.title" = "SKILL 列表";
-"skills.list.titleCount" = "SKILL 列表 · %d／%d";
+"agentSettings.manageSkills" = "管理 Skills";
+"skills.list.title" = "Skill 列表";
+"skills.list.titleCount" = "Skill 列表 · %d／%d";
 "skills.search.placeholder" = "搜尋名稱或描述";
 "skills.search.label" = "搜尋 Skills";
 "skills.search.clear" = "清除搜尋";
@@ -660,3 +661,52 @@
 "skills.row.collapseHint" = "隱藏細節";
 "skills.error.replayCapacity" = "短時間內的 Skill 變更次數過多，本機 runtime 暫時拒絕新的變更。請稍後（最多約一天）再試。";
 "project.removeConfirm" = "移除";
+
+/* Accessibility values for connection steps */
+"a11y.step.complete" = "已完成";
+"a11y.step.ready" = "就緒";
+"a11y.step.active" = "進行中";
+"a11y.step.inactive" = "尚未開始";
+"a11y.step.error" = "錯誤";
+
+/* Navigation commands */
+"navigation.overview" = "專案總覽";
+"navigation.guideHelp" = "Chadex 使用指南";
+
+/* Activity empty states */
+"activity.noResults" = "找不到符合「%@」的活動。";
+"activity.noFilteredResults" = "沒有警告或錯誤。";
+"activity.emptyHint" = "ChatGPT 開始在專案中工作後，工具呼叫、連線變化與警告都會出現在這裡。";
+
+/* Helper client errors */
+"helperError.missing" = "找不到 Chadex 本機輔助程式（%@）。請用最新的 DMG 重新安裝 Chadex。";
+"helperError.launchFailed" = "無法啟動 Chadex 本機輔助程式：%@。請結束並重新開啟 Chadex。";
+"helperError.notRunning" = "Chadex 本機輔助程式未執行。請選「重新整理狀態」（⌘R）重新啟動。";
+"helperError.protocolMismatch" = "Chadex 與本機輔助程式版本不符（預期協定 %ld，收到 %ld）。請重新安裝 Chadex。";
+"helperError.malformedResponse" = "本機輔助程式回傳了無法解讀的資料。請選「重新整理狀態」（⌘R）再試一次。";
+"helperError.disconnected" = "與本機輔助程式的連線中斷。請選「重新整理狀態」（⌘R）重新連線。";
+"helperError.timedOut" = "本機輔助程式沒有及時回應。請選「重新整理狀態」（⌘R）再試一次。";
+"helperError.cancelled" = "對本機輔助程式的請求已取消。";
+"helperError.tooManyPendingRequests" = "本機輔助程式目前忙碌中，請稍候再試。";
+"connection.cancelMenu" = "取消連線準備";
+"connection.retryMenu" = "重試連線";
+
+"globalInstructions.byteCount" = "%@ / %@ 位元組";
+"activity.clearFilters" = "清除搜尋與篩選";
+
+/* Readable activity */
+"activity.event.projectActivated" = "已切換到「%@」";
+"activity.operation.local_project_activate" = "正在為 ChatGPT 開啟專案";
+"activity.operation.runtime_resume" = "正在恢復本機執行環境";
+"activity.operation.connect" = "正在連線到 ChatGPT";
+"activity.operation.disconnect" = "正在中斷與 ChatGPT 的連線";
+"activity.operation.generic" = "開始執行：%@";
+"circuit.tunnel.ready" = "已就緒";
+"circuit.tunnel.starting" = "啟動中…";
+"circuit.tunnel.idle" = "未啟動";
+"circuit.chatGPT.verified" = "已驗證";
+"circuit.chatGPT.idle" = "尚未連線";
+"activity.today" = "今天";
+"activity.yesterday" = "昨天";
+"activity.level.warning" = "警告";
+"activity.level.error" = "錯誤";

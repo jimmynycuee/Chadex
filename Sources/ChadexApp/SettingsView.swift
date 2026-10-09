@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-enum SettingsTab: Hashable {
+enum SettingsTab: String, Hashable {
     case general
     case connection
     case advanced
@@ -11,8 +11,17 @@ struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selection: SettingsTab
 
-    init(initialTab: SettingsTab = .general) {
-        _selection = State(initialValue: initialTab)
+    static let lastTabKey = "settings.lastTab"
+
+    /// With no explicit tab, reopen the pane the person used last (HIG › Settings).
+    init(initialTab: SettingsTab? = nil) {
+        _selection = State(initialValue: Self.openingTab(initialTab))
+    }
+
+    static func openingTab(_ requested: SettingsTab?, defaults: UserDefaults = .standard) -> SettingsTab {
+        requested
+            ?? defaults.string(forKey: lastTabKey).flatMap(SettingsTab.init(rawValue:))
+            ?? .general
     }
 
     var body: some View {
@@ -30,7 +39,9 @@ struct SettingsView: View {
                 .tabItem { Label(L10n.string("settings.advanced"), systemImage: "wrench.and.screwdriver") }
                 .tag(SettingsTab.advanced)
         }
-        .background(SettingsWindowTitleHider())
+        .onChange(of: selection) { _, tab in
+            UserDefaults.standard.set(tab.rawValue, forKey: Self.lastTabKey)
+        }
     }
 }
 
@@ -70,8 +81,14 @@ private struct SettingsSection<Content: View>: View {
         VStack(alignment: .leading, spacing: layout.spacing(ChadexMetrics.settingsSectionContentSpacing)) {
             Text(title)
                 .chadexFont(.headline)
+                .accessibilityAddTraits(.isHeader)
+                .chadexPadding(.leading, 16)
 
-            content
+            // Grouped like System Settings: the title sits above one raised card.
+            VStack(alignment: .leading, spacing: layout.spacing(ChadexMetrics.settingsSectionContentSpacing)) {
+                content
+            }
+            .chadexCard(padding: 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -151,7 +168,9 @@ private struct SettingsPrimaryControlModifier: ViewModifier {
                 )
             )
             .controlSize(.regular)
-            .frame(maxWidth: .infinity)
+            // Menus keep their intrinsic width; lead-align them so every
+            // control in the column shares one left edge.
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: layout.control(ChadexMetrics.settingsControlBaseHeight))
     }
 
@@ -166,28 +185,13 @@ private extension View {
     }
 }
 
-private struct SettingsWindowTitleHider: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { configure(view.window) }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { configure(nsView.window) }
-    }
-
-    private func configure(_ window: NSWindow?) {
-        window?.titleVisibility = .hidden
-    }
-}
-
 private struct GeneralSettingsView: View {
+    @Environment(\.chadexLayout) private var layout
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var updateManager: UpdateManager
     @AppStorage(ChadexPreferenceKey.language) private var languageRaw = ChadexLanguage.system.rawValue
     @AppStorage(ChadexPreferenceKey.interfaceSize) private var interfaceSizeRaw = ChadexInterfaceSize.comfortable.rawValue
-    @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.system.rawValue
+    @AppStorage(ChadexPreferenceKey.appearance) private var appearanceRaw = ChadexAppearance.defaultValue.rawValue
     @AppStorage(ChadexPreferenceKey.autoCheckUpdates) private var autoCheckUpdates = true
     @AppStorage("ferret.visible") private var ferretVisible = true
     @AppStorage("ferret.motion") private var ferretMotion = true
@@ -205,6 +209,10 @@ private struct GeneralSettingsView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        // One shared minimum keeps the three menus aligned and
+                        // stops them resizing as the selection changes.
+                        .frame(minWidth: layout.control(170), alignment: .leading)
+                        .fixedSize()
                         .settingsPrimaryControl()
                     }
 
@@ -216,17 +224,25 @@ private struct GeneralSettingsView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        // One shared minimum keeps the three menus aligned and
+                        // stops them resizing as the selection changes.
+                        .frame(minWidth: layout.control(170), alignment: .leading)
+                        .fixedSize()
                         .settingsPrimaryControl()
                     }
 
                     SettingsFormRow(L10n.string("settings.colorScheme")) {
                         Picker("", selection: $appearanceRaw) {
-                            Text(L10n.string("settings.colorScheme.system")).tag(ChadexAppearance.system.rawValue)
-                            Text(L10n.string("settings.colorScheme.light")).tag(ChadexAppearance.light.rawValue)
                             Text(L10n.string("settings.colorScheme.dark")).tag(ChadexAppearance.dark.rawValue)
+                            Text(L10n.string("settings.colorScheme.light")).tag(ChadexAppearance.light.rawValue)
+                            Text(L10n.string("settings.colorScheme.system")).tag(ChadexAppearance.system.rawValue)
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        // One shared minimum keeps the three menus aligned and
+                        // stops them resizing as the selection changes.
+                        .frame(minWidth: layout.control(170), alignment: .leading)
+                        .fixedSize()
                         .settingsPrimaryControl()
                     }
                 }
@@ -238,8 +254,6 @@ private struct GeneralSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-
-            Divider()
 
             SettingsSection(L10n.string("settings.companion")) {
                 SettingsControlBlock {
@@ -256,8 +270,6 @@ private struct GeneralSettingsView: View {
                 }
             }
 
-            Divider()
-
             SettingsSection(L10n.string("settings.startup")) {
                 SettingsControlBlock {
                     VStack(alignment: .leading, spacing: 4) {
@@ -273,8 +285,6 @@ private struct GeneralSettingsView: View {
                     }
                 }
             }
-
-            Divider()
 
             SettingsSection(L10n.string("updates.section")) {
                 VStack(alignment: .leading, spacing: ChadexMetrics.settingsRowSpacing) {
@@ -297,7 +307,7 @@ private struct GeneralSettingsView: View {
                                     Task { await updateManager.checkForUpdates(userInitiated: true) }
                                 }
                                 .buttonStyle(.bordered)
-                                .controlSize(.small)
+                                .chadexControlSize(.small)
                                 .disabled(updateManager.isBusy)
 
                                 if let release = updateManager.availableRelease {
@@ -309,7 +319,7 @@ private struct GeneralSettingsView: View {
                                         }
                                     }
                                     .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
+                                    .chadexControlSize(.small)
                                     .disabled(updateManager.isBusy || model.hasUpdateBlockingWork)
 
                                     Link(L10n.string("updates.releaseNotes"), destination: release.releasePageURL)
@@ -326,8 +336,6 @@ private struct GeneralSettingsView: View {
                 }
             }
 
-            Divider()
-
             SettingsSection(L10n.string("settings.guide")) {
                 SettingsControlBlock {
                     VStack(alignment: .leading, spacing: 8) {
@@ -340,7 +348,7 @@ private struct GeneralSettingsView: View {
                             confirmingGuideReset = true
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                     }
                 }
             }
@@ -453,7 +461,7 @@ struct ConnectionSettingsSheet: View {
 
                 Text(L10n.string("settings.secretNote"))
                     .chadexFont(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
 
                 HStack(spacing: 10) {
                     Spacer()
@@ -465,7 +473,7 @@ struct ConnectionSettingsSheet: View {
 
                     if saving {
                         ProgressView()
-                            .controlSize(.small)
+                            .chadexControlSize(.small)
                     }
 
                     Button(L10n.string("settings.save")) {
@@ -556,7 +564,7 @@ struct ConnectionSettingsView: View {
                 SettingsControlBlock {
                     Text(L10n.string("settings.secretNote"))
                         .chadexFont(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -566,7 +574,7 @@ struct ConnectionSettingsView: View {
 
                         if saving {
                             ProgressView()
-                                .controlSize(.small)
+                                .chadexControlSize(.small)
                         }
 
                         Button(L10n.string("settings.saveChanges")) {
@@ -577,8 +585,6 @@ struct ConnectionSettingsView: View {
                     }
                 }
             }
-
-            Divider()
 
             SettingsSection(L10n.string("settings.resources")) {
                 SettingsControlBlock {
@@ -662,8 +668,6 @@ private struct AdvancedSettingsView: View {
                 }
             }
 
-            Divider()
-
             SettingsSection(L10n.string("settings.diagnostics")) {
                 VStack(alignment: .leading, spacing: ChadexMetrics.settingsRowSpacing) {
                     SettingsFormRow(L10n.string("settings.protocol")) {
@@ -673,7 +677,8 @@ private struct AdvancedSettingsView: View {
 
                     SettingsFormRow(L10n.string("settings.graphify")) {
                         if let graphify = model.snapshot.graphify {
-                            VStack(alignment: .trailing, spacing: 2) {
+                            // Value column reads left-aligned like every other row.
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(graphify.available
                                     ? L10n.string("settings.graphifyAvailable")
                                     : L10n.string("settings.graphifyNotFound"))
@@ -727,13 +732,13 @@ private struct AdvancedSettingsView: View {
                                 Task { await model.refreshDiagnostics() }
                             }
                             .buttonStyle(.bordered)
-                            .controlSize(.small)
+                            .chadexControlSize(.small)
 
                             Button(L10n.string("settings.exportDiagnostics")) {
                                 model.exportDiagnostics()
                             }
                             .buttonStyle(.bordered)
-                            .controlSize(.small)
+                            .chadexControlSize(.small)
                         }
 
                         Text(L10n.string("settings.exportDiagnosticsNote"))
@@ -747,8 +752,6 @@ private struct AdvancedSettingsView: View {
                 await model.refreshPerformanceTraces()
             }
 
-            Divider()
-
             SettingsSection(L10n.string("settings.serviceControl")) {
                 SettingsControlBlock {
                     VStack(alignment: .leading, spacing: 8) {
@@ -761,7 +764,7 @@ private struct AdvancedSettingsView: View {
                             model.stopLocalService()
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                         .disabled(model.connectionActionInFlight)
                     }
                 }
@@ -782,12 +785,16 @@ struct MenuBarContent: View {
                 .foregroundStyle(.secondary)
         }
         Divider()
-        Button(L10n.string("menubar.open")) { openWindow(id: "main") }
+        Button(L10n.string("menubar.open")) { MainWindowPresenter.show(using: openWindow) }
         if model.snapshot.phase == .unconfigured {
-            SettingsLink { Text(L10n.string("connection.configure")) }
+            // Same destination as the overview's Set Up Connection button.
+            Button(L10n.string("connection.configure")) {
+                MainWindowPresenter.show(using: openWindow)
+                model.showConnectionSettings()
+            }
         } else {
-            Button(menuActionTitle) { model.primaryAction() }
-                .disabled(model.selectedProject == nil || model.connectionActionInFlight)
+            Button(model.primaryMenuActionTitle) { model.primaryAction() }
+                .disabled(!model.primaryActionEnabled)
         }
         if model.snapshot.tunnelReady {
             Button(L10n.string("computer.stop"), role: .destructive) {
@@ -796,7 +803,7 @@ struct MenuBarContent: View {
             .disabled(model.computerSafety.stopped || model.computerSafetyMutationInFlight)
         }
         Button(L10n.string("updates.checkMenu")) {
-            openWindow(id: "main")
+            MainWindowPresenter.show(using: openWindow)
             Task { await updateManager.checkForUpdates(userInitiated: true) }
         }
         .disabled(updateManager.isBusy)
@@ -806,10 +813,4 @@ struct MenuBarContent: View {
             .keyboardShortcut("q")
     }
 
-    private var menuActionTitle: String {
-        if let actionText = model.connectionActionStatusText { return actionText }
-        return (model.snapshot.chatGPTConnected || model.snapshot.phase == .verified)
-            ? L10n.string("connection.disconnect")
-            : L10n.string("connection.connect")
-    }
 }
