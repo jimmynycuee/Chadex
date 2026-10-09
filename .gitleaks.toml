@@ -28,7 +28,7 @@ paths = [
   '''^runtime-engine/crates/chadex-runtime-runner/tests/computer_overlay_stdout\.rs$''',
   '''^rust-helper/src/chadex_core/computer_overlay\.rs$'''
 ]
-regexes = ['''^(?:0123456789abcdef){2}0?$''', '''^f{32}$''']
+regexes = ['''^(?i)0123456789abcdef0123456789abcde[fg]0?$''', '''^f{32}$''']
 
 [[allowlists]]
 description = "Synthetic bearer credential used by workflow-session redaction tests"
