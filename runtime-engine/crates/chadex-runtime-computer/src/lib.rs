@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 #[cfg(any(test, target_os = "macos"))]
 use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -93,13 +94,44 @@ fn validate_key_input(key: &str, modifiers: &[String]) -> Result<(), String> {
 const MAX_ACCESSIBILITY_DEPTH: usize = 8;
 const MAX_ACCESSIBILITY_NODES: usize = 256;
 pub const DEFAULT_ACCESSIBILITY_DEPTH: usize = 6;
+pub mod overlay;
+pub use overlay::{
+    overlay_outcome, ComputerOverlayEvent, ComputerOverlaySink, OverlayAction, OverlayDisplay,
+    OverlayKey, OverlayOutcome, OverlayTarget,
+};
+use overlay::OverlayActionGuard;
+
 pub const DEFAULT_ACCESSIBILITY_NODES: usize = 128;
+/// Absolute (window-root relative) depth ceiling for subtree and deep-find walks.
+/// It also bounds the cost of re-resolving a handle (about nine AX calls per level).
+#[cfg(any(test, target_os = "macos"))]
+const MAX_ACCESSIBILITY_ABSOLUTE_DEPTH: usize = 64;
+pub const DEFAULT_FIND_DEPTH: usize = 32;
+pub const MAX_FIND_DEPTH: usize = 48;
+pub const DEFAULT_FIND_ELEMENTS_LIMIT: usize = 8;
+pub const MAX_FIND_ELEMENTS_LIMIT: usize = 32;
+/// Nodes read per deep search (not exposed as a request parameter).
+pub const MAX_FIND_VISITED: usize = 4000;
+/// Children expanded for any single node (large lists and tables).
+#[cfg(target_os = "macos")]
+const MAX_FIND_CHILDREN_PER_NODE: usize = 512;
+/// Soft wall-clock budget for a deep search, measured from the start of the
+/// observation. Reaching it returns the partial result as a success.
+#[cfg(target_os = "macos")]
+const FIND_SOFT_BUDGET: Duration = Duration::from_secs(6);
 const RGBA_BYTES_PER_PIXEL: u64 = 4;
 /// Pre-capture ceiling for the expected complete raw RGBA frame. Standard
 /// 8K UHD (7680x4320x4) fits while malformed/extreme dimensions fail closed
 /// before xcap is allowed to allocate the native capture image.
 const MAX_RAW_CAPTURE_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION: u32 = 4096;
+
+#[cfg(any(test, target_os = "macos"))]
+mod ax_traversal;
+mod web_accessibility;
+use web_accessibility::{WebAxContext, WebAxRegistry};
+#[cfg(any(test, target_os = "macos"))]
+use web_accessibility::WebAxState;
 
 #[cfg(any(test, target_os = "macos"))]
 const AX_MESSAGING_TIMEOUT_SECS: f32 = 2.0;
@@ -138,6 +170,11 @@ impl AxObservationDeadline {
     #[cfg(target_os = "macos")]
     fn ensure_remaining(&self) -> Result<(), String> {
         self.ensure_remaining_at(Instant::now())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn remaining(&self) -> Duration {
+        self.expires_at.saturating_duration_since(Instant::now())
     }
 
     fn remaining_timeout_secs_at(&self, now: Instant) -> Result<f32, String> {
@@ -255,18 +292,19 @@ impl ElementFingerprint {
 struct ElementRecord {
     surface_id: String,
     path: Vec<usize>,
-    lineage: Vec<ElementFingerprint>,
+    /// Root-to-target fingerprints. `Arc` keeps deep (up to
+    /// `MAX_ACCESSIBILITY_ABSOLUTE_DEPTH`) lineages shared between sibling records.
+    lineage: Vec<Arc<ElementFingerprint>>,
 }
 
 impl ElementRecord {
-    #[cfg(any(test, target_os = "macos", windows))]
     fn target_fingerprint(&self) -> Option<&ElementFingerprint> {
         (self.lineage.len() == self.path.len() + 1)
             .then(|| self.lineage.last())
             .flatten()
+            .map(Arc::as_ref)
     }
 
-    #[cfg(any(test, target_os = "macos", windows))]
     fn contains_protected_content(&self) -> bool {
         self.lineage.iter().any(|fingerprint| fingerprint.protected)
     }
@@ -435,7 +473,6 @@ fn finish_clipboard_read<T>(
     }
 }
 
-#[cfg(any(test, target_os = "macos"))]
 fn is_secure_text_fingerprint(fingerprint: &ElementFingerprint) -> bool {
     fingerprint.role == "AXSecureTextField"
         || fingerprint
@@ -464,7 +501,7 @@ fn validate_text_input_target(element: &ElementRecord) -> Result<&ElementFingerp
                 .to_string(),
         );
     }
-    if element.lineage.iter().any(is_secure_text_fingerprint) {
+    if element.lineage.iter().any(|fp| is_secure_text_fingerprint(fp)) {
         return Err(
             "permission_denied: secure Accessibility text elements cannot receive text input"
                 .to_string(),
@@ -543,6 +580,108 @@ fn ensure_correlated_fingerprint(
 struct AccessibilityTreeResult {
     output: Value,
     elements: Vec<(String, ElementRecord)>,
+}
+
+/// Roots of subtree and deep-find queries must be ordinary content: a protected or
+/// secure node (or any descendant of one) is never a legal starting point.
+fn ensure_queryable_root(element: &ElementRecord) -> Result<(), String> {
+    if element.target_fingerprint().is_none() {
+        return Err("stale_element: AX element correlation lineage is incomplete".to_string());
+    }
+    if element.contains_protected_content()
+        || element
+            .lineage
+            .iter()
+            .any(|fingerprint| is_secure_text_fingerprint(fingerprint))
+    {
+        return Err(
+            "permission_denied: protected or secure Accessibility content cannot be a query root"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Request for `ComputerRuntime::find_elements`. `value` is a case-sensitive literal
+/// substring matched against `AXValue` of non-secure, non-protected elements only.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct ElementFindRequest {
+    pub root_element_id: Option<String>,
+    pub role: Option<String>,
+    pub subrole: Option<String>,
+    pub label: Option<String>,
+    pub value: Option<String>,
+    pub focused: Option<bool>,
+    pub enabled: Option<bool>,
+    pub limit: usize,
+    /// Search depth below the root (or the window root).
+    pub max_depth: usize,
+}
+
+impl std::fmt::Debug for ElementFindRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ElementFindRequest")
+            .field("root_element_id", &self.root_element_id)
+            .field("role", &self.role)
+            .field("subrole", &self.subrole)
+            .field("label", &self.label)
+            .field("value_present", &self.value.is_some())
+            .field("focused", &self.focused)
+            .field("enabled", &self.enabled)
+            .field("limit", &self.limit)
+            .field("max_depth", &self.max_depth)
+            .finish()
+    }
+}
+
+impl ElementFindRequest {
+    fn validate(&self) -> Result<(), String> {
+        for (name, text) in [
+            ("role", self.role.as_deref()),
+            ("subrole", self.subrole.as_deref()),
+            ("label", self.label.as_deref()),
+            ("value", self.value.as_deref()),
+        ] {
+            if let Some(text) = text {
+                if text.is_empty() || text.len() > MAX_TEXT_BYTES || text.contains('\0') {
+                    return Err(format!(
+                        "invalid_request: computer element finder {name} filter is invalid"
+                    ));
+                }
+            }
+        }
+        if self.role.is_none()
+            && self.subrole.is_none()
+            && self.label.is_none()
+            && self.value.is_none()
+            && self.focused.is_none()
+            && self.enabled.is_none()
+        {
+            return Err(
+                "invalid_request: computer element finder requires at least one semantic or state filter"
+                    .to_string(),
+            );
+        }
+        if !(1..=MAX_FIND_ELEMENTS_LIMIT).contains(&self.limit)
+            || !(1..=MAX_FIND_DEPTH).contains(&self.max_depth)
+        {
+            return Err("invalid_request: computer element finder bounds are invalid".to_string());
+        }
+        Ok(())
+    }
+
+    #[cfg(any(test, target_os = "macos"))]
+    fn query(&self) -> ax_traversal::FindQuery {
+        ax_traversal::FindQuery {
+            role: self.role.clone(),
+            subrole: self.subrole.clone(),
+            label: self.label.clone(),
+            value: self.value.clone(),
+            focused: self.focused,
+            enabled: self.enabled,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -670,8 +809,8 @@ struct ApplicationRecord {
 }
 
 fn sensitive_application_name(name: &str) -> bool {
-    let normalized = name.trim().to_ascii_lowercase();
-    matches!(
+    let normalized = name.trim().to_lowercase();
+    if matches!(
         normalized.as_str(),
         "passwords"
             | "keychain access"
@@ -679,21 +818,110 @@ fn sensitive_application_name(name: &str) -> bool {
             | "security agent"
             | "authorizationhost"
             | "authorization host"
-    )
+            // macOS Chinese UI names for Passwords and Keychain Access.
+            | "密碼"
+            | "鑰匙圈存取"
+            // Third-party password managers. Exact match on purpose: a
+            // prefix such as "keeper" would also block unrelated apps.
+            | "bitwarden"
+            | "lastpass"
+            | "dashlane"
+            | "keepassxc"
+            | "keepass"
+            | "enpass"
+            | "proton pass"
+            | "nordpass"
+            | "keeper"
+            | "keeper password manager"
+    ) {
+        return true;
+    }
+    // 1Password ships as "1Password", "1Password 7", "1Password 8", ...
+    // Prefix match, but only up to a non-alphanumeric boundary so that a
+    // name such as "1Passwordless" is not caught.
+    normalized.strip_prefix("1password").is_some_and(|rest| {
+        rest.chars()
+            .next()
+            .map_or(true, |next| !next.is_alphanumeric())
+    })
 }
 
+/// Window-title markers that mark a surface as an authentication screen.
+///
+/// Browser tab titles are page titles, so login pages ("Sign in - Google
+/// Accounts", "Log in to GitHub") must be blocked the same way as native
+/// authentication dialogs. Policy: prefer blocking too much, because the user
+/// can always operate a login page themselves.
+///
+/// Known and accepted false positives (blocked even though harmless):
+/// - documents or pages whose title merely mentions a password, e.g.
+///   "password-policy.md", "Password strength guide", "密碼學筆記";
+/// - settings panes and pages named after logins, e.g. "Passwords & Security".
+///
+/// Known and deliberately avoided false positives:
+/// - ASCII markers need word boundaries, so "Designing Interfaces" (contains
+///   "signin") and "Blogin" do not match; a trailing plural "s" is allowed;
+/// - the macOS System Settings pane "Login Items & Extensions" is not an
+///   authentication screen and is stripped before matching.
 fn sensitive_auth_title(title: &str) -> bool {
-    let normalized = title.trim().to_ascii_lowercase();
-    [
+    let normalized = title.trim().to_lowercase();
+    if [
         "authentication",
         "authorization",
         "authenticate",
         "enter password",
         "password required",
         "requires a password",
+        // CJK markers have no word boundaries, so plain contains is used.
+        "登入",
+        "登錄",
+        "登录",
+        "密碼",
+        "密码",
+        "驗證碼",
+        "验证码",
+        "ログイン",
+        "パスワード",
     ]
     .iter()
     .any(|marker| normalized.contains(marker))
+    {
+        return true;
+    }
+    let scanned = normalized.replace("login items", " ");
+    [
+        "sign in",
+        "sign-in",
+        "signin",
+        "log in",
+        "log-in",
+        "login",
+        "sign on",
+        "single sign-on",
+        "password",
+        "passcode",
+        "two-factor",
+        "2-step verification",
+        "verification code",
+        "one-time code",
+    ]
+    .iter()
+    .any(|marker| contains_word_marker(&scanned, marker))
+}
+
+/// True when `marker` occurs in `haystack` starting at a word boundary and
+/// ending at a word boundary (an optional plural "s" is tolerated).
+fn contains_word_marker(haystack: &str, marker: &str) -> bool {
+    haystack.match_indices(marker).any(|(start, _)| {
+        let before_ok = haystack[..start]
+            .chars()
+            .next_back()
+            .map_or(true, |c| !c.is_alphanumeric());
+        let rest = &haystack[start + marker.len()..];
+        let rest = rest.strip_prefix('s').unwrap_or(rest);
+        let after_ok = rest.chars().next().map_or(true, |c| !c.is_alphanumeric());
+        before_ok && after_ok
+    })
 }
 
 #[cfg(any(test, target_os = "macos"))]
@@ -928,9 +1156,71 @@ fn dispatch_after_spending_pointer_generation(
     dispatch(snapshots)
 }
 
+/// Overlay frame for a pointer plan: the CG global point plus the display the
+/// runtime mapped it onto. Plain data, no native calls.
+#[cfg(target_os = "macos")]
+fn pointer_plan_overlay_frame(plan: &PointerPlan) -> (OverlayTarget, Option<OverlayDisplay>) {
+    (
+        OverlayTarget::point(plan.target_x, plan.target_y),
+        Some(OverlayDisplay {
+            id: plan.native_display_id,
+            bounds: (
+                plan.bounds_origin_x,
+                plan.bounds_origin_y,
+                plan.bounds_width,
+                plan.bounds_height,
+            ),
+        }),
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn pointer_plan_overlay_frame(_plan: &PointerPlan) -> (OverlayTarget, Option<OverlayDisplay>) {
+    (OverlayTarget::None, None)
+}
+
+/// Orders the overlay around a pointer effect: the final sensitive-surface check
+/// runs first (a refusal emits nothing), then `will_act`, then the dispatch.
+fn pointer_effect_with_overlay<T>(
+    overlay: &mut OverlayActionGuard,
+    ensure_not_sensitive: impl FnOnce() -> Result<(), String>,
+    read_frame: impl FnOnce() -> (OverlayTarget, Option<OverlayDisplay>),
+    dispatch: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    ensure_not_sensitive()?;
+    // The pointer frame comes from the already prepared plan (plain data, no native call).
+    let frame = overlay.prepare_frame(read_frame);
+    overlay.begin_prepared(frame);
+    dispatch()
+}
+
+/// Whether observations may switch on web accessibility (`AXManualAccessibility`) of
+/// Chromium/Electron apps so their page content appears in the Accessibility tree.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WebAccessibilityPolicy {
+    #[default]
+    Auto,
+    Off,
+}
+
+impl WebAccessibilityPolicy {
+    /// Environment variable consulted by the Runner.
+    pub const ENV_VAR: &'static str = "CHADEX_COMPUTER_WEB_ACCESSIBILITY";
+
+    /// `off` (case-insensitive, surrounding whitespace ignored) disables the feature;
+    /// any other value, or none, keeps the default.
+    pub fn from_env_value(value: Option<&str>) -> Self {
+        match value {
+            Some(value) if value.trim().eq_ignore_ascii_case("off") => Self::Off,
+            _ => Self::Auto,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ComputerConfig {
     pub max_encoded_image_bytes: usize,
+    pub web_accessibility: WebAccessibilityPolicy,
 }
 
 pub struct ComputerRuntime {
@@ -940,18 +1230,64 @@ pub struct ComputerRuntime {
     applications: Mutex<HashMap<String, ApplicationRecord>>,
     displays: Mutex<HashMap<String, DisplayRecord>>,
     display_snapshots: Mutex<DisplaySnapshotRegistry>,
+    /// Best-effort cursor overlay receiver. Never part of `ComputerConfig`
+    /// (that is `Copy + PartialEq`); `None` keeps every action overlay-free.
+    overlay: Option<Arc<dyn ComputerOverlaySink>>,
+    overlay_action_ids: AtomicU64,
+    web_ax: WebAxRegistry,
 }
 
 impl ComputerRuntime {
     pub fn new(config: ComputerConfig) -> Self {
         Self {
             config,
+            web_ax: WebAxRegistry::default(),
             surfaces: Mutex::new(HashMap::new()),
             elements: Mutex::new(ElementRegistry::default()),
             applications: Mutex::new(HashMap::new()),
             displays: Mutex::new(HashMap::new()),
             display_snapshots: Mutex::new(DisplaySnapshotRegistry::default()),
+            overlay: None,
+            overlay_action_ids: AtomicU64::new(0),
         }
+    }
+
+    /// Install the cursor overlay sink. The sink must never block.
+    pub fn with_overlay_sink(mut self, sink: Arc<dyn ComputerOverlaySink>) -> Self {
+        self.overlay = Some(sink);
+        self
+    }
+
+    fn overlay_guard(&self, action: OverlayAction) -> OverlayActionGuard {
+        // Ids are only consumed when a sink exists so the no-overlay path stays untouched.
+        let action_id = if self.overlay.is_some() {
+            self.overlay_action_ids.fetch_add(1, Ordering::Relaxed) + 1
+        } else {
+            0
+        };
+        OverlayActionGuard::new(self.overlay.clone(), action_id, action)
+    }
+
+    /// Web accessibility context for observing `record`. A sensitive surface never gets
+    /// the attribute written (and its tree stops at the `AXWebArea` boundary).
+    fn web_context_for(&self, record: &SurfaceRecord) -> WebAxContext<'_> {
+        self.web_context(ensure_surface_not_sensitive(record).is_err())
+    }
+
+    fn web_context(&self, sensitive_surface: bool) -> WebAxContext<'_> {
+        WebAxContext {
+            policy: self.config.web_accessibility,
+            sensitive_surface,
+            registry: &self.web_ax,
+        }
+    }
+
+    #[cfg(test)]
+    fn insert_surface_for_test(&self, surface_id: &str, record: SurfaceRecord) {
+        self.surfaces
+            .lock()
+            .unwrap()
+            .insert(surface_id.to_string(), record);
     }
 
     pub fn read_clipboard(&self) -> Result<Value, String> {
@@ -1187,6 +1523,31 @@ impl ComputerRuntime {
         x: u32,
         y: u32,
     ) -> Result<Value, String> {
+        let mut guard = self.overlay_guard(match action {
+            PointerAction::Move => OverlayAction::Move,
+            PointerAction::Click => OverlayAction::Click,
+        });
+        let result = self.pointer_effect_inner(
+            action,
+            display_id,
+            snapshot_generation,
+            x,
+            y,
+            &mut guard,
+        );
+        guard.finish(&result);
+        result
+    }
+
+    fn pointer_effect_inner(
+        &self,
+        action: PointerAction,
+        display_id: &str,
+        snapshot_generation: u32,
+        x: u32,
+        y: u32,
+        overlay: &mut OverlayActionGuard,
+    ) -> Result<Value, String> {
         if !valid_display_id(display_id) || snapshot_generation == 0 {
             return Err(
                 "invalid_request: pointer display_id or snapshot_generation is invalid".to_string(),
@@ -1219,21 +1580,32 @@ impl ComputerRuntime {
 
         // All native identity/mapping/shared-input checks occur before the effect boundary.
         let plan = platform::prepare_pointer(&display, x, y, action)?;
-
+        let frame = pointer_plan_overlay_frame(&plan);
         #[cfg(target_os = "macos")]
-        platform::ensure_pointer_target_not_sensitive(plan.target_x, plan.target_y)?;
+        let (sensitive_x, sensitive_y) = (plan.target_x, plan.target_y);
 
         // Crossing this boundary consumes the snapshot generation before the first native
         // pointer effect, even if dispatch subsequently reports definite not_started or an uncertain outcome.
-        let result = dispatch_after_spending_pointer_generation(
-            &mut snapshot_registry,
-            display_id,
-            snapshot_generation,
-            &display,
-            |_| platform::dispatch_pointer(plan, action),
+        // The overlay `will_act` is emitted after the last sensitive-surface check and
+        // before the generation is spent; it never waits for the App.
+        let result = pointer_effect_with_overlay(
+            overlay,
+            || {
+                #[cfg(target_os = "macos")]
+                platform::ensure_pointer_target_not_sensitive(sensitive_x, sensitive_y)?;
+                Ok(())
+            },
+            move || frame,
+            || {
+                dispatch_after_spending_pointer_generation(
+                    &mut snapshot_registry,
+                    display_id,
+                    snapshot_generation,
+                    &display,
+                    |_| platform::dispatch_pointer(plan, action),
+                )
+            },
         )?;
-        drop(snapshot_registry);
-        drop(display_registry);
         Ok(json!({
             "platform": pointer_output_platform(),
             "display_id": display_id,
@@ -1243,6 +1615,7 @@ impl ComputerRuntime {
             "success": result,
         }))
     }
+
     pub fn launch_application(&self, application_id: &str) -> Result<Value, String> {
         self.with_current_application(application_id, |record| {
             platform::launch_application(application_id, record)
@@ -1302,15 +1675,127 @@ impl ComputerRuntime {
             .get(surface_id)
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
-        let AccessibilityTreeResult {
-            mut output,
-            elements,
-        } = platform::accessibility_tree(surface_id, &record, max_depth, max_nodes)?;
+        // The legacy tree keeps its historical sensitive-surface behavior; it merely
+        // never switches on web accessibility for a sensitive surface.
+        let web = self.web_context_for(&record);
+        let AccessibilityTreeResult { output, elements } =
+            platform::observe_accessibility_tree(surface_id, &record, max_depth, max_nodes, &web)?;
+        self.finish_accessibility_observation(surface_id, &record, output, elements)
+    }
+
+    /// Subtree observation (`computer_accessibility_subtree`). With a
+    /// `root_element_id` it refuses sensitive surfaces before any native call and
+    /// hardens secure fields. Without one it behaves exactly like the legacy tree
+    /// (sensitive surfaces are observable, secure descendants are handled as before) and
+    /// only never enables web accessibility on a sensitive surface. The result
+    /// re-issues ids for the whole surface, including the root.
+    pub fn accessibility_subtree(
+        &self,
+        surface_id: &str,
+        root_element_id: Option<&str>,
+        max_depth: usize,
+        max_nodes: usize,
+    ) -> Result<Value, String> {
+        if max_depth > MAX_ACCESSIBILITY_DEPTH
+            || !(1..=MAX_ACCESSIBILITY_NODES).contains(&max_nodes)
+        {
+            return Err("invalid_request: accessibility bounds are invalid".to_string());
+        }
+        let (record, root) =
+            self.prepare_query(surface_id, root_element_id, root_element_id.is_some())?;
+        let web = self.web_context_for(&record);
+        let AccessibilityTreeResult { output, elements } = platform::accessibility_subtree(
+            surface_id,
+            &record,
+            root.as_ref(),
+            max_depth,
+            max_nodes,
+            &web,
+        )?;
+        self.finish_accessibility_observation(surface_id, &record, output, elements)
+    }
+
+    /// Deep element search (`computer_accessibility_find`). Same sensitivity gates as
+    /// [`Self::accessibility_subtree`]; returned elements never carry `AXValue`.
+    pub fn find_elements(
+        &self,
+        surface_id: &str,
+        request: &ElementFindRequest,
+    ) -> Result<Value, String> {
+        request.validate()?;
+        let (record, root) =
+            self.prepare_query(surface_id, request.root_element_id.as_deref(), true)?;
+        let web = self.web_context_for(&record);
+        let AccessibilityTreeResult { output, elements } =
+            platform::find_elements(surface_id, &record, root.as_ref(), request, &web)?;
+        self.finish_accessibility_observation(surface_id, &record, output, elements)
+    }
+
+    /// Everything a query-style observation must settle before touching the native
+    /// tree: id syntax, surface liveness, sensitive surface (when `enforce_sensitive`),
+    /// and root eligibility.
+    fn prepare_query(
+        &self,
+        surface_id: &str,
+        root_element_id: Option<&str>,
+        enforce_sensitive: bool,
+    ) -> Result<(SurfaceRecord, Option<ElementRecord>), String> {
+        if surface_id.is_empty() || surface_id.len() > MAX_SURFACE_ID_BYTES {
+            return Err("invalid_request: surface_id is invalid".to_string());
+        }
+        if let Some(root_element_id) = root_element_id {
+            if !root_element_id.starts_with("element_")
+                || root_element_id.len() <= "element_".len()
+                || root_element_id.len() > MAX_ELEMENT_ID_BYTES
+            {
+                return Err("invalid_request: root_element_id is invalid".to_string());
+            }
+        }
+        let record = self
+            .surfaces
+            .lock()
+            .map_err(|_| "computer_state_error: surface registry lock poisoned".to_string())?
+            .get(surface_id)
+            .cloned()
+            .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
+        if enforce_sensitive {
+            ensure_surface_not_sensitive(&record)?;
+        }
+        let root = match root_element_id {
+            None => None,
+            Some(root_element_id) => {
+                let element = self
+                    .elements
+                    .lock()
+                    .map_err(|_| "computer_state_error: element registry lock poisoned".to_string())?
+                    .get(root_element_id)
+                    .ok_or_else(|| {
+                        "stale_element: unknown, evicted, or stale root_element_id".to_string()
+                    })?;
+                if element.surface_id != surface_id {
+                    return Err(
+                        "stale_element: root_element_id belongs to a different surface".to_string(),
+                    );
+                }
+                ensure_queryable_root(&element)?;
+                Some(element)
+            }
+        };
+        Ok((record, root))
+    }
+
+    fn finish_accessibility_observation(
+        &self,
+        surface_id: &str,
+        record: &SurfaceRecord,
+        mut output: Value,
+        elements: Vec<(String, ElementRecord)>,
+    ) -> Result<Value, String> {
         let surface_registry = self
             .surfaces
             .lock()
             .map_err(|_| "computer_state_error: surface registry lock poisoned".to_string())?;
-        if surface_registry.get(surface_id) != Some(&record) {
+        if surface_registry.get(surface_id) != Some(record) {
             return Err(
                 "stale_surface: surface registry changed during accessibility observation"
                     .to_string(),
@@ -1384,7 +1869,10 @@ impl ComputerRuntime {
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
         ensure_surface_not_sensitive(&record)?;
-        platform::activate_window(surface_id, &record)
+        let mut guard = self.overlay_guard(OverlayAction::Activate);
+        let result = overlay_platform::activate_window(surface_id, &record, &mut guard);
+        guard.finish(&result);
+        result
     }
 
     pub fn control(
@@ -1420,7 +1908,20 @@ impl ComputerRuntime {
         if element.surface_id != surface_id {
             return Err("stale_element: element_id belongs to a different surface".to_string());
         }
-        platform::control(surface_id, element_id, &record, &element, action)
+        let mut guard = self.overlay_guard(match action {
+            ComputerAction::Press => OverlayAction::Press,
+            ComputerAction::Focus => OverlayAction::Focus,
+        });
+        let result = overlay_platform::control(
+            surface_id,
+            element_id,
+            &record,
+            &element,
+            action,
+            &mut guard,
+        );
+        guard.finish(&result);
+        result
     }
 
     pub fn scroll_to_element(&self, surface_id: &str, element_id: &str) -> Result<Value, String> {
@@ -1451,7 +1952,16 @@ impl ComputerRuntime {
         if element.surface_id != surface_id {
             return Err("stale_element: element_id belongs to a different surface".to_string());
         }
-        platform::scroll_to_element(surface_id, element_id, &record, &element)
+        let mut guard = self.overlay_guard(OverlayAction::Scroll);
+        let result = overlay_platform::scroll_to_element(
+            surface_id,
+            element_id,
+            &record,
+            &element,
+            &mut guard,
+        );
+        guard.finish(&result);
+        result
     }
 
     pub fn key_input(
@@ -1473,7 +1983,15 @@ impl ComputerRuntime {
             .cloned()
             .ok_or_else(|| "stale_surface: unknown or stale surface_id".to_string())?;
         ensure_surface_not_sensitive(&record)?;
-        platform::key_input(surface_id, &record, key, modifiers)
+        let mut guard = self
+            .overlay_guard(OverlayAction::Key)
+            .with_key(OverlayKey {
+                name: key.to_string(),
+                modifiers: modifiers.to_vec(),
+            });
+        let result = overlay_platform::key_input(surface_id, &record, key, modifiers, &mut guard);
+        guard.finish(&result);
+        result
     }
 
     pub fn input_text(
@@ -1510,7 +2028,17 @@ impl ComputerRuntime {
         if element.surface_id != surface_id {
             return Err("stale_element: element_id belongs to a different surface".to_string());
         }
-        platform::input_text(surface_id, element_id, &record, &element, text)
+        let mut guard = self.overlay_guard(OverlayAction::Input);
+        let result = overlay_platform::input_text(
+            surface_id,
+            element_id,
+            &record,
+            &element,
+            text,
+            &mut guard,
+        );
+        guard.finish(&result);
+        result
     }
 
     pub fn snapshot(
@@ -1580,6 +2108,7 @@ mod public_runtime_bounds_tests {
     fn runtime() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -2145,7 +2674,7 @@ mod element_registry_tests {
         let fingerprint = fingerprint(label);
         ElementRecord {
             surface_id: surface_id.to_string(),
-            lineage: vec![fingerprint; path.len() + 1],
+            lineage: vec![Arc::new(fingerprint); path.len() + 1],
             path,
         }
     }
@@ -2155,7 +2684,7 @@ mod element_registry_tests {
         let element = ElementRecord {
             surface_id: "surface_test".to_string(),
             path: Vec::new(),
-            lineage: vec![fingerprint("")],
+            lineage: vec![Arc::new(fingerprint(""))],
         };
         assert_eq!(
             validate_element_state_target(&element).unwrap_err(),
@@ -2295,7 +2824,7 @@ mod element_registry_tests {
         let mut element = record("surface_test", "target", vec![0, 1]);
         assert!(element.target_fingerprint().is_some());
         assert!(!element.contains_protected_content());
-        element.lineage[1].protected = true;
+        Arc::make_mut(&mut element.lineage[1]).protected = true;
         assert!(element.contains_protected_content());
         element.lineage.pop();
         assert!(element.target_fingerprint().is_none());
@@ -2317,47 +2846,49 @@ mod element_registry_tests {
     #[test]
     fn computer_text_input_target_preflight_fails_closed() {
         let mut text_target = record("surface_test", "target", vec![0]);
-        text_target.lineage[1].role = "AXTextArea".to_string();
+        Arc::make_mut(&mut text_target.lineage[1]).role = "AXTextArea".to_string();
         assert!(validate_text_input_target(&text_target).is_ok());
 
         let mut protected = text_target.clone();
-        protected.lineage[0].protected = true;
+        Arc::make_mut(&mut protected.lineage[0]).protected = true;
         assert!(validate_text_input_target(&protected)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut secure = text_target.clone();
-        secure.lineage[1].role = "AXSecureTextField".to_string();
+        Arc::make_mut(&mut secure.lineage[1]).role = "AXSecureTextField".to_string();
         assert!(validate_text_input_target(&secure)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut secure_subrole = text_target.clone();
-        secure_subrole.lineage[1].subrole = Some("AXSecureTextField".to_string());
+        Arc::make_mut(&mut secure_subrole.lineage[1]).subrole =
+            Some("AXSecureTextField".to_string());
         assert!(validate_text_input_target(&secure_subrole)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut secure_ancestor = text_target.clone();
-        secure_ancestor.lineage[0].role = "AXSecureTextField".to_string();
+        Arc::make_mut(&mut secure_ancestor.lineage[0]).role = "AXSecureTextField".to_string();
         assert!(validate_text_input_target(&secure_ancestor)
             .unwrap_err()
             .starts_with("permission_denied:"));
 
         let mut search_field = text_target.clone();
-        search_field.lineage[1].role = "AXTextField".to_string();
-        search_field.lineage[1].subrole = Some("AXSearchField".to_string());
+        Arc::make_mut(&mut search_field.lineage[1]).role = "AXTextField".to_string();
+        Arc::make_mut(&mut search_field.lineage[1]).subrole = Some("AXSearchField".to_string());
         assert!(validate_text_input_target(&search_field).is_ok());
 
         let mut unsupported_subrole = text_target.clone();
-        unsupported_subrole.lineage[1].role = "AXTextField".to_string();
-        unsupported_subrole.lineage[1].subrole = Some("AXUnknownTextSubrole".to_string());
+        Arc::make_mut(&mut unsupported_subrole.lineage[1]).role = "AXTextField".to_string();
+        Arc::make_mut(&mut unsupported_subrole.lineage[1]).subrole =
+            Some("AXUnknownTextSubrole".to_string());
         assert!(validate_text_input_target(&unsupported_subrole)
             .unwrap_err()
             .starts_with("input_failed:"));
 
         let mut non_text = text_target.clone();
-        non_text.lineage[1].role = "AXButton".to_string();
+        Arc::make_mut(&mut non_text.lineage[1]).role = "AXButton".to_string();
         assert!(validate_text_input_target(&non_text)
             .unwrap_err()
             .starts_with("input_failed:"));
@@ -2408,6 +2939,7 @@ mod application_runtime_tests {
     fn observer() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -2540,6 +3072,7 @@ mod display_runtime_tests {
     fn observer() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -3016,9 +3549,9 @@ struct PlatformWindow {
 #[cfg(not(any(target_os = "macos", windows)))]
 mod platform {
     use super::{
-        AccessibilityTreeResult, ApplicationRecord, ComputerAction, DisplayRecord, ElementRecord,
-        PlatformApplication, PlatformDisplay, PlatformWindow, PointerAction, PointerPlan,
-        SurfaceRecord,
+        AccessibilityTreeResult, ApplicationRecord, ComputerAction, DisplayRecord,
+        ElementFindRequest, ElementRecord, PlatformApplication, PlatformDisplay, PlatformWindow,
+        PointerAction, PointerPlan, SurfaceRecord, WebAxContext,
     };
 
     pub(super) fn read_clipboard() -> Result<serde_json::Value, String> {
@@ -3092,11 +3625,39 @@ mod platform {
         )
     }
 
-    pub(super) fn accessibility_tree(
+    pub(super) fn observe_accessibility_tree(
         _surface_id: &str,
         _surface: &SurfaceRecord,
         _max_depth: usize,
         _max_nodes: usize,
+        _web: &WebAxContext<'_>,
+    ) -> Result<AccessibilityTreeResult, String> {
+        Err(
+            "unsupported_platform: computer accessibility observation is unavailable on this platform"
+                .to_string(),
+        )
+    }
+
+    pub(super) fn accessibility_subtree(
+        _surface_id: &str,
+        _surface: &SurfaceRecord,
+        _root: Option<&ElementRecord>,
+        _max_depth: usize,
+        _max_nodes: usize,
+        _web: &WebAxContext<'_>,
+    ) -> Result<AccessibilityTreeResult, String> {
+        Err(
+            "unsupported_platform: computer accessibility observation is unavailable on this platform"
+                .to_string(),
+        )
+    }
+
+    pub(super) fn find_elements(
+        _surface_id: &str,
+        _surface: &SurfaceRecord,
+        _root: Option<&ElementRecord>,
+        _request: &ElementFindRequest,
+        _web: &WebAxContext<'_>,
     ) -> Result<AccessibilityTreeResult, String> {
         Err(
             "unsupported_platform: computer accessibility observation is unavailable on this platform"
@@ -3219,6 +3780,110 @@ mod sensitive_surface_tests {
     }
 
     #[test]
+    fn browser_login_pages_and_second_factor_titles_are_blocked() {
+        for title in [
+            "Sign in - Google Accounts",
+            "Log in to GitHub",
+            "Sign-in | Example",
+            "Signin",
+            "Login",
+            "Please log-in",
+            "Sign on to your account",
+            "Single sign-on",
+            "Reset your password",
+            "Passwords",
+            "password-policy.md",
+            "Enter your passcode",
+            "Two-Factor Authentication Setup",
+            "Two-factor settings",
+            "2-Step Verification",
+            "Enter the verification code",
+            "Your one-time code",
+            "登入 - 某網站",
+            "登錄帳號",
+            "登录",
+            "輸入密碼",
+            "输入密码",
+            "驗證碼",
+            "验证码",
+            "ログイン",
+            "パスワードの変更",
+        ] {
+            assert!(sensitive_auth_title(title), "should block: {title}");
+            assert!(
+                ensure_surface_not_sensitive(&surface("Google Chrome", title)).is_err(),
+                "should block: {title}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_titles_are_not_caught_by_login_markers() {
+        for title in [
+            "Google Sheets",
+            "Inbox",
+            "Inbox (3) - user@example.com",
+            "Designing Interfaces",
+            "Assigning tasks",
+            "Blogin notes",
+            "Login Items & Extensions",
+            "Wikipedia - Sign language",
+            "Notes",
+            "Quarterly report",
+            "設定",
+            "メール",
+        ] {
+            assert!(!sensitive_auth_title(title), "should allow: {title}");
+        }
+    }
+
+    #[test]
+    fn password_manager_applications_are_blocked_without_overblocking() {
+        for name in [
+            "1Password",
+            "1password 7",
+            "1Password 8",
+            "1Password-Helper",
+            "Bitwarden",
+            "LastPass",
+            "Dashlane",
+            "KeePassXC",
+            "KeePass",
+            "Enpass",
+            "Proton Pass",
+            "NordPass",
+            "Keeper",
+            "Keeper Password Manager",
+            "密碼",
+            "鑰匙圈存取",
+            "  bitwarden  ",
+        ] {
+            let application = ApplicationRecord {
+                display_name: name.to_string(),
+                native_identity: vec![1],
+            };
+            assert!(sensitive_application_name(name), "should block: {name}");
+            assert!(
+                ensure_application_not_sensitive(&application).is_err(),
+                "should block: {name}"
+            );
+        }
+        for name in [
+            "TextEdit",
+            "Keeper of Time",
+            "Keepers",
+            "KeePassium Reader",
+            "1Passwordless",
+            "Proton Mail",
+            "Proton Drive",
+            "Dash",
+            "Notes",
+        ] {
+            assert!(!sensitive_application_name(name), "should allow: {name}");
+        }
+    }
+
+    #[test]
     fn pointer_coordinates_inside_sensitive_window_are_blocked_without_affecting_other_points() {
         assert!(sensitive_window_contains_point(
             "Passwords",
@@ -3277,6 +3942,7 @@ mod unsupported_platform_tests {
     fn runtime() -> ComputerRuntime {
         ComputerRuntime::new(ComputerConfig {
             max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
         })
     }
 
@@ -3316,7 +3982,7 @@ mod unsupported_platform_tests {
         let element = ElementRecord {
             surface_id: "surface_test".to_string(),
             path: Vec::new(),
-            lineage: vec![fingerprint],
+            lineage: vec![Arc::new(fingerprint)],
         };
         let error =
             platform::input_text("surface_test", "element_test", &surface, &element, "hello")
@@ -3325,8 +3991,289 @@ mod unsupported_platform_tests {
     }
 }
 
+#[cfg(test)]
+mod overlay_runtime_tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct LogSink {
+        log: Arc<Mutex<Vec<String>>>,
+        events: Mutex<Vec<ComputerOverlayEvent>>,
+    }
+
+    impl ComputerOverlaySink for LogSink {
+        fn emit(&self, event: ComputerOverlayEvent) {
+            let label = match &event {
+                ComputerOverlayEvent::WillAct { .. } => "will_act",
+                ComputerOverlayEvent::Finished { .. } => "finished",
+            };
+            self.log.lock().unwrap().push(label.to_string());
+            self.events.lock().unwrap().push(event);
+        }
+    }
+
+    fn runtime_with_sink() -> (ComputerRuntime, Arc<LogSink>) {
+        let sink = Arc::new(LogSink::default());
+        let runtime = ComputerRuntime::new(ComputerConfig {
+            max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
+        })
+        .with_overlay_sink(sink.clone());
+        (runtime, sink)
+    }
+
+    fn surface(application: &str, title: &str) -> SurfaceRecord {
+        SurfaceRecord {
+            native_id: 1,
+            pid: 1,
+            identity_hash: [0; 32],
+            application: application.to_string(),
+            title: title.to_string(),
+            width: 640,
+            height: 480,
+        }
+    }
+
+    #[test]
+    fn pointer_effect_orders_sensitive_check_then_will_act_then_dispatch_then_finished() {
+        let sink = Arc::new(LogSink::default());
+        let log = sink.log.clone();
+        let dyn_sink: Arc<dyn ComputerOverlaySink> = sink.clone();
+        let mut guard = OverlayActionGuard::new(Some(dyn_sink), 1, OverlayAction::Click);
+        let result = pointer_effect_with_overlay(
+            &mut guard,
+            || {
+                log.lock().unwrap().push("sensitive_check".to_string());
+                Ok(())
+            },
+            || (OverlayTarget::point(10.0, 20.0), None),
+            || {
+                log.lock().unwrap().push("dispatch".to_string());
+                Ok(true)
+            },
+        );
+        guard.finish(&result.map(|success| json!({"success": success})));
+        assert_eq!(
+            *log.lock().unwrap(),
+            ["sensitive_check", "will_act", "dispatch", "finished"]
+        );
+    }
+
+    #[test]
+    fn pointer_effect_refused_by_sensitive_check_emits_nothing_and_never_dispatches() {
+        let sink = Arc::new(LogSink::default());
+        let dyn_sink: Arc<dyn ComputerOverlaySink> = sink.clone();
+        let mut guard = OverlayActionGuard::new(Some(dyn_sink), 1, OverlayAction::Click);
+        let dispatched = std::cell::Cell::new(false);
+        let result: Result<bool, String> = pointer_effect_with_overlay(
+            &mut guard,
+            || {
+                Err("permission_denied: pointer target intersects a sensitive Computer surface"
+                    .to_string())
+            },
+            || panic!("frame must not be read when the check refuses"),
+            || {
+                dispatched.set(true);
+                Ok(true)
+            },
+        );
+        guard.finish(&result.map(|success| json!({"success": success})));
+        drop(guard);
+        assert!(!dispatched.get());
+        assert!(sink.log.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn pointer_effect_dispatch_failure_after_will_act_reports_the_real_outcome() {
+        let sink = Arc::new(LogSink::default());
+        let dyn_sink: Arc<dyn ComputerOverlaySink> = sink.clone();
+        let mut guard = OverlayActionGuard::new(Some(dyn_sink), 1, OverlayAction::Click);
+        let result: Result<bool, String> = pointer_effect_with_overlay(
+            &mut guard,
+            || Ok(()),
+            || (OverlayTarget::None, None),
+            || Err("not_started: macOS click plan is incomplete".to_string()),
+        );
+        guard.finish(&result.map(|success| json!({"success": success})));
+        let events = sink.events.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events[1],
+            ComputerOverlayEvent::Finished {
+                action_id: 1,
+                outcome: OverlayOutcome::NotStarted
+            }
+        );
+    }
+
+    #[test]
+    fn rejected_requests_never_produce_overlay_events() {
+        let (runtime, sink) = runtime_with_sink();
+        assert!(runtime
+            .pointer_effect(PointerAction::Click, "not-a-display", 0, 0, 0)
+            .is_err());
+        assert!(runtime
+            .pointer_effect(PointerAction::Move, "display_missing", 1, 0, 0)
+            .is_err());
+        assert!(runtime.activate_window("surface_unknown").is_err());
+        assert!(runtime
+            .control("surface_unknown", "element_unknown", ComputerAction::Press)
+            .is_err());
+        assert!(runtime
+            .control("", "element_x", ComputerAction::Press)
+            .is_err());
+        assert!(runtime
+            .scroll_to_element("surface_unknown", "element_unknown")
+            .is_err());
+        assert!(runtime.key_input("surface_unknown", "enter", &[]).is_err());
+        assert!(runtime
+            .key_input("surface_unknown", "not_a_key", &[])
+            .is_err());
+        assert!(runtime
+            .input_text("surface_unknown", "element_unknown", "secret text")
+            .is_err());
+        assert!(runtime
+            .input_text("surface_unknown", "element_unknown", "")
+            .is_err());
+        assert!(sink.log.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn sensitive_surfaces_are_refused_before_any_overlay_event() {
+        let (runtime, sink) = runtime_with_sink();
+        runtime.surfaces.lock().unwrap().insert(
+            "surface_sensitive".to_string(),
+            surface("Passwords", "All Items"),
+        );
+        let error = runtime.activate_window("surface_sensitive").unwrap_err();
+        assert!(error.starts_with("permission_denied:"), "{error}");
+        let error = runtime
+            .key_input("surface_sensitive", "enter", &[])
+            .unwrap_err();
+        assert!(error.starts_with("permission_denied:"), "{error}");
+        for (name, result) in [
+            (
+                "control press",
+                runtime.control("surface_sensitive", "element_x", ComputerAction::Press),
+            ),
+            (
+                "control focus",
+                runtime.control("surface_sensitive", "element_x", ComputerAction::Focus),
+            ),
+            (
+                "scroll_to_element",
+                runtime.scroll_to_element("surface_sensitive", "element_x"),
+            ),
+            (
+                "input_text",
+                runtime.input_text("surface_sensitive", "element_x", "secret"),
+            ),
+        ] {
+            let error = result.unwrap_err();
+            assert!(error.starts_with("permission_denied:"), "{name}: {error}");
+        }
+        assert!(sink.log.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn runtime_without_a_sink_allocates_no_overlay_ids() {
+        let runtime = ComputerRuntime::new(ComputerConfig {
+            max_encoded_image_bytes: usize::MAX,
+            web_accessibility: WebAccessibilityPolicy::Auto,
+        });
+        let mut guard = runtime.overlay_guard(OverlayAction::Press);
+        assert!(!guard.is_enabled());
+        guard.begin(|| panic!("no sink means no frame read"));
+        assert_eq!(runtime.overlay_action_ids.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn runtime_guards_allocate_increasing_action_ids() {
+        let (runtime, sink) = runtime_with_sink();
+        for _ in 0..3 {
+            let mut guard = runtime.overlay_guard(OverlayAction::Press);
+            guard.begin(|| (OverlayTarget::None, None));
+            guard.finish(&Ok(json!({"success": true})));
+        }
+        let ids: Vec<u64> = sink
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|event| match event {
+                ComputerOverlayEvent::WillAct { action_id, .. } => Some(*action_id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ids, [1, 2, 3]);
+    }
+}
+
 #[cfg(any(target_os = "macos", windows))]
 mod platform;
+
+/// Platform entry points that can announce an action to the cursor overlay.
+/// Only macOS emits overlay events; other platforms never install a sink, so
+/// the shim forwards to the unchanged platform functions and ignores the guard.
+#[cfg(target_os = "macos")]
+use platform as overlay_platform;
+
+#[cfg(not(target_os = "macos"))]
+mod overlay_platform {
+    use super::{
+        platform, ComputerAction, ElementRecord, OverlayActionGuard, SurfaceRecord,
+    };
+
+    pub(super) fn activate_window(
+        surface_id: &str,
+        surface: &SurfaceRecord,
+        _overlay: &mut OverlayActionGuard,
+    ) -> Result<serde_json::Value, String> {
+        platform::activate_window(surface_id, surface)
+    }
+
+    pub(super) fn control(
+        surface_id: &str,
+        element_id: &str,
+        surface: &SurfaceRecord,
+        element: &ElementRecord,
+        action: ComputerAction,
+        _overlay: &mut OverlayActionGuard,
+    ) -> Result<serde_json::Value, String> {
+        platform::control(surface_id, element_id, surface, element, action)
+    }
+
+    pub(super) fn scroll_to_element(
+        surface_id: &str,
+        element_id: &str,
+        surface: &SurfaceRecord,
+        element: &ElementRecord,
+        _overlay: &mut OverlayActionGuard,
+    ) -> Result<serde_json::Value, String> {
+        platform::scroll_to_element(surface_id, element_id, surface, element)
+    }
+
+    pub(super) fn key_input(
+        surface_id: &str,
+        surface: &SurfaceRecord,
+        key: &str,
+        modifiers: &[String],
+        _overlay: &mut OverlayActionGuard,
+    ) -> Result<serde_json::Value, String> {
+        platform::key_input(surface_id, surface, key, modifiers)
+    }
+
+    pub(super) fn input_text(
+        surface_id: &str,
+        element_id: &str,
+        surface: &SurfaceRecord,
+        element: &ElementRecord,
+        text: &str,
+        _overlay: &mut OverlayActionGuard,
+    ) -> Result<serde_json::Value, String> {
+        platform::input_text(surface_id, element_id, surface, element, text)
+    }
+}
 
 #[cfg(all(test, windows))]
 #[path = "windows_uia_tests.rs"]

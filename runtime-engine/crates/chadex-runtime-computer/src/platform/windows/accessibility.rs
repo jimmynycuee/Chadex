@@ -562,7 +562,7 @@ pub(super) fn validate_windows_key_input_target(
     let hwnd = win_hwnd(surface.native_id)?;
     if unsafe { GetForegroundWindow() != hwnd } {
         return Err(
-            "key_input_failed: exact Windows surface must already be the foreground window"
+            "key_input_failed: exact Windows surface must already be the foreground window; call computer_control(action=activate_window) for this surface first"
                 .to_string(),
         );
     }
@@ -587,7 +587,7 @@ pub(super) fn resolve_uia_element(
     }
     let mut current = exact_uia_window(context, surface)?;
     let current_root = uia_fingerprint(context, &current, false)?;
-    if current_root != element.lineage[0] {
+    if current_root != *element.lineage[0] {
         return Err("stale_element: UIA root identity changed since observation".to_string());
     }
     for (depth, &index) in element.path.iter().enumerate() {
@@ -601,7 +601,7 @@ pub(super) fn resolve_uia_element(
         current = children[index].clone();
         let current_fingerprint =
             uia_fingerprint(context, &current, element.lineage[depth].protected)?;
-        if current_fingerprint != element.lineage[depth + 1] {
+        if current_fingerprint != *element.lineage[depth + 1] {
             return Err("stale_element: UIA element lineage changed since observation".to_string());
         }
     }
@@ -612,6 +612,48 @@ pub(super) fn resolve_uia_element(
 pub(crate) fn accessibility_status() -> Result<Value, String> {
     let _context = UiaContext::new()?;
     Ok(json!({"platform": "windows", "trusted": true}))
+}
+
+/// Uniform entry point used by `ComputerRuntime`: UIA has no web accessibility switch
+/// (Chromium enables itself when a UIA client queries), so the context is ignored.
+#[cfg(windows)]
+pub(crate) fn observe_accessibility_tree(
+    surface_id: &str,
+    surface: &SurfaceRecord,
+    max_depth: usize,
+    max_nodes: usize,
+    _web: &WebAxContext<'_>,
+) -> Result<AccessibilityTreeResult, String> {
+    accessibility_tree(surface_id, surface, max_depth, max_nodes)
+}
+
+/// Subtree observation is not implemented for UIA yet. The Runner does not advertise
+/// `computer_accessibility_query` on Windows, so this is unreachable through the wire.
+#[cfg(windows)]
+pub(crate) fn accessibility_subtree(
+    _surface_id: &str,
+    _surface: &SurfaceRecord,
+    _root: Option<&ElementRecord>,
+    _max_depth: usize,
+    _max_nodes: usize,
+    _web: &WebAxContext<'_>,
+) -> Result<AccessibilityTreeResult, String> {
+    Err(
+        "unsupported_platform: computer accessibility subtree is unavailable on Windows"
+            .to_string(),
+    )
+}
+
+/// Deep find is not implemented for UIA yet (see [`accessibility_subtree`]).
+#[cfg(windows)]
+pub(crate) fn find_elements(
+    _surface_id: &str,
+    _surface: &SurfaceRecord,
+    _root: Option<&ElementRecord>,
+    _request: &ElementFindRequest,
+    _web: &WebAxContext<'_>,
+) -> Result<AccessibilityTreeResult, String> {
+    Err("unsupported_platform: computer deep find is unavailable on Windows".to_string())
 }
 
 #[cfg(windows)]
@@ -628,7 +670,7 @@ pub(crate) fn accessibility_tree(
         None::<String>,
         0usize,
         Vec::<usize>::new(),
-        Vec::<ElementFingerprint>::new(),
+        Vec::<Arc<ElementFingerprint>>::new(),
         false,
     )]);
     let mut nodes = Vec::with_capacity(max_nodes.min(64));
@@ -666,7 +708,7 @@ pub(crate) fn accessibility_tree(
         let focused = unsafe { current.CurrentHasKeyboardFocus() }
             .map_err(|error| uia_error("IUIAutomationElement::CurrentHasKeyboardFocus", &error))?
             .as_bool();
-        lineage.push(fingerprint);
+        lineage.push(Arc::new(fingerprint));
 
         let reserved = nodes.len() + queue.len() + 1;
         let remaining = max_nodes.saturating_sub(reserved);
@@ -981,7 +1023,7 @@ pub(crate) fn control(
             let hwnd = win_hwnd(surface.native_id)?;
             if unsafe { GetForegroundWindow() != hwnd } {
                 return Err(
-                    "control_failed: exact Windows surface must already be foreground before element focus"
+                    "control_failed: exact Windows surface must already be foreground before element focus; call computer_control(action=activate_window) for this surface first"
                         .to_string(),
                 );
             }

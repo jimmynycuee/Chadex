@@ -2109,6 +2109,10 @@ fn runner_register_capabilities(cfg: &RunnerConfig) -> RunnerCapabilities {
     // Bounded Accessibility text input is a separate rolling-upgrade fence;
     // older native Runners with computer_control must not be treated as capable.
     capabilities.computer_text_input = cfg!(any(target_os = "macos", windows));
+    // Subtree/deep-find observation is implemented by the macOS traversal engine only.
+    // Windows UIA keeps using the legacy tree request, so it must not advertise this:
+    // the Server falls back to `computer_accessibility_tree` when it is absent.
+    capabilities.computer_accessibility_query = cfg!(target_os = "macos");
     capabilities.job_state_reconciliation = !disable_job_state_reconciliation_for_test();
 
     // New agents always advertise read-only LSP navigation. Older agents omit
@@ -5829,6 +5833,13 @@ fn handle_one_poll(
 }
 
 pub fn run_cli() {
+    // Must stay first: it rewires fd 1 and edits the environment while the
+    // process is still single threaded (cursor overlay channel, macOS only).
+    #[cfg(target_os = "macos")]
+    let logs_to_stderr =
+        webcodex_runner::computer_overlay::install_from_process_env().logs_to_stderr();
+    #[cfg(not(target_os = "macos"))]
+    let logs_to_stderr = false;
     if let Some(code) =
         webcodex_runner::detached_job::maybe_run_internal_mode(std::env::args().skip(1))
     {
@@ -5838,11 +5849,16 @@ pub fn run_cli() {
     // payloads report real process identity even after reconnect loops.
     let _ = process_started_at();
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .try_init();
+    let log_builder = tracing_subscriber::fmt().with_env_filter(
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+    );
+    if logs_to_stderr {
+        // fd 1 may now point at /dev/null (also when the channel itself failed to
+        // start); keep diagnostics in the helper log via stderr.
+        let _ = log_builder.with_writer(std::io::stderr).try_init();
+    } else {
+        let _ = log_builder.try_init();
+    }
 
     let action = match parse_args() {
         Ok(v) => v,

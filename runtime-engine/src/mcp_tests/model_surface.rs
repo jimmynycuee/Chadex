@@ -19,13 +19,9 @@ fn tool_names(value: &Value) -> Vec<&str> {
         .collect()
 }
 
-// tools/list reads WEBCODEX_MCP_COMPACT_SCHEMAS per request; hold the env lock so
-// concurrent full-projection tests cannot leak into the compact default.
-#[allow(clippy::await_holding_lock)]
+// `handle_mcp_request` pins the compact default, so no env guard is needed.
 #[tokio::test]
 async fn adaptive_tools_list_exposes_ranked_direct_tools_and_gateway() {
-    let mut env = crate::test_support::TestEnvGuard::new();
-    env.remove("WEBCODEX_MCP_COMPACT_SCHEMAS");
     let runtime = test_runtime();
     let auth = adaptive_direct_auth();
     let outcome = handle_mcp_request(
@@ -162,13 +158,9 @@ async fn adaptive_tools_list_exposes_ranked_direct_tools_and_gateway() {
     );
 }
 
-// tools/list reads WEBCODEX_MCP_COMPACT_SCHEMAS per request; hold the env lock so
-// concurrent full-projection tests cannot leak into the compact default.
-#[allow(clippy::await_holding_lock)]
+// `handle_mcp_request` pins the compact default, so no env guard is needed.
 #[tokio::test]
 async fn phase16b_ui_surface_stays_bounded_and_preserves_presentation_tools() {
-    let mut env = crate::test_support::TestEnvGuard::new();
-    env.remove("WEBCODEX_MCP_COMPACT_SCHEMAS");
     let runtime = test_runtime();
     let auth = adaptive_direct_auth();
     let outcome = handle_mcp_request(

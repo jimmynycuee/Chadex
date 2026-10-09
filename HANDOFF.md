@@ -40,7 +40,7 @@ updated_by: claude
 | #15 | 登入頁、密碼管理程式視為 sensitive | 0.6.0 | 與 #9 搭配，網頁登入頁會被擋 |
 | #16 | tunnel token 縮權設計文件 | 不列入 | 只是設計，不列入使用者可見變更；討論用 |
 | #17 | 停用本機 runtime 的 shared-key 登入 | 0.6.0 | 升級影響：手動建立的 shared-key `webcodex connect` profile 會失效 |
-| 待開 | runtime CORS／Host 白名單、anonymous 強制關閉（分支 `fix/runtime-cors-host`） | 0.6.0（預計） | PR 尚未開；沒趕上就從文件移除 |
+| #18 | runtime CORS／Host 白名單、anonymous 強制關閉 | 0.6.0 | reviewer 審查兩輪後合併 |
 
 ## 建議合併順序
 
@@ -51,7 +51,7 @@ updated_by: claude
 5. #4（改 base 到 main，重跑 CI）
 6. #1
 7. #5、#6、#7
-8. #14、#15、#17、CORS PR（PR 開出後）
+8. #14、#15、#17、#18
 9. #9
 10. #8
 11. #12

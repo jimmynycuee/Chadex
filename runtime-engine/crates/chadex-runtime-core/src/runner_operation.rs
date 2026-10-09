@@ -431,6 +431,8 @@ pub enum RunnerComputerOperationKind {
     PermissionReadiness,
     AccessibilityStatus,
     AccessibilityTree,
+    AccessibilitySubtree,
+    AccessibilityFind,
     ElementState,
     ActivateWindow,
     Control,
@@ -456,6 +458,8 @@ impl RunnerComputerOperationKind {
             Self::PermissionReadiness => "computer_permission_readiness",
             Self::AccessibilityStatus => "computer_accessibility_status",
             Self::AccessibilityTree => "computer_accessibility_tree",
+            Self::AccessibilitySubtree => "computer_accessibility_subtree",
+            Self::AccessibilityFind => "computer_accessibility_find",
             Self::ElementState => "computer_element_state",
             Self::ActivateWindow => "computer_activate_window",
             Self::Control => "computer_control",
@@ -481,6 +485,8 @@ impl RunnerComputerOperationKind {
             "computer_permission_readiness" => Self::PermissionReadiness,
             "computer_accessibility_status" => Self::AccessibilityStatus,
             "computer_accessibility_tree" => Self::AccessibilityTree,
+            "computer_accessibility_subtree" => Self::AccessibilitySubtree,
+            "computer_accessibility_find" => Self::AccessibilityFind,
             "computer_element_state" => Self::ElementState,
             "computer_activate_window" => Self::ActivateWindow,
             "computer_control" => Self::Control,
@@ -496,12 +502,36 @@ impl RunnerComputerOperationKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct RunnerComputerOperation {
     pub kind: RunnerComputerOperationKind,
     /// Existing bounded JSON payload carried in `stdin`.
     pub payload: String,
     pub timeout_secs: u64,
+}
+
+impl RunnerComputerOperationKind {
+    /// Kinds whose payload carries caller text that must never reach logs
+    /// (typed text, clipboard text, the `AXValue` search needle).
+    fn payload_is_private(self) -> bool {
+        matches!(
+            self,
+            Self::InputText | Self::WriteClipboard | Self::AccessibilityFind
+        )
+    }
+}
+
+impl std::fmt::Debug for RunnerComputerOperation {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = formatter.debug_struct("RunnerComputerOperation");
+        debug.field("kind", &self.kind);
+        if self.kind.payload_is_private() {
+            debug.field("payload_bytes", &self.payload.len());
+        } else {
+            debug.field("payload", &self.payload);
+        }
+        debug.field("timeout_secs", &self.timeout_secs).finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1688,6 +1718,28 @@ fn ensure_lsp_legacy_compatible_generic_fields(wire: &RunnerRequest) -> Result<(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn computer_operation_debug_never_prints_private_payloads() {
+        for (kind, private) in [
+            (RunnerComputerOperationKind::AccessibilityFind, true),
+            (RunnerComputerOperationKind::InputText, true),
+            (RunnerComputerOperationKind::WriteClipboard, true),
+            (RunnerComputerOperationKind::AccessibilityTree, false),
+            (RunnerComputerOperationKind::ElementState, false),
+        ] {
+            let operation = RunnerComputerOperation {
+                kind,
+                payload: r#"{"value":"PRIVATE NEEDLE"}"#.to_string(),
+                timeout_secs: 5,
+            };
+            let rendered = format!("{operation:?}");
+            assert_eq!(rendered.contains("PRIVATE NEEDLE"), !private, "{kind:?}: {rendered}");
+            if private {
+                assert!(rendered.contains("payload_bytes"), "{rendered}");
+            }
+        }
+    }
+
     use super::*;
 
     fn metadata() -> RunnerInvocationMetadata {
@@ -2172,6 +2224,8 @@ mod tests {
             RunnerComputerOperationKind::PermissionReadiness,
             RunnerComputerOperationKind::AccessibilityStatus,
             RunnerComputerOperationKind::AccessibilityTree,
+            RunnerComputerOperationKind::AccessibilitySubtree,
+            RunnerComputerOperationKind::AccessibilityFind,
             RunnerComputerOperationKind::ElementState,
             RunnerComputerOperationKind::ActivateWindow,
             RunnerComputerOperationKind::Control,
@@ -2239,6 +2293,8 @@ mod tests {
             "computer_permission_readiness",
             "computer_accessibility_status",
             "computer_accessibility_tree",
+            "computer_accessibility_subtree",
+            "computer_accessibility_find",
             "computer_element_state",
             "computer_activate_window",
             "computer_control",

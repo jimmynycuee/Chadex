@@ -20,7 +20,7 @@ struct ProjectMemoryView: View {
 
             if model.projectMemoryLoading && model.projectMemoryCatalog == nil {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().chadexControlSize(.small)
                     Text(L10n.string("memory.loading"))
                         .chadexFont(.callout)
                         .foregroundStyle(.secondary)
@@ -50,7 +50,7 @@ struct ProjectMemoryView: View {
                 Label(L10n.string("memory.secretNote"), systemImage: "key.slash")
             }
             .chadexFont(.caption)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
         .sheet(item: $editorTarget) { target in
@@ -71,13 +71,13 @@ struct ProjectMemoryView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            SectionEyebrow(title: L10n.string("memory.title"))
+            SectionTitle(title: L10n.string("memory.title"))
             Spacer(minLength: 12)
 
             if let catalog = model.projectMemoryCatalog {
                 Text(L10n.string("memory.count", catalog.totalCount))
                     .chadexFont(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
 
             Button {
@@ -94,7 +94,7 @@ struct ProjectMemoryView: View {
                 editorTarget = MemoryEditorTarget(record: nil)
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
+            .chadexControlSize(.small)
             .disabled(model.isSwitchingProject)
         }
     }
@@ -118,10 +118,7 @@ struct ProjectMemoryView: View {
                                 }
                             }
                         }
-                        .background(
-                            .quaternary.opacity(0.16),
-                            in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous)
-                        )
+                        .chadexGroupSurface()
                     }
                 }
             }
@@ -177,7 +174,7 @@ struct ProjectMemoryView: View {
                     if !descriptor.tags.isEmpty {
                         Text(descriptor.tags.map { "#\($0)" }.joined(separator: "  "))
                             .chadexFont(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
                 }
@@ -185,7 +182,7 @@ struct ProjectMemoryView: View {
                 Spacer(minLength: 10)
 
                 if model.projectMemoryMutationInFlightKeys.contains(descriptor.memoryKey) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().chadexControlSize(.small)
                 }
             }
             .contentShape(Rectangle())
@@ -208,7 +205,7 @@ struct ProjectMemoryView: View {
 
             if model.projectMemoryReadLoadingKeys.contains(descriptor.memoryKey) {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().chadexControlSize(.small)
                     Text(L10n.string("memory.loadingBody"))
                         .chadexFont(.caption)
                         .foregroundStyle(.secondary)
@@ -218,7 +215,7 @@ struct ProjectMemoryView: View {
                 if record.body.isEmpty {
                     Text(L10n.string("memory.emptyBody"))
                         .chadexFont(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                 } else {
                     Text(record.body)
                         .chadexFont(.caption)
@@ -226,10 +223,7 @@ struct ProjectMemoryView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .chadexPadding(10)
-                        .background(
-                            .quaternary.opacity(0.14),
-                            in: RoundedRectangle(cornerRadius: layout.control(8), style: .continuous)
-                        )
+                        .chadexGroupSurface(inset: true)
                 }
 
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 5) {
@@ -244,21 +238,21 @@ struct ProjectMemoryView: View {
                         editorTarget = MemoryEditorTarget(record: record)
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .chadexControlSize(.small)
                     .disabled(model.projectMemoryMutationInFlightKeys.contains(descriptor.memoryKey))
 
                     Button(L10n.string("memory.delete"), role: .destructive) {
                         deleteTarget = descriptor
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .chadexControlSize(.small)
                     .disabled(model.projectMemoryMutationInFlightKeys.contains(descriptor.memoryKey))
                 }
             }
 
             Text(L10n.string("memory.lazyNote"))
                 .chadexFont(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -270,7 +264,7 @@ struct ProjectMemoryView: View {
                 .foregroundStyle(.secondary)
             Text(value)
                 .chadexFont(.caption, design: label == L10n.string("memory.revision") ? .monospaced : .default)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .textSelection(.enabled)
         }
     }
@@ -385,7 +379,7 @@ private struct ProjectMemoryEditorSheet: View {
                     .font(.body)
                     .frame(minHeight: 150)
                     .padding(6)
-                    .background(.quaternary.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .chadexEditorSurface()
             }
 
             if let validationMessage {
@@ -396,7 +390,7 @@ private struct ProjectMemoryEditorSheet: View {
 
             Text(L10n.string("memory.editor.boundaryNote"))
                 .chadexFont(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {

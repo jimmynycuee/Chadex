@@ -1,6 +1,7 @@
 pub mod activity;
 pub(crate) mod adapters;
 pub(crate) mod backend;
+pub(crate) mod computer_overlay;
 pub mod computer_safety;
 pub mod credentials;
 pub(crate) mod external_skills;

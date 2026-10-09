@@ -1323,6 +1323,7 @@ pub(crate) fn key_input(
     surface: &SurfaceRecord,
     key: &str,
     modifiers: &[String],
+    overlay: &mut OverlayActionGuard,
 ) -> Result<Value, String> {
     validate_key_input(key, modifiers)?;
     if !unsafe { AXIsProcessTrusted() } {
@@ -1336,6 +1337,9 @@ pub(crate) fn key_input(
     let deadline = AxObservationDeadline::new();
     let exact_window = exact_ax_window(surface, &deadline)?;
     let application = unsafe { AXUIElement::new_application(pid) };
+    // Overlay frame: read BEFORE the final validation (slow AX IPC must not sit
+    // between the last safety check and the key events). None without a sink.
+    let overlay_frame = overlay.prepare_frame(|| overlay_frame_for_element(&exact_window));
 
     let key_code = key_code(key)?;
     let flags = key_modifier_flags(modifiers)?;
@@ -1352,6 +1356,8 @@ pub(crate) fn key_input(
     validate_key_input_target(&deadline, &application, &exact_window)?;
     deadline.ensure_remaining()?;
 
+    // Everything is validated; only a non-blocking send may precede the key events.
+    overlay.begin_prepared(overlay_frame);
     CGEvent::post_to_pid(pid, Some(&key_down));
     CGEvent::post_to_pid(pid, Some(&key_up));
     Ok(json!({
@@ -1370,6 +1376,7 @@ pub(crate) fn input_text(
     surface: &SurfaceRecord,
     element: &ElementRecord,
     text: &str,
+    overlay: &mut OverlayActionGuard,
 ) -> Result<Value, String> {
     if !unsafe { AXIsProcessTrusted() } {
         return Err("permission_denied: macOS Accessibility permission is not granted".to_string());
@@ -1379,6 +1386,8 @@ pub(crate) fn input_text(
 
     let deadline = AxObservationDeadline::new();
     let current = resolve_correlated_element(surface, element, &deadline)?;
+    // Overlay frame: read before the preflight reads below, never after them.
+    let overlay_frame = overlay.prepare_frame(|| overlay_frame_for_element(&current));
     let enabled = optional_ax_bool(&deadline, &current, "AXEnabled")?;
     let value_settable = ax_attribute_settable(&deadline, &current, "AXValue")?;
     let focused = optional_ax_bool(&deadline, &current, "AXFocused")?;
@@ -1389,6 +1398,8 @@ pub(crate) fn input_text(
     validate_text_input_preflight(enabled, focused, value_settable, current_value.as_deref())?;
 
     let text_value = CFString::from_str(text);
+    // The overlay event carries only geometry, never the text.
+    overlay.begin_prepared(overlay_frame);
     prepare_ax_call(&deadline, &current)?;
     let error =
         unsafe { current.set_attribute_value(&CFString::from_static_str("AXValue"), &text_value) };

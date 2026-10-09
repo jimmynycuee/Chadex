@@ -24,7 +24,8 @@ impl Default for Preferences {
             notifications: true,
             ferret_visible: true,
             ferret_motion: true,
-            theme: "system".into(),
+            // Dark is the designed default; "system" and "light" stay available.
+            theme: "dark".into(),
             recent_projects: Vec::new(),
             last_project: None,
             tunnel_id: String::new(),
@@ -108,6 +109,12 @@ mod tests {
         let old: Preferences = serde_json::from_str(r#"{"theme":"dark"}"#).unwrap();
         assert!(old.prepare_service_on_launch);
         assert!(Preferences::default().prepare_service_on_launch);
+    }
+    #[test]
+    fn new_installs_default_to_dark_but_keep_a_saved_choice() {
+        assert_eq!(Preferences::default().theme, "dark");
+        let saved: Preferences = serde_json::from_str(r#"{"theme":"system"}"#).unwrap();
+        assert_eq!(saved.theme, "system");
     }
     #[test]
     fn credentials_cannot_enter_preferences() {

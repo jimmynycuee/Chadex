@@ -79,6 +79,8 @@ fn computer_gateway_parser_accepts_every_closed_action_and_rejects_legacy_or_amb
         json!({"action":"accessibility_status","client_id":"mini"}),
         json!({"action":"accessibility_tree","client_id":"mini","surface_id":"surface_test"}),
         json!({"action":"find_elements","client_id":"mini","surface_id":"surface_test","role":"AXButton"}),
+        json!({"action":"accessibility_tree","client_id":"mini","surface_id":"surface_test","root_element_id":"element_root","max_depth":3}),
+        json!({"action":"find_elements","client_id":"mini","surface_id":"surface_test","value":"hello","root_element_id":"element_root","max_depth":40,"limit":4}),
         json!({"action":"element_state","client_id":"mini","surface_id":"surface_test","element_id":"element_test"}),
         json!({"action":"snapshot_window","client_id":"mini","surface_id":"surface_test"}),
         json!({"action":"snapshot_display","client_id":"mini","display_id":"display_test"}),
@@ -917,6 +919,7 @@ fn computer_accessibility_read_validators_accept_windows_platform() {
         None,
         None,
         None,
+        None,
         4,
     );
     assert!(found.success, "{:?}", found.output);
@@ -967,6 +970,7 @@ fn computer_find_elements_matches_closed_semantic_fields_without_value_search() 
         Some("AXSearchField"),
         Some("Search"),
         None,
+        None,
         Some(true),
     ));
     assert!(node_matches_find_query(
@@ -976,7 +980,9 @@ fn computer_find_elements_matches_closed_semantic_fields_without_value_search() 
         Some("messages"),
         None,
         None,
+        None,
     ));
+    // `label` never reaches AXValue; only the explicit `value` filter does.
     assert!(!node_matches_find_query(
         &node,
         None,
@@ -984,9 +990,11 @@ fn computer_find_elements_matches_closed_semantic_fields_without_value_search() 
         Some("SUPER_SECRET_VALUE"),
         None,
         None,
+        None,
     ));
     assert!(!node_matches_find_query(
         &node,
+        None,
         None,
         None,
         None,
@@ -1000,6 +1008,7 @@ fn computer_find_elements_matches_closed_semantic_fields_without_value_search() 
         None,
         None,
         None,
+        None,
     ));
 }
 
@@ -1008,6 +1017,7 @@ fn computer_find_elements_is_ordered_bounded_and_omits_ax_value() {
     let result = filter_accessibility_tree(
         accessibility_tree(),
         "surface_test",
+        None,
         None,
         None,
         None,
@@ -2017,4 +2027,253 @@ fn computer_snapshot_validator_attaches_exact_client_id() {
     );
     assert!(result.success);
     assert_eq!(result.output["client_id"], "msi");
+}
+
+// ---------------------------------------------------------------------------
+// Chromium web accessibility: subtree / deep find
+// ---------------------------------------------------------------------------
+
+fn subtree_output(root: bool) -> Value {
+    let mut tree = accessibility_tree();
+    tree["root"] = if root {
+        json!({"element_id": "element_root", "absolute_depth": 14})
+    } else {
+        Value::Null
+    };
+    tree["web_accessibility"] = json!("enabled");
+    tree
+}
+
+#[test]
+fn computer_accessibility_subtree_validator_accepts_closed_extended_shape() {
+    for (root_requested, output) in [(true, subtree_output(true)), (false, subtree_output(false))]
+    {
+        let result =
+            validate_accessibility_subtree(output, "surface_test", 2, 8, root_requested);
+        assert!(result.success, "{root_requested}: {:?}", result.output);
+    }
+    for state in WEB_ACCESSIBILITY_STATES {
+        let mut output = subtree_output(false);
+        output["web_accessibility"] = json!(state);
+        assert!(validate_accessibility_subtree(output, "surface_test", 2, 8, false).success);
+    }
+}
+
+#[test]
+fn computer_accessibility_subtree_validator_rejects_inconsistent_extras() {
+    let cases: Vec<(&str, Value, bool)> = vec![
+        ("root requested but null", subtree_output(false), true),
+        ("root not requested but present", subtree_output(true), false),
+        ("root id mismatch", {
+            let mut output = subtree_output(true);
+            output["root"]["element_id"] = json!("element_child");
+            output
+        }, true),
+        ("absolute depth too deep", {
+            let mut output = subtree_output(true);
+            output["root"]["absolute_depth"] = json!(65);
+            output
+        }, true),
+        ("root extra key", {
+            let mut output = subtree_output(true);
+            output["root"]["title"] = json!("leak");
+            output
+        }, true),
+        ("unknown web state", {
+            let mut output = subtree_output(true);
+            output["web_accessibility"] = json!("maybe");
+            output
+        }, true),
+        ("missing web state", {
+            let mut output = subtree_output(true);
+            output.as_object_mut().unwrap().remove("web_accessibility");
+            output
+        }, true),
+        ("extra top-level field", {
+            let mut output = subtree_output(true);
+            output["debug"] = json!(true);
+            output
+        }, true),
+        ("node extra field", {
+            let mut output = subtree_output(true);
+            output["nodes"][0]["dom_id"] = json!("x");
+            output
+        }, true),
+    ];
+    for (label, output, root_requested) in cases {
+        let result = validate_accessibility_subtree(output, "surface_test", 2, 8, root_requested);
+        assert!(!result.success, "{label}");
+        assert_eq!(result.output["error_kind"], "invalid_runner_response", "{label}");
+    }
+    // The legacy kind stays closed: a new-shape payload is not a legal legacy response.
+    assert!(!validate_accessibility_tree(subtree_output(true), "surface_test", 2, 8).success);
+    // Wrong surface / bounds are still enforced.
+    assert!(!validate_accessibility_subtree(subtree_output(true), "surface_other", 2, 8, true).success);
+    assert!(!validate_accessibility_subtree(subtree_output(true), "surface_test", 3, 8, true).success);
+}
+
+fn find_output(root: bool) -> Value {
+    json!({
+        "platform": "macos",
+        "surface_id": "surface_test",
+        "observation_generation": 9,
+        "search_mode": "deep",
+        "root_element_id": if root { json!("element_newroot") } else { Value::Null },
+        "web_accessibility": "already_enabled",
+        "elements": [
+            {
+                "element_id": "element_found1",
+                "role": "AXButton",
+                "subrole": null,
+                "title": "Share",
+                "description": null,
+                "placeholder": null,
+                "enabled": true,
+                "focused": false,
+                "depth": 17,
+                "ancestors": "AXWebArea “Budget” › AXToolbar “Main”"
+            },
+            {
+                "element_id": "element_found2",
+                "role": "AXLink",
+                "subrole": null,
+                "title": null,
+                "description": null,
+                "placeholder": null,
+                "enabled": null,
+                "focused": null,
+                "depth": 20,
+                "ancestors": ""
+            }
+        ],
+        "count": 2,
+        "scanned_nodes": 1834,
+        "truncated": false,
+        "stop_reason": "complete"
+    })
+}
+
+#[test]
+fn computer_accessibility_find_validator_accepts_exact_deep_shape() {
+    for root in [false, true] {
+        let result = validate_accessibility_find(find_output(root), "surface_test", 8, root);
+        assert!(result.success, "{root}: {:?}", result.output);
+    }
+    for reason in FIND_STOP_REASONS {
+        let mut output = find_output(false);
+        output["stop_reason"] = json!(reason);
+        output["truncated"] = json!(*reason != "complete");
+        assert!(validate_accessibility_find(output, "surface_test", 8, false).success, "{reason}");
+    }
+}
+
+#[test]
+fn computer_accessibility_find_validator_rejects_malformed_responses() {
+    let mutate = |change: &dyn Fn(&mut Value)| {
+        let mut output = find_output(false);
+        change(&mut output);
+        validate_accessibility_find(output, "surface_test", 8, false)
+    };
+    let rejected: Vec<(&str, ToolResult)> = vec![
+        ("extra top-level field", mutate(&|o| o["value"] = json!("secret"))),
+        ("element extra value", mutate(&|o| o["elements"][0]["value"] = json!("secret"))),
+        ("element missing depth", mutate(&|o| {
+            o["elements"][0].as_object_mut().unwrap().remove("depth");
+        })),
+        ("duplicate element ids", mutate(&|o| o["elements"][1]["element_id"] = json!("element_found1"))),
+        ("bad element id", mutate(&|o| o["elements"][0]["element_id"] = json!("found1"))),
+        ("count mismatch", mutate(&|o| o["count"] = json!(1))),
+        ("more than limit", {
+            let mut output = find_output(false);
+            output["elements"][1]["element_id"] = json!("element_found2");
+            validate_accessibility_find(output, "surface_test", 1, false)
+        }),
+        ("scanned above visit cap", mutate(&|o| o["scanned_nodes"] = json!(MAX_FIND_VISITED + 1))),
+        ("scanned zero", mutate(&|o| o["scanned_nodes"] = json!(0))),
+        ("scanned fewer than returned", mutate(&|o| o["scanned_nodes"] = json!(1))),
+        ("unknown stop reason", mutate(&|o| o["stop_reason"] = json!("whenever"))),
+        ("null stop reason", mutate(&|o| o["stop_reason"] = Value::Null)),
+        ("truncated disagrees with stop reason", mutate(&|o| o["truncated"] = json!(true))),
+        ("complete but truncated flag false mismatch", mutate(&|o| {
+            o["stop_reason"] = json!("limit");
+        })),
+        ("depth above absolute cap", mutate(&|o| o["elements"][0]["depth"] = json!(65))),
+        ("ancestors above 256 bytes", mutate(&|o| o["elements"][0]["ancestors"] = json!("x".repeat(257)))),
+        ("ancestors null from deep runner", mutate(&|o| o["elements"][0]["ancestors"] = Value::Null)),
+        ("tree_filter mode from deep runner", mutate(&|o| o["search_mode"] = json!("tree_filter"))),
+        ("root id without request", mutate(&|o| o["root_element_id"] = json!("element_x"))),
+        ("unknown web state", mutate(&|o| o["web_accessibility"] = json!("on"))),
+        ("null web state", mutate(&|o| o["web_accessibility"] = Value::Null)),
+        ("wrong surface", mutate(&|o| o["surface_id"] = json!("surface_other"))),
+        ("zero generation", mutate(&|o| o["observation_generation"] = json!(0))),
+        ("element duplicates root id", {
+            let mut output = find_output(true);
+            output["elements"][0]["element_id"] = json!("element_newroot");
+            validate_accessibility_find(output, "surface_test", 8, true)
+        }),
+        ("root requested but null", validate_accessibility_find(find_output(false), "surface_test", 8, true)),
+    ];
+    for (label, result) in rejected {
+        assert!(!result.success, "{label}");
+        assert_eq!(result.output["error_kind"], "invalid_runner_response", "{label}");
+    }
+}
+
+#[test]
+fn computer_find_elements_value_filter_matches_only_visible_tree_values() {
+    let mut node = accessibility_tree()["nodes"][1].clone();
+    node["value"] = json!("hello world");
+    assert!(node_matches_find_query(&node, None, None, None, Some("lo wo"), None, None));
+    assert!(!node_matches_find_query(&node, None, None, None, Some("Lo Wo"), None, None));
+    // The runner reports null for secure/protected nodes, which can therefore never match.
+    node["value"] = Value::Null;
+    assert!(!node_matches_find_query(&node, None, None, None, Some("hello"), None, None));
+    // `value` combines with the other conditions.
+    node["value"] = json!("hello world");
+    assert!(node_matches_find_query(&node, Some("AXButton"), None, None, Some("hello"), None, Some(true)));
+    assert!(!node_matches_find_query(&node, Some("AXLink"), None, None, Some("hello"), None, None));
+}
+
+#[test]
+fn computer_find_elements_tree_filter_fallback_reports_deep_only_fields_as_null() {
+    let mut tree = accessibility_tree();
+    tree["nodes"][1]["value"] = json!("needle in value");
+    let result = filter_accessibility_tree(
+        tree,
+        "surface_test",
+        None,
+        None,
+        None,
+        Some("needle"),
+        None,
+        None,
+        8,
+    );
+    assert!(result.success, "{:?}", result.output);
+    let output = &result.output;
+    assert_eq!(output["search_mode"], "tree_filter");
+    assert_eq!(output["root_element_id"], Value::Null);
+    assert_eq!(output["web_accessibility"], Value::Null);
+    assert_eq!(output["stop_reason"], Value::Null);
+    assert_eq!(output["count"], 1);
+    assert_eq!(output["elements"][0]["element_id"], "element_child");
+    assert_eq!(output["elements"][0]["depth"], Value::Null);
+    assert_eq!(output["elements"][0]["ancestors"], Value::Null);
+    assert!(output["elements"][0].get("value").is_none());
+    assert!(!output.to_string().contains("needle in value"));
+}
+
+#[test]
+fn computer_capability_unavailable_detection_is_exact() {
+    assert!(is_capability_unavailable(&computer_error(
+        "capability_unavailable",
+        "target Runner does not support computer_accessibility_query"
+    )));
+    assert!(!is_capability_unavailable(&computer_error("stale_element", "gone")));
+    assert!(!is_capability_unavailable(&computer_error("permission_denied", "no")));
+    assert!(!is_capability_unavailable(&ToolResult::ok(json!({"error_kind": "capability_unavailable"}))));
+    assert!(validate_root_element_id("element_abc").is_ok());
+    for invalid in ["", "element_", "elem_abc", &"element_".repeat(20)] {
+        assert!(validate_root_element_id(invalid).is_err(), "{invalid}");
+    }
 }

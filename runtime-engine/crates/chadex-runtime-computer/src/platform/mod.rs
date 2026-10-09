@@ -10,7 +10,7 @@ pub(super) use windows::*;
 
 #[cfg(target_os = "macos")]
 use super::sensitive_window_contains_point;
-use super::{bounded_text, PlatformWindow, SurfaceRecord};
+use super::{bounded_text, overlay::is_chadex_overlay_window, PlatformWindow, SurfaceRecord};
 use sha2::{Digest, Sha256};
 use xcap::Window;
 
@@ -81,6 +81,10 @@ pub(super) fn list_windows(limit: usize) -> Result<Vec<PlatformWindow>, String> 
         }
         let application = window.app_name().map_err(map_error)?;
         let title = window.title().map_err(map_error)?;
+        // The cursor overlay is Chadex's own transient window; the model never sees it.
+        if is_chadex_overlay_window(&application, &title) {
+            continue;
+        }
         let identity_hash = identity_hash(&window, &application, &title, width, height)?;
         let (focused, active) = focus_state(&window);
         output.push(PlatformWindow {

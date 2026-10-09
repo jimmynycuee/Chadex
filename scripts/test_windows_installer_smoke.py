@@ -553,6 +553,44 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             stage["probe_failure"] = raw
             self.assertNotIn("probe_failure", report.public_value()["stages"][0])
 
+    def test_inventory_timeout_during_owned_launch_keeps_its_code(self) -> None:
+        report = smoke.SmokeReport("win32")
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(smoke.suspended, "launch_owned",
+                             side_effect=smoke.w2.E2EFailure("process_inventory_timeout")):
+            with self.assertRaises(smoke.SmokeFailure) as raised:
+                smoke.run_owned_executable(
+                    Path(tmp) / "setup.exe", "/S", cwd=Path(tmp), powershell="powershell.exe",
+                    groups=[], timeout=1, timeout_code="installer_timeout",
+                    spawn_code="installer_spawn_failed", exit_code="installer_exit_nonzero",
+                    report=report,
+                )
+        self.assertEqual(raised.exception.code, "process_inventory_timeout")
+        self.assertIn("process_inventory_timeout", smoke.SAFE_CODES)
+
+    def test_unexpected_stage_exception_logs_traceback_and_reports_only_its_type(self) -> None:
+        report = smoke.SmokeReport("win32")
+        stderr = io.StringIO()
+        with patch.object(sys, "stderr", stderr):
+            with self.assertRaises(smoke.SmokeFailure) as raised:
+                with report.stage("baseline_install"):
+                    raise PermissionError("C:\\private\\user\\Chadex.exe is locked")
+        self.assertEqual(raised.exception.code, "unexpected_exception")
+        log = stderr.getvalue()
+        self.assertIn("W5 stage baseline_install raised an unexpected exception", log)
+        self.assertIn("PermissionError", log)
+        self.assertIn("is locked", log)
+        row = next(item for item in report.public_value()["stages"]
+                   if item["name"] == "baseline_install")
+        self.assertEqual(row["error_code"], "unexpected_exception")
+        self.assertEqual(row["exception_type"], "PermissionError")
+        self.assertNotIn("private", json.dumps(report.public_value()))
+
+        stage = next(item for item in report.value["stages"] if item["name"] == "baseline_install")
+        stage["exception_type"] = "not a class name; C:\\private"
+        self.assertNotIn("exception_type", next(
+            item for item in report.public_value()["stages"] if item["name"] == "baseline_install"))
+
     def test_report_projection_drops_paths_commands_credentials_and_forced_runs_fail(self) -> None:
         report = smoke.SmokeReport("win32")
         for stage in report.value["stages"]:

@@ -23,7 +23,8 @@ Expected to include the following PRs (jimmynycuee/Chadex); none are merged yet.
 
 - The Tunnel ID is checked with the helper's rule (`tunnel_` plus 32 lowercase hex) before it is saved. This fixes `credential_push` failing at startup and the connection staying at `unconfigured` after an invalid ID was stored (#14).
 - The local runtime's shared-key login is disabled (#17). If you manually created a `webcodex connect` profile against the local server with a shared key, it stops working.
-- Planned (PR not opened yet, branch `fix/runtime-cors-host`): runtime CORS and Host allowlist, and anonymous access forced off.
+- The desktop local runtime always starts with anonymous access off, and the runtime's CORS policy now allows only loopback origins and the `WEBCODEX_PUBLIC_URL` origin; `/api/*` checks the request `Host` against loopback names, the bound address and `WEBCODEX_PUBLIC_URL` (#18).
+- **Self-hosted deployments:** a Server bound to loopback behind a reverse proxy or tunnel that preserves the original public `Host` must set `WEBCODEX_PUBLIC_URL` to that public origin, otherwise `/api` returns 403 `untrusted_request_authority` (#18).
 
 ### Reliability / CI
 

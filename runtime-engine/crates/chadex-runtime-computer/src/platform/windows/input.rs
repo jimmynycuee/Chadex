@@ -565,7 +565,7 @@ pub(crate) fn input_text(
     let hwnd = win_hwnd(surface.native_id)?;
     if unsafe { GetForegroundWindow() != hwnd } {
         return Err(
-            "input_failed: exact Windows surface must already be foreground before text input"
+            "input_failed: exact Windows surface must already be foreground before text input; call computer_control(action=activate_window) for this surface first"
                 .to_string(),
         );
     }

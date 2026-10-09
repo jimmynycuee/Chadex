@@ -3,6 +3,8 @@ pub(crate) mod artifacts;
 pub(crate) mod checkpoints;
 pub(crate) mod coding_agent;
 pub(crate) mod computer;
+#[cfg(target_os = "macos")]
+pub(crate) mod computer_overlay;
 pub(crate) mod config;
 pub(crate) mod configured_skills;
 pub(crate) mod detached_job;

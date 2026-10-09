@@ -510,6 +510,7 @@ async fn runner_supports_recognizes_all_protocol_capability_names() {
                 computer_key_input: true,
                 computer_window_activate: true,
                 computer_text_input: true,
+                computer_accessibility_query: true,
                 job_state_reconciliation: true,
                 coding_agent_runs: true,
                 native_tool_plugins: true,

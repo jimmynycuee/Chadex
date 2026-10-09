@@ -129,6 +129,32 @@ fn accessibility_node_schema() -> Value {
     })
 }
 
+fn accessibility_root_schema() -> Value {
+    json!({
+        "anyOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "element_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                    "absolute_depth": {"type": "integer", "minimum": 0, "maximum": 64}
+                },
+                "required": ["element_id", "absolute_depth"]
+            },
+            {"type": "null"}
+        ]
+    })
+}
+
+fn web_accessibility_schema() -> Value {
+    json!({
+        "anyOf": [
+            {"type": "string", "enum": ["not_applicable", "enabled", "already_enabled", "pending", "unsupported", "disabled", "skipped_sensitive"]},
+            {"type": "null"}
+        ]
+    })
+}
+
 fn accessibility_match_schema() -> Value {
     json!({
         "type": "object",
@@ -141,9 +167,11 @@ fn accessibility_match_schema() -> Value {
             "description": {"anyOf": [{"type": "string", "maxLength": 256}, {"type": "null"}]},
             "placeholder": {"anyOf": [{"type": "string", "maxLength": 256}, {"type": "null"}]},
             "enabled": {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
-            "focused": {"anyOf": [{"type": "boolean"}, {"type": "null"}]}
+            "focused": {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
+            "depth": {"anyOf": [{"type": "integer", "minimum": 0, "maximum": 64}, {"type": "null"}]},
+            "ancestors": {"anyOf": [{"type": "string", "maxLength": 256}, {"type": "null"}]}
         },
-        "required": ["element_id", "role", "subrole", "title", "description", "placeholder", "enabled", "focused"]
+        "required": ["element_id", "role", "subrole", "title", "description", "placeholder", "enabled", "focused", "depth", "ancestors"]
     })
 }
 
@@ -317,6 +345,8 @@ fn raw_output_schema_for_tool(name: &str) -> Option<Value> {
                 "max_nodes",
                 json!({"type": "integer", "minimum": 1, "maximum": 256}),
             ),
+            ("root", accessibility_root_schema()),
+            ("web_accessibility", web_accessibility_schema()),
         ])),
         "computer_find_elements" => Some(wrapped_output_schema(vec![
             (
@@ -341,9 +371,22 @@ fn raw_output_schema_for_tool(name: &str) -> Option<Value> {
             ),
             (
                 "scanned_nodes",
-                json!({"type": "integer", "minimum": 1, "maximum": 256}),
+                json!({"type": "integer", "minimum": 1, "maximum": 4000}),
             ),
             ("truncated", json!({"type": "boolean"})),
+            (
+                "search_mode",
+                json!({"type": "string", "enum": ["deep", "tree_filter"]}),
+            ),
+            (
+                "root_element_id",
+                json!({"anyOf": [{"type": "string", "minLength": 1, "maxLength": 128}, {"type": "null"}]}),
+            ),
+            ("web_accessibility", web_accessibility_schema()),
+            (
+                "stop_reason",
+                json!({"anyOf": [{"type": "string", "enum": ["complete", "limit", "visit_budget", "time_budget", "depth_bound"]}, {"type": "null"}]}),
+            ),
         ])),
         "computer_element_state" => Some(wrapped_output_schema(vec![
             (

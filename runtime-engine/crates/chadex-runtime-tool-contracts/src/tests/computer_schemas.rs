@@ -90,10 +90,23 @@ fn computer_observe_schema_is_closed_read_only_action_union() {
     assert_schema_fields!(
         find,
         "find_elements action",
-        present: ["action", "client_id", "surface_id", "role", "subrole", "label", "focused", "enabled", "limit"],
+        present: ["action", "client_id", "surface_id", "root_element_id", "role", "subrole", "label", "value", "focused", "enabled", "limit", "max_depth"],
         absent: ["text", "application_id", "display_id"]
     );
     assert_eq!(find["limit"]["minimum"], 1);
+    assert_eq!(find["max_depth"]["minimum"], 1);
+    assert_eq!(find["value"]["maxLength"], 256);
+    assert_eq!(find["root_element_id"]["minLength"], 9);
+    assert_eq!(find["root_element_id"]["maxLength"], 128);
+
+    let tree = action_properties(&spec.input_schema, "accessibility_tree");
+    assert_schema_fields!(
+        tree,
+        "accessibility_tree action",
+        present: ["action", "client_id", "surface_id", "root_element_id", "max_depth", "max_nodes"],
+        absent: ["role", "value", "label", "limit", "element_id"]
+    );
+    assert_eq!(tree["root_element_id"]["minLength"], 9);
 
     let snapshot = action_properties(&spec.input_schema, "snapshot_window");
     assert_schema_fields!(
@@ -119,6 +132,9 @@ fn computer_observe_schema_is_closed_read_only_action_union() {
         json!({"action":"snapshot_window","client_id":"special","surface_id":"surface_test","max_width":10000}),
         json!({"action":"snapshot_display","client_id":"special","display_id":"display_iavN7wEjRWeJq83v","max_height":u32::MAX}),
         json!({"action":"read_clipboard","client_id":"special"}),
+        json!({"action":"accessibility_tree","client_id":"special","surface_id":"surface_test","root_element_id":"element_abc123","max_depth":4,"max_nodes":64}),
+        json!({"action":"find_elements","client_id":"special","surface_id":"surface_test","value":"needle","root_element_id":"element_abc123","max_depth":99,"limit":5}),
+        json!({"action":"find_elements","client_id":"special","surface_id":"surface_test","value":"needle"}),
     ] {
         test_support::validate_schema_instance(&value, &spec.input_schema).unwrap();
     }
@@ -127,6 +143,13 @@ fn computer_observe_schema_is_closed_read_only_action_union() {
         json!({"action":"windows"}),
         json!({"action":"windows","client_id":"special","text":"nope"}),
         json!({"action":"snapshot_display","client_id":"special","display_id":"display_iavN7wEjRWeJq83v","surface_id":"surface_nope"}),
+        json!({"action":"accessibility_tree","client_id":"special","surface_id":"surface_test","root_element_id":7}),
+        json!({"action":"accessibility_tree","client_id":"special","surface_id":"surface_test","value":"nope"}),
+        json!({"action":"find_elements","client_id":"special","surface_id":"surface_test","value":1}),
+        json!({"action":"find_elements","client_id":"special","surface_id":"surface_test","value":"x","max_depth":"deep"}),
+        json!({"action":"find_elements","client_id":"special","surface_id":"surface_test","value":"x","max_depth":0}),
+        json!({"action":"find_elements","client_id":"special","surface_id":"surface_test","value":"x","root_element_id":["element_a"]}),
+        json!({"action":"windows","client_id":"special","root_element_id":"element_abc123"}),
     ] {
         assert!(
             test_support::validate_schema_instance(&invalid, &spec.input_schema).is_err(),
@@ -263,6 +286,133 @@ fn computer_gateway_outputs_cover_preserved_observation_and_control_shapes() {
     );
 }
 
+fn sample_found_element(depth: Value, ancestors: Value) -> Value {
+    json!({
+        "element_id": "element_abc",
+        "role": "AXButton",
+        "subrole": null,
+        "title": "Share",
+        "description": null,
+        "placeholder": null,
+        "enabled": true,
+        "focused": false,
+        "depth": depth,
+        "ancestors": ancestors
+    })
+}
+
+#[test]
+fn computer_observe_output_schema_accepts_deep_find_subtree_and_tree_filter_shapes() {
+    let specs = registered_tool_specs();
+    let schema = &spec_named(&specs, "computer_observe").output_schema;
+    let wrap = |output: Value| json!({"success": true, "output": output});
+
+    let deep = json!({
+        "platform": "macos",
+        "surface_id": "surface_test",
+        "observation_generation": 4,
+        "search_mode": "deep",
+        "root_element_id": "element_root",
+        "web_accessibility": "enabled",
+        "elements": [sample_found_element(json!(17), json!("AXWebArea “Page” › AXGroup"))],
+        "count": 1,
+        "scanned_nodes": 4000,
+        "truncated": true,
+        "stop_reason": "visit_budget"
+    });
+    let fallback = json!({
+        "platform": "windows",
+        "surface_id": "surface_test",
+        "observation_generation": 4,
+        "search_mode": "tree_filter",
+        "root_element_id": null,
+        "web_accessibility": null,
+        "elements": [sample_found_element(Value::Null, Value::Null)],
+        "count": 1,
+        "scanned_nodes": 256,
+        "truncated": false,
+        "stop_reason": null
+    });
+    let legacy_find = json!({
+        "platform": "macos",
+        "surface_id": "surface_test",
+        "observation_generation": 4,
+        "elements": [],
+        "count": 0,
+        "scanned_nodes": 12,
+        "truncated": false
+    });
+    let node = json!({
+        "element_id": "element_root",
+        "parent_element_id": null,
+        "depth": 0,
+        "role": "AXWebArea",
+        "subrole": null,
+        "title": "Page",
+        "description": null,
+        "value": null,
+        "placeholder": null,
+        "enabled": true,
+        "focused": false,
+        "child_count": 0
+    });
+    let subtree = json!({
+        "platform": "macos",
+        "surface_id": "surface_test",
+        "observation_generation": 5,
+        "nodes": [node],
+        "node_count": 1,
+        "truncated": false,
+        "max_depth": 4,
+        "max_nodes": 64,
+        "root": {"element_id": "element_root", "absolute_depth": 14},
+        "web_accessibility": "pending"
+    });
+    let legacy_tree = json!({
+        "platform": "macos",
+        "surface_id": "surface_test",
+        "observation_generation": 5,
+        "nodes": [node],
+        "node_count": 1,
+        "truncated": false,
+        "max_depth": 4,
+        "max_nodes": 64
+    });
+    for (label, output) in [
+        ("deep find", deep.clone()),
+        ("tree_filter fallback", fallback),
+        ("legacy find (older server shape)", legacy_find),
+        ("subtree", subtree.clone()),
+        ("legacy tree", legacy_tree),
+    ] {
+        test_support::validate_schema_instance(&wrap(output), schema)
+            .unwrap_or_else(|error| panic!("{label}: {error}"));
+    }
+
+    let mut bad_state = deep.clone();
+    bad_state["web_accessibility"] = json!("on");
+    let mut bad_reason = deep.clone();
+    bad_reason["stop_reason"] = json!("whenever");
+    let mut too_deep = deep.clone();
+    too_deep["elements"][0]["depth"] = json!(65);
+    let mut leaked_value = deep.clone();
+    leaked_value["elements"][0]["value"] = json!("secret");
+    let mut bad_root = subtree.clone();
+    bad_root["root"]["extra"] = json!(1);
+    for (label, output) in [
+        ("unknown web state", bad_state),
+        ("unknown stop reason", bad_reason),
+        ("depth above 64", too_deep),
+        ("value on found element", leaked_value),
+        ("root extra key", bad_root),
+    ] {
+        assert!(
+            test_support::validate_schema_instance(&wrap(output), schema).is_err(),
+            "{label}"
+        );
+    }
+}
+
 #[test]
 fn computer_save_snapshot_remains_separate_create_only_project_write() {
     let specs = registered_tool_specs();
@@ -293,4 +443,29 @@ fn computer_save_snapshot_remains_separate_create_only_project_write() {
         present: ["project", "path", "client_id", "surface_id", "source_width", "source_height", "region", "width", "height", "mime_type", "file_bytes", "sha256", "saved"],
         absent: ["content_base64", "captured_at_unix_ms"]
     );
+}
+
+/// `computer_observe` input schema size before the Chromium web accessibility fields
+/// (`root_element_id`, `value`, `find_elements.max_depth`) were added: 4175 bytes. The
+/// guard leaves 1024 bytes of headroom over it so further growth is a conscious choice.
+const COMPUTER_OBSERVE_INPUT_SCHEMA_BASELINE_BYTES: usize = 4175;
+
+#[test]
+fn computer_observe_model_schema_size_is_bounded() {
+    let specs = registered_tool_specs();
+    let spec = spec_named(&specs, "computer_observe");
+    let input_schema_bytes = serde_json::to_vec(&spec.input_schema).unwrap().len();
+    let description_chars = spec.description.chars().count();
+    eprintln!(
+        "computer_observe surface: input_schema={input_schema_bytes} description={description_chars}"
+    );
+    assert!(
+        input_schema_bytes <= COMPUTER_OBSERVE_INPUT_SCHEMA_BASELINE_BYTES + 1024,
+        "computer_observe input schema grew to {input_schema_bytes} bytes"
+    );
+    // Gateway branches strip per-field prose, so the new fields are explained by one
+    // short sentence in the tool description, which must stay under the model limit.
+    assert!(description_chars <= MODEL_TOOL_DESCRIPTION_MAX_CHARS);
+    assert!(spec.description.contains("root_element_id"));
+    assert!(spec.description.contains("AXValue (never returned)"));
 }

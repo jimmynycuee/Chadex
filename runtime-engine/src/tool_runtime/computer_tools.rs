@@ -36,6 +36,27 @@ const MAX_ACCESSIBILITY_NODES: usize = 256;
 const DEFAULT_ACCESSIBILITY_DEPTH: usize = 6;
 const DEFAULT_ACCESSIBILITY_NODES: usize = 128;
 const MAX_ACCESSIBILITY_CHILD_COUNT: u64 = 1_000_000;
+const MAX_ACCESSIBILITY_ABSOLUTE_DEPTH: u64 = 64;
+const DEFAULT_FIND_DEPTH: usize = 32;
+const MAX_FIND_DEPTH: usize = 48;
+const MAX_FIND_VISITED: u64 = 4000;
+const MAX_FIND_ANCESTORS_BYTES: usize = 256;
+const WEB_ACCESSIBILITY_STATES: &[&str] = &[
+    "not_applicable",
+    "enabled",
+    "already_enabled",
+    "pending",
+    "unsupported",
+    "disabled",
+    "skipped_sensitive",
+];
+const FIND_STOP_REASONS: &[&str] = &[
+    "complete",
+    "limit",
+    "visit_budget",
+    "time_budget",
+    "depth_bound",
+];
 const MAX_IMAGE_DIMENSION: u64 = 4096;
 
 fn effective_snapshot_dimension_bound(value: Option<u32>) -> Result<Option<u32>, ()> {
@@ -395,11 +416,17 @@ impl ToolRuntime {
             ToolCall::ComputerObserve(ComputerObserveToolCall::AccessibilityTree {
                 client_id,
                 surface_id,
+                root_element_id,
                 max_depth,
                 max_nodes,
             }) => {
                 if surface_id.is_empty() || surface_id.len() > MAX_SURFACE_ID_BYTES {
                     return computer_error("invalid_surface", "surface_id is invalid");
+                }
+                if let Some(root_element_id) = root_element_id.as_deref() {
+                    if let Err(message) = validate_root_element_id(root_element_id) {
+                        return computer_error("invalid_request", message);
+                    }
                 }
                 let max_depth = max_depth
                     .unwrap_or(DEFAULT_ACCESSIBILITY_DEPTH)
@@ -407,6 +434,28 @@ impl ToolRuntime {
                 let max_nodes = max_nodes
                     .unwrap_or(DEFAULT_ACCESSIBILITY_NODES)
                     .clamp(1, MAX_ACCESSIBILITY_NODES);
+                // Prefer the query wire kind: it understands `root_element_id` and
+                // reports `web_accessibility`. A Runner that predates it is not asked to
+                // honor a root (the legacy kind would silently ignore the extra field).
+                let subtree = self
+                    .dispatch_computer_request(
+                        &client_id,
+                        "computer_accessibility_subtree",
+                        json!({
+                            "surface_id": surface_id,
+                            "root_element_id": root_element_id,
+                            "max_depth": max_depth,
+                            "max_nodes": max_nodes,
+                        }),
+                        auth,
+                        None,
+                        Some(surface_id.as_str()),
+                        Some((max_depth, max_nodes)),
+                    )
+                    .await;
+                if root_element_id.is_some() || !is_capability_unavailable(&subtree) {
+                    return subtree;
+                }
                 self.dispatch_computer_request(
                     &client_id,
                     "computer_accessibility_tree",
@@ -425,20 +474,29 @@ impl ToolRuntime {
             ToolCall::ComputerObserve(ComputerObserveToolCall::FindElements {
                 client_id,
                 surface_id,
+                root_element_id,
                 role,
                 subrole,
                 label,
+                value,
                 focused,
                 enabled,
                 limit,
+                max_depth,
             }) => {
                 if surface_id.is_empty() || surface_id.len() > MAX_SURFACE_ID_BYTES {
                     return computer_error("invalid_surface", "surface_id is invalid");
+                }
+                if let Some(root_element_id) = root_element_id.as_deref() {
+                    if let Err(message) = validate_root_element_id(root_element_id) {
+                        return computer_error("invalid_request", message);
+                    }
                 }
                 for (name, value) in [
                     ("role", role.as_deref()),
                     ("subrole", subrole.as_deref()),
                     ("label", label.as_deref()),
+                    ("value", value.as_deref()),
                 ] {
                     if let Some(value) = value {
                         if value.is_empty() || value.len() > MAX_TEXT_BYTES || value.contains('\0')
@@ -453,6 +511,7 @@ impl ToolRuntime {
                 if role.is_none()
                     && subrole.is_none()
                     && label.is_none()
+                    && value.is_none()
                     && focused.is_none()
                     && enabled.is_none()
                 {
@@ -461,9 +520,42 @@ impl ToolRuntime {
                         "computer element finder requires at least one semantic or state filter",
                     );
                 }
+                if max_depth == Some(0) {
+                    return computer_error(
+                        "invalid_request",
+                        "computer element finder max_depth must be at least 1",
+                    );
+                }
                 let limit = limit
                     .unwrap_or(DEFAULT_FIND_ELEMENTS_LIMIT)
                     .clamp(1, MAX_FIND_ELEMENTS_LIMIT);
+                let deep_depth = max_depth.unwrap_or(DEFAULT_FIND_DEPTH).min(MAX_FIND_DEPTH);
+                let deep = self
+                    .dispatch_computer_request(
+                        &client_id,
+                        "computer_accessibility_find",
+                        json!({
+                            "surface_id": surface_id,
+                            "root_element_id": root_element_id,
+                            "role": role,
+                            "subrole": subrole,
+                            "label": label,
+                            "value": value,
+                            "focused": focused,
+                            "enabled": enabled,
+                            "limit": limit,
+                            "max_depth": deep_depth,
+                        }),
+                        auth,
+                        None,
+                        Some(surface_id.as_str()),
+                        None,
+                    )
+                    .await;
+                if root_element_id.is_some() || !is_capability_unavailable(&deep) {
+                    return deep;
+                }
+                // Older/Windows Runner: search the bounded legacy tree on the server.
                 let tree = self
                     .dispatch_computer_request(
                         &client_id,
@@ -488,6 +580,7 @@ impl ToolRuntime {
                     role.as_deref(),
                     subrole.as_deref(),
                     label.as_deref(),
+                    value.as_deref(),
                     focused,
                     enabled,
                     limit,
@@ -1360,6 +1453,10 @@ impl ToolRuntime {
             "computer_accessibility_status" | "computer_accessibility_tree" => {
                 &[RunnerFeature::ComputerAccessibilityObserve]
             }
+            "computer_accessibility_subtree" | "computer_accessibility_find" => &[
+                RunnerFeature::ComputerAccessibilityObserve,
+                RunnerFeature::ComputerAccessibilityQuery,
+            ],
             "computer_element_state" => &[RunnerFeature::ComputerElementState],
             "computer_control" => &[RunnerFeature::ComputerControl],
             "computer_scroll_to_element" => &[RunnerFeature::ComputerScrollToElement],
@@ -1439,6 +1536,14 @@ impl ToolRuntime {
             .get("element_id")
             .and_then(Value::as_str)
             .map(str::to_string);
+        let expected_root_element_id = payload
+            .get("root_element_id")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let expected_find_limit = payload
+            .get("limit")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok());
         let expected_action = payload
             .get("action")
             .and_then(Value::as_str)
@@ -1814,6 +1919,22 @@ impl ToolRuntime {
                     max_nodes,
                 )
             }
+            "computer_accessibility_subtree" => {
+                let (max_depth, max_nodes) = accessibility_bounds.unwrap_or((0, 0));
+                validate_accessibility_subtree(
+                    output,
+                    expected_surface_id.unwrap_or_default(),
+                    max_depth,
+                    max_nodes,
+                    expected_root_element_id.is_some(),
+                )
+            }
+            "computer_accessibility_find" => validate_accessibility_find(
+                output,
+                expected_surface_id.unwrap_or_default(),
+                expected_find_limit.unwrap_or_default(),
+                expected_root_element_id.is_some(),
+            ),
             "computer_element_state" => validate_computer_element_state(
                 output,
                 expected_surface_id.unwrap_or_default(),
@@ -1941,7 +2062,7 @@ fn computer_snapshot_artifact_definite_failure(
 fn computer_error_recovery_message(error_kind: &str, error: &str) -> String {
     match error_kind {
         "stale_element" => format!(
-            "{error}; reacquire a fresh element_id with computer_observe(action=find_elements) on the same surface"
+            "{error}; reacquire a fresh element_id with computer_observe(action=find_elements) on the same surface, or run action=accessibility_tree without root_element_id"
         ),
         "stale_surface" => format!(
             "{error}; reacquire a fresh surface_id with computer_observe(action=windows) before continuing"
@@ -1971,11 +2092,34 @@ fn computer_request_is_effect(kind: &str) -> bool {
     )
 }
 
+fn is_capability_unavailable(result: &ToolResult) -> bool {
+    !result.success
+        && result.output.get("error_kind").and_then(Value::as_str) == Some("capability_unavailable")
+}
+
+fn validate_root_element_id(root_element_id: &str) -> Result<(), &'static str> {
+    if !root_element_id.starts_with("element_")
+        || root_element_id.len() <= "element_".len()
+        || root_element_id.len() > MAX_ELEMENT_ID_BYTES
+    {
+        return Err("root_element_id is invalid");
+    }
+    Ok(())
+}
+
+/// `value` is matched against the tree node's `value` field. The legacy tree never
+/// reports a value for a secure text field or an `AXProtectedContent` subtree, so those
+/// nodes cannot match. It does, however, report values of the *descendants* of a secure
+/// field (the legacy walk only propagates `AXProtectedContent`), so in this fallback a
+/// descendant of a secure field can match. That is the same data the legacy tree has
+/// always returned to the model directly; the deep-find path (which hardens those
+/// descendants) never matches them.
 fn node_matches_find_query(
     node: &Value,
     role: Option<&str>,
     subrole: Option<&str>,
     label: Option<&str>,
+    value: Option<&str>,
     focused: Option<bool>,
     enabled: Option<bool>,
 ) -> bool {
@@ -1994,6 +2138,14 @@ fn node_matches_find_query(
     }) {
         return false;
     }
+    if value.is_some_and(|expected| {
+        !node
+            .get("value")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.contains(expected))
+    }) {
+        return false;
+    }
     if focused
         .is_some_and(|expected| node.get("focused").and_then(Value::as_bool) != Some(expected))
     {
@@ -2007,12 +2159,16 @@ fn node_matches_find_query(
     true
 }
 
+/// Fallback search over a legacy (<= 8 deep, <= 256 node) tree for Runners without the
+/// `computer_accessibility_query` capability. Same output shape as the deep search,
+/// with the deep-only fields reported as null.
 fn filter_accessibility_tree(
     tree: Value,
     expected_surface_id: &str,
     role: Option<&str>,
     subrole: Option<&str>,
     label: Option<&str>,
+    value: Option<&str>,
     focused: Option<bool>,
     enabled: Option<bool>,
     limit: usize,
@@ -2043,7 +2199,7 @@ fn filter_accessibility_tree(
     let mut total_matches = 0usize;
     let mut elements = Vec::with_capacity(limit.min(nodes.len()));
     for node in nodes {
-        if !node_matches_find_query(node, role, subrole, label, focused, enabled) {
+        if !node_matches_find_query(node, role, subrole, label, value, focused, enabled) {
             continue;
         }
         total_matches = total_matches.saturating_add(1);
@@ -2059,6 +2215,8 @@ fn filter_accessibility_tree(
             "placeholder": node.get("placeholder").cloned().unwrap_or(Value::Null),
             "enabled": node.get("enabled").cloned().unwrap_or(Value::Null),
             "focused": node.get("focused").cloned().unwrap_or(Value::Null),
+            "depth": Value::Null,
+            "ancestors": Value::Null,
         }));
     }
     let count = elements.len();
@@ -2066,10 +2224,14 @@ fn filter_accessibility_tree(
         "platform": platform,
         "surface_id": expected_surface_id,
         "observation_generation": observation_generation,
+        "search_mode": "tree_filter",
+        "root_element_id": Value::Null,
+        "web_accessibility": Value::Null,
         "elements": elements,
         "count": count,
         "scanned_nodes": nodes.len(),
         "truncated": source_truncated || total_matches > count,
+        "stop_reason": Value::Null,
     }))
 }
 
@@ -3386,6 +3548,18 @@ fn validate_accessibility_tree(
     max_depth: usize,
     max_nodes: usize,
 ) -> ToolResult {
+    validate_accessibility_tree_output(output, expected_surface_id, max_depth, max_nodes, None)
+}
+
+/// `root_requested` is `Some(_)` only for the subtree wire kind, whose output adds
+/// `root` and `web_accessibility` to the legacy tree shape.
+fn validate_accessibility_tree_output(
+    output: Value,
+    expected_surface_id: &str,
+    max_depth: usize,
+    max_nodes: usize,
+    root_requested: Option<bool>,
+) -> ToolResult {
     if max_depth > MAX_ACCESSIBILITY_DEPTH || !(1..=MAX_ACCESSIBILITY_NODES).contains(&max_nodes) {
         return computer_error(
             "invalid_request",
@@ -3401,7 +3575,7 @@ fn validate_accessibility_tree(
             )
         }
     };
-    let allowed = [
+    let legacy_keys = [
         "platform",
         "surface_id",
         "nodes",
@@ -3411,7 +3585,14 @@ fn validate_accessibility_tree(
         "max_nodes",
         "observation_generation",
     ];
-    if object.len() != allowed.len() || object.keys().any(|key| !allowed.contains(&key.as_str())) {
+    let subtree_keys = ["root", "web_accessibility"];
+    let key_count = legacy_keys.len() + if root_requested.is_some() { 2 } else { 0 };
+    if object.len() != key_count
+        || object.keys().any(|key| {
+            !legacy_keys.contains(&key.as_str())
+                && !(root_requested.is_some() && subtree_keys.contains(&key.as_str()))
+        })
+    {
         return computer_error(
             "invalid_runner_response",
             "Accessibility tree fields are inconsistent",
@@ -3453,6 +3634,226 @@ fn validate_accessibility_tree(
         .find_map(|node| validate_accessibility_node(node, max_depth, &mut seen).err())
     {
         return computer_error("invalid_runner_response", &error);
+    }
+    if let Some(root_requested) = root_requested {
+        if let Err(error) = validate_subtree_extras(&output, nodes, root_requested) {
+            return computer_error("invalid_runner_response", error);
+        }
+    }
+    ToolResult::ok(output)
+}
+
+fn validate_web_accessibility_state(value: Option<&Value>) -> Result<(), &'static str> {
+    match value.and_then(Value::as_str) {
+        Some(state) if WEB_ACCESSIBILITY_STATES.contains(&state) => Ok(()),
+        _ => Err("web_accessibility state is missing or outside the closed vocabulary"),
+    }
+}
+
+fn validate_subtree_extras(
+    output: &Value,
+    nodes: &[Value],
+    root_requested: bool,
+) -> Result<(), &'static str> {
+    validate_web_accessibility_state(output.get("web_accessibility"))?;
+    match (output.get("root"), root_requested) {
+        (Some(Value::Null), false) => Ok(()),
+        (Some(root), true) => {
+            let object = root.as_object().ok_or("Accessibility root must be an object")?;
+            if object.len() != 2
+                || object.get("element_id") != nodes.first().and_then(|node| node.get("element_id"))
+                || !object
+                    .get("absolute_depth")
+                    .and_then(Value::as_u64)
+                    .is_some_and(|depth| depth <= MAX_ACCESSIBILITY_ABSOLUTE_DEPTH)
+            {
+                return Err("Accessibility root descriptor is inconsistent");
+            }
+            Ok(())
+        }
+        _ => Err("Accessibility root presence does not match the request"),
+    }
+}
+
+fn validate_accessibility_subtree(
+    output: Value,
+    expected_surface_id: &str,
+    max_depth: usize,
+    max_nodes: usize,
+    root_requested: bool,
+) -> ToolResult {
+    validate_accessibility_tree_output(
+        output,
+        expected_surface_id,
+        max_depth,
+        max_nodes,
+        Some(root_requested),
+    )
+}
+
+fn validate_accessibility_find_element(
+    value: &Value,
+    seen: &mut std::collections::HashSet<String>,
+) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "found element must be an object".to_string())?;
+    let allowed = [
+        "element_id",
+        "role",
+        "subrole",
+        "title",
+        "description",
+        "placeholder",
+        "enabled",
+        "focused",
+        "depth",
+        "ancestors",
+    ];
+    // Closed key set: in particular there is no `value` and nothing else can ride along.
+    if object.len() != allowed.len() || object.keys().any(|key| !allowed.contains(&key.as_str())) {
+        return Err("found element fields are inconsistent".to_string());
+    }
+    let element_id = value
+        .get("element_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "found element_id missing".to_string())?;
+    if !element_id.starts_with("element_")
+        || element_id.len() <= "element_".len()
+        || element_id.len() > MAX_ELEMENT_ID_BYTES
+        || !seen.insert(element_id.to_string())
+    {
+        return Err("found element_id is invalid or duplicated".to_string());
+    }
+    let role = value
+        .get("role")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "found element role missing".to_string())?;
+    if role.is_empty() || role.len() > MAX_TEXT_BYTES {
+        return Err("found element role exceeds bound or is empty".to_string());
+    }
+    for field in ["subrole", "title", "description", "placeholder"] {
+        match value.get(field) {
+            Some(Value::Null) => {}
+            Some(text) if text.as_str().is_some_and(|text| text.len() <= MAX_TEXT_BYTES) => {}
+            _ => return Err(format!("found element {field} is malformed or exceeds bound")),
+        }
+    }
+    for field in ["enabled", "focused"] {
+        if !value
+            .get(field)
+            .is_some_and(|value| value.is_boolean() || value.is_null())
+        {
+            return Err(format!("found element {field} must be boolean or null"));
+        }
+    }
+    if !value
+        .get("depth")
+        .and_then(Value::as_u64)
+        .is_some_and(|depth| depth <= MAX_ACCESSIBILITY_ABSOLUTE_DEPTH)
+    {
+        return Err("found element depth is missing or exceeds the absolute bound".to_string());
+    }
+    if !value
+        .get("ancestors")
+        .and_then(Value::as_str)
+        .is_some_and(|ancestors| ancestors.len() <= MAX_FIND_ANCESTORS_BYTES)
+    {
+        return Err("found element ancestors is missing or exceeds bound".to_string());
+    }
+    Ok(())
+}
+
+/// Validates a `computer_accessibility_find` runner response. The model-facing result is
+/// this exact object (the Runner already filtered it), so every field is closed here.
+fn validate_accessibility_find(
+    output: Value,
+    expected_surface_id: &str,
+    limit: usize,
+    root_requested: bool,
+) -> ToolResult {
+    let object = match output.as_object() {
+        Some(object) => object,
+        None => {
+            return computer_error(
+                "invalid_runner_response",
+                "Accessibility find result is not an object",
+            )
+        }
+    };
+    let allowed = [
+        "platform",
+        "surface_id",
+        "observation_generation",
+        "search_mode",
+        "root_element_id",
+        "web_accessibility",
+        "elements",
+        "count",
+        "scanned_nodes",
+        "truncated",
+        "stop_reason",
+    ];
+    if object.len() != allowed.len() || object.keys().any(|key| !allowed.contains(&key.as_str())) {
+        return computer_error(
+            "invalid_runner_response",
+            "Accessibility find fields are inconsistent",
+        );
+    }
+    let stop_reason = output.get("stop_reason").and_then(Value::as_str);
+    let truncated = output.get("truncated").and_then(Value::as_bool);
+    let metadata_ok = is_native_accessibility_platform(
+        output.get("platform").and_then(Value::as_str),
+    ) && output.get("surface_id").and_then(Value::as_str) == Some(expected_surface_id)
+        && output.get("search_mode").and_then(Value::as_str) == Some("deep")
+        && output
+            .get("observation_generation")
+            .and_then(Value::as_u64)
+            .is_some_and(|value| value > 0 && value <= u32::MAX as u64)
+        && stop_reason.is_some_and(|reason| FIND_STOP_REASONS.contains(&reason))
+        && truncated == stop_reason.map(|reason| reason != "complete")
+        && validate_web_accessibility_state(output.get("web_accessibility")).is_ok();
+    if !metadata_ok {
+        return computer_error(
+            "invalid_runner_response",
+            "Accessibility find metadata is inconsistent",
+        );
+    }
+    let root_ok = match (output.get("root_element_id"), root_requested) {
+        (Some(Value::Null), false) => true,
+        (Some(Value::String(root)), true) => {
+            validate_root_element_id(root).is_ok() && root.starts_with("element_")
+        }
+        _ => false,
+    };
+    let elements = output.get("elements").and_then(Value::as_array);
+    let count = output.get("count").and_then(Value::as_u64);
+    let scanned = output.get("scanned_nodes").and_then(Value::as_u64);
+    let counts_ok = elements.is_some_and(|elements| {
+        elements.len() <= limit && count == Some(elements.len() as u64)
+    }) && scanned.is_some_and(|scanned| (1..=MAX_FIND_VISITED).contains(&scanned));
+    if !root_ok || !counts_ok {
+        return computer_error(
+            "invalid_runner_response",
+            "Accessibility find root or counts are inconsistent",
+        );
+    }
+    let mut seen = std::collections::HashSet::new();
+    if let Some(Value::String(root)) = output.get("root_element_id") {
+        seen.insert(root.clone());
+    }
+    if let Some(error) = elements
+        .into_iter()
+        .flatten()
+        .find_map(|element| validate_accessibility_find_element(element, &mut seen).err())
+    {
+        return computer_error("invalid_runner_response", &error);
+    }
+    if scanned < count {
+        return computer_error(
+            "invalid_runner_response",
+            "Accessibility find scanned fewer nodes than it returned",
+        );
     }
     ToolResult::ok(output)
 }
