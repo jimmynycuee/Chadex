@@ -81,6 +81,8 @@ final class AppModel: ObservableObject {
     /// first event, and nothing here can fail an action or a request.
     private let overlayController: ComputerOverlayController
     private var overlaySystemObservers: ComputerOverlaySystemObservers?
+    private var overlaySyncTask: Task<Void, Never>?
+    private var overlaySyncGeneration = 0
     private static let overlayLogger = Logger(subsystem: "app.chadex.Chadex", category: "computer-overlay")
     private var cachedAPIKey: String?
     private var didLoadAPIKeyFromKeychain = false
@@ -685,15 +687,43 @@ final class AppModel: ObservableObject {
 
     /// Tell the helper whether to forward overlay events. Failures are logged only:
     /// the overlay is cosmetic, so it never shows an error.
+    ///
+    /// Requests are serialized (the helper handles them concurrently, so two in
+    /// flight could land in the wrong order and leave the helper opposite to the
+    /// preference). One loop runs at a time and re-sends the latest preference
+    /// whenever another sync was requested meanwhile. A helper that is not running
+    /// is not started for this: it gets the value when its `.started` event fires.
     func syncOverlayEvents() async {
-        guard !isShuttingDown else { return }
-        do {
-            let _: JSONValue = try await helper.request(
-                method: "setComputerOverlayEvents",
-                params: SetComputerOverlayEventsParams(enabled: preferences.computerCursorOverlayEnabled)
-            )
-        } catch {
-            Self.overlayLogger.debug("setComputerOverlayEvents failed: \(error.localizedDescription, privacy: .public)")
+        overlaySyncGeneration &+= 1
+        if let running = overlaySyncTask {
+            // The running loop notices the new generation and sends again.
+            await running.value
+            return
+        }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.runOverlaySyncLoop()
+        }
+        overlaySyncTask = task
+        await task.value
+    }
+
+    private func runOverlaySyncLoop() async {
+        defer { overlaySyncTask = nil }
+        while !isShuttingDown && helper.isRunning {
+            let generation = overlaySyncGeneration
+            let enabled = preferences.computerCursorOverlayEnabled
+            do {
+                let _: JSONValue = try await helper.request(
+                    method: "setComputerOverlayEvents",
+                    params: SetComputerOverlayEventsParams(enabled: enabled)
+                )
+            } catch {
+                Self.overlayLogger.debug("setComputerOverlayEvents failed: \(error.localizedDescription, privacy: .public)")
+            }
+            // Nothing changed while this request was in flight: done (also after a
+            // failure, so a broken helper cannot spin this loop).
+            if generation == overlaySyncGeneration { break }
         }
     }
 

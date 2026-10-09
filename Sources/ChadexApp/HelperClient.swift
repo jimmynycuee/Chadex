@@ -104,6 +104,13 @@ final class HelperClient: @unchecked Sendable {
         }
     }
 
+    /// Whether a helper process is currently running. Never launches one.
+    var isRunning: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return process?.isRunning == true
+    }
+
     /// Event frames that were malformed or unknown and therefore ignored.
     var discardedEventFrameCount: Int {
         lock.lock()

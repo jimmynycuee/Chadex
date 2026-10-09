@@ -111,8 +111,16 @@ final class ComputerOverlayAppModelTests: XCTestCase {
         XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents")[0].contains("\"enabled\":false"))
     }
 
+    private func startHelperAndWaitForInitialSync(_ fixture: Fixture) async -> Bool {
+        await fixture.model.refreshComputerSafety() // first request starts the helper
+        return await waitUntil { !logged(fixture, method: "setComputerOverlayEvents").isEmpty }
+    }
+
     func testTogglePersistsHidesAndTellsTheHelper() async throws {
         let fixture = try makeFixture()
+        let started = await startHelperAndWaitForInitialSync(fixture)
+        XCTAssertTrue(started)
+
         await fixture.model.setComputerCursorOverlay(false)
         XCTAssertFalse(fixture.model.computerCursorOverlayEnabled)
         XCTAssertEqual(fixture.store.load().computerCursorOverlay, false, "the choice is saved")
@@ -123,6 +131,42 @@ final class ComputerOverlayAppModelTests: XCTestCase {
         await fixture.model.setComputerCursorOverlay(true)
         XCTAssertEqual(fixture.store.load().computerCursorOverlay, true)
         XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents").last?.contains("\"enabled\":true") == true)
+        await fixture.model.shutdown()
+    }
+
+    func testRapidTogglesEndWithTheHelperMatchingThePreference() async throws {
+        let fixture = try makeFixture()
+        let started = await startHelperAndWaitForInitialSync(fixture)
+        XCTAssertTrue(started)
+
+        let flips = [false, true, false, true, false]
+        let tasks = flips.map { value in
+            Task { await fixture.model.setComputerCursorOverlay(value) }
+        }
+        for task in tasks { await task.value }
+
+        XCTAssertEqual(fixture.model.computerCursorOverlayEnabled, false)
+        let sent = logged(fixture, method: "setComputerOverlayEvents")
+        XCTAssertTrue(sent.last?.contains("\"enabled\":false") == true, "last request must carry the final preference: \(sent)")
+        XCTAssertLessThanOrEqual(sent.count, 1 + flips.count)
+        await fixture.model.shutdown()
+    }
+
+    func testTogglingWithoutARunningHelperSavesButDoesNotLaunchIt() async throws {
+        let fixture = try makeFixture()
+        await fixture.model.setComputerCursorOverlay(false)
+        XCTAssertEqual(fixture.store.load().computerCursorOverlay, false)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: fixture.log.path),
+            "syncing the overlay must not start the helper"
+        )
+
+        // The saved choice reaches the helper when it starts for another reason.
+        await fixture.model.refreshComputerSafety()
+        let synced = await waitUntil { !logged(fixture, method: "setComputerOverlayEvents").isEmpty }
+        XCTAssertTrue(synced)
+        XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents")[0].contains("\"enabled\":false"))
         await fixture.model.shutdown()
     }
 

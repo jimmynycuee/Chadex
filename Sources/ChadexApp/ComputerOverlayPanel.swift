@@ -307,21 +307,21 @@ final class ComputerOverlayPanelPresenter: ComputerOverlayPresenting {
                 panel.animator().setFrame(layout.panelFrame, display: true)
             }
         } else {
-            panel.setFrame(layout.panelFrame, display: false)
+            setFrameNow(layout.panelFrame, on: panel)
             contentView?.frame = CGRect(origin: .zero, size: layout.panelFrame.size)
             contentView?.apply(presentation, plan: plan)
         }
         lastLayout = layout
 
         if plan.appearDuration > 0 && !wasVisible {
-            panel.alphaValue = 0
+            setAlphaNow(0, on: panel)
             panel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = plan.appearDuration
                 panel.animator().alphaValue = 1
             }
         } else {
-            panel.alphaValue = 1
+            setAlphaNow(1, on: panel)
             panel.orderFrontRegardless()
         }
     }
@@ -353,8 +353,26 @@ final class ComputerOverlayPanelPresenter: ComputerOverlayPresenting {
     private func finishHiding() {
         contentView?.clear()
         panel?.orderOut(nil)
-        panel?.alphaValue = 1
+        if let panel { setAlphaNow(1, on: panel) }
         lastLayout = nil
+    }
+
+    // A fade or glide may still be running through the window's animator. Writing
+    // `alphaValue` or calling `setFrame` directly does not cancel it, so the old
+    // animation can land afterwards and leave a transparent panel on screen (or in
+    // the wrong place). A zero-duration animator write replaces the running one.
+    private func setAlphaNow(_ alpha: CGFloat, on panel: ComputerOverlayPanel) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            panel.animator().alphaValue = alpha
+        }
+    }
+
+    private func setFrameNow(_ frame: CGRect, on panel: ComputerOverlayPanel) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            panel.animator().setFrame(frame, display: false)
+        }
     }
 
     private func ensurePanel() -> ComputerOverlayPanel {
