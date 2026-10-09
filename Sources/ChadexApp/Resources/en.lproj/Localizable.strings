@@ -437,7 +437,7 @@
 "error.tunnelIDMissing" = "A Tunnel ID is required before the API key can be provided to the helper.";
 "error.enterTunnelID" = "Enter the Tunnel ID, then save the API key again.";
 "error.tunnelIDInvalid" = "The Tunnel ID is invalid.";
-"error.enterValidTunnelID" = "Use only letters, numbers, hyphens, and underscores in the Tunnel ID.";
+"error.enterValidTunnelID" = "Use the OpenAI Tunnel ID: tunnel_ followed by 32 lowercase hexadecimal characters.";
 "error.apiKeyInvalid" = "The API key is invalid.";
 "error.enterValidAPIKey" = "Enter a valid single-line API key, then save again.";
 
