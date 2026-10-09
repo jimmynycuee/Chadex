@@ -4,16 +4,39 @@ All notable public Chadex releases are summarized here. Detailed notes remain un
 
 ## 0.6.0 (planned, not yet released)
 
-Expected to include the following open PRs (jimmynycuee/Chadex); none are merged yet.
+Expected to include the following PRs (jimmynycuee/Chadex); none are merged yet. #8 and #9 are part of 0.6.0, and 0.6.0 ships once this batch is done.
+
+### Design
 
 - Design v2 for Windows (#1): Fluent type scale, connection circuit, activity timeline, Mica backdrop and dark as the default appearance. Verified in CI only; there has been no physical-machine testing.
 - Design v2 for macOS (#2): Liquid Glass sidebar, connection circuit, activity timeline, dark as the default appearance, and a fix for building on the macOS 15 SDK. Pending validation: reviewed by AI reviewers only, with no external design validation yet.
-- Computer Use page permission card for Accessibility and Screen Recording (#4).
-- Computer Use tool descriptions now call `activate_window` only before key or pointer actions (#5), and every Computer Use action records its elapsed time (#6).
+
+### Computer Use
+
+- The Computer Use page shows a permission card for Accessibility and Screen Recording, with granted permissions in green (#4).
+- Tool descriptions now call `activate_window` only before key or pointer actions (#5), and every action records its elapsed time (#6).
+- macOS agent cursor overlay: a click-through cursor shows where the model is about to act; it can be turned off on the Computer Use page (#8). Excluding it from screenshots still needs a real-machine test.
+- macOS Chromium/Electron web content is now readable through accessibility, with subtree queries (`root_element_id`) and deeper `find_elements` (#9). Whether Chrome/Brave accept `AXManualAccessibility` still needs a real-machine check. Behavior change: on new macOS runners, `find_elements` without a root now returns `permission_denied` on a sensitive screen.
+- Sign-in pages and password managers (1Password, Bitwarden, LastPass and others) are treated as sensitive, so the model cannot operate them (#15). Together with #9, web sign-in pages are blocked; titles that merely mention passwords may also be blocked.
+
+### Connection / Security
+
+- The Tunnel ID is checked with the helper's rule (`tunnel_` plus 32 lowercase hex) before it is saved. This fixes `credential_push` failing at startup and the connection staying at `unconfigured` after an invalid ID was stored (#14).
+- The local runtime's shared-key login is disabled (#17). If you manually created a `webcodex connect` profile against the local server with a shared key, it stops working.
+- Planned (PR not opened yet, branch `fix/runtime-cors-host`): runtime CORS and Host allowlist, and anonymous access forced off.
+
+### Reliability / CI
+
 - W5 smoke prints unexpected exceptions, and the `process_inventory` time limit goes from 15 to 60 s (#3).
 - Runtime tests no longer race on environment variables (#7).
-- Candidates, depending on what merges: macOS cursor overlay (#8) and Chromium web-page AX (#9). Both were originally planned for 0.6.1 and are not included yet.
-- Public distribution remains the macOS Apple Silicon DMG; Windows stays an unsigned CI candidate. See `docs/releases/0.6.0.md`.
+- Windows core gate: fixed a `job_manager` test race, and the local Windows shell open time limit is now 90 s (#11).
+- CI push builds run only on `main`; PR branches keep the `pull_request` run (#13).
+
+### Docs
+
+- W5 readiness docs refreshed for the v0.5.0 baseline (#12).
+
+Public distribution remains the macOS Apple Silicon DMG; Windows stays an unsigned CI candidate. See `docs/releases/0.6.0.md`.
 
 ## 0.5.0
 
