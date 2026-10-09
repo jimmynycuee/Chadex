@@ -18,6 +18,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 from typing import Any, Iterator, Mapping
 
 sys.dont_write_bytecode = True
@@ -76,7 +77,7 @@ SAFE_CODES = frozenset({
     "installed_helper_identity_unowned", "installed_helper_identity_changed",
     "installed_runtime_not_ready", "installed_ui_not_rendered",
     "installed_preferences_not_restored", "installed_smoke_ipc_exposed",
-    "installed_processes_remain", "installed_app_exit_nonzero", "process_inventory_failed", "process_cleanup_failed",
+    "installed_processes_remain", "installed_app_exit_nonzero", "process_inventory_failed", "process_inventory_timeout", "process_cleanup_failed",
     "node_cleanup_failed", "owned_processes_remain", "forced_cleanup_required",
     "appdata_missing", "appdata_snapshot_invalid", "appdata_changed",
     "preferences_missing", "preferences_changed", "project_marker_changed",
@@ -739,6 +740,9 @@ def run_owned_executable(executable: Path, arguments: str, *, cwd: Path,
         )
     except suspended.LaunchFailure:
         raise SmokeFailure("process_inventory_failed") from None
+    except w2.E2EFailure as error:
+        code = error.code if error.code in SAFE_CODES else "process_inventory_failed"
+        raise SmokeFailure(code) from None
     except OSError:
         raise SmokeFailure(spawn_code) from None
     deadline = time.monotonic() + timeout
@@ -759,6 +763,20 @@ def run_owned_executable(executable: Path, arguments: str, *, cwd: Path,
     remaining = _wait_owned_gone(powershell, group)
     require(not remaining, "installer_processes_remain")
     require(code == 0, exit_code)
+
+
+EXCEPTION_TYPE_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+
+
+def log_unexpected_exception(stage: str, error: BaseException) -> None:
+    """Print an unclassified failure to the CI log so it can be diagnosed.
+
+    The public report keeps only the exception class name; the message and
+    traceback go to stderr, which stays in the runner's job log.
+    """
+    print(f"W5 stage {stage} raised an unexpected exception:", file=sys.stderr)
+    traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+    sys.stderr.flush()
 
 
 def run_installer(installer: Path, install_dir: Path, root: Path, *,
@@ -849,6 +867,9 @@ def _launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: 
         )
     except suspended.LaunchFailure:
         raise SmokeFailure("process_inventory_failed") from None
+    except w2.E2EFailure as error:
+        code = error.code if error.code in SAFE_CODES else "process_inventory_failed"
+        raise SmokeFailure(code) from None
     except OSError:
         raise SmokeFailure("installed_probe_spawn_failed") from None
     node_process: subprocess.Popen[bytes] | None = None
@@ -983,9 +1004,11 @@ class SmokeReport:
             entry["status"] = "failed"
             entry["error_code"] = error.code
             raise
-        except Exception:
+        except Exception as error:
             entry["status"] = "failed"
             entry["error_code"] = "unexpected_exception"
+            entry["exception_type"] = type(error).__name__
+            log_unexpected_exception(name, error)
             raise SmokeFailure("unexpected_exception") from None
         else:
             entry["status"] = "passed"
@@ -1009,6 +1032,9 @@ class SmokeReport:
             code = item.get("error_code")
             if isinstance(code, str):
                 row["error_code"] = code if code in SAFE_CODES else "unclassified"
+            exception_type = item.get("exception_type")
+            if isinstance(exception_type, str) and EXCEPTION_TYPE_PATTERN.fullmatch(exception_type):
+                row["exception_type"] = exception_type
             probe_code = item.get("probe_failure")
             if isinstance(probe_code, str) and probe_code in SAFE_PROBE_ERRORS:
                 row["probe_failure"] = probe_code
@@ -1362,7 +1388,8 @@ def run_smoke(candidate_dir: Path, *, historical_baseline_dir: Path | None = Non
         main_success = True
     except SmokeFailure as error:
         failure = error
-    except Exception:
+    except Exception as error:
+        log_unexpected_exception("harness", error)
         failure = SmokeFailure("unexpected_exception")
 
     try:
