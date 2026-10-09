@@ -182,6 +182,83 @@ pub(super) fn optional_ax_string(
         .map(|value| bounded_text(&value.to_string())))
 }
 
+/// Like [`optional_ax_string`] with a caller-chosen UTF-8 byte bound. Only used for
+/// non-sensitive `AXValue` reads that are compared but never returned.
+#[cfg(target_os = "macos")]
+fn optional_ax_string_bounded(
+    deadline: &AxObservationDeadline,
+    element: &AXUIElement,
+    attribute: &'static str,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
+    let Some(value) = optional_ax_value(deadline, element, attribute)? else {
+        return Ok(None);
+    };
+    Ok(value.downcast::<CFString>().ok().map(|value| {
+        let text = value.to_string();
+        let mut end = text.len().min(max_bytes);
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text[..end].to_string()
+    }))
+}
+
+/// Native reader behind the platform-neutral traversal engine.
+#[cfg(target_os = "macos")]
+pub(super) struct MacAxSource<'a> {
+    pub(super) deadline: &'a AxObservationDeadline,
+}
+
+#[cfg(target_os = "macos")]
+impl AxSource for MacAxSource<'_> {
+    type Node = CFRetained<AXUIElement>;
+
+    fn platform(&self) -> &'static str {
+        "macos"
+    }
+
+    fn fingerprint(
+        &self,
+        node: &Self::Node,
+        inherited_protected: bool,
+    ) -> Result<ElementFingerprint, String> {
+        element_fingerprint(self.deadline, node, inherited_protected)
+    }
+
+    fn role(&self, node: &Self::Node) -> Result<Option<String>, String> {
+        optional_ax_string(self.deadline, node, "AXRole")
+    }
+
+    fn value(&self, node: &Self::Node, max_bytes: usize) -> Result<Option<String>, String> {
+        optional_ax_string_bounded(self.deadline, node, "AXValue", max_bytes)
+    }
+
+    fn enabled(&self, node: &Self::Node) -> Result<Option<bool>, String> {
+        optional_ax_bool(self.deadline, node, "AXEnabled")
+    }
+
+    fn focused(&self, node: &Self::Node) -> Result<Option<bool>, String> {
+        optional_ax_bool(self.deadline, node, "AXFocused")
+    }
+
+    fn child_count(&self, node: &Self::Node) -> Result<usize, String> {
+        ax_array_count(self.deadline, node, "AXChildren")
+    }
+
+    fn children(&self, node: &Self::Node, take: usize) -> Result<Vec<Self::Node>, String> {
+        ax_elements(self.deadline, node, "AXChildren", take)
+    }
+
+    fn child_at(&self, node: &Self::Node, index: usize) -> Result<Self::Node, String> {
+        ax_element_at(self.deadline, node, "AXChildren", index)
+    }
+
+    fn check_deadline(&self) -> Result<(), String> {
+        self.deadline.ensure_remaining()
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn element_fingerprint(
     deadline: &AxObservationDeadline,
@@ -572,124 +649,239 @@ pub(crate) fn accessibility_status() -> Result<Value, String> {
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn accessibility_tree(
+pub(crate) fn observe_accessibility_tree(
     surface_id: &str,
     surface: &SurfaceRecord,
     max_depth: usize,
     max_nodes: usize,
+    web: &WebAxContext<'_>,
 ) -> Result<AccessibilityTreeResult, String> {
     if !unsafe { AXIsProcessTrusted() } {
         return Err("permission_denied: macOS Accessibility permission is not granted".to_string());
     }
     let deadline = AxObservationDeadline::new();
     let root = exact_ax_window(surface, &deadline)?;
-    let mut queue = VecDeque::from([(
+    // The legacy kind does not report the state; it only benefits from the enablement.
+    enable_web_content(web, surface, &deadline, &root)?;
+    observe_tree(
+        &MacAxSource {
+            deadline: &deadline,
+        },
         root,
-        None::<String>,
-        0usize,
-        Vec::<usize>::new(),
-        Vec::<ElementFingerprint>::new(),
-        false,
-    )]);
-    let mut nodes = Vec::with_capacity(max_nodes.min(64));
-    let mut elements: Vec<(String, ElementRecord)> = Vec::with_capacity(max_nodes.min(64));
-    let mut truncated = false;
-    while let Some((element, parent_element_id, depth, path, mut lineage, inherited_protected)) =
-        queue.pop_front()
-    {
-        deadline.ensure_remaining()?;
-        if nodes.len() >= max_nodes {
-            truncated = true;
-            break;
-        }
-        let element_id = crate::allocate_selector("element_", |id| {
-            elements.iter().any(|(existing, _)| existing == id)
-        })?;
-        let fingerprint = element_fingerprint(&deadline, &element, inherited_protected)?;
-        let role = fingerprint.role.clone();
-        let subrole = fingerprint.subrole.clone();
-        let title = fingerprint.title.clone();
-        let description = fingerprint.description.clone();
-        let placeholder = fingerprint.placeholder.clone();
-        let protected = fingerprint.protected;
-        lineage.push(fingerprint);
-        let sensitive = role == "AXSecureTextField"
-            || subrole
-                .as_deref()
-                .is_some_and(|value| value.contains("Secure"));
-        let value = if sensitive || protected {
-            None
-        } else {
-            optional_ax_string(&deadline, &element, "AXValue")?
+        surface_id,
+        None,
+        TreeBounds {
+            max_depth,
+            max_nodes,
+            omit_web_content: omit_web_content_for(web, surface),
+        },
+        TreeMode::Legacy,
+    )
+}
+
+/// Native half of the web accessibility switch (see `web_accessibility`).
+#[cfg(target_os = "macos")]
+struct MacWebEnvironment<'a> {
+    deadline: &'a AxObservationDeadline,
+    application: CFRetained<AXUIElement>,
+    window: CFRetained<AXUIElement>,
+}
+
+#[cfg(target_os = "macos")]
+impl WebAxEnvironment for MacWebEnvironment<'_> {
+    fn set_manual_accessibility(&self) -> Result<SetOutcome, String> {
+        prepare_ax_call(self.deadline, &self.application)?;
+        let error = unsafe {
+            self.application.set_attribute_value(
+                &CFString::from_static_str("AXManualAccessibility"),
+                CFBoolean::new(true),
+            )
         };
-        let enabled = optional_ax_bool(&deadline, &element, "AXEnabled")?;
-        let focused = optional_ax_bool(&deadline, &element, "AXFocused")?;
-        let child_count = ax_array_count(&deadline, &element, "AXChildren")?;
-        if depth < max_depth && child_count > 0 {
-            let reserved = nodes.len() + queue.len() + 1;
-            let remaining = max_nodes.saturating_sub(reserved);
-            let take = child_count.min(remaining);
-            if take < child_count {
-                truncated = true;
-            }
-            for (index, child) in ax_elements(&deadline, &element, "AXChildren", take)?
-                .into_iter()
-                .enumerate()
-            {
-                let mut child_path = path.clone();
-                child_path.push(index);
-                queue.push_back((
-                    child,
-                    Some(element_id.clone()),
-                    depth + 1,
-                    child_path,
-                    lineage.clone(),
-                    protected,
-                ));
-            }
-        } else if child_count > 0 {
-            truncated = true;
-        }
-        elements.push((
-            element_id.clone(),
-            ElementRecord {
-                surface_id: surface_id.to_string(),
-                path,
-                lineage,
+        self.deadline.ensure_remaining()?;
+        Ok(match error {
+            AXError::Success => SetOutcome::Set,
+            AXError::APIDisabled => SetOutcome::PermissionDenied,
+            // Observation must not fail because a best-effort feature is unavailable.
+            _ => SetOutcome::Unsupported,
+        })
+    }
+
+    fn probe(&self, budget: Duration) -> Result<WebProbe, String> {
+        probe_web_content(
+            &MacAxSource {
+                deadline: self.deadline,
             },
-        ));
-        nodes.push(json!({
-            "element_id": element_id,
-            "parent_element_id": parent_element_id,
-            "depth": depth,
-            "role": role,
-            "subrole": subrole,
-            "title": title,
-            "description": description,
-            "value": value,
-            "placeholder": placeholder,
-            "enabled": enabled,
-            "focused": focused,
-            "child_count": child_count,
-        }));
+            &ObservationClock {
+                started: Instant::now(),
+            },
+            budget,
+            self.window.clone(),
+        )
     }
-    if !queue.is_empty() {
-        truncated = true;
+
+    fn sleep(&self, duration: Duration) {
+        std::thread::sleep(duration);
     }
-    deadline.ensure_remaining()?;
-    let node_count = nodes.len();
-    Ok(AccessibilityTreeResult {
-        output: json!({
-            "platform": "macos",
-            "surface_id": surface_id,
-            "nodes": nodes,
-            "node_count": node_count,
-            "truncated": truncated,
-            "max_depth": max_depth,
-            "max_nodes": max_nodes,
-        }),
-        elements,
+
+    fn remaining(&self) -> Duration {
+        self.deadline.remaining()
+    }
+}
+
+/// Resolves which web engine (if any) runs the surface's process and a key that
+/// survives pid reuse. Reads bundle metadata only, never process memory.
+#[cfg(target_os = "macos")]
+fn identify_web_process(
+    surface: &SurfaceRecord,
+    registry: &WebAxRegistry,
+) -> Option<(WebEngine, ProcessKey)> {
+    let pid = checked_surface_pid(surface).ok()?;
+    let running = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?;
+    let launch_seconds = running
+        .launchDate()
+        .map(|date| date.timeIntervalSince1970().floor() as i64);
+    let process = (surface.pid, launch_seconds);
+    let bundle_path = PathBuf::from(running.bundleURL()?.path()?.to_string());
+    let engine = match registry.cached_engine(&bundle_path) {
+        Some(engine) => engine,
+        None => {
+            let bundle_id = running
+                .bundleIdentifier()
+                .map(|identifier| identifier.to_string())
+                .unwrap_or_default();
+            let engine = classify_web_engine(&bundle_id, &bundle_path);
+            registry.cache_engine(&bundle_path, engine);
+            engine
+        }
+    };
+    Some((engine, process))
+}
+
+/// Whether a sensitive surface of a web-engine app must not expose page content.
+#[cfg(target_os = "macos")]
+fn omit_web_content_for(web: &WebAxContext<'_>, surface: &SurfaceRecord) -> bool {
+    web.sensitive_surface
+        && web.policy == WebAccessibilityPolicy::Auto
+        && identify_web_process(surface, web.registry)
+            .is_some_and(|(engine, _)| should_omit_web_content(web.policy, true, engine))
+}
+
+/// Applies the web accessibility policy for `window`'s application. Must run after the
+/// exact window resolved and before traversal.
+#[cfg(target_os = "macos")]
+fn enable_web_content(
+    web: &WebAxContext<'_>,
+    surface: &SurfaceRecord,
+    deadline: &AxObservationDeadline,
+    window: &CFRetained<AXUIElement>,
+) -> Result<WebAxState, String> {
+    let application = unsafe { AXUIElement::new_application(checked_surface_pid(surface)?) };
+    let environment = MacWebEnvironment {
+        deadline,
+        application,
+        window: window.clone(),
+    };
+    enable_web_accessibility(&environment, web, || {
+        identify_web_process(surface, web.registry)
     })
+}
+
+/// `computer_accessibility_subtree`: observe below a previously issued root (or the
+/// window root) with the hardened sensitive-content rules.
+#[cfg(target_os = "macos")]
+pub(crate) fn accessibility_subtree(
+    surface_id: &str,
+    surface: &SurfaceRecord,
+    root: Option<&ElementRecord>,
+    max_depth: usize,
+    max_nodes: usize,
+    web: &WebAxContext<'_>,
+) -> Result<AccessibilityTreeResult, String> {
+    if !unsafe { AXIsProcessTrusted() } {
+        return Err("permission_denied: macOS Accessibility permission is not granted".to_string());
+    }
+    let deadline = AxObservationDeadline::new();
+    let window = exact_ax_window(surface, &deadline)?;
+    let web_state = enable_web_content(web, surface, &deadline, &window)?;
+    let source = MacAxSource {
+        deadline: &deadline,
+    };
+    let start = match root {
+        Some(root) => resolve_element(&source, window, root)?,
+        None => window,
+    };
+    let mut result = observe_tree(
+        &source,
+        start,
+        surface_id,
+        root,
+        TreeBounds {
+            max_depth,
+            max_nodes,
+            omit_web_content: omit_web_content_for(web, surface),
+        },
+        subtree_mode(root),
+    )?;
+    result.output["web_accessibility"] = json!(web_state.as_str());
+    Ok(result)
+}
+
+#[cfg(target_os = "macos")]
+struct ObservationClock {
+    started: Instant,
+}
+
+#[cfg(target_os = "macos")]
+impl AxClock for ObservationClock {
+    fn elapsed(&self) -> Duration {
+        self.started.elapsed()
+    }
+}
+
+/// `computer_accessibility_find`: bounded breadth-first search over the live tree.
+#[cfg(target_os = "macos")]
+pub(crate) fn find_elements(
+    surface_id: &str,
+    surface: &SurfaceRecord,
+    root: Option<&ElementRecord>,
+    request: &ElementFindRequest,
+    web: &WebAxContext<'_>,
+) -> Result<AccessibilityTreeResult, String> {
+    if !unsafe { AXIsProcessTrusted() } {
+        return Err("permission_denied: macOS Accessibility permission is not granted".to_string());
+    }
+    // The soft budget is measured from here, so time spent waiting for the renderer
+    // below is part of it and never extends the search.
+    let clock = ObservationClock {
+        started: Instant::now(),
+    };
+    let deadline = AxObservationDeadline::new();
+    let window = exact_ax_window(surface, &deadline)?;
+    let web_state = enable_web_content(web, surface, &deadline, &window)?;
+    let source = MacAxSource {
+        deadline: &deadline,
+    };
+    let start = match root {
+        Some(root) => resolve_element(&source, window, root)?,
+        None => window,
+    };
+    let mut result = find(
+        &source,
+        &clock,
+        start,
+        surface_id,
+        root,
+        &request.query(),
+        FindBounds {
+            limit: request.limit,
+            max_depth: request.max_depth,
+            max_visited: MAX_FIND_VISITED,
+            max_children_per_node: MAX_FIND_CHILDREN_PER_NODE,
+            soft_budget: FIND_SOFT_BUDGET,
+        },
+    )?;
+    result.output["web_accessibility"] = json!(web_state.as_str());
+    Ok(result)
 }
 
 #[cfg(target_os = "macos")]
@@ -698,23 +890,8 @@ pub(super) fn resolve_correlated_element(
     element: &ElementRecord,
     deadline: &AxObservationDeadline,
 ) -> Result<CFRetained<AXUIElement>, String> {
-    if element.lineage.len() != element.path.len() + 1 {
-        return Err("stale_element: AX element correlation lineage is incomplete".to_string());
-    }
-    let mut current = exact_ax_window(surface, deadline)?;
-    let current_root_fingerprint = element_fingerprint(deadline, &current, false)?;
-    ensure_correlated_fingerprint(&element.lineage[0], &current_root_fingerprint, true)?;
-    for (depth, &index) in element.path.iter().enumerate() {
-        let child_count = ax_array_count(deadline, &current, "AXChildren")?;
-        if index >= child_count {
-            return Err("stale_element: AX child path no longer exists".to_string());
-        }
-        current = ax_element_at(deadline, &current, "AXChildren", index)?;
-        let current_fingerprint =
-            element_fingerprint(deadline, &current, element.lineage[depth].protected)?;
-        ensure_correlated_fingerprint(&element.lineage[depth + 1], &current_fingerprint, false)?;
-    }
-    Ok(current)
+    let root = exact_ax_window(surface, deadline)?;
+    resolve_element(&MacAxSource { deadline }, root, element)
 }
 
 #[cfg(target_os = "macos")]
@@ -734,7 +911,7 @@ pub(crate) fn element_state(
     let enabled = optional_ax_bool(&deadline, &current, "AXEnabled")?;
     let focused = optional_ax_bool(&deadline, &current, "AXFocused")?;
     let protected = element.contains_protected_content()
-        || element.lineage.iter().any(is_secure_text_fingerprint);
+        || element.lineage.iter().any(|fp| is_secure_text_fingerprint(fp));
     let enabled_for_effect = enabled != Some(false);
     let can_press =
         !protected && enabled_for_effect && ax_supports_action(&deadline, &current, "AXPress")?;
@@ -973,7 +1150,7 @@ pub(super) fn validate_key_input_target(
 ) -> Result<(), String> {
     if optional_ax_bool(deadline, application, "AXFrontmost")? != Some(true) {
         return Err(
-            "key_input_failed: exact surface application must already be frontmost".to_string(),
+            "key_input_failed: exact surface application must already be frontmost; call computer_control(action=activate_window) for this surface first".to_string(),
         );
     }
     let focused_window = optional_ax_value(deadline, application, "AXFocusedWindow")?

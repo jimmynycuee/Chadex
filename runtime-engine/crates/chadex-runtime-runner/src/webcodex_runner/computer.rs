@@ -8,20 +8,28 @@ use serde_json::Value;
 use std::sync::OnceLock;
 use std::time::Instant;
 use webcodex_computer::{
-    ComputerAction, ComputerConfig, ComputerRuntime, PointerAction, SnapshotRegion,
-    DEFAULT_ACCESSIBILITY_DEPTH, DEFAULT_ACCESSIBILITY_NODES, MAX_APPLICATIONS, MAX_DISPLAYS,
-    MAX_WINDOWS,
+    ComputerAction, ComputerConfig, ComputerRuntime, ElementFindRequest, PointerAction,
+    SnapshotRegion, WebAccessibilityPolicy, DEFAULT_ACCESSIBILITY_DEPTH,
+    DEFAULT_ACCESSIBILITY_NODES, MAX_APPLICATIONS, MAX_DISPLAYS, MAX_WINDOWS,
 };
 #[cfg(test)]
 use webcodex_core::runner_operation::RunnerOperation;
 use webcodex_core::runner_operation::{RunnerComputerOperation, RunnerComputerOperationKind};
 
+fn computer_config(web_accessibility_env: Option<&str>) -> ComputerConfig {
+    ComputerConfig {
+        max_encoded_image_bytes: MAX_MCP_IMAGE_BYTES,
+        web_accessibility: WebAccessibilityPolicy::from_env_value(web_accessibility_env),
+    }
+}
+
 fn computer_runtime() -> &'static ComputerRuntime {
     static COMPUTER: OnceLock<ComputerRuntime> = OnceLock::new();
     COMPUTER.get_or_init(|| {
-        let runtime = ComputerRuntime::new(ComputerConfig {
-            max_encoded_image_bytes: MAX_MCP_IMAGE_BYTES,
-        });
+        // `CHADEX_COMPUTER_WEB_ACCESSIBILITY=off` stops Chadex from switching on web
+        // accessibility of Chromium/Electron apps; anything else keeps the default.
+        let web_accessibility = std::env::var(WebAccessibilityPolicy::ENV_VAR).ok();
+        let runtime = ComputerRuntime::new(computer_config(web_accessibility.as_deref()));
         // The cursor overlay is macOS-only and only active when the helper started
         // this runner with the private stdout channel (see computer_overlay.rs).
         #[cfg(target_os = "macos")]
@@ -30,6 +38,91 @@ fn computer_runtime() -> &'static ComputerRuntime {
         }
         runtime
     })
+}
+
+/// A payload key that must be present and is either `null` or a string.
+fn payload_optional_string(payload: &Value, key: &str) -> Result<Option<String>, String> {
+    match payload.get(key) {
+        Some(Value::Null) => Ok(None),
+        Some(Value::String(text)) => Ok(Some(text.clone())),
+        _ => Err(format!("invalid_request: {key} must be a string or null")),
+    }
+}
+
+/// A payload key that must be present and is either `null` or a boolean.
+fn payload_optional_bool(payload: &Value, key: &str) -> Result<Option<bool>, String> {
+    match payload.get(key) {
+        Some(Value::Null) => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        _ => Err(format!("invalid_request: {key} must be a boolean or null")),
+    }
+}
+
+fn payload_required_usize(payload: &Value, key: &str) -> Result<usize, String> {
+    payload
+        .get(key)
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| format!("invalid_request: {key} must be a non-negative integer"))
+}
+
+/// `computer_accessibility_subtree`: every key is mandatory (`root_element_id` may be
+/// null) so an older/newer peer cannot smuggle semantics through a missing field.
+fn handle_accessibility_subtree(payload: &Value) -> Result<Value, String> {
+    ensure_exact_payload_fields(
+        payload,
+        &["surface_id", "root_element_id", "max_depth", "max_nodes"],
+    )?;
+    let surface_id = payload
+        .get("surface_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "invalid_request: surface_id is required".to_string())?;
+    let root_element_id = payload_optional_string(payload, "root_element_id")?;
+    let max_depth = payload_required_usize(payload, "max_depth")?;
+    let max_nodes = payload_required_usize(payload, "max_nodes")?;
+    computer_runtime().accessibility_subtree(
+        surface_id,
+        root_element_id.as_deref(),
+        max_depth,
+        max_nodes,
+    )
+}
+
+fn parse_accessibility_find(payload: &Value) -> Result<(String, ElementFindRequest), String> {
+    ensure_exact_payload_fields(
+        payload,
+        &[
+            "surface_id",
+            "root_element_id",
+            "role",
+            "subrole",
+            "label",
+            "value",
+            "focused",
+            "enabled",
+            "limit",
+            "max_depth",
+        ],
+    )?;
+    let surface_id = payload
+        .get("surface_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "invalid_request: surface_id is required".to_string())?
+        .to_string();
+    Ok((
+        surface_id,
+        ElementFindRequest {
+            root_element_id: payload_optional_string(payload, "root_element_id")?,
+            role: payload_optional_string(payload, "role")?,
+            subrole: payload_optional_string(payload, "subrole")?,
+            label: payload_optional_string(payload, "label")?,
+            value: payload_optional_string(payload, "value")?,
+            focused: payload_optional_bool(payload, "focused")?,
+            enabled: payload_optional_bool(payload, "enabled")?,
+            limit: payload_required_usize(payload, "limit")?,
+            max_depth: payload_required_usize(payload, "max_depth")?,
+        },
+    ))
 }
 
 #[cfg(test)]
@@ -68,7 +161,71 @@ fn optional_snapshot_dimension(payload: &Value, field: &str) -> Result<Option<u3
     }
 }
 
+/// Structured per-action timing record. Carries only the action name, the
+/// elapsed time and a result class; never payload, window titles, AX text or
+/// image content.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ComputerActionTiming {
+    pub(crate) action: &'static str,
+    pub(crate) duration_ms: u64,
+    pub(crate) outcome: String,
+}
+
+/// Result class: "ok", or the leading `code:` token of the error
+/// (for example `stale_surface`), falling back to "error".
+fn computer_outcome(error: Option<&str>) -> String {
+    let Some(error) = error else {
+        return "ok".to_string();
+    };
+    match error.split_once(':') {
+        Some((code, _))
+            if !code.is_empty()
+                && code
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_') =>
+        {
+            code.to_string()
+        }
+        _ => "error".to_string(),
+    }
+}
+
+fn emit_computer_action_timing(timing: &ComputerActionTiming) {
+    tracing::info!(
+        target: "chadex::computer",
+        action = timing.action,
+        duration_ms = timing.duration_ms,
+        outcome = %timing.outcome,
+        "computer action finished"
+    );
+}
+
 pub(crate) fn handle_computer_operation(operation: &RunnerComputerOperation) -> CommandResult {
+    time_computer_action(
+        operation.kind.wire_kind(),
+        || run_computer_operation(operation),
+        emit_computer_action_timing,
+    )
+}
+
+/// Shared dispatch wrapper for every computer action: runs it and records one
+/// timing entry through `sink`.
+fn time_computer_action(
+    action: &'static str,
+    run: impl FnOnce() -> CommandResult,
+    sink: impl FnOnce(&ComputerActionTiming),
+) -> CommandResult {
+    let started = Instant::now();
+    let result = run();
+    sink(&ComputerActionTiming {
+        action,
+        duration_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+        outcome: computer_outcome(result.error.as_deref()),
+    });
+    result
+}
+
+fn run_computer_operation(operation: &RunnerComputerOperation) -> CommandResult {
     let start = Instant::now();
     let payload = match serde_json::from_str::<Value>(&operation.payload) {
         Ok(value) => value,
@@ -153,6 +310,11 @@ pub(crate) fn handle_computer_operation(operation: &RunnerComputerOperation) -> 
                 computer_runtime().accessibility_tree(surface_id, max_depth, max_nodes)
             })
         }
+        RunnerComputerOperationKind::AccessibilitySubtree => handle_accessibility_subtree(&payload),
+        RunnerComputerOperationKind::AccessibilityFind => parse_accessibility_find(&payload)
+            .and_then(|(surface_id, request)| {
+                computer_runtime().find_elements(&surface_id, &request)
+            }),
         RunnerComputerOperationKind::ElementState => {
             ensure_exact_payload_fields(&payload, &["surface_id", "element_id"]).and_then(|()| {
                 let surface_id = payload

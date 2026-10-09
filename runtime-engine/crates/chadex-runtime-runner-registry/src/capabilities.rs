@@ -71,6 +71,7 @@ pub enum RunnerFeature {
     ComputerKeyInput,
     ComputerWindowActivate,
     ComputerTextInput,
+    ComputerAccessibilityQuery,
 }
 
 const ALL_RUNNER_FEATURES: &[RunnerFeature] = &[
@@ -137,6 +138,7 @@ const ALL_RUNNER_FEATURES: &[RunnerFeature] = &[
     RunnerFeature::ComputerKeyInput,
     RunnerFeature::ComputerWindowActivate,
     RunnerFeature::ComputerTextInput,
+    RunnerFeature::ComputerAccessibilityQuery,
 ];
 
 /// Whether a feature could ever become a frozen protocol-generation baseline,
@@ -239,6 +241,9 @@ impl RunnerFeature {
             Self::ComputerKeyInput => wire::RUNNER_CAPABILITY_COMPUTER_KEY_INPUT,
             Self::ComputerWindowActivate => wire::RUNNER_CAPABILITY_COMPUTER_WINDOW_ACTIVATE,
             Self::ComputerTextInput => wire::RUNNER_CAPABILITY_COMPUTER_TEXT_INPUT,
+            Self::ComputerAccessibilityQuery => {
+                wire::RUNNER_CAPABILITY_COMPUTER_ACCESSIBILITY_QUERY
+            }
         }
     }
 
@@ -325,6 +330,9 @@ impl RunnerFeature {
             wire::RUNNER_CAPABILITY_COMPUTER_KEY_INPUT => Self::ComputerKeyInput,
             wire::RUNNER_CAPABILITY_COMPUTER_WINDOW_ACTIVATE => Self::ComputerWindowActivate,
             wire::RUNNER_CAPABILITY_COMPUTER_TEXT_INPUT => Self::ComputerTextInput,
+            wire::RUNNER_CAPABILITY_COMPUTER_ACCESSIBILITY_QUERY => {
+                Self::ComputerAccessibilityQuery
+            }
             _ => return None,
         })
     }
@@ -393,7 +401,8 @@ impl RunnerFeature {
             | Self::ComputerScrollToElement
             | Self::ComputerKeyInput
             | Self::ComputerWindowActivate
-            | Self::ComputerTextInput => RunnerFeatureInference::RegistrationRequired,
+            | Self::ComputerTextInput
+            | Self::ComputerAccessibilityQuery => RunnerFeatureInference::RegistrationRequired,
         }
     }
 
@@ -470,6 +479,7 @@ impl RunnerFeature {
             Self::ComputerKeyInput => capabilities.computer_key_input,
             Self::ComputerWindowActivate => capabilities.computer_window_activate,
             Self::ComputerTextInput => capabilities.computer_text_input,
+            Self::ComputerAccessibilityQuery => capabilities.computer_accessibility_query,
         }
     }
 }

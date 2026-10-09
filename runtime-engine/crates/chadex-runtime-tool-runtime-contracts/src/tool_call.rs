@@ -460,6 +460,32 @@ impl HostFileImportProvenance {
     }
 }
 
+/// Caller text that must never be printed by `Debug` (for example in a log line or a
+/// panic message). Serializes exactly like the plain string it wraps.
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct RedactedString(String);
+
+impl std::fmt::Debug for RedactedString {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "RedactedString(<{} bytes>)", self.0.len())
+    }
+}
+
+impl std::ops::Deref for RedactedString {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for RedactedString {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ComputerObserveToolCall {
@@ -489,6 +515,8 @@ pub enum ComputerObserveToolCall {
         client_id: String,
         surface_id: String,
         #[serde(default)]
+        root_element_id: Option<String>,
+        #[serde(default)]
         max_depth: Option<usize>,
         #[serde(default)]
         max_nodes: Option<usize>,
@@ -497,17 +525,25 @@ pub enum ComputerObserveToolCall {
         client_id: String,
         surface_id: String,
         #[serde(default)]
+        root_element_id: Option<String>,
+        #[serde(default)]
         role: Option<String>,
         #[serde(default)]
         subrole: Option<String>,
         #[serde(default)]
         label: Option<String>,
+        /// Literal substring of AXValue. Never echoed: audit records only its presence and
+        /// `Debug` redacts it.
+        #[serde(default)]
+        value: Option<RedactedString>,
         #[serde(default)]
         focused: Option<bool>,
         #[serde(default)]
         enabled: Option<bool>,
         #[serde(default)]
         limit: Option<usize>,
+        #[serde(default)]
+        max_depth: Option<usize>,
     },
     ElementState {
         client_id: String,

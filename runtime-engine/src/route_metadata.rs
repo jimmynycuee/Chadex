@@ -588,10 +588,12 @@ mod tests {
             "the sole literal mount must be the non-leaf /api parent"
         );
 
+        // Two AuthMiddleware roots: the authenticated /api router (which also
+        // carries the audit routes) and /mcp.
         let lib = include_str!("lib.rs");
         assert_eq!(
             lib.matches(".hoop(AuthMiddleware)").count(),
-            3,
+            2,
             "a new AuthMiddleware root must be covered by the canonical route inventory invariant"
         );
     }

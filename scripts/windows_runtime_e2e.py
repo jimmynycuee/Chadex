@@ -333,6 +333,11 @@ def runtime_identity(data: Path) -> tuple[str, str, str]:
     return url, token, project
 
 
+# A cold WMI provider on a hosted runner can take well over 15 s to answer the
+# first Win32_Process query after boot.
+PROCESS_INVENTORY_TIMEOUT_SECONDS = 60
+
+
 def process_inventory(powershell: str) -> dict[int, dict[str, Any]]:
     # No command line/environment fields: inventory must never expose secrets.
     script = ("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); "
@@ -340,8 +345,12 @@ def process_inventory(powershell: str) -> dict[int, dict[str, Any]]:
               "Select-Object ProcessId,ParentProcessId,Name,"
               "@{n='Created';e={$_.CreationDate.ToUniversalTime().ToString('o')}}) | "
               "ConvertTo-Json -Compress")
-    completed = subprocess.run([powershell, "-NoLogo", "-NoProfile", "-NonInteractive",
-                                "-Command", script], capture_output=True, timeout=15)
+    try:
+        completed = subprocess.run([powershell, "-NoLogo", "-NoProfile", "-NonInteractive",
+                                    "-Command", script], capture_output=True,
+                                   timeout=PROCESS_INVENTORY_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise E2EFailure("process_inventory_timeout") from None
     require(completed.returncode == 0, "process_inventory_failed", exit_code=completed.returncode)
     require(len(completed.stdout) <= MAX_FRAME, "process_inventory_too_large")
     try:

@@ -154,6 +154,14 @@ mkdir -p \
   "$CONTENTS/Resources/chadex-runtime"
 
 cp "$SWIFT_APP" "$CONTENTS/MacOS/Chadex"
+# SwiftPM's default swiftbuild backend stamps LC_BUILD_VERSION's SDK with the
+# deployment target (14.0). macOS reads that stamp to decide whether the app
+# gets the current system design (Liquid Glass sidebar, toolbar, Settings), so
+# restamp it with the SDK the binary was actually built against.
+BUILD_SDK_VERSION=$(xcrun --sdk macosx --show-sdk-version)
+BUILD_MIN_VERSION=$(xcrun vtool -show-build "$CONTENTS/MacOS/Chadex" | awk '/minos/ { print $2; exit }')
+xcrun vtool -set-build-version macos "$BUILD_MIN_VERSION" "$BUILD_SDK_VERSION" -replace \
+  -output "$CONTENTS/MacOS/Chadex" "$CONTENTS/MacOS/Chadex"
 cp "$ROOT/rust-helper/target/release/chadex-helper" "$CONTENTS/Helpers/chadex-helper"
 cp "$ROOT/runtime-engine/target/$RUNTIME_PROFILE/chadex-runtime-cli" "$CONTENTS/Resources/chadex-runtime/chadex-runtime-cli"
 cp "$ROOT/runtime-engine/target/$RUNTIME_PROFILE/chadex-runtime-server" "$CONTENTS/Resources/chadex-runtime/chadex-runtime-server"

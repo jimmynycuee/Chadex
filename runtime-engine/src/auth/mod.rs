@@ -88,9 +88,10 @@ pub use scopes::{SCOPE_ACCOUNT_MANAGE, SCOPE_JOB_DETACH};
 pub(crate) use scopes::{is_agent_scope, scopes_to_string, validate_agent_scopes, validate_scopes};
 
 pub(crate) use middleware::{
-    bearer_token, get_config, get_db, json_error, oauth_insufficient_scope_challenge,
-    render_scope_forbidden, require_json_same_origin, require_mcp_json_request,
-    require_mcp_request_authority, scope_forbidden_body, AuthMiddleware,
+    bearer_token, cors_origin_allowed, get_config, get_db, json_error,
+    oauth_insufficient_scope_challenge, render_scope_forbidden, require_json_same_origin,
+    require_mcp_json_request, require_mcp_request_authority, scope_forbidden_body,
+    ApiRequestAuthorityGuard, AuthMiddleware,
 };
 #[cfg(test)]
 pub(crate) use middleware::{
@@ -307,5 +308,7 @@ fn bootstrap_context() -> AuthContext {
 // Tests
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
+mod request_authority_tests;
 #[cfg(test)]
 mod tests;

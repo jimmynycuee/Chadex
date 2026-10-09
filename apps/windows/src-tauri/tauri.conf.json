@@ -11,7 +11,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{"label":"main", "title":"Chadex", "width":1120, "height":760, "minWidth":820, "minHeight":600}],
+    "windows": [{"label":"main", "title":"Chadex", "width":1120, "height":760, "minWidth":820, "minHeight":600, "transparent": true, "windowEffects": {"effects": ["mica"]}}],
     "security": {
       "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
       "devCsp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"

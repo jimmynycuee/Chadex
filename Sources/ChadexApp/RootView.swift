@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-private enum SidebarSelection: Hashable {
+enum SidebarSelection: Hashable {
     case project(UUID)
     case agentSettings
     case skills
@@ -111,7 +111,7 @@ struct RootView: View {
                             if !model.activities.isEmpty {
                                 Text("\(model.activities.count)")
                                     .chadexFont(.caption, design: .monospaced)
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                         .tag(SidebarSelection.activity)
@@ -166,7 +166,7 @@ struct RootView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.blue)
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                         .disabled(updateManager.isBusy)
                         .help(L10n.string("updates.quickUpdateHint", release.version))
                         .accessibilityLabel(L10n.string("updates.quickUpdateHint", release.version))
@@ -179,8 +179,12 @@ struct RootView: View {
             // horizontal resize range. This also keeps the titlebar tracking
             // separator and the content divider on one stable boundary.
             .background {
-                SidebarSplitViewAlignmentBridge(width: fixedSidebarWidth)
-                    .frame(width: 0, height: 0)
+                // The floating Liquid Glass sidebar (macOS 26+) has no seam to
+                // align, and repositioning its split view fights the system.
+                if #unavailable(macOS 26.0) {
+                    SidebarSplitViewAlignmentBridge(width: fixedSidebarWidth)
+                        .frame(width: 0, height: 0)
+                }
             }
             .navigationSplitViewColumnWidth(
                 min: fixedSidebarWidth,
@@ -188,14 +192,23 @@ struct RootView: View {
                 max: fixedSidebarWidth
             )
         } detail: {
+            // The connection's color is the window's, not one page's: it stays
+            // put while moving between pages and under the sidebar glass.
             detail
+                .background {
+                    ConnectionAmbience(phase: model.connectionPresentationPhase)
+                }
         }
         .navigationSplitViewStyle(.balanced)
+        .focusedSceneValue(\.sidebarSelection, $selection)
+        .onReceive(NotificationCenter.default.publisher(for: .chadexShowGuide)) { _ in
+            selection = .guide
+        }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if model.isSwitchingProject {
                     ProgressView()
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                         .help(model.switchingProjectName.map { L10n.string("project.switching", $0) } ?? L10n.string("status.preparing"))
                 } else if selection != .guide && selection != .skills {
                     Button {
@@ -460,7 +473,7 @@ struct RootView: View {
     private func projectSwitchingPlaceholder(_ project: ProjectRecord) -> some View {
         VStack(spacing: layout.spacing(12)) {
             ProgressView()
-                .controlSize(.small)
+                .chadexControlSize(.small)
             Text(L10n.string("project.switching", project.name))
                 .chadexFont(.callout)
                 .foregroundStyle(.secondary)
@@ -471,15 +484,17 @@ struct RootView: View {
 }
 
 private struct SidebarNavigationRow: View {
+    @Environment(\.chadexLayout) private var layout
     let title: String
     let systemImage: String
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .medium))
+                .chadexFont(.body, weight: .medium)
                 .foregroundStyle(.secondary)
-                .frame(width: 15)
+                .frame(width: layout.control(16))
+                .accessibilityHidden(true)
 
             Text(title)
                 .chadexFont(.body)
@@ -487,6 +502,7 @@ private struct SidebarNavigationRow: View {
         }
         .chadexPadding(.vertical, 1)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -573,8 +589,12 @@ private final class SidebarSplitViewAlignmentView: NSView {
         // a second boundary at a different edge of the 4-pt vibrant divider
         // (3 pt / 6 Retina pixels away from the body boundary). Let the shared
         // split-view material draw through the titlebar so both regions use the
-        // exact same divider geometry.
-        window.titlebarAppearsTransparent = true
+        // exact same divider geometry. From macOS 26 the floating sidebar has
+        // no such seam, and a transparent titlebar would hide the toolbar's
+        // scroll edge effect, letting scrolled content run under the title.
+        if #unavailable(macOS 26.0) {
+            window.titlebarAppearsTransparent = true
+        }
 
         windowUpdateObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didUpdateNotification,
@@ -632,16 +652,18 @@ private final class SidebarSplitViewAlignmentView: NSView {
 }
 
 private struct ProjectSidebarRow: View {
+    @Environment(\.chadexLayout) private var layout
     let project: ProjectRecord
     let isCurrent: Bool
     let phase: ConnectionPhase
 
     var body: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 8) {
             Image(systemName: "folder")
-                .font(.system(size: 13, weight: .medium))
+                .chadexFont(.body, weight: .medium)
                 .foregroundStyle(.secondary)
-                .frame(width: 15)
+                .frame(width: layout.control(16))
+                .accessibilityHidden(true)
 
             Text(project.name)
                 .chadexFont(.body)
@@ -652,12 +674,14 @@ private struct ProjectSidebarRow: View {
             if isCurrent {
                 Circle()
                     .fill(phase.chadexTint)
-                    .frame(width: 5.5, height: 5.5)
+                    .frame(width: layout.control(6), height: layout.control(6))
                     .accessibilityHidden(true)
             }
         }
         .chadexPadding(.vertical, 1)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(isCurrent ? StatusPresentation.text(for: phase) : "")
     }
 }
 
@@ -681,10 +705,110 @@ private struct EmptyProjectView: View {
 
             Button(L10n.string("project.add")) { model.addProjectFromPanel() }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
+                .chadexControlSize(.regular)
         }
         .frame(maxWidth: 420)
         .chadexPadding(32)
+    }
+}
+
+extension Notification.Name {
+    static let chadexShowGuide = Notification.Name("app.chadex.showGuide")
+}
+
+enum MainWindowPresenter {
+    /// `openWindow(id:)` on a WindowGroup always creates another window, which
+    /// would duplicate the main window and any sheet bound to the shared
+    /// model. Bring an existing main window forward and open one only when
+    /// none is left.
+    @MainActor
+    static func show(using openWindow: OpenWindowAction) {
+        // A hidden app (⌘H) reports its windows as not visible until unhidden.
+        let wasHidden = NSApp.isHidden
+        if wasHidden { NSApp.unhide(nil) }
+        NSApp.activate(ignoringOtherApps: true)
+        // SwiftUI names WindowGroup(id: "main") windows "main-AppWindow-N".
+        // If that ever changes, this falls back to opening a window.
+        let existing = NSApp.windows.first { window in
+            window.identifier?.rawValue.hasPrefix("main-AppWindow-") == true
+                && (wasHidden || window.isVisible || window.isMiniaturized)
+        }
+        if let window = existing {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            openWindow(id: "main")
+        }
+    }
+}
+
+struct SidebarSelectionFocusedKey: FocusedValueKey {
+    typealias Value = Binding<SidebarSelection?>
+}
+
+extension FocusedValues {
+    var sidebarSelection: Binding<SidebarSelection?>? {
+        get { self[SidebarSelectionFocusedKey.self] }
+        set { self[SidebarSelectionFocusedKey.self] = newValue }
+    }
+}
+
+/// Keyboard routes to every sidebar destination (View menu) and the guide
+/// (Help menu), so the whole window can be driven without the pointer.
+struct ChadexNavigationCommands: Commands {
+    @ObservedObject var model: AppModel
+    @FocusedBinding(\.sidebarSelection) private var selection: SidebarSelection??
+    @Environment(\.openWindow) private var openWindow
+
+    /// Destinations are unavailable mid-switch: a stale selection would
+    /// queue a switch back to the previous project.
+    private var canNavigate: Bool {
+        selection != nil && !model.isSwitchingProject
+    }
+
+    var body: some Commands {
+        CommandGroup(after: .sidebar) {
+            Divider()
+            Button(L10n.string("navigation.overview")) {
+                if let project = model.selectedProject {
+                    selection = .project(project.id)
+                }
+            }
+            .keyboardShortcut("1", modifiers: .command)
+            .disabled(!canNavigate || model.selectedProject == nil)
+
+            Button(L10n.string("sidebar.agentSettings")) { selection = .agentSettings }
+                .keyboardShortcut("2", modifiers: .command)
+                .disabled(!canNavigate)
+
+            Button(L10n.string("sidebar.skills")) { selection = .skills }
+                .keyboardShortcut("3", modifiers: .command)
+                .disabled(!canNavigate || model.selectedProject == nil)
+
+            Button(L10n.string("sidebar.computerUse")) { selection = .computerUse }
+                .keyboardShortcut("4", modifiers: .command)
+                .disabled(!canNavigate || model.selectedProject == nil)
+
+            Button(L10n.string("sidebar.activity")) { selection = .activity }
+                .keyboardShortcut("5", modifiers: .command)
+                .disabled(!canNavigate)
+            Divider()
+        }
+
+        CommandGroup(replacing: .help) {
+            Button(L10n.string("navigation.guideHelp")) {
+                if selection != nil {
+                    selection = .guide
+                } else {
+                    // No focused main window (e.g. Settings is in front): route
+                    // an existing window to the guide, or open one onto it.
+                    UserDefaults.standard.set("guide", forKey: "root.lastSidebarDestination")
+                    NotificationCenter.default.post(name: .chadexShowGuide, object: nil)
+                    MainWindowPresenter.show(using: openWindow)
+                }
+            }
+            .keyboardShortcut("?", modifiers: .command)
+        }
     }
 }
 

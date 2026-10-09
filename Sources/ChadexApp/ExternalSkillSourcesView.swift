@@ -38,12 +38,12 @@ struct ExternalSkillSourcesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                SectionEyebrow(title: L10n.string("skills.external.title"))
+                SectionTitle(title: L10n.string("skills.external.title"))
                 Spacer(minLength: 12)
-                if busy { ProgressView().controlSize(.small) }
+                if busy { ProgressView().chadexControlSize(.small) }
                 Button(L10n.string("skills.external.chooseFolder")) { chooseFolder() }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .chadexControlSize(.small)
                     .disabled(!canEdit)
             }
 
@@ -54,18 +54,22 @@ struct ExternalSkillSourcesView: View {
 
             Label(L10n.string("skills.external.uploadVsConnect"), systemImage: "arrow.triangle.branch")
                 .chadexFont(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Label(L10n.string("skills.external.scriptsNote"), systemImage: "terminal")
                 .chadexFont(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let error = model.externalSkillsError {
-                Label(error, systemImage: "exclamationmark.triangle")
+                // Orange text is ~2.3:1 on a light window; only the symbol carries it.
+                Label {
+                    Text(error).foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
                     .chadexFont(.callout)
-                    .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("skills.external.error")
             }
@@ -78,7 +82,7 @@ struct ExternalSkillSourcesView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Button(L10n.string("skills.external.import")) { onImport() }
                         .buttonStyle(.borderedProminent)
-                        .controlSize(.regular)
+                        .chadexControlSize(.regular)
                         .disabled(model.skillInstallInFlight || model.isSwitchingProject)
                         .accessibilityIdentifier("skills.external.import")
                 }
@@ -161,17 +165,14 @@ struct ExternalSkillSourcesView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .chadexPadding(12)
-        .background(
-            .quaternary.opacity(0.16),
-            in: RoundedRectangle(cornerRadius: layout.control(10), style: .continuous)
-        )
+        .chadexGroupSurface()
         .accessibilityElement(children: .contain)
     }
 
     private func pathLabel(_ path: String) -> some View {
         Text(Self.displayPath(path))
             .chadexFont(.caption, design: .monospaced)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
             .lineLimit(1)
             .truncationMode(.middle)
             .help(path)
@@ -206,7 +207,7 @@ struct ExternalSkillSourcesView: View {
             } else {
                 Text(statusText(source.status))
                     .chadexFont(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -220,7 +221,7 @@ struct ExternalSkillSourcesView: View {
                 if configured {
                     Button(L10n.string("skills.external.remove")) { setConnected(path, false) }
                         .buttonStyle(.borderless)
-                        .controlSize(.small)
+                        .chadexControlSize(.small)
                         .disabled(!canEdit)
                         .accessibilityLabel(L10n.string("skills.external.removeLabel", Self.displayPath(path)))
                 }
@@ -260,7 +261,7 @@ struct ExternalSkillSourcesView: View {
                 ))
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .controlSize(.mini)
+                .chadexControlSize(.mini)
                 .disabled(!canEdit || !connected)
             }
             .chadexPadding(.leading, 14)
@@ -283,7 +284,7 @@ struct ExternalSkillSourcesView: View {
                     ForEach(invalid) { package in
                         Text(package.package + " — " + (package.invalidReason ?? "invalid"))
                             .chadexFont(.caption, design: .monospaced)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }

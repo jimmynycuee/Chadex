@@ -39,6 +39,15 @@ class HarnessContracts(unittest.TestCase):
             "structuredContent": {"success": success, "output": output or {}},
             **result_fields}}).encode("utf-8")
 
+    def test_process_inventory_timeout_is_a_classified_failure(self):
+        expired = subprocess.TimeoutExpired(["powershell.exe"], harness.PROCESS_INVENTORY_TIMEOUT_SECONDS)
+        with mock.patch.object(harness.subprocess, "run", side_effect=expired) as run:
+            with self.assertRaises(harness.E2EFailure) as raised:
+                harness.process_inventory("powershell.exe")
+        self.assertEqual(raised.exception.code, "process_inventory_timeout")
+        self.assertEqual(run.call_args.kwargs["timeout"], harness.PROCESS_INVENTORY_TIMEOUT_SECONDS)
+        self.assertGreaterEqual(harness.PROCESS_INVENTORY_TIMEOUT_SECONDS, 60)
+
     def test_mcp_preserves_real_nonzero_result(self):
         output = {"exit_code": 7, "command_completed": True, "tool_failure": False,
                   "stdout_tail": "OUT", "stderr_tail": "ERR"}

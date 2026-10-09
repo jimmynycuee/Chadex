@@ -433,6 +433,7 @@ async fn register_agent_projects_for_auth(
                         computer_key_input: false,
                         computer_window_activate: false,
                         computer_text_input: false,
+                        computer_accessibility_query: false,
                         job_state_reconciliation: false,
                         coding_agent_runs: false,
                         native_tool_plugins: false,

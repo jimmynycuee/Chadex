@@ -2,6 +2,13 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## Unreleased
+
+- The desktop local runtime is always started with `WEBCODEX_ALLOW_ANONYMOUS=false`, overriding any env file value.
+- The runtime's CORS policy only allows loopback origins and the `WEBCODEX_PUBLIC_URL` origin (previously any origin).
+- `/api/*` now checks the request `Host` against loopback names, the bound address and `WEBCODEX_PUBLIC_URL` (DNS-rebinding guard). Servers bound to a wildcard or LAN address that require a token are unchanged; with `--open` or without a token, IP-literal Hosts are also accepted.
+- **Self-hosted deployments:** a Server bound to loopback behind a reverse proxy or tunnel that preserves the original public `Host` must set `WEBCODEX_PUBLIC_URL` to that public origin, otherwise `/api` returns 403 `untrusted_request_authority` (the rejected Host is logged as a warning). `/mcp` already had this requirement.
+
 ## 0.5.0
 
 - Added **External Skill sources**: connect Agents, Claude Code or Codex Skill folders at the Runner level; external scripts are not executable by default and are enabled one source at a time.

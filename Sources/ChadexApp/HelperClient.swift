@@ -14,16 +14,16 @@ enum HelperClientError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .helperMissing(let path): return "Chadex helper was not found at \(path)."
-        case .launchFailed(let message): return "Could not launch Chadex helper: \(message)"
-        case .notRunning: return "Chadex helper is not running."
-        case .protocolMismatch(let expected, let received): return "Helper protocol mismatch (expected \(expected), got \(received))."
-        case .malformedResponse: return "Chadex helper returned an invalid response."
+        case .helperMissing(let path): return L10n.string("helperError.missing", path)
+        case .launchFailed(let message): return L10n.string("helperError.launchFailed", message)
+        case .notRunning: return L10n.string("helperError.notRunning")
+        case .protocolMismatch(let expected, let received): return L10n.string("helperError.protocolMismatch", expected, received)
+        case .malformedResponse: return L10n.string("helperError.malformedResponse")
         case .backend(let error): return error.message
-        case .disconnected: return "Chadex helper disconnected."
-        case .timedOut(let method): return "Chadex helper request \(method) timed out."
-        case .cancelled: return "Chadex helper request was cancelled."
-        case .tooManyPendingRequests: return "Chadex helper has too many requests in flight."
+        case .disconnected: return L10n.string("helperError.disconnected")
+        case .timedOut: return L10n.string("helperError.timedOut")
+        case .cancelled: return L10n.string("helperError.cancelled")
+        case .tooManyPendingRequests: return L10n.string("helperError.tooManyPendingRequests")
         }
     }
 }

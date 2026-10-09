@@ -91,23 +91,17 @@ async fn run_direct_mcp_computer_step(
     value["result"].clone()
 }
 
-// The compact switch is read per tools/list request, so `WEBCODEX_MCP_COMPACT_SCHEMAS`
-// must stay stable (and serialized against other env-mutating tests) for the whole
-// async body below. Adaptive Runtime is fixed; only schema projection varies.
-#[allow(clippy::await_holding_lock)]
+// Adaptive Runtime is fixed; only schema projection varies. The projection is
+// passed explicitly per request, so the process env is never involved.
 #[tokio::test]
 async fn mcp_tools_list_uses_adaptive_inventory_in_both_schema_modes() {
-    let mut env = crate::test_support::TestEnvGuard::new();
     let runtime = test_runtime();
     for compact in [false, true] {
-        env.set(
-            "WEBCODEX_MCP_COMPACT_SCHEMAS",
-            if compact { "true" } else { "false" },
-        );
-        let outcome = handle_mcp_request(
+        let outcome = handle_mcp_request_with_schema_mode(
             &runtime,
             rpc("tools/list", Some(Value::from(3)), json!({})),
             None,
+            compact,
         )
         .await;
         let McpOutcome::Ok(value) = outcome else {
@@ -132,7 +126,7 @@ async fn mcp_tools_list_uses_adaptive_inventory_in_both_schema_modes() {
             );
         }
 
-        let stateless = handle_mcp_request(
+        let stateless = handle_mcp_request_with_schema_mode(
             &runtime,
             rpc(
                 "tools/list",
@@ -140,6 +134,7 @@ async fn mcp_tools_list_uses_adaptive_inventory_in_both_schema_modes() {
                 mcp_2026_params(json!({})),
             ),
             None,
+            compact,
         )
         .await;
         let McpOutcome::Ok(stateless_value) = stateless else {
@@ -2216,6 +2211,445 @@ async fn computer_direct_launch_activate_inspect_input_scroll_press_snapshot_ver
     );
 }
 
+fn computer_query_test_auth(client_id: &str) -> crate::auth::AuthContext {
+    crate::auth::AuthContext {
+        kind: crate::auth::AuthKind::AgentToken,
+        username: Some("local-owner".to_string()),
+        role: Some("agent".to_string()),
+        token_kind: Some("agent".to_string()),
+        allowed_client_id: Some(client_id.to_string()),
+        scopes: vec![crate::auth::SCOPE_COMPUTER_READ.to_string()],
+        ..crate::auth::AuthContext::new(crate::auth::AuthKind::AgentToken)
+    }
+}
+
+async fn register_computer_query_test_runner(
+    runtime: &ToolRuntime,
+    auth: &crate::auth::AuthContext,
+    client_id: &str,
+    runner_instance_id: &str,
+    accessibility_query: bool,
+) {
+    runtime
+        .runner_registry
+        .register_with_auth(
+            crate::test_support::current_runner_registration(RunnerRegisterRequest {
+                client_id: client_id.to_string(),
+                runner_instance_id: runner_instance_id.to_string(),
+                runner_protocol_generation: crate::runner_protocol::RUNNER_PROTOCOL_GENERATION_V2,
+                display_name: Some("Query Runner".to_string()),
+                owner: Some("local-owner".to_string()),
+                hostname: None,
+                host_context: None,
+                capabilities: crate::test_support::current_runner_capabilities(
+                    RunnerCapabilities {
+                        computer_observe: true,
+                        computer_accessibility_observe: true,
+                        computer_accessibility_query: accessibility_query,
+                        ..Default::default()
+                    },
+                ),
+                policy: None,
+                process_started_at: None,
+                build: None,
+                job_concurrency_limit: None,
+                job_inventory: None,
+                coding_agent_providers: None,
+                coding_agent_inventory: None,
+            }),
+            Some(&crate::test_support::runner_access(auth)),
+        )
+        .await
+        .unwrap();
+}
+
+/// Calls `computer_observe` and returns `structuredContent.output` of a failed result,
+/// asserting that no Runner request was enqueued.
+async fn computer_observe_expect_undispatched_error(
+    runtime: &ToolRuntime,
+    auth: &crate::auth::AuthContext,
+    client_id: &str,
+    runner_instance_id: &str,
+    rpc_id: i64,
+    arguments: Value,
+) -> Value {
+    let outcome = handle_mcp_request(
+        runtime,
+        rpc(
+            "tools/call",
+            Some(json!(rpc_id)),
+            json!({"name": "computer_observe", "arguments": arguments}),
+        ),
+        Some(auth),
+    )
+    .await;
+    let McpOutcome::Ok(value) = outcome else {
+        panic!("expected computer_observe error result, got {outcome:?}");
+    };
+    assert_eq!(value["result"]["isError"], true, "{value:?}");
+    assert!(
+        runtime
+            .runner_registry
+            .poll(RunnerPollRequest {
+                client_id: client_id.to_string(),
+                runner_instance_id: runner_instance_id.to_string(),
+            })
+            .await
+            .unwrap()
+            .is_none(),
+        "no Runner request may be dispatched"
+    );
+    value["result"]["structuredContent"]["output"].clone()
+}
+
+fn deep_find_runner_output(root: Option<&str>) -> Value {
+    json!({
+        "platform": "macos",
+        "surface_id": "surface_iavN7wEjRWeJq83v",
+        "observation_generation": 3,
+        "search_mode": "deep",
+        "root_element_id": root,
+        "web_accessibility": "enabled",
+        "elements": [{
+            "element_id": "element_found_one",
+            "role": "AXStaticText",
+            "subrole": null,
+            "title": null,
+            "description": null,
+            "placeholder": null,
+            "enabled": true,
+            "focused": false,
+            "depth": 21,
+            "ancestors": "AXWebArea “Page” › AXGroup"
+        }],
+        "count": 1,
+        "scanned_nodes": 812,
+        "truncated": false,
+        "stop_reason": "complete"
+    })
+}
+
+#[tokio::test]
+async fn computer_find_elements_uses_the_deep_wire_kind_on_query_capable_runners() {
+    let runtime = test_runtime();
+    let client_id = "mcp-computer-deep-find";
+    let runner_instance_id = "inst-mcp-computer-deep-find";
+    let surface_id = "surface_iavN7wEjRWeJq83v";
+    let auth = computer_query_test_auth(client_id);
+    register_computer_query_test_runner(&runtime, &auth, client_id, runner_instance_id, true).await;
+
+    let found = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        1001,
+        "computer_observe",
+        json!({
+            "action":"find_elements",
+            "client_id":client_id,
+            "surface_id":surface_id,
+            "role":"AXStaticText",
+            "value":"needle",
+            "limit":3,
+            "max_depth":99
+        }),
+        "computer_accessibility_find",
+        json!({
+            "surface_id":surface_id,
+            "root_element_id":null,
+            "role":"AXStaticText",
+            "subrole":null,
+            "label":null,
+            "value":"needle",
+            "focused":null,
+            "enabled":null,
+            "limit":3,
+            "max_depth":48
+        }),
+        deep_find_runner_output(None),
+    )
+    .await;
+    let output = &found["structuredContent"]["output"];
+    assert_eq!(output["search_mode"], "deep");
+    assert_eq!(output["stop_reason"], "complete");
+    assert_eq!(output["web_accessibility"], "enabled");
+    assert_eq!(output["elements"][0]["element_id"], "element_found_one");
+    assert_eq!(output["elements"][0]["depth"], 21);
+    assert!(output["elements"][0].get("value").is_none());
+
+    // value alone is a legal condition; default depth is 32 and limit 8.
+    let rooted = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        1002,
+        "computer_observe",
+        json!({
+            "action":"find_elements",
+            "client_id":client_id,
+            "surface_id":surface_id,
+            "root_element_id":"element_rootone",
+            "value":"needle"
+        }),
+        "computer_accessibility_find",
+        json!({
+            "surface_id":surface_id,
+            "root_element_id":"element_rootone",
+            "role":null,
+            "subrole":null,
+            "label":null,
+            "value":"needle",
+            "focused":null,
+            "enabled":null,
+            "limit":8,
+            "max_depth":32
+        }),
+        deep_find_runner_output(Some("element_reissued")),
+    )
+    .await;
+    assert_eq!(
+        rooted["structuredContent"]["output"]["root_element_id"],
+        "element_reissued"
+    );
+}
+
+#[tokio::test]
+async fn computer_find_elements_falls_back_to_tree_filter_on_older_runners() {
+    let runtime = test_runtime();
+    let client_id = "mcp-computer-tree-filter";
+    let runner_instance_id = "inst-mcp-computer-tree-filter";
+    let surface_id = "surface_iavN7wEjRWeJq83v";
+    let auth = computer_query_test_auth(client_id);
+    register_computer_query_test_runner(&runtime, &auth, client_id, runner_instance_id, false)
+        .await;
+    let tree = json!({
+        "platform":"macos",
+        "surface_id":surface_id,
+        "nodes":[
+            {"element_id":"element_win","parent_element_id":null,"depth":0,"role":"AXWindow","subrole":null,"title":"Win","description":null,"value":null,"placeholder":null,"enabled":true,"focused":false,"child_count":2},
+            {"element_id":"element_text","parent_element_id":"element_win","depth":1,"role":"AXStaticText","subrole":null,"title":null,"description":null,"value":"has the needle inside","placeholder":null,"enabled":true,"focused":false,"child_count":0},
+            {"element_id":"element_other","parent_element_id":"element_win","depth":1,"role":"AXStaticText","subrole":null,"title":null,"description":null,"value":"nothing","placeholder":null,"enabled":true,"focused":false,"child_count":0}
+        ],
+        "node_count":3,
+        "truncated":false,
+        "max_depth":8,
+        "max_nodes":256,
+        "observation_generation":6
+    });
+    let found = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        runner_instance_id,
+        1011,
+        "computer_observe",
+        json!({
+            "action":"find_elements",
+            "client_id":client_id,
+            "surface_id":surface_id,
+            "value":"needle",
+            "max_depth":40
+        }),
+        "computer_accessibility_tree",
+        json!({"surface_id":surface_id,"max_depth":8,"max_nodes":256}),
+        tree,
+    )
+    .await;
+    let output = &found["structuredContent"]["output"];
+    assert_eq!(output["search_mode"], "tree_filter");
+    assert_eq!(output["root_element_id"], Value::Null);
+    assert_eq!(output["web_accessibility"], Value::Null);
+    assert_eq!(output["stop_reason"], Value::Null);
+    assert_eq!(output["count"], 1);
+    assert_eq!(output["elements"][0]["element_id"], "element_text");
+    assert_eq!(output["elements"][0]["depth"], Value::Null);
+    assert_eq!(output["elements"][0]["ancestors"], Value::Null);
+    assert!(!output.to_string().contains("has the needle inside"));
+}
+
+#[tokio::test]
+async fn computer_root_element_queries_on_older_runners_are_capability_unavailable() {
+    let runtime = test_runtime();
+    let client_id = "mcp-computer-root-old";
+    let runner_instance_id = "inst-mcp-computer-root-old";
+    let surface_id = "surface_iavN7wEjRWeJq83v";
+    let auth = computer_query_test_auth(client_id);
+    register_computer_query_test_runner(&runtime, &auth, client_id, runner_instance_id, false)
+        .await;
+    for (rpc_id, arguments) in [
+        (
+            1021,
+            json!({"action":"find_elements","client_id":client_id,"surface_id":surface_id,"role":"AXButton","root_element_id":"element_rootone"}),
+        ),
+        (
+            1022,
+            json!({"action":"accessibility_tree","client_id":client_id,"surface_id":surface_id,"root_element_id":"element_rootone"}),
+        ),
+    ] {
+        let output = computer_observe_expect_undispatched_error(
+            &runtime,
+            &auth,
+            client_id,
+            runner_instance_id,
+            rpc_id,
+            arguments,
+        )
+        .await;
+        assert_eq!(output["error_kind"], "capability_unavailable");
+        assert!(output["message"]
+            .as_str()
+            .unwrap()
+            .contains("computer_accessibility_query"));
+    }
+}
+
+#[tokio::test]
+async fn computer_accessibility_tree_routes_between_subtree_and_legacy_wire_kinds() {
+    let surface_id = "surface_iavN7wEjRWeJq83v";
+    let node = json!({"element_id":"element_win","parent_element_id":null,"depth":0,"role":"AXWebArea","subrole":null,"title":"Page","description":null,"value":null,"placeholder":null,"enabled":true,"focused":false,"child_count":0});
+    let legacy_tree = json!({
+        "platform":"macos","surface_id":surface_id,"nodes":[node.clone()],"node_count":1,
+        "truncated":false,"max_depth":4,"max_nodes":64,"observation_generation":2
+    });
+    let subtree = |root: Value, state: &str| {
+        json!({
+            "platform":"macos","surface_id":surface_id,"nodes":[node.clone()],"node_count":1,
+            "truncated":false,"max_depth":4,"max_nodes":64,"observation_generation":2,
+            "root":root,"web_accessibility":state
+        })
+    };
+
+    // New Runner: always the query kind, with or without a root.
+    let client_id = "mcp-computer-tree-new";
+    let instance = "inst-mcp-computer-tree-new";
+    let runtime = test_runtime();
+    let auth = computer_query_test_auth(client_id);
+    register_computer_query_test_runner(&runtime, &auth, client_id, instance, true).await;
+    let plain = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        instance,
+        1031,
+        "computer_observe",
+        json!({"action":"accessibility_tree","client_id":client_id,"surface_id":surface_id,"max_depth":4,"max_nodes":64}),
+        "computer_accessibility_subtree",
+        json!({"surface_id":surface_id,"root_element_id":null,"max_depth":4,"max_nodes":64}),
+        subtree(Value::Null, "not_applicable"),
+    )
+    .await;
+    assert_eq!(plain["structuredContent"]["output"]["web_accessibility"], "not_applicable");
+    assert_eq!(plain["structuredContent"]["output"]["root"], Value::Null);
+    let rooted = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        instance,
+        1032,
+        "computer_observe",
+        json!({"action":"accessibility_tree","client_id":client_id,"surface_id":surface_id,"root_element_id":"element_rootone","max_depth":4,"max_nodes":64}),
+        "computer_accessibility_subtree",
+        json!({"surface_id":surface_id,"root_element_id":"element_rootone","max_depth":4,"max_nodes":64}),
+        subtree(json!({"element_id":"element_win","absolute_depth":12}), "enabled"),
+    )
+    .await;
+    assert_eq!(rooted["structuredContent"]["output"]["root"]["absolute_depth"], 12);
+
+    // Older Runner without a root: falls back to the untouched legacy kind and shape.
+    let client_id = "mcp-computer-tree-old";
+    let instance = "inst-mcp-computer-tree-old";
+    let auth = computer_query_test_auth(client_id);
+    register_computer_query_test_runner(&runtime, &auth, client_id, instance, false).await;
+    let legacy = run_direct_mcp_computer_step(
+        &runtime,
+        &auth,
+        client_id,
+        instance,
+        1033,
+        "computer_observe",
+        json!({"action":"accessibility_tree","client_id":client_id,"surface_id":surface_id,"max_depth":4,"max_nodes":64}),
+        "computer_accessibility_tree",
+        json!({"surface_id":surface_id,"max_depth":4,"max_nodes":64}),
+        legacy_tree,
+    )
+    .await;
+    assert!(legacy["structuredContent"]["output"].get("web_accessibility").is_none());
+    assert!(legacy["structuredContent"]["output"].get("root").is_none());
+}
+
+#[tokio::test]
+async fn computer_subtree_runner_errors_keep_structured_kinds() {
+    let runtime = test_runtime();
+    let client_id = "mcp-computer-subtree-errors";
+    let instance = "inst-mcp-computer-subtree-errors";
+    let surface_id = "surface_iavN7wEjRWeJq83v";
+    let auth = computer_query_test_auth(client_id);
+    register_computer_query_test_runner(&runtime, &auth, client_id, instance, true).await;
+    for (rpc_id, error, expected_kind) in [
+        (1041, "stale_element: unknown, evicted, or stale root_element_id", "stale_element"),
+        (
+            1042,
+            "permission_denied: protected or secure Accessibility content cannot be a query root",
+            "permission_denied",
+        ),
+        (
+            1043,
+            "permission_denied: sensitive Computer surface cannot be controlled",
+            "permission_denied",
+        ),
+    ] {
+        let runtime_for_call = runtime.clone();
+        let auth_for_call = auth.clone();
+        let arguments = json!({"action":"accessibility_tree","client_id":client_id,"surface_id":surface_id,"root_element_id":"element_rootone"});
+        let call = tokio::spawn(async move {
+            handle_mcp_request(
+                &runtime_for_call,
+                rpc(
+                    "tools/call",
+                    Some(json!(rpc_id)),
+                    json!({"name": "computer_observe", "arguments": arguments}),
+                ),
+                Some(&auth_for_call),
+            )
+            .await
+        });
+        let request = wait_for_mcp_agent_request(
+            &runtime.runner_registry,
+            client_id,
+            instance,
+            "computer_accessibility_subtree",
+        )
+        .await;
+        assert_eq!(request.kind, "computer_accessibility_subtree");
+        runtime
+            .runner_registry
+            .complete(RunnerResultRequest {
+                client_id: client_id.to_string(),
+                runner_instance_id: instance.to_string(),
+                request_id: request.request_id,
+                exit_code: None,
+                stdout: None,
+                stderr: None,
+                stdout_truncated: false,
+                stderr_truncated: false,
+                duration_ms: Some(1),
+                error: Some(error.to_string()),
+            })
+            .await
+            .unwrap();
+        let McpOutcome::Ok(value) = call.await.unwrap() else {
+            panic!("expected computer_observe error result");
+        };
+        assert_eq!(value["result"]["isError"], true, "{value:?}");
+        assert_eq!(
+            value["result"]["structuredContent"]["output"]["error_kind"],
+            expected_kind
+        );
+    }
+}
+
 #[tokio::test]
 async fn computer_effect_runner_disconnect_is_outcome_unknown_and_never_replayed_after_restart() {
     let runtime = test_runtime();
@@ -2502,15 +2936,11 @@ fn mcp_tools_list_compact_is_smaller_than_full_serialized() {
 }
 
 // The compact switch is the tested product behavior: `tools/call` must be
-// unaffected while `WEBCODEX_MCP_COMPACT_SCHEMAS` is set, so the env must stay
-// stable (and serialized against other env-mutating tests) for the whole call.
-#[allow(clippy::await_holding_lock)]
+// unaffected while compact schemas are on, so compact is passed explicitly.
 #[tokio::test]
 async fn mcp_tools_call_still_returns_structured_content_under_compact_flag() {
-    let mut env = crate::test_support::TestEnvGuard::new();
-    env.set("WEBCODEX_MCP_COMPACT_SCHEMAS", "true");
     let runtime = test_runtime();
-    let outcome = handle_mcp_request(
+    let outcome = handle_mcp_request_with_schema_mode(
         &runtime,
         rpc(
             "tools/call",
@@ -2518,6 +2948,7 @@ async fn mcp_tools_call_still_returns_structured_content_under_compact_flag() {
             adaptive_runtime_gateway_params("list_projects", json!({})),
         ),
         None,
+        true,
     )
     .await;
     let McpOutcome::Ok(value) = outcome else {
@@ -2528,13 +2959,10 @@ async fn mcp_tools_call_still_returns_structured_content_under_compact_flag() {
     assert!(value["result"]["structuredContent"]["success"].is_boolean());
 }
 
-#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn session_tools_stay_registered_and_follow_adaptive_routes() {
-    // The direct description assertion below targets the default compact
-    // discovery projection; pin it so env-mutating tests cannot flip it.
-    let mut env = crate::test_support::TestEnvGuard::new();
-    env.remove("WEBCODEX_MCP_COMPACT_SCHEMAS");
+    // `handle_mcp_request` pins the default compact discovery projection that
+    // the direct description assertion below targets.
     let runtime = test_runtime();
     let specs = registered_tool_specs();
     let registry_names: Vec<&str> = specs.iter().map(|spec| spec.name.as_str()).collect();

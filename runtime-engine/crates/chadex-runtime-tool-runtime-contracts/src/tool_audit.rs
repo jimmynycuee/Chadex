@@ -50,8 +50,15 @@ fn computer_observe_audit_projection(call: &ComputerObserveToolCall) -> Value {
         })
     });
     if let Some(object) = projection.as_object_mut() {
-        for field in ["role", "subrole", "label"] {
-            let present = object.remove(field).is_some();
+        // `value` is the AXValue search needle: like the other filters only its presence
+        // is recorded, and (unlike them) an explicit null does not count as present.
+        for field in ["role", "subrole", "label", "value"] {
+            let removed = object.remove(field);
+            let present = if field == "value" {
+                removed.is_some_and(|value| !value.is_null())
+            } else {
+                removed.is_some()
+            };
             if present {
                 object.insert(format!("{field}_present"), Value::Bool(true));
             }
@@ -1141,6 +1148,7 @@ fn computer_observation_result_audit(output: &Value) -> Value {
             "truncated",
             "max_depth",
             "max_nodes",
+            "web_accessibility",
         ] {
             copy_existing_audit_value(&mut projected, output, key);
         }
@@ -1151,6 +1159,9 @@ fn computer_observation_result_audit(output: &Value) -> Value {
             "count",
             "scanned_nodes",
             "truncated",
+            "search_mode",
+            "stop_reason",
+            "web_accessibility",
         ] {
             copy_existing_audit_value(&mut projected, output, key);
         }
@@ -2842,6 +2853,170 @@ mod computer_privacy_tests {
     }
 
     #[test]
+    fn computer_find_elements_audit_never_persists_the_value_needle() {
+        let needle = "PRIVATE VALUE NEEDLE";
+        let request = json!({
+            "action": "find_elements",
+            "client_id": "mini",
+            "surface_id": "surface_safe",
+            "root_element_id": "element_opaque_root",
+            "value": needle,
+            "max_depth": 40,
+        });
+        let request_summary = session_log_arguments_for_tool_request("computer_observe", &request);
+        let request_serialized = serde_json::to_string(&request_summary).unwrap();
+        assert!(!request_serialized.contains(needle));
+        assert_eq!(request_summary["value_present"], true);
+        assert!(request_summary.get("value").is_none());
+        // Opaque ids and numeric bounds are not sensitive.
+        assert_eq!(request_summary["root_element_id"], "element_opaque_root");
+        assert_eq!(request_summary["max_depth"], 40);
+
+        // A malformed sibling must not make the needle leak through the fallback parser.
+        let malformed = json!({
+            "action": "find_elements",
+            "client_id": "mini",
+            "surface_id": "surface_safe",
+            "value": needle,
+            "limit": "many",
+            "unexpected": true,
+        });
+        let malformed_summary =
+            session_log_arguments_for_tool_request("computer_observe", &malformed);
+        assert!(!serde_json::to_string(&malformed_summary)
+            .unwrap()
+            .contains(needle));
+
+        let parsed = ToolCall::ComputerObserve(ComputerObserveToolCall::FindElements {
+            client_id: "mini".to_string(),
+            surface_id: "surface_safe".to_string(),
+            root_element_id: Some("element_opaque_root".to_string()),
+            role: None,
+            subrole: None,
+            label: None,
+            value: Some(needle.to_string().into()),
+            focused: None,
+            enabled: None,
+            limit: None,
+            max_depth: Some(40),
+        })
+        .session_log_arguments();
+        assert_eq!(parsed["value_present"], true);
+        assert!(!serde_json::to_string(&parsed).unwrap().contains(needle));
+
+        // Debug (logs, panic messages) never prints the needle either, and the
+        // wrapper is wire-transparent.
+        let call = ComputerObserveToolCall::FindElements {
+            client_id: "mini".to_string(),
+            surface_id: "surface_safe".to_string(),
+            root_element_id: None,
+            role: None,
+            subrole: None,
+            label: None,
+            value: Some(needle.to_string().into()),
+            focused: None,
+            enabled: None,
+            limit: None,
+            max_depth: None,
+        };
+        assert!(!format!("{call:?}").contains(needle), "{call:?}");
+        assert!(!format!("{:?}", ToolCall::ComputerObserve(call.clone())).contains(needle));
+        assert_eq!(serde_json::to_value(&call).unwrap()["value"], needle);
+        let reparsed: ComputerObserveToolCall = serde_json::from_value(
+            serde_json::json!({"action":"find_elements","client_id":"mini","surface_id":"surface_safe","value":needle}),
+        )
+        .unwrap();
+        assert_eq!(reparsed, call);
+
+        // An explicit null is not "present".
+        let null_value = ToolCall::ComputerObserve(ComputerObserveToolCall::FindElements {
+            client_id: "mini".to_string(),
+            surface_id: "surface_safe".to_string(),
+            root_element_id: None,
+            role: Some("AXButton".to_string()),
+            subrole: None,
+            label: None,
+            value: None,
+            focused: None,
+            enabled: None,
+            limit: None,
+            max_depth: None,
+        })
+        .session_log_arguments();
+        assert!(null_value.get("value_present").is_none());
+        assert!(null_value.get("value").is_none());
+
+        let output = json!({
+            "platform": "macos",
+            "surface_id": "surface_safe",
+            "observation_generation": 3,
+            "search_mode": "deep",
+            "root_element_id": "element_new_root",
+            "web_accessibility": "enabled",
+            "elements": [{
+                "element_id": "element_secret",
+                "role": "AXStaticText",
+                "subrole": null,
+                "title": "Private Title",
+                "description": null,
+                "placeholder": null,
+                "enabled": true,
+                "focused": false,
+                "depth": 17,
+                "ancestors": "AXWebArea “Private Page” › AXGroup"
+            }],
+            "count": 1,
+            "scanned_nodes": 1834,
+            "truncated": true,
+            "stop_reason": "time_budget"
+        });
+        let result_summary = session_log_result_for_tool("computer_observe", &output);
+        let result_serialized = serde_json::to_string(&result_summary).unwrap();
+        assert_eq!(result_summary["stop_reason"], "time_budget");
+        assert_eq!(result_summary["search_mode"], "deep");
+        assert_eq!(result_summary["web_accessibility"], "enabled");
+        assert_eq!(result_summary["scanned_nodes"], 1834);
+        assert!(!result_serialized.contains("Private"));
+        assert!(!result_serialized.contains("element_secret"));
+        assert!(!result_serialized.contains("element_new_root"));
+    }
+
+    #[test]
+    fn computer_subtree_tree_audit_records_web_accessibility_state_only() {
+        let output = json!({
+            "platform": "macos",
+            "surface_id": "surface_safe",
+            "observation_generation": 2,
+            "nodes": [{
+                "element_id": "element_secret",
+                "parent_element_id": null,
+                "depth": 0,
+                "role": "AXWebArea",
+                "subrole": null,
+                "title": "Private Page",
+                "description": null,
+                "value": "private page text",
+                "placeholder": null,
+                "enabled": true,
+                "focused": false,
+                "child_count": 3
+            }],
+            "node_count": 1,
+            "truncated": false,
+            "max_depth": 4,
+            "max_nodes": 64,
+            "root": {"element_id": "element_secret", "absolute_depth": 12},
+            "web_accessibility": "pending"
+        });
+        let summary = session_log_result_for_tool("computer_observe", &output);
+        assert_eq!(summary["web_accessibility"], "pending");
+        let serialized = serde_json::to_string(&summary).unwrap();
+        assert!(!serialized.contains("Private"));
+        assert!(!serialized.contains("private page text"));
+        assert!(!serialized.contains("element_secret"));
+    }
+
+    #[test]
     fn computer_find_elements_audit_omits_label_and_semantic_result_content() {
         let secret = "PRIVATE SEARCH TERM";
         let private_role = "PRIVATE ROLE FILTER";
@@ -2870,12 +3045,15 @@ mod computer_privacy_tests {
         let parsed_summary = ToolCall::ComputerObserve(ComputerObserveToolCall::FindElements {
             client_id: "mini".to_string(),
             surface_id: "surface_safe".to_string(),
+            root_element_id: None,
             role: Some(private_role.to_string()),
             subrole: Some(private_subrole.to_string()),
             label: Some(secret.to_string()),
+            value: None,
             focused: Some(false),
             enabled: None,
             limit: Some(4),
+            max_depth: None,
         })
         .session_log_arguments();
         let parsed_serialized = serde_json::to_string(&parsed_summary).unwrap();
