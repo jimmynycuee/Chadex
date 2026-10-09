@@ -211,7 +211,8 @@ ChatGPT ─▶ OpenAI control plane ─▶ 本機 tunnel-client
   - `tunnel.rs` 的 `start` 改用此 token 建立 `TunnelSession`，bootstrap 不再進入 tunnel session。
   - 鑄造失敗時 tunnel 不啟動，回傳穩定錯誤碼（例如 `tunnel_credential_unavailable`）。
   - 輪替時機只有 tunnel 啟動：還有效且剩餘時間大於 TTL 的一半就沿用，否則重鑄。
-  - `tunnel stop` 是否撤銷 token 依決定值。
+  - `tunnel stop` 時撤銷 token（§6 決定 4）。
+  - **過期必須讓使用者看得懂**：runtime 對已過期的 tunnel token 回傳穩定錯誤碼 `tunnel_token_expired`，訊息寫明「Chadex 的連線授權已過期，請在 Chadex 重新連線」。ChatGPT 會把這段話轉告使用者，所以不能只回一般的 401 文字。
 - 驗收：
   1. `mcp-authorization` 的內容不含 bootstrap，也不含 admin token。改寫現有測試 `tunnel_authorization_carries_only_the_bootstrap_token_never_the_admin_token`（`tunnel.rs:1303`），斷言改為「只含 tunnel token」。
   2. 用 tunnel token 呼叫 `tools/list` 時，不出現 `SkillManagement` 和 `memory_scope_*` 工具；呼叫 `skill_install` 時，即使繞過 ingress、直接打 runtime，也會回傳 insufficient scope。
@@ -219,6 +220,7 @@ ChatGPT ─▶ OpenAI control plane ─▶ 本機 tunnel-client
   4. Runner 可見：tunnel token 能 `list_runners` 和 `read_files` 目前選取的專案。
   5. 撤銷之後，下一個 MCP 請求回 401；重新啟動 tunnel 後恢復。
   6. 過期之後，下一次啟動 tunnel 會鑄造新 token，並撤銷舊 token。
+  7. 過期的 token 打 `/mcp` 時，回應帶 `tunnel_token_expired` 和可轉述給使用者的重新連線說明；用已撤銷的 token 則回一般的 401（兩者要分開測）。
 - 測試：
   - helper：比照 `admin_credential.rs` 的 mock server 測試（首次鑄造只註冊 hash、檔案權限、symlink 不跟隨、撤銷同名舊 token、backoff）。
   - runtime：在 `auth/tests.rs` 新增覆蓋率測試，並新增 PAT 的 `tools/list` 投影測試。
@@ -231,9 +233,13 @@ ChatGPT ─▶ OpenAI control plane ─▶ 本機 tunnel-client
 - 範圍：
   - helper protocol 新增 tunnel credential 狀態（只回傳 prefix、到期時間、scope 清單，絕不回傳 token 值）以及 `revokeTunnelCredential`。
   - macOS 設定頁顯示「ChatGPT 存取：限縮，到期日 …」，並提供「撤銷並中斷」。
+  - **到期提醒**：到期前 24 小時，App 發一次系統通知「連線授權明天到期，請找空檔重新連線」。已過期時，連線狀態改成「需要重新連線」，並提供「重新連線」按鈕（停止後再啟動 tunnel，會鑄造新 token）。使用者關掉通知時，至少狀態列仍要顯示。
   - Windows UI 對齊。
   - 更新 `docs/BRIDGE_PROTOCOL.md`、`docs/ARCHITECTURE.md:292`。
-- 驗收：protocol 回應與 diagnostics 匯出不含 token 值；撤銷後 tunnel 狀態變為中斷，且 runtime 端的該 token 為 revoked。
+- 驗收：
+  - protocol 回應與 diagnostics 匯出不含 token 值。
+  - 撤銷後 tunnel 狀態變為中斷，且 runtime 端的該 token 為 revoked。
+  - 用注入的時鐘測試：剩餘 24 小時時只發一次通知；過期後狀態為「需要重新連線」，按下按鈕會重新鑄造並恢復連線。
 - 測試：helper protocol 測試（斷言輸出不含 `wc_pat_` 後面的字元）；Swift `HelperClient` 解碼測試；Windows bridge 的 fake helper 測試。
 
 ### 階段 3（可選）：執行類工具批准閘門（方案 D2）
@@ -251,16 +257,16 @@ ChatGPT ─▶ OpenAI control plane ─▶ 本機 tunnel-client
 
 ### 階段 4（延後）
 
-- 方案 C：先驗證 tunnel-client 會重讀 `file:` header 來源，並讓 runtime 提供穩定的 tunnel principal，之後才縮短 TTL、加入執行中刷新。
+- 方案 C（自動續期，使用者無感）：先驗證 tunnel-client 會重讀 `file:` header 來源，並讓 runtime 提供穩定的 tunnel principal（§6 決定 7 會先做這一步），之後才縮短 TTL、加入執行中刷新。做完之後，階段 2 的到期提醒就只是後備機制。
 - 方案 B：只有在「同時對 ChatGPT 開放多個專案」成為真實需求時才做。
 
-## 6. 需要使用者決定的取捨
+## 6. 已決定的取捨（2026-10-09，使用者採用建議）
 
-1. **Scope 白名單的嚴格度**：第一階段是要「與現況相同、只拿掉 admin」（建議），還是直接採最小集合？待決定的 scope：`job:detach`、`coding_agent:run`、`runner:manage`、`ssh:local`、`mcp:local`、`plugin:inspect`、`plugin:invoke`。
-2. **TTL**：7 天（建議，配合「只在啟動 tunnel 時輪替」）、24 小時，或比照 admin token 的 30 天？越短，長時間掛著的 tunnel 越可能在中途過期。
-3. **Fail closed**：鑄造失敗時，是讓 tunnel 不啟動（建議），還是退回 bootstrap 並顯示警告？
-4. **停止 tunnel 時是否撤銷 token**：撤銷比較乾淨，但每次連線都要重鑄、寫入資料庫；不撤銷就靠 TTL 讓它失效。
-5. **Host file import trust**：改用 user-kind PAT 後，ChatGPT 的 host file import 會從「不信任」變成「信任」。要接受（功能變多），還是讓 tunnel token 用不同的 kind 或旗標維持不信任（runtime 需要小改）？
-6. **方案 D2 要不要做、預設模式**：ask、allow-session 或 always？這直接決定 shell 是否受人工把關，也決定 UX 成本。
-7. **升級時的 session 連續性**：如果驗證結果是 bootstrap 建立的 session 或 job 升級後無法 observe，要接受（寫進 release note），還是先在 runtime 加入穩定的 principal？
-8. **本機 shared key**：`WEBCODEX_SHARED_KEY_ENABLED=true` 讓任何本機程序用任意字串就能取得 model scopes。這不屬於 tunnel 縮權的範圍，但會削弱「loopback 認證」的意義。要另開任務檢討嗎？
+1. **Scope 白名單**：第一階段「與現況功能相同，只拿掉管理面」。§4 的「待決定」scope（`job:detach`、`coding_agent:run`、`runner:manage`、`ssh:local`、`mcp:local`、`plugin:inspect`、`plugin:invoke`）都保留，因為現在的 tunnel 能用這些功能。之後依 performance trace 的實際使用紀錄再收緊。
+2. **TTL**：7 天，只在 tunnel 啟動時輪替。過期的處理見階段 1（錯誤碼）和階段 2（到期提醒）。
+3. **鑄造失敗**：fail closed，tunnel 不啟動，回 `tunnel_credential_unavailable`，不退回 bootstrap。
+4. **停止 tunnel**：撤銷 token，下次啟動時重新鑄造。
+5. **Host file import trust**：維持「不信任」。來自 ChatGPT 的內容本來就該視為外部輸入，所以 tunnel token 需要用不同的 kind 或旗標（列入階段 1 範圍：runtime 小改，並加測試確認 tunnel token 匯入的檔案仍是不信任）。
+6. **方案 D2**：延後決定。階段 1、2 上線並實際使用後，再決定要不要做以及預設模式。
+7. **session 連續性**：在階段 1 實作前先驗證。如果升級後 bootstrap 建立的 session 或 job 無法 observe，就先在 runtime 為 `chadex-tunnel` 提供穩定的 principal，不以 release note 帶過。這也是方案 C 自動續期的前置條件。
+8. **本機 shared key**：另開任務檢討 `WEBCODEX_SHARED_KEY_ENABLED=true`，優先度高於本設計的階段 1。
