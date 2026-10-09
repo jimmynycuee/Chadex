@@ -2,6 +2,12 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.6.1
+
+### Design
+
+- macOS button labels at interface sizes of 115% and above were scaled by the full font rate and overfilled the bezel, looking off-centre (a regression from design v2 in 0.6.0). They now scale at the control rate, and all buttons use the capsule shape of the status pills (#20).
+
 ## 0.6.0
 
 ### Design
