@@ -51,7 +51,7 @@ CHADEX_UPDATE_UI_REVIEW=1 swift test --filter VisualReviewTests
 `scripts/build_app.sh` accepts release metadata through environment variables:
 
 ```sh
-CHADEX_APP_VERSION=0.5.0 \
+CHADEX_APP_VERSION=0.6.0 \
 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_IDENTITY="Developer ID Application: ..." \
 ./scripts/build_app.sh
@@ -68,13 +68,13 @@ Each `docs/releases/X.Y.Z.md` records the validation evidence and remaining exte
 For the free artifact path, explicitly select ad-hoc signing, then package the resulting bundle:
 
 ```sh
-CHADEX_APP_VERSION=0.5.0 CHADEX_APP_BUILD_NUMBER=1 \
+CHADEX_APP_VERSION=0.6.0 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_MODE=adhoc CHADEX_RUNTIME_PROFILE=release \
 ./scripts/build_app.sh
 ./scripts/package_free_macos_release.sh dist/Chadex.app
 ```
 
-The expected artifacts are `dist/Chadex-v0.5.0-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
+The expected artifacts are `dist/Chadex-v0.6.0-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
 
 ## Public Git history
 
@@ -129,7 +129,7 @@ CI orchestration rules:
 
 - **Change classification.** `scripts/ci_change_scope.py classify` diffs the push `before` SHA (or the PR base) against `HEAD`. Only when every changed path is in its explicit docs allowlist (`docs/**`, `graphify-out/**`, `README.md`, `CHANGELOG.md`, `PHASES.md`, `HANDOFF.md`, `.graphifyignore`) are the macOS source/package and Windows jobs skipped. A new branch, force push, manual dispatch, empty diff or unknown path always runs the full pipeline. `UPSTREAM.md`, `LICENSE` and `ui-review/` are package or test inputs and are never docs-only.
 - **Always-on checks.** Public history / secret scan and `docs-check` (`git diff --check` plus relative Markdown link targets) run for every change set, including docs-only ones.
-- **Caches.** Cargo registry and dependency build artifacts are cached with a SHA-pinned `Swatinem/rust-cache`, and Windows npm downloads with `setup-node`. Caches are keyed by toolchain/lockfiles, saved only from `main`, and only restored on other branches. The historical `v0.4.0` source build is not cached.
+- **Caches.** Cargo registry and dependency build artifacts are cached with a SHA-pinned `Swatinem/rust-cache`, and Windows npm downloads with `setup-node`. Caches are keyed by toolchain/lockfiles, saved only from `main`, and only restored on other branches. The historical `v0.5.0` source build is not cached.
 - **Release tags are unaffected.** `release.yml` has no change filter and no cache; every tag rebuilds and re-validates from scratch.
 
 `.github/workflows/release.yml` is the **free public distribution path**, modeled after WebCodex Desktop's current macOS release approach. A tag-triggered run validates public history and source, builds the exact tagged source with Hardened Runtime and **ad-hoc signing**, packages an Apple Silicon DMG, smoke-tests the mounted DMG, publishes a SHA-256 checksum, and creates the GitHub Release. No Apple Developer Program membership or Apple release secret is required.

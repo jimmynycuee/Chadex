@@ -2,9 +2,9 @@
 schema_version: 1
 project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
-updated: 2026-10-08T03:05+08:00
+updated: 2026-10-09
 updated_by: claude           # codex | webcodex | chadex | claude | human
-current_phase: V050
+current_phase: V060
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -281,7 +281,7 @@ phases:
   - id: V050
     name: v0.5.0 release (Skills page, external sources, launch speed)
     branch: integration/skill-parity
-    status: in_progress
+    status: done
     owner: claude
     depends_on: [AP5, LS1, AP6a, AP6b, AP6c, LS2, V043]
     # 驗收修正：ZIP 任意位置匯入＋自動放平、獨立 Skills 頁、啟用開關＋移除、
@@ -296,6 +296,51 @@ phases:
       - cmd: "manual acceptance (dist/Chadex.app)"
         expect: "Skills page, ZIP import, enable/remove, script gate, Project Memory, connect speed"
         result: "passed: user acceptance 2026-10-07 @ 9f708ea (Skills) and @ d5f2042 (project switch/remove, broad-folder warning); diagnostics Chadex-Diagnostics-20261007-025823"
+    closed_commit: dd74d05  # v0.5.0 tag, released 2026-10-08
+  - id: D1
+    name: macOS design v2 (Liquid Glass sidebar, connection circuit, activity timeline, dark default)
+    branch: feature/d1-design-v2
+    status: in_progress  # PR #2 open; design pending validation (AI review only)
+    owner: claude
+    depends_on: []
+    # PR #2。只有 AI 評審，沒有外部設計驗證，也沒有使用者實機驗收；不可宣稱得獎水準。
+    gate:
+      - cmd: "release_check.sh"
+        expect: "exit 0"
+        result: null
+      - cmd: "manual acceptance (macOS)"
+        expect: "design v2 visual review by the user"
+        result: null
+    closed_commit: null
+  - id: W-design
+    name: Windows design v2 (Fluent type, connection circuit, activity timeline, Mica, dark default)
+    branch: feature/w-design-v2
+    status: in_progress  # PR #1 open; CI-only validation
+    owner: claude
+    depends_on: []
+    # PR #1。只有 CI 驗證，沒有 Windows 實機測試。
+    gate:
+      - cmd: "full CI"
+        expect: "all jobs success"
+        result: null
+    closed_commit: null
+  - id: V060
+    name: v0.6.0 release prep (version bump, changelog, release notes)
+    branch: chore/v0.6.0-prep
+    status: in_progress
+    owner: claude
+    depends_on: [D1, W-design]
+    # 預計包含 PR #1–#7；#8（游標疊加層）與 #9（Chromium 網頁 AX）原規劃 v0.6.1，視合併情況再決定。
+    gate:
+      - cmd: "release_check.sh"
+        expect: "exit 0"
+        result: null
+      - cmd: "full CI"
+        expect: "all jobs success"
+        result: null
+      - cmd: "manual acceptance (dist/Chadex.app)"
+        expect: "design v2, Computer Use permission card, #8 screenshot exclusion if included"
+        result: null
     closed_commit: null
 ---
 
