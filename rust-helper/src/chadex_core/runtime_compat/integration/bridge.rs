@@ -232,6 +232,7 @@ impl RuntimeIntegrationBridge {
         command.arg("--stop-on-stdin-eof");
         command.env("WEBCODEX_ENV_FILE", env_file);
         command.env("CHADEX_TASK_STATE_DIR", &self.task_state_dir);
+        disable_anonymous_access(&mut command);
         remove_tunnel_credentials(&mut command);
         Ok(command)
     }
@@ -854,6 +855,16 @@ fn configure_tunnel_proxy_environment(command: &mut Command, proxy: Option<&str>
     }
 }
 
+/// `server init --open` writes `WEBCODEX_ALLOW_ANONYMOUS=true`, which lets any
+/// caller without a bearer token act as a non-admin "open" principal with
+/// project read/write and `job:run` scopes. Desktop always authenticates, so
+/// the local Server never needs anonymous access. The Server loads its env file
+/// only into keys absent from the process environment, so this explicit value
+/// wins over any env file, including one edited by hand.
+fn disable_anonymous_access(command: &mut Command) {
+    command.env("WEBCODEX_ALLOW_ANONYMOUS", "false");
+}
+
 fn remove_tunnel_credentials(command: &mut Command) {
     for name in [
         "CONTROL_PLANE_API_KEY",
@@ -998,6 +1009,29 @@ mod tests {
             name.to_str() == Some("NO_PROXY")
                 && value.and_then(|value| value.to_str()) == Some("127.0.0.1,localhost,::1")
         }));
+    }
+
+    #[test]
+    fn local_server_disables_anonymous_access_over_any_env_file_value() {
+        let binaries = RuntimeToolchain::test_fixture("0.5.0");
+        let adapter = RuntimeIntegrationBridge {
+            binaries: Some(binaries),
+            bundled_runtime_dir: None,
+            task_state_dir: PathBuf::from("task-state"),
+        };
+        let command = adapter
+            .local_server_command(Path::new("webcodex.env"))
+            .unwrap();
+        let anonymous: Vec<_> = command
+            .get_envs()
+            .filter(|(name, _)| name.to_str() == Some("WEBCODEX_ALLOW_ANONYMOUS"))
+            .collect();
+        assert_eq!(anonymous.len(), 1);
+        assert_eq!(
+            anonymous[0].1.and_then(|value| value.to_str()),
+            Some("false"),
+            "the explicit process value must win over an env file written by `server init --open`"
+        );
     }
 
     #[test]
