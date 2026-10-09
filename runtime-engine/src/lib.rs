@@ -1,7 +1,7 @@
 #![recursion_limit = "512"]
 
 use crate::route_metadata::RouteId;
-use salvo::cors::Cors;
+use salvo::cors::{AllowOrigin, Any, Cors};
 use salvo::prelude::*;
 #[cfg(test)]
 use std::path::PathBuf;
@@ -251,7 +251,7 @@ only for local/trusted-network demos."
     // Set max payload size to 2MB for text messages
     salvo::http::request::set_global_secure_max_size(config.max_text_size);
 
-    let cors = Cors::permissive();
+    let cors = runtime_cors();
     let config = Arc::new(config);
     let db = Arc::new(db);
     // First-party authorize browser session store (in-memory, short-lived).
@@ -560,6 +560,7 @@ only for local/trusted-network demos."
         );
 
     let api_router = Router::with_path("api")
+        .hoop(auth::ApiRequestAuthorityGuard)
         .push(
             Router::with_path(route_metadata::api_path(RouteId::PairingEnroll))
                 .post(pairing_http::pairing_enroll),
@@ -771,6 +772,22 @@ only for local/trusted-network demos."
     )
     .await?;
     Ok(())
+}
+
+/// CORS policy for the whole HTTP surface. Only loopback origins and the
+/// configured `WEBCODEX_PUBLIC_URL` origin are echoed back; every other origin
+/// gets no `Access-Control-Allow-Origin`, so browsers refuse to expose the
+/// response. Methods/headers stay as before (`*`, which per Fetch does not
+/// cover `Authorization`), so this only narrows the previous permissive policy.
+pub(crate) fn runtime_cors() -> Cors {
+    Cors::new()
+        .allow_origin(AllowOrigin::dynamic(|origin, _, _| {
+            let origin = origin?;
+            auth::cors_origin_allowed(origin.to_str().ok()?).then(|| origin.clone())
+        }))
+        .allow_methods(Any)
+        .allow_headers(Any)
+        .expose_headers(Any)
 }
 
 #[cfg(test)]
