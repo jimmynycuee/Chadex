@@ -2,21 +2,19 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
-## 0.6.0 (planned, not yet released)
-
-Expected to include the following PRs (jimmynycuee/Chadex); none are merged yet. #8 and #9 are part of 0.6.0, and 0.6.0 ships once this batch is done.
+## 0.6.0
 
 ### Design
 
 - Design v2 for Windows (#1): Fluent type scale, connection circuit, activity timeline, Mica backdrop and dark as the default appearance. Verified in CI only; there has been no physical-machine testing.
-- Design v2 for macOS (#2): Liquid Glass sidebar, connection circuit, activity timeline, dark as the default appearance, and a fix for building on the macOS 15 SDK. Pending validation: reviewed by AI reviewers only, with no external design validation yet.
+- Design v2 for macOS (#2): Liquid Glass sidebar, connection circuit, activity timeline, dark as the default appearance, and a fix for building on the macOS 15 SDK. Reviewed by AI reviewers and accepted by the maintainer on a physical Mac; no external design validation.
 
 ### Computer Use
 
 - The Computer Use page shows a permission card for Accessibility and Screen Recording, with granted permissions in green (#4).
 - Tool descriptions now call `activate_window` only before key or pointer actions (#5), and every action records its elapsed time (#6).
-- macOS agent cursor overlay: a click-through cursor shows where the model is about to act; it can be turned off on the Computer Use page (#8). Excluding it from screenshots still needs a real-machine test.
-- macOS Chromium/Electron web content is now readable through accessibility, with subtree queries (`root_element_id`) and deeper `find_elements` (#9). Whether Chrome/Brave accept `AXManualAccessibility` still needs a real-machine check. Behavior change: on new macOS runners, `find_elements` without a root now returns `permission_denied` on a sensitive screen.
+- macOS agent cursor overlay: a click-through cursor shows where the model is about to act; it can be turned off on the Computer Use page (#8). It did not appear in a screen recording on a real Mac.
+- macOS Chromium/Electron web content is now readable through accessibility, with subtree queries (`root_element_id`) and deeper `find_elements` (#9). Brave accepted `AXManualAccessibility` on a real Mac; Chrome is unchecked. Behavior change: on new macOS runners, `find_elements` without a root now returns `permission_denied` on a sensitive screen.
 - Sign-in pages and password managers (1Password, Bitwarden, LastPass and others) are treated as sensitive, so the model cannot operate them (#15). Together with #9, web sign-in pages are blocked; titles that merely mention passwords may also be blocked.
 
 ### Connection / Security
