@@ -890,7 +890,7 @@ pub(super) fn validate_key_input_target(
 ) -> Result<(), String> {
     if optional_ax_bool(deadline, application, "AXFrontmost")? != Some(true) {
         return Err(
-            "key_input_failed: exact surface application must already be frontmost".to_string(),
+            "key_input_failed: exact surface application must already be frontmost; call computer_control(action=activate_window) for this surface first".to_string(),
         );
     }
     let focused_window = optional_ax_value(deadline, application, "AXFocusedWindow")?
