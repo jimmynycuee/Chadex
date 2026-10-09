@@ -563,8 +563,9 @@ private struct ConnectionNode: View {
 
 /// AppKit-backed controls draw their own label font from the control size and
 /// ignore the scaled environment font, so at 120–160% their text stayed at
-/// 11–13 pt next to 16–21 pt body copy. This scales the label with the
-/// interface size and steps the control size up so the bezel fits it.
+/// 11–13 pt next to 16–21 pt body copy. This scales the label at the control
+/// rate (not the full font rate, which overfilled the bezel and pushed the
+/// label off-centre) and steps the control size up so the bezel fits it.
 private struct ChadexControlSizeModifier: ViewModifier {
     @Environment(\.chadexLayout) private var layout
     let base: ControlSize
@@ -572,7 +573,7 @@ private struct ChadexControlSizeModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .controlSize(size)
-            .font(.system(size: max(ChadexFontStyle.minimumSize, baseFontSize * layout.fontScale)))
+            .font(.system(size: max(ChadexFontStyle.minimumSize, baseFontSize * layout.controlScale)))
     }
 
     private var baseFontSize: CGFloat {
