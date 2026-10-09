@@ -143,6 +143,8 @@ struct ChadexPresentationModifier: ViewModifier {
                 \.font,
                 .system(size: ChadexFontStyle.body.baseSize * layout.fontScale)
             )
+            // One shape language: buttons share the capsule of the status pills.
+            .buttonBorderShape(.capsule)
             .preferredColorScheme(appearance.colorScheme)
     }
 }
