@@ -1,5 +1,7 @@
 # W5 進度與交接
 
+> 本文件是 **v0.4.1** W5 closeout 的歷史證據紀錄（candidate SHA、run id、artifact digest 皆屬該次 run）。目前 main 為 v0.5.0：synthetic upgrade 為 `0.4.1 → 0.5.0`，CI historical upgrade 從 `v0.4.1` tag 開始；細節見 [W5 readiness](W5-release-readiness.md)。升到 0.6.0 時，基準會一起往前移（`0.5.0 → 0.6.0`、`v0.5.0` tag），見 0.6.0 準備 PR（#10）。
+
 狀態：**W5 automatable Windows release-engineering track 已完成。** Candidate `23bc145dd383a3c065f68f85fca200f06eced005` 在同一輪 GitHub Actions run `37254301045`（run #65）通過 source / history / macOS package、Windows W2/W3 regression、W5 source integrity、current installed lifecycle、default NSIS self-copy uninstall，以及真實 public `v0.4.0` source → v0.4.1 historical upgrade。
 
 這個結論只代表 **automated W5 release-engineering complete**。Windows 仍是 unsigned x64 CI validation candidate；不代表 signed/public Windows release，也不代表 physical Windows 11 / private credential workflow 已完成產品驗收。
@@ -69,6 +71,11 @@ CI 從 exact public `v0.4.0` tag 建 isolated source worktree，建出真實舊�
 ## Graphify / Obsidian closeout
 
 Graphify 0.9.45 已正常 `update` 到 candidate source `23bc145d`：60,121 nodes / 177,143 edges / 1,839 communities；`graphify check-update .` 通過。Obsidian generated layer 同步 17 components / 48 curated production files / 68 outputs，寫入後 `--check` 為 `changed=0`、`stale_generated=0`。AP / Computer Use 人工筆記也已更新 v0.4.1 instruction ownership、Always Allow 與 persistent Stop 語意。
+
+## 已知偶發問題
+
+- W5 installer job 的 `default_uninstaller_self_copy` 階段偶發 `process_inventory_failed`：PR #3 把時限從 15 s 改成 60 s，並會印出細節；再次失敗時先看輸出的細節。
+- `Windows core gate` 的 persistent shell 冷啟動逾時：見 PR #11。
 
 ## External acceptance that remains outside W5 automation
 

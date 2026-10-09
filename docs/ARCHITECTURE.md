@@ -53,7 +53,7 @@ React / TypeScript (apps/windows/src)
 
 Tauri 保管 Windows Credential Manager 的 API key；前端不能讀取 key 或直接呼叫 `provideCredential`。一般偏好、最後專案與 `global-instructions.md` 由 Tauri app-local data 保存；重啟僅恢復選取，不恢復舊 connected／verified 狀態。bridge transport、runtime ready、tunnel ready、目前專案 ChatGPT verification 是不同事實，觀察失敗會撤銷前端可用狀態。Windows Job Object 管理 owned process tree，正常退出要求 graceful shutdown 與零殘留。
 
-W5 的可自動化 release engineering 已在 v0.4.1 收斂：CI 會建出 unsigned NSIS installer candidate，執行 install → upgrade → relaunch → same-version reinstall → uninstall（含 NSIS default self-copy uninstall）的 installed lifecycle，並另以真實 `v0.4.0` tag source 建出的舊版本做 historical-source upgrade。這些是 release-engineering 證據，**不是公開 Windows 發行**：`.github/workflows/release.yml` 只發佈 macOS Apple Silicon DMG。
+W5 的可自動化 release engineering 已在 v0.4.1 收斂，v0.5.0 沿用同一流程（synthetic upgrade 為 `0.4.1 → 0.5.0`）：CI 會建出 unsigned NSIS installer candidate，執行 install → upgrade → relaunch → same-version reinstall → uninstall（含 NSIS default self-copy uninstall）的 installed lifecycle，並另以真實 `v0.4.1` tag source 建出的舊版本做 historical-source upgrade（升到 0.6.0 時基準會一起往前移，見 0.6.0 準備 PR）。這些是 release-engineering 證據，**不是公開 Windows 發行**：`.github/workflows/release.yml` 只發佈 macOS Apple Silicon DMG。
 
 仍屬 external acceptance、未由 CI 代替的項目：實體 Windows 11 互動、Windows ARM64、native picker／Explorer／tray／登入啟動／通知、credentialed ChatGPT tunnel workflow、Authenticode 簽章與 SmartScreen、真正缺少 WebView2 的主機、互動式 installer 選項、uninstall 時的 Credential Manager 刪除政策，以及 Windows updater／delivery policy。詳見 [W5 readiness](windows/W5-release-readiness.md)、[W5 handoff](windows/W5_HANDOFF.md) 與 [v0.4.1 release notes](releases/0.4.1.md)。
 
