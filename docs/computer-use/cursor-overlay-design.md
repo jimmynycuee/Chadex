@@ -309,7 +309,7 @@ Overlay 顯示時是一個真的螢幕上視窗，`xcap::Window::all()` 會列�
 ### 6.1 Runner spawn
 
 - `integration/bridge.rs::local_runner_command`：在 macOS 加上 `CHADEX_COMPUTER_OVERLAY=stdout-v1` 與每次新產生的 `CHADEX_COMPUTER_OVERLAY_TOKEN`（`getrandom` 16 bytes → hex）。Token 要能讓 coordinator 取回（例如 `local_runner_command` 回傳 `(Command, OverlayChannelToken)`，或由 coordinator 產生後傳入）。
-- `state/coordinator.rs` 的 LocalRunner 四個 `spawn_owned` 呼叫改成 `machine_stdout: true`，把回傳的 `MachineEventReceiver` 與 token 交給 `ComputerOverlayHub::attach_runner`。Runner stdout 原本是空的，改成 machine-only 不會失去任何 log；stderr 照舊進 log。
+- `state/coordinator.rs` 的 LocalRunner 四個 `spawn_owned` 呼叫改成 `machine_stdout: true`，把回傳的 `MachineEventReceiver` 與 token 交給 `ComputerOverlayHub::attach_runner`。Runner 的 stdout 除了 `tracing` 的輸出之外沒有別的內容：通道啟用後 fd 1 指向 `/dev/null`，`tracing` 改寫 stderr（見 [§14](#14-實作紀錄)），所以 log 不會遺失，stderr 照舊進 log。
 
 ### 6.2 `chadex_core/computer_overlay.rs`（新）
 
@@ -515,7 +515,7 @@ static func plan(action: OverlayActionKind, reduceMotion: Bool,
 ### 8.5 偽造與注入
 
 - 只接受 helper 自己 spawn 的 runner 的 stdout；runner 啟動時把通道 fd 設成 `CLOEXEC`，並把 fd 1 改指 `/dev/null`，子程序無法寫入這條通道。
-- 每次 spawn 都用新 token，而且 runner 會從自身環境移除 token。
+- 每次 spawn 都用新 token，而且 runner 會從自身環境移除 token。**Token 不是祕密**：同一 uid 的程序可以用 `sysctl KERN_PROCARGS2` 讀到行程啟動時的初始環境（含 token），移除環境變數只是不讓 runner 的子程序繼承。真正的防偽造是 CLOEXEC 的私有 fd：只有 runner 行程持有通道，其他程序（包含 runner 的子程序）寫不進去；token 只是縱深防禦與丟棄誤送資料用。
 - App 只信任 helper stdout。即使被偽造，影響也只限於畫一個游標，不會觸發任何動作。
 
 ---
@@ -697,3 +697,7 @@ macOS 已實作（`feature/computer-cursor-overlay`）。使用者確認 §12 �
 - **診斷計數**：目前只放在 `setComputerOverlayEvents` 的回應（`counters`），尚未接進「匯出診斷資料」。
 - **Space／螢幕**：`NSWorkspace.activeSpaceDidChangeNotification` 沒有接（設計的隱藏時機清單沒有它）；`.canJoinAllSpaces` 讓標記跟著使用者。
 - **Live 截圖測試**：`CGDisplayCreateImage` 在 macOS 15 SDK 已被標為 obsoleted，Swift 無法呼叫；`ComputerOverlayLiveCaptureTests` 只涵蓋 `kCGWindowSharingState` 與 ScreenCaptureKit。Runtime 整個螢幕截圖（`CGDisplayCreateImage`）是否含 overlay 仍要照 §10.2 手動確認。
+- **Frame 讀取的位置（TOCTOU）**：AX frame 讀取是慢速 IPC（上限 150 ms），所以一律在**最後一道安全驗證之前**讀好（`OverlayActionGuard::prepare_frame`），驗證通過後只做 `begin_prepared`（非阻塞 `try_send`）就進入 effect。`key_input`／`input_text`／`control`／`scroll_to_element`／`activate_window` 都照此順序；一步完成的 `begin(read)` 只留在測試中，避免寫回舊模式。frame 讀取的時間仍計入動作自己的 wall-clock deadline（它是獨立的 deadline 物件，但時間照樣流逝）。
+- **使用者關閉 overlay 時 runner 仍會讀 frame**：helper 在 macOS 一律替 Runner 開通道，runner 目前不知道 App 是否開啟 overlay，所以 `OverlayActionGuard` 只依「有沒有 sink」決定讀不讀。代價是在驗證之前多一次 AX 讀取（目標 p95 ≤ 5 ms，上限 150 ms），已不在 TOCTOU 空窗內。若要在關閉時完全省掉，需要 helper 把 enabled 狀態傳給 runner（例如受控通道或信號），本版沒有做。
+- **`setComputerOverlayEvents` 串行**：App 端同一時間只送一個，送完若偏好又變了就再送一次最新值；helper 沒在跑時不送（也不會為此啟動 helper），等 `.started` 時再同步。
+- **Runner 安裝結果有三態**：未啟用、啟用、fd 1 已重導但通道沒建起來；只要 fd 1 被重導，`tracing` 就寫 stderr。
