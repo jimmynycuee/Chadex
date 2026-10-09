@@ -45,6 +45,8 @@ final class ComputerOverlayAppModelTests: XCTestCase {
             setComputerOverlayEvents)
               \(emit)
               printf '{"protocol_version":1,"request_id":"%s","result":{"enabled":true,"runner_channel":"detached"}}\\n' "$id" ;;
+            getComputerOverlayStatus)
+              printf '{"protocol_version":1,"request_id":"%s","result":{"enabled":true,"runner_channel":"detached","counters":{"forwarded":7,"dropped_invalid":2,"dropped_disabled":3,"dropped_backpressure":4,"overflows":1}}}\\n' "$id" ;;
             *) printf '{"protocol_version":1,"request_id":"%s","result":%s}\\n' "$id" "$SAFETY" ;;
           esac
           if [ "$method" = "shutdown" ]; then exit 0; fi
@@ -194,6 +196,69 @@ final class ComputerOverlayAppModelTests: XCTestCase {
             XCTAssertFalse(presented)
         } else {
             XCTAssertTrue(presented, "a valid event on a real screen is presented")
+        }
+    }
+
+    func testDiagnosticsReportTheOverlayWithoutStartingTheHelper() async throws {
+        let fixture = try makeFixture(overlayPreference: false)
+        let lines = await fixture.model.computerOverlayDiagnosticsLines()
+        XCTAssertTrue(lines.contains("Preference enabled: false"))
+        XCTAssertTrue(lines.contains("Helper running: false"))
+        XCTAssertTrue(lines.contains("Helper status: unavailable"))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: fixture.log.path),
+            "exporting diagnostics must not start the helper"
+        )
+        await fixture.model.shutdown()
+    }
+
+    func testDiagnosticsUseTheReadOnlyStatusMethod() async throws {
+        let fixture = try makeFixture()
+        let started = await startHelperAndWaitForInitialSync(fixture)
+        XCTAssertTrue(started)
+        let setBefore = logged(fixture, method: "setComputerOverlayEvents").count
+
+        let lines = await fixture.model.computerOverlayDiagnosticsLines()
+        let text = lines.joined(separator: "\n")
+        await fixture.model.shutdown()
+
+        XCTAssertEqual(lines.first, "Computer cursor overlay")
+        XCTAssertTrue(text.contains("Runner channel: detached"), text)
+        XCTAssertTrue(text.contains("Helper forwarded: 7"), text)
+        XCTAssertTrue(text.contains("Helper dropped (invalid): 2"), text)
+        XCTAssertTrue(text.contains("Helper dropped (backpressure): 4"), text)
+        XCTAssertEqual(logged(fixture, method: "getComputerOverlayStatus").count, 1)
+        XCTAssertEqual(
+            logged(fixture, method: "setComputerOverlayEvents").count, setBefore,
+            "the diagnostics query must not change the enabled state"
+        )
+    }
+
+    func testDiagnosticsSectionHasNoCoordinatesOrContent() {
+        let status = ComputerOverlayHelperStatus(
+            enabled: true,
+            runnerChannel: "attached\u{0}x=123.5,y=456.5",
+            counters: .init(forwarded: 1, droppedInvalid: 2, droppedDisabled: 3, droppedBackpressure: 4, overflows: 5)
+        )
+        let lines = ComputerOverlayDiagnostics.lines(
+            preferenceEnabled: true,
+            helper: status,
+            helperRunning: true,
+            discardedEventFrames: 6,
+            controllerDroppedEvents: 7
+        )
+        let text = lines.joined(separator: "\n")
+        XCTAssertTrue(text.contains("Runner channel: unknown"), "an unexpected value is not echoed")
+        XCTAssertTrue(text.contains("App discarded event frames: 6"))
+        XCTAssertTrue(text.contains("App dropped events (stale or no matching screen): 7"))
+        XCTAssertFalse(text.contains("123.5"))
+        XCTAssertFalse(text.contains("456.5"))
+        for line in lines.dropFirst() {
+            let value = line.split(separator: ":", maxSplits: 1).last.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+            XCTAssertTrue(
+                Int(value) != nil || ["true", "false", "attached", "detached", "unsupported", "unknown", "unavailable"].contains(value),
+                "only numbers and enum values: \(line)"
+            )
         }
     }
 }

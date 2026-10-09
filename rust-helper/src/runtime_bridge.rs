@@ -2335,6 +2335,12 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
                 "Send {\"enabled\": true} or {\"enabled\": false}.",
             )),
         },
+        // Read-only: unlike setComputerOverlayEvents it never changes the enabled state.
+        "getComputerOverlayStatus" => Ok(ResponseResult::Json(json!({
+            "enabled": bridge.overlay.is_enabled(),
+            "runner_channel": bridge.overlay.runner_channel(),
+            "counters": bridge.overlay.counters(),
+        }))),
         "stopComputerControl" => serde_json::to_value(bridge.tunnel.stop_computer_control())
             .map(ResponseResult::Json)
             .map_err(|_| {
@@ -3832,6 +3838,31 @@ mod computer_overlay_bridge_tests {
         let frame = events.try_recv().expect("clear(disabled)");
         assert_eq!(frame["phase"], "clear");
         assert_eq!(frame["reason"], "disabled");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn get_overlay_status_is_read_only_and_numbers_only() {
+        let (bridge, root) = temp_bridge("status");
+        let mut events = bridge.take_overlay_events().unwrap();
+
+        let off = call(&bridge, "getComputerOverlayStatus", json!({})).await;
+        assert_eq!(off["result"]["enabled"], false);
+        assert_eq!(off["result"]["counters"]["forwarded"], 0);
+
+        let _ = call(&bridge, "setComputerOverlayEvents", json!({"enabled": true})).await;
+        let on = call(&bridge, "getComputerOverlayStatus", json!({"enabled": false})).await;
+        assert_eq!(on["result"]["enabled"], true, "params are ignored; the query never toggles");
+        let expected_channel = if cfg!(target_os = "macos") { "detached" } else { "unsupported" };
+        assert_eq!(on["result"]["runner_channel"], expected_channel);
+        assert!(events.try_recv().is_err(), "querying sends no frame");
+
+        let mut keys: Vec<_> = on["result"].as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["counters", "enabled", "runner_channel"]);
+        for value in on["result"]["counters"].as_object().unwrap().values() {
+            assert!(value.is_u64(), "counters are plain numbers: {value}");
+        }
         let _ = std::fs::remove_dir_all(root);
     }
 

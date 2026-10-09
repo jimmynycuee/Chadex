@@ -727,6 +727,27 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Diagnostics section for the cursor overlay. Uses the read-only
+    /// `getComputerOverlayStatus` (never `setComputerOverlayEvents`, which would
+    /// change state) and never starts a helper that is not running.
+    func computerOverlayDiagnosticsLines() async -> [String] {
+        let running = helper.isRunning
+        var status: ComputerOverlayHelperStatus?
+        if running {
+            status = try? await helper.request(
+                method: "getComputerOverlayStatus",
+                params: EmptyParams()
+            )
+        }
+        return ComputerOverlayDiagnostics.lines(
+            preferenceEnabled: preferences.computerCursorOverlayEnabled,
+            helper: status,
+            helperRunning: running,
+            discardedEventFrames: helper.discardedEventFrameCount,
+            controllerDroppedEvents: overlayController.droppedEventCount
+        )
+    }
+
     func refreshComputerSafety() async {
         do {
             let status: ComputerSafetyStatus = try await helper.request(
@@ -1743,6 +1764,7 @@ final class AppModel: ObservableObject {
         let lifecycleTraces = lifecyclePerformanceTraces
         let appTimings = appPhaseTimings
         let helperSamples = helper.performanceSamples(limit: 50)
+        let overlayLines = await computerOverlayDiagnosticsLines()
 
         let panel = NSSavePanel()
         panel.title = L10n.string("settings.exportDiagnostics")
@@ -1757,7 +1779,8 @@ final class AppModel: ObservableObject {
                 mcpTraces: mcpTraces,
                 lifecycleTraces: lifecycleTraces,
                 appTimings: appTimings,
-                helperSamples: helperSamples
+                helperSamples: helperSamples,
+                overlayLines: overlayLines
             ).write(to: url, atomically: true, encoding: .utf8)
         } catch {
             present(error)
@@ -1768,7 +1791,8 @@ final class AppModel: ObservableObject {
         mcpTraces: [McpPerformanceTraceEntry],
         lifecycleTraces: [LifecyclePerformanceTraceEntry],
         appTimings: [AppPhaseTimingSample],
-        helperSamples: [HelperLatencySample]
+        helperSamples: [HelperLatencySample],
+        overlayLines: [String]
     ) -> String {
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
@@ -1808,6 +1832,9 @@ final class AppModel: ObservableObject {
         if let operation = snapshot.currentOperation {
             lines.append("Current operation: \(operation.kind) / \(operation.phase)")
         }
+
+        lines.append("")
+        lines.append(contentsOf: overlayLines)
 
         lines.append("")
         lines.append("Performance")

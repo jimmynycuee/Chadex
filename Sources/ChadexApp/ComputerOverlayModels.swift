@@ -17,6 +17,59 @@ struct SetComputerOverlayEventsParams: Codable, Sendable, Equatable {
     var enabled: Bool
 }
 
+/// Reply of the read-only `getComputerOverlayStatus`. Counts and enum values only.
+struct ComputerOverlayHelperStatus: Decodable, Sendable, Equatable {
+    // Decoded with the helper client's snake_case key strategy.
+    struct Counters: Decodable, Sendable, Equatable {
+        var forwarded: Int
+        var droppedInvalid: Int
+        var droppedDisabled: Int
+        var droppedBackpressure: Int
+        var overflows: Int
+    }
+
+    var enabled: Bool
+    var runnerChannel: String
+    var counters: Counters
+}
+
+/// The "Computer cursor overlay" section of the exported diagnostics. Only
+/// numbers and enum values: never coordinates, targets or any event content.
+enum ComputerOverlayDiagnostics {
+    static func lines(
+        preferenceEnabled: Bool,
+        helper: ComputerOverlayHelperStatus?,
+        helperRunning: Bool,
+        discardedEventFrames: Int,
+        controllerDroppedEvents: Int
+    ) -> [String] {
+        var lines = [
+            "Computer cursor overlay",
+            "Preference enabled: \(preferenceEnabled)",
+            "Helper running: \(helperRunning)"
+        ]
+        if let helper {
+            lines.append("Helper events enabled: \(helper.enabled)")
+            lines.append("Runner channel: \(sanitizedChannel(helper.runnerChannel))")
+            lines.append("Helper forwarded: \(helper.counters.forwarded)")
+            lines.append("Helper dropped (invalid): \(helper.counters.droppedInvalid)")
+            lines.append("Helper dropped (disabled): \(helper.counters.droppedDisabled)")
+            lines.append("Helper dropped (backpressure): \(helper.counters.droppedBackpressure)")
+            lines.append("Helper overflows: \(helper.counters.overflows)")
+        } else {
+            lines.append("Helper status: unavailable")
+        }
+        lines.append("App discarded event frames: \(discardedEventFrames)")
+        lines.append("App dropped events (stale or no matching screen): \(controllerDroppedEvents)")
+        return lines
+    }
+
+    /// The channel is an enum on the wire; anything else is not echoed.
+    private static func sanitizedChannel(_ value: String) -> String {
+        ["attached", "detached", "unsupported"].contains(value) ? value : "unknown"
+    }
+}
+
 /// Typed events the helper can push. Unknown event names never reach this type.
 enum HelperEvent: Sendable, Equatable {
     case computerOverlay(ComputerOverlayEventData)

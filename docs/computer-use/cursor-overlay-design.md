@@ -694,7 +694,7 @@ macOS 已實作（`feature/computer-cursor-overlay`）。使用者確認 §12 �
 - **Runner 的 tracing**：`tracing_subscriber` 預設寫 stdout，不是設計假設的「完全不寫 stdout」。通道啟用後 fd 1 指向 `/dev/null`，所以 tracing 在此時改寫 stderr，診斷仍進 helper 的 log。
 - **Token**：由 `ComputerOverlayHub::prepare_runner_command` 產生並寫入 spawn 的 `Command`（不是 `local_runner_command` 回傳 token）。Hub 是整個 helper 行程唯一的實例（`install_shared_hub`），由 `run_async` 安裝；沒有安裝時（單元測試）Runner 用舊命令列啟動。
 - **Helper 轉送佇列滿了**：丟棄新的 frame 並計數（`tokio::mpsc` 無法丟最舊的）；App 端的 `ttl_ms` 自動隱藏兜底。
-- **診斷計數**：目前只放在 `setComputerOverlayEvents` 的回應（`counters`），尚未接進「匯出診斷資料」。
+- **診斷計數**：「匯出診斷資料」有「Computer cursor overlay」區段：偏好是否開啟、helper 是否在跑、唯讀 RPC `getComputerOverlayStatus` 的 `enabled`／`runner_channel`／`counters`、App 端 `HelperClient` 丟棄的 event frame 數與 `ComputerOverlayController` 丟棄的事件數（過期或對不上螢幕）。只放數字與列舉值，不含座標或內容；helper 沒在跑時不會為了匯出而啟動它，該區段標示 `Helper status: unavailable`。
 - **Space／螢幕**：`NSWorkspace.activeSpaceDidChangeNotification` 沒有接（設計的隱藏時機清單沒有它）；`.canJoinAllSpaces` 讓標記跟著使用者。
 - **Live 截圖測試**：`CGDisplayCreateImage` 在 macOS 15 SDK 已被標為 obsoleted，Swift 無法呼叫；`ComputerOverlayLiveCaptureTests` 只涵蓋 `kCGWindowSharingState` 與 ScreenCaptureKit。Runtime 整個螢幕截圖（`CGDisplayCreateImage`）是否含 overlay 仍要照 §10.2 手動確認。
 - **Frame 讀取的位置（TOCTOU）**：AX frame 讀取是慢速 IPC（上限 150 ms），所以一律在**最後一道安全驗證之前**讀好（`OverlayActionGuard::prepare_frame`），驗證通過後只做 `begin_prepared`（非阻塞 `try_send`）就進入 effect。`key_input`／`input_text`／`control`／`scroll_to_element`／`activate_window` 都照此順序；一步完成的 `begin(read)` 只留在測試中，避免寫回舊模式。frame 讀取的時間仍計入動作自己的 wall-clock deadline（它是獨立的 deadline 物件，但時間照樣流逝）。

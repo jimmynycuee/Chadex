@@ -170,6 +170,7 @@ Catalog descriptor 的 `scripts_allowed`（bool）表示該 Skill 的腳本資�
 | `stopComputerControl` | — | 持久 Stop：deny 所有 pending，直到明確 resume |
 | `resumeComputerControl` | — | 解除 Stop，保留原模式 |
 | `setComputerOverlayEvents` | `enabled`（bool，否則 `invalid_params`） | 開關代理游標 event frame（預設關）。回 `{enabled, runner_channel, counters}`；`runner_channel` 為 `attached`／`detached`／`unsupported`（非 macOS）。關閉時 helper 送一次 `clear(disabled)`，之後丟棄 Runner 事件 |
+| `getComputerOverlayStatus` | — | 唯讀：回 `{enabled, runner_channel, counters}`，與 `setComputerOverlayEvents` 同形，但不改變啟用狀態、不送任何 frame。供「匯出診斷資料」使用；`counters` 只有筆數（`forwarded`／`dropped_invalid`／`dropped_disabled`／`dropped_backpressure`／`overflows`），不含座標或內容 |
 
 ### Removed
 
