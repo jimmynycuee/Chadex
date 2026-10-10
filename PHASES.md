@@ -11,7 +11,7 @@ tracks:
   V: 版本發佈
   LS: 啟動速度
   D: 介面設計
-current_phase: V063
+current_phase: V064
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -368,6 +368,25 @@ phases:
         expect: "capsule buttons, centred labels"
         result: "accepted 2026-10-10 on v0.6.3"
     closed_commit: 2435154
+  - id: V064
+    name: v0.6.4 Chadex glass buttons that follow the interface size
+    branch: fix/glass-button-style
+    status: done
+    owner: claude
+    depends_on: [V063]
+    # macOS 26 SDK 的原生 bordered 按鈕不理會 .font、幾乎不隨 controlSize 變大；
+    # 改用自訂 ChadexButtonStyle（Liquid Glass 膠囊），80%→160% 量測 62x22→120x43。
+    gate:
+      - cmd: "native button measurement"
+        expect: "label/bezel grow with interface size"
+        result: "custom style 62x22 (80%) -> 120x43 (160%); native 76x24 -> 88x36 only"
+      - cmd: "Free Release workflow"
+        expect: "all jobs success, linked SDK >= 26"
+        result: "v0.6.4 run 38056253998 success, SDK 26.5"
+      - cmd: "manual acceptance (CI-built app)"
+        expect: "buttons scale 80-160%, light/dark, no jump while connecting"
+        result: "accepted 2026-10-10 on preview run 38052007198"
+    closed_commit: 086c220
 ---
 
 # Phases
