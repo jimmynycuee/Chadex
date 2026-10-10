@@ -22,7 +22,7 @@ permissions:
 jobs:
   notarized-arm64:
     name: Sign, notarize, and package ARM64 app
-    runs-on: macos-15
+    runs-on: macos-26
     env:
       INPUT_TAG: ${{ inputs.tag }}
       INPUT_APP_VERSION: ${{ inputs.app_version }}

@@ -87,7 +87,7 @@ jobs:
 
   source-gate:
     name: Source release gate
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 75
     steps:
       - name: Checkout
@@ -104,7 +104,7 @@ jobs:
   build-package:
     name: Build free ARM64 DMG
     needs: metadata
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 75
     env:
       CHADEX_APP_VERSION: ${{ needs.metadata.outputs.app_version }}
@@ -122,6 +122,16 @@ jobs:
           CHADEX_CODESIGN_MODE: adhoc
           CHADEX_RUNTIME_PROFILE: release
         run: ./scripts/build_app.sh
+
+      - name: Require a macOS 26+ SDK
+        env:
+          CHADEX_APP_OUTPUT: ${{ runner.temp }}/Chadex.app
+        run: |
+          # Apps linked against an older SDK run in compatibility mode on
+          # macOS 26+: no Liquid Glass, old button shapes.
+          sdk=$(otool -l "$CHADEX_APP_OUTPUT/Contents/MacOS/Chadex" | awk '/LC_BUILD_VERSION/{f=1} f&&$1=="sdk"{print $2; exit}')
+          echo "Linked SDK: $sdk"
+          [ "${sdk%%.*}" -ge 26 ] || { echo "error: release app must link a macOS 26+ SDK (got $sdk)" >&2; exit 1; }
 
       - name: Package and smoke-test DMG
         env:
