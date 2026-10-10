@@ -47,6 +47,7 @@ Intel / Universal build 目前尚未完成 release-level 驗證，因此暫不�
 - **Agent 設定**提供 Chadex 全域共用的 Global Instructions 與目前專案的 Skills；Skills 可用「上傳 Skill…」複製一份到 Chadex，或在「外部 Skill 來源」連接你已用於 Codex／Claude Code／共用 agent 的資料夾（腳本預設關閉，可逐資料夾允許）；repository `AGENTS.md` 維持原生檔案與 nested hierarchy，Chadex 只讀取已註冊 project root 內適用的規則，不把外層 ambient `AGENTS.md` 當成全域設定。
 - Project Memory 會以受限 bootstrap summary 在任務開始時自動提供長期架構／決策／工作流程脈絡，詳細內容維持 lazy load，並可從進階 Memory Inspector 檢查。
 - **Computer Use** 支援 read-only observation、需批准／本次工作階段允許／持久 **Always allow** 的控制、敏感內容保護與 stale/outcome-unknown recovery；**Stop** 會持續生效（重新連線也不解除），直到明確 Resume。Read-only / Ask / Always allow 預設政策可離線設定。
+- **Plan Mode／Goal Mode**（開發中，見 [`docs/PLAN_GOAL_MODE.md`](docs/PLAN_GOAL_MODE.md)）：在 ChatGPT 先以後端強制唯讀的 Plan Mode 規劃並儲存不可變版本，於 Chadex App「計畫與目標」核准確切版本後，由 Chadex 在隔離 worktree 中自主執行、以核准的驗收指令客觀判定完成；關閉 ChatGPT 不影響執行，並提供暫停／取消／緊急停止。
 - 新增 Code Ferret 吉祥物，依已觀測到的工具與任務狀態顯示動畫；可關閉顯示或動態效果，並支援 macOS「減少動態效果」。
 
 Chadex **不是另一個聊天介面或模型 API client**；工作指令仍然在 ChatGPT 中下達。
@@ -115,6 +116,7 @@ Release profile、簽署、DMG、GitHub Actions 與 distribution boundary 的完
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime、project isolation、execution lifecycle 與安全邊界
 - [`docs/BRIDGE_PROTOCOL.md`](docs/BRIDGE_PROTOCOL.md) — Swift ↔ Rust bridge protocol
+- [`docs/PLAN_GOAL_MODE.md`](docs/PLAN_GOAL_MODE.md) — Plan Mode／Goal Mode 使用方式、安全邊界、恢復語意與實測證據
 - [`docs/RELEASE.md`](docs/RELEASE.md) — release gate、簽署、DMG 與 GitHub 發佈流程
 - [`docs/releases/0.6.5.md`](docs/releases/0.6.5.md) — Computer Use 閒置後關回 Chromium 網頁輔助功能、提示 ChatGPT 何時使用
 - [`docs/releases/0.6.4.md`](docs/releases/0.6.4.md) — 按鈕跟著介面大小縮放的 Liquid Glass 樣式

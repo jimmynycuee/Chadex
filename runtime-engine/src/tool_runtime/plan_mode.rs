@@ -172,6 +172,8 @@ pub(crate) struct PlanGuard {
     db: Option<Arc<Database>>,
     locks: RwLock<HashMap<String, PlanLockRecord>>,
     degraded: AtomicBool,
+    /// Serializes query+publish so an older snapshot never overwrites a newer one.
+    reload_order: std::sync::Mutex<()>,
 }
 
 impl PlanGuard {
@@ -180,6 +182,7 @@ impl PlanGuard {
             db: Some(db),
             locks: RwLock::new(HashMap::new()),
             degraded: AtomicBool::new(false),
+            reload_order: std::sync::Mutex::new(()),
         };
         guard.reload();
         guard
@@ -189,6 +192,7 @@ impl PlanGuard {
         let Some(db) = self.db.as_ref() else {
             return;
         };
+        let _order = self.reload_order.lock().expect("plan guard reload order");
         match db.plan_active_locks(now_unix_ms()) {
             Ok(records) => {
                 let map = records
@@ -549,6 +553,18 @@ impl ToolRuntime {
             return invalid_action("action must be one of: pause, resume, cancel");
         };
         let owner = plan_principal_key(auth);
+        // Plan Mode may stop work but never start it again.
+        if action == GoalControlAction::Resume
+            && !matches!(self.plan_guard.lookup(&owner), Ok(None))
+        {
+            {
+                return ToolResult::err_with_output(
+                    "Resuming a Goal is blocked while Plan Mode is active for this connection",
+                    json!({"error_kind": "plan_mode_read_only", "state_changed": false}),
+                )
+                .with_recovery(RecoveryKind::UserAction);
+            }
+        }
         match db.goal_run_control(PlanReader::Owner(&owner), &goal_run_id, action, now_unix_ms()) {
             Ok(run) => {
                 if let Some(wake) = self.goal_supervisor_wake.as_ref() {

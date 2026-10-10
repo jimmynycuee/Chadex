@@ -6,6 +6,7 @@ enum SidebarSelection: Hashable {
     case agentSettings
     case skills
     case computerUse
+    case planGoal
     case activity
     case guide
 }
@@ -99,6 +100,12 @@ struct RootView: View {
                             systemImage: "desktopcomputer"
                         )
                         .tag(SidebarSelection.computerUse)
+
+                        SidebarNavigationRow(
+                            title: L10n.string("sidebar.planGoal"),
+                            systemImage: "checklist"
+                        )
+                        .tag(SidebarSelection.planGoal)
                     }
 
                     Section {
@@ -319,7 +326,7 @@ struct RootView: View {
         switch selection {
         case .project(let id):
             return model.projects.first(where: { $0.id == id })
-        case .agentSettings, .skills, .computerUse:
+        case .agentSettings, .skills, .computerUse, .planGoal:
             return model.selectedProject
         case .activity, .guide, .none:
             return nil
@@ -342,7 +349,7 @@ struct RootView: View {
         Task {
             guard await model.removeProject(project.id) else { return }
             switch selection {
-            case .agentSettings, .skills, .computerUse:
+            case .agentSettings, .skills, .computerUse, .planGoal:
                 if model.selectedProject == nil {
                     selection = .activity
                 }
@@ -380,6 +387,8 @@ struct RootView: View {
             return .skills
         case "computer", "project.computer":
             return .computerUse
+        case "planGoal":
+            return .planGoal
         default:
             if let project = model.selectedProject {
                 return .project(project.id)
@@ -400,6 +409,8 @@ struct RootView: View {
             lastSidebarDestination = "skills"
         case .computerUse:
             lastSidebarDestination = "computer"
+        case .planGoal:
+            lastSidebarDestination = "planGoal"
         case .project:
             lastSidebarDestination = "project"
         case .none:
@@ -429,6 +440,8 @@ struct RootView: View {
             selectedProjectDetail(destination: .skills)
         case .computerUse:
             selectedProjectDetail(destination: .computerUse)
+        case .planGoal:
+            selectedProjectDetail(destination: .planGoal)
         case .project(let id):
             if let project = model.projects.first(where: { $0.id == id }) {
                 if model.selectedProject?.id == id {
@@ -792,6 +805,10 @@ struct ChadexNavigationCommands: Commands {
             Button(L10n.string("sidebar.activity")) { selection = .activity }
                 .keyboardShortcut("5", modifiers: .command)
                 .disabled(!canNavigate)
+
+            Button(L10n.string("sidebar.planGoal")) { selection = .planGoal }
+                .keyboardShortcut("6", modifiers: .command)
+                .disabled(!canNavigate || model.selectedProject == nil)
             Divider()
         }
 

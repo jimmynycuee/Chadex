@@ -152,6 +152,7 @@ Catalog descriptor 的 `scripts_allowed`（bool）表示該 Skill 的腳本資�
 | Method | 參數 | 行為 |
 | --- | --- | --- |
 | `getProjectMemoryCatalog` | `path` | Memory descriptor catalog |
+| `planGoalOperator` | `path`, `tool` (`plan_review`\|`goal_operator`), `arguments` | Runtime REST tool result `{success, output, error}`；只送往 operator REST `/api/tools/call`，使用本機 user token（見 [PLAN_GOAL_MODE.md](PLAN_GOAL_MODE.md)） |
 | `getProjectMemory` | `path`, `memory_key`, `expected_revision?` | 讀取單筆 memory |
 | `setProjectMemory` | `path`, `memory_key`, `summary`, `body`, `priority`, `bootstrap`, `tags`, `expected_revision?` | 建立或以 revision CAS 更新 |
 | `deleteProjectMemory` | `path`, `memory_key`, `expected_revision` | 以 revision CAS 刪除 |

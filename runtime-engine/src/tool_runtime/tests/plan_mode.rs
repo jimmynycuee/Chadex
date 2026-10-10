@@ -437,3 +437,20 @@ async fn tunnel_bootstrap_principal_is_locked_cannot_approve_and_goal_dispatch_i
     assert!(restored.has_scope(crate::auth::SCOPE_JOB_RUN));
     assert!(!restored.has_scope(crate::auth::SCOPE_COMPUTER_CONTROL));
 }
+
+#[tokio::test]
+async fn review_m4_plan_mode_blocks_resuming_goals() {
+    let fx = fixture().await;
+    let alice = chatgpt("alice");
+    start_plan(&fx, &alice).await;
+    let (ok, output) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "goal_run_control",
+        json!({"goal_run_id": "wc_grun_AAAAAAAAAAAAAAAA", "action": "resume"}),
+    )
+    .await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "plan_mode_read_only");
+}

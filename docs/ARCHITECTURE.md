@@ -126,6 +126,10 @@ Skills 是可重用的程序，與 instructions 分開。Project skill 位於 re
 
 macOS Agent 設定的 Skills 頁提供「外部 Skill 來源」區塊，使用 `discoverExternalSkillSources`、`getExternalSkillRoots`、`setExternalSkillRoots`（見 [Bridge Protocol](BRIDGE_PROTOCOL.md)）。
 
+## Plan Mode 與 Goal Mode
+
+Plan Mode 由 tool kernel 對持有 plan lock 的 principal 強制預設拒絕（白名單唯讀工具）；核准只能經 Chadex App 的 operator REST；Goal 由 runtime server 內的 supervisor 在 managed worktree 中以 `codex exec` 迭代，驗收在 `codex sandbox` 內執行，以 lease/fence 與操作日誌避免重複派送。完整設計、信任邊界與實測見 [PLAN_GOAL_MODE.md](PLAN_GOAL_MODE.md)。
+
 ## Project Memory
 
 Project Memory 保存跨 session 的長期架構、決策與工作流程脈絡，存於 runtime database，以 project runtime ID + Runner client + registered root 推導的 memory scope 隔離。Coding task 開始時，runtime 只自動投影標記為 bootstrap 的受限 summary；完整 body 維持 lazy read。寫入以 `expected_revision` 做 optimistic concurrency；暫時性 log、generated path、secret 與推測不屬於正常 closeout 應寫入的內容。macOS desktop 只在進階 **Memory Inspector** 透過 `getProjectMemoryCatalog`／`getProjectMemory`／`setProjectMemory`／`deleteProjectMemory` 檢查與修改，不再是常駐 sidebar 頁面。

@@ -11,7 +11,8 @@ tracks:
   V: 版本發佈
   LS: 啟動速度
   D: 介面設計
-current_phase: V065
+  PG: Plan Mode 與 Goal Mode
+current_phase: PG1
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -416,6 +417,22 @@ phases:
       - cmd: "Free Release on tag v0.6.5 (run 38085501827)"
         result: "success; DMG + .sha256 published, SDK 26.5, installed to /Applications"
     closed_commit: bbcc867
+  - id: PG1
+    name: Plan Mode and Goal Mode (backend enforcement, approval, supervisor, app panel)
+    branch: feature/plan-goal-mode
+    status: in_progress
+    owner: claude
+    depends_on: [V065]
+    # 設計與證據：docs/PLAN_GOAL_MODE.md。尚未完成：ChatGPT 網頁實機（tunnel、Skill 上傳與 @ 呼叫）、
+    # App「計畫與目標」面板目視驗收（CI 建置）、Mac 睡眠實測、合併 main 與發版（需使用者授權）。
+    gate:
+      - cmd: "cargo test -p chadex-runtime-engine --lib / -p chadex-runtime-store / contracts / rust-helper"
+        result: "2777 / 180 / 141+96 / 333+3 passed, 0 failed (2026-10-11)"
+      - cmd: "swift test"
+        result: "250 executed, 1 skipped, 0 failures (2026-10-11)"
+      - cmd: "scripts/e2e_plan_goal.py (isolated helper+server+runner) fake / codex / --restart"
+        result: "Plan Mode writes all refused, project hash unchanged; real codex goal succeeded on independently re-verified branch; restart -> outcome_unknown -> app resume -> succeeded"
+    closed_commit: null
 ---
 
 # Phases

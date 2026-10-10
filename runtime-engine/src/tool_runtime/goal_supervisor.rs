@@ -37,6 +37,7 @@ use tokio::sync::Notify;
 pub(crate) type BoxFut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 const GOAL_AGENT_ARGV_ENV: &str = "CHADEX_GOAL_AGENT_ARGV";
+const GOAL_CHECK_SANDBOX_ENV: &str = "CHADEX_GOAL_CHECK_SANDBOX_ARGV";
 const MAX_FEEDBACK_BYTES: usize = 6 * 1024;
 const MAX_PROMPT_BYTES: usize = 60 * 1024;
 
@@ -46,6 +47,8 @@ const MAX_PROMPT_BYTES: usize = 60 * 1024;
 pub(crate) struct GoalProvider {
     name: &'static str,
     argv: Vec<String>,
+    /// Operator-configured acceptance sandbox prefix (`[]` = disabled).
+    check_sandbox: Option<Vec<String>>,
 }
 
 impl GoalProvider {
@@ -55,6 +58,16 @@ impl GoalProvider {
     /// session is persisted. An operator may override the argv for testing or
     /// another CLI with `CHADEX_GOAL_AGENT_ARGV` (JSON array).
     pub(crate) fn from_env() -> Self {
+        let check_sandbox = std::env::var(GOAL_CHECK_SANDBOX_ENV)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok());
+        Self {
+            check_sandbox,
+            ..Self::agent_from_env()
+        }
+    }
+
+    fn agent_from_env() -> Self {
         if let Some(argv) = std::env::var(GOAL_AGENT_ARGV_ENV)
             .ok()
             .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
@@ -63,6 +76,7 @@ impl GoalProvider {
             return Self {
                 name: "custom",
                 argv,
+                check_sandbox: None,
             };
         }
         Self {
@@ -88,6 +102,7 @@ impl GoalProvider {
             .iter()
             .map(|value| value.to_string())
             .collect(),
+            check_sandbox: None,
         }
     }
 
@@ -100,6 +115,60 @@ impl GoalProvider {
         Self {
             name: "custom",
             argv: argv.iter().map(|value| value.to_string()).collect(),
+            check_sandbox: Some(Vec::new()),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn unsandboxed_custom_for_tests(argv: &[&str]) -> Self {
+        Self {
+            check_sandbox: None,
+            ..Self::custom_for_tests(argv)
+        }
+    }
+
+    /// Acceptance checks execute code the agent wrote, so they run inside the
+    /// same kind of sandbox: writes limited to the worktree, no network (which
+    /// also keeps them away from Chadex's loopback operator API). An operator
+    /// may override the prefix with CHADEX_GOAL_CHECK_SANDBOX_ARGV (JSON array;
+    /// `[]` disables it, e.g. for tests).
+    /// `None` = no sandbox is configured for this provider: checks must not run.
+    fn check_sandbox_prefix(&self) -> Option<Vec<String>> {
+        if let Some(prefix) = self.check_sandbox.as_ref() {
+            return Some(prefix.clone());
+        }
+        if self.name == "codex" {
+            return Some([
+                "codex",
+                "sandbox",
+                "-c",
+                "sandbox_mode=\"workspace-write\"",
+                "-c",
+                "sandbox_workspace_write.network_access=false",
+                "-c",
+                "sandbox_workspace_write.writable_roots=[]",
+                "--",
+            ]
+            .iter()
+            .map(|value| value.to_string())
+            .collect());
+        }
+        None
+    }
+
+    /// The check argv wrapped in the acceptance sandbox, or `None` when no
+    /// sandbox is configured (fail closed instead of running unsandboxed).
+    pub(crate) fn sandboxed_check(&self, argv: &[String]) -> Option<(String, Vec<String>)> {
+        let mut full = self.check_sandbox_prefix()?;
+        full.extend(argv.iter().cloned());
+        Some((full[0].clone(), full[1..].to_vec()))
+    }
+
+    pub(crate) fn check_sandbox_description(&self) -> &'static str {
+        match self.check_sandbox_prefix() {
+            None => "unconfigured",
+            Some(prefix) if prefix.is_empty() => "disabled_by_operator",
+            Some(_) => "enabled",
         }
     }
 
@@ -250,6 +319,8 @@ pub(crate) struct GoalSupervisor {
     owner: String,
     config: GoalSupervisorConfig,
     wake: Arc<Notify>,
+    /// Runs this process is currently driving. Never claimed twice here.
+    driving: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 /// Why the driver stopped touching a run without a recorded transition.
@@ -313,6 +384,7 @@ impl GoalSupervisor {
             owner: format!("sup_{}", uuid::Uuid::new_v4().simple()),
             config,
             wake,
+            driving: Default::default(),
         })
     }
 
@@ -332,11 +404,13 @@ impl GoalSupervisor {
 
     /// One claim pass. Returns the number of runs claimed.
     pub(crate) async fn tick_once(self: &Arc<Self>) -> usize {
-        let claimed = match self.db.goal_run_claim(
+        let driving: Vec<String> = self.driving.lock().expect("driving set").iter().cloned().collect();
+        let claimed = match self.db.goal_run_claim_excluding(
             &self.owner,
             now_unix_ms(),
             self.config.lease_ms,
             self.config.max_concurrent_runs,
+            &driving,
         ) {
             Ok(claimed) => claimed,
             Err(error) => {
@@ -346,6 +420,10 @@ impl GoalSupervisor {
         };
         let count = claimed.len();
         for (run, lease) in claimed {
+            self.driving
+                .lock()
+                .expect("driving set")
+                .insert(run.goal_run_id.clone());
             let this = self.clone();
             tokio::spawn(async move { this.drive(run.goal_run_id, lease).await });
         }
@@ -353,10 +431,21 @@ impl GoalSupervisor {
     }
 
     pub(crate) async fn drive(self: Arc<Self>, run_id: String, lease: GoalLease) {
+        struct Driving(Arc<std::sync::Mutex<std::collections::HashSet<String>>>, String);
+        impl Drop for Driving {
+            fn drop(&mut self) {
+                if let Ok(mut set) = self.0.lock() {
+                    set.remove(&self.1);
+                }
+            }
+        }
+        let _driving = Driving(self.driving.clone(), run_id.clone());
         let lost = Arc::new(AtomicBool::new(false));
+        let lost_signal = Arc::new(Notify::new());
         let heartbeat = {
             let db = self.db.clone();
             let lost = lost.clone();
+            let lost_signal = lost_signal.clone();
             let run_id = run_id.clone();
             let lease = lease.clone();
             let lease_ms = self.config.lease_ms;
@@ -364,17 +453,27 @@ impl GoalSupervisor {
                 let every = Duration::from_millis((lease_ms / 3).max(50) as u64);
                 loop {
                     tokio::time::sleep(every).await;
-                    if db
-                        .goal_run_renew_lease(&run_id, &lease, now_unix_ms(), lease_ms)
-                        .is_err()
-                    {
-                        lost.store(true, Ordering::SeqCst);
-                        break;
+                    match db.goal_run_renew_lease(&run_id, &lease, now_unix_ms(), lease_ms) {
+                        Ok(()) => {}
+                        Err(error) if error.code() == "goal_lease_lost" => {
+                            lost.store(true, Ordering::SeqCst);
+                            lost_signal.notify_one();
+                            break;
+                        }
+                        // Transient store error: the lease is still ours; retry.
+                        Err(error) => {
+                            tracing::warn!(error = %error, "goal lease renewal failed; retrying")
+                        }
                     }
                 }
             })
         };
-        let result = self.drive_inner(&run_id, &lease, &lost).await;
+        // Stop driving the moment the lease is lost: whatever was dispatched
+        // stays journaled for the next owner to observe, never re-dispatch.
+        let result = tokio::select! {
+            result = self.drive_inner(&run_id, &lease, &lost) => result,
+            _ = lost_signal.notified() => Err(Exit::LeaseLost),
+        };
         heartbeat.abort();
         match result {
             Ok(()) => {}
@@ -435,6 +534,17 @@ impl GoalSupervisor {
             Ok(workspace) => workspace,
             Err(park) => return self.park(run_id, lease, park),
         };
+        // Pin the worktree's real git dir before any agent runs, so a later
+        // tampered `.git` file cannot redirect Chadex's own git commands.
+        let git_dir = match self.pinned_git_dir(&run, &workspace, lease, lost).await? {
+            Ok(git_dir) => git_dir,
+            Err(park) => return self.park(run_id, lease, park),
+        };
+        self.event(
+            run_id,
+            "acceptance_sandbox",
+            json!({"state": self.provider.check_sandbox_description()}),
+        );
         let mut tokens = run.tokens_used;
         loop {
             if let Some(park) = self.control_check(run_id, lease, lost)? {
@@ -444,7 +554,7 @@ impl GoalSupervisor {
             let iteration = run.iteration + 1;
             let max = i64::from(run.spec.budget.max_iterations);
             if iteration > max {
-                self.make_result_branch(&run, &workspace, lease, lost).await?;
+                self.make_result_branch(&run, &workspace, &git_dir, lease, lost).await?;
                 return self.park(
                     run_id,
                     lease,
@@ -470,49 +580,71 @@ impl GoalSupervisor {
                 tokens = Some(tokens.unwrap_or(0) + used);
             }
 
-            // 2. Checkpoint commit of whatever the agent changed.
-            let commit_spec = ProcessSpec {
-                executable: "sh".to_string(),
-                args: vec![
-                    "-c".to_string(),
-                    format!(
-                        "git add -A && git -c user.name='Chadex Goal' -c user.email=goal@chadex.local -c commit.gpgsign=false commit --no-verify --allow-empty -q -m 'chadex goal {}: iteration {}'",
-                        run.goal_run_id, iteration
-                    ),
-                ],
-                stdin: None,
-                cwd: None,
-                timeout_secs: 120,
-            };
-            let commit_key = format!("commit:{iteration}@g{}", lease.generation);
-            match self
-                .run_op(&run, &workspace, lease, lost, &commit_key, "commit", iteration, commit_spec, OpPolicy::Reobservable)
-                .await?
-            {
-                OpOutcome::Done(outcome) if outcome.passed() => {}
-                OpOutcome::Done(outcome) => {
-                    return self.park(
-                        run_id,
-                        lease,
-                        Park::new(
-                            GoalRunState::NeedsAttention,
-                            format!(
-                                "checkpoint_commit_failed: exit {:?} {}",
-                                outcome.exit_code,
-                                tail_bytes(&outcome.stderr_tail, 300)
+            // 2. Checkpoint commit of whatever the agent changed (literal argv;
+            //    repository hooks are skipped so no project code runs here).
+            let git = |args: &[&str]| hardened_git(&git_dir, args);
+            let message = format!("chadex goal {}: iteration {}", run.goal_run_id, iteration);
+            let steps = [
+                ("stage", git(&["add", "-A"])),
+                (
+                    "commit",
+                    git(&[
+                        "-c",
+                        "user.name=Chadex Goal",
+                        "-c",
+                        "user.email=goal@chadex.local",
+                        "-c",
+                        "commit.gpgsign=false",
+                        "commit",
+                        "--no-verify",
+                        "--allow-empty",
+                        "-q",
+                        "-m",
+                        &message,
+                    ]),
+                ),
+            ];
+            for (name, commit_spec) in steps {
+                let commit_key = format!("{name}:{iteration}@g{}", lease.generation);
+                match self
+                    .run_op(&run, &workspace, lease, lost, &commit_key, "commit", iteration, commit_spec, OpPolicy::Reobservable)
+                    .await?
+                {
+                    OpOutcome::Done(outcome) if outcome.passed() => {}
+                    OpOutcome::Done(outcome) => {
+                        return self.park(
+                            run_id,
+                            lease,
+                            Park::new(
+                                GoalRunState::NeedsAttention,
+                                format!(
+                                    "checkpoint_{name}_failed: exit {:?} {}",
+                                    outcome.exit_code,
+                                    tail_bytes(&outcome.stderr_tail, 300)
+                                ),
                             ),
-                        ),
-                    )
+                        )
+                    }
+                    OpOutcome::Park(park) => return self.park(run_id, lease, park),
                 }
-                OpOutcome::Park(park) => return self.park(run_id, lease, park),
             }
 
             // 3. Independent acceptance checks.
             let mut results = Vec::new();
             for (index, check) in run.spec.acceptance.iter().enumerate() {
+                let Some((executable, args)) = self.provider.sandboxed_check(&check.argv) else {
+                    return self.park(
+                        run_id,
+                        lease,
+                        Park::new(
+                            GoalRunState::NeedsAttention,
+                            "acceptance_sandbox_unconfigured: this provider has no acceptance sandbox; set CHADEX_GOAL_CHECK_SANDBOX_ARGV",
+                        ),
+                    );
+                };
                 let spec = ProcessSpec {
-                    executable: check.argv[0].clone(),
-                    args: check.argv[1..].to_vec(),
+                    executable,
+                    args,
                     stdin: None,
                     cwd: check.cwd.clone(),
                     timeout_secs: check.timeout_secs,
@@ -560,7 +692,7 @@ impl GoalSupervisor {
             );
             if all_passed {
                 let run = self.db.goal_run_fenced(run_id, lease)?;
-                self.make_result_branch(&run, &workspace, lease, lost).await?;
+                self.make_result_branch(&run, &workspace, &git_dir, lease, lost).await?;
                 return self.park(
                     run_id,
                     lease,
@@ -572,7 +704,7 @@ impl GoalSupervisor {
             }
             if streak >= 2 {
                 let run = self.db.goal_run_fenced(run_id, lease)?;
-                self.make_result_branch(&run, &workspace, lease, lost).await?;
+                self.make_result_branch(&run, &workspace, &git_dir, lease, lost).await?;
                 return self.park(
                     run_id,
                     lease,
@@ -583,6 +715,52 @@ impl GoalSupervisor {
                 );
             }
         }
+    }
+
+    /// Resolve and validate the worktree's administrative git dir once, before
+    /// the first agent turn, and journal it (exactly once per run).
+    async fn pinned_git_dir(
+        &self,
+        run: &GoalRunRecord,
+        workspace: &Workspace,
+        lease: &GoalLease,
+        lost: &AtomicBool,
+    ) -> Result<Result<String, Park>, Exit> {
+        let spec = ProcessSpec {
+            executable: "git".to_string(),
+            args: ["-c", "core.fsmonitor=false", "rev-parse", "--absolute-git-dir"]
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+            stdin: None,
+            cwd: None,
+            timeout_secs: 60,
+        };
+        let agent_started = self.db.goal_op_get(&run.goal_run_id, "agent:1")?.is_some();
+        let outcome = match self
+            .run_op(run, workspace, lease, lost, "gitdir", "gitdir", 0, spec, OpPolicy::ExactlyOnce)
+            .await?
+        {
+            OpOutcome::Done(outcome) => outcome,
+            OpOutcome::Park(park) => return Ok(Err(park)),
+        };
+        let git_dir = outcome.stdout_tail.trim().to_string();
+        let expected_prefix = format!("{}/.git/worktrees/", run.binding.project_root.trim_end_matches('/'));
+        let valid = outcome.passed()
+            && git_dir.starts_with(&expected_prefix)
+            && !git_dir.contains("/../")
+            && !git_dir.contains('\n');
+        if !valid {
+            return Ok(Err(Park::new(
+                GoalRunState::NeedsAttention,
+                if agent_started && git_dir.is_empty() {
+                    "workspace_git_dir_unknown: the worktree git dir was not recorded before agent work".to_string()
+                } else {
+                    format!("workspace_git_dir_unexpected: {git_dir:?} is not under {expected_prefix}")
+                },
+            )));
+        }
+        Ok(Ok(git_dir))
     }
 
     async fn ensure_workspace(
@@ -645,6 +823,7 @@ impl GoalSupervisor {
         &self,
         run: &GoalRunRecord,
         workspace: &Workspace,
+        git_dir: &str,
         lease: &GoalLease,
         lost: &AtomicBool,
     ) -> Result<(), Exit> {
@@ -652,13 +831,7 @@ impl GoalSupervisor {
             return Ok(());
         }
         let branch = format!("chadex/goal/{}", run.goal_run_id);
-        let spec = ProcessSpec {
-            executable: "git".to_string(),
-            args: vec!["branch".to_string(), "-f".to_string(), branch.clone(), "HEAD".to_string()],
-            stdin: None,
-            cwd: None,
-            timeout_secs: 60,
-        };
+        let spec = hardened_git(git_dir, &["branch", "-f", &branch, "HEAD"]);
         let key = format!("branch@g{}", lease.generation);
         if let OpOutcome::Done(outcome) = self
             .run_op(run, workspace, lease, lost, &key, "branch", run.iteration, spec, OpPolicy::Reobservable)
@@ -892,10 +1065,66 @@ impl GoalSupervisor {
     }
 }
 
+/// The Runner requires a UUID operation id; derive a stable one from the run
+/// id so every retry or restart re-observes the same managed worktree.
+pub(crate) fn workspace_operation_id(goal_run_id: &str) -> String {
+    let digest = Sha256::digest(format!("chadex.goal.workspace.v1\0{goal_run_id}").as_bytes());
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    uuid::Uuid::from_bytes(bytes).to_string()
+}
+
+/// Runner `prepare_managed_worktree` result: the registered worktree Project
+/// (`id`, `path`), possibly nested under `project`.
+pub(crate) fn parse_workspace(output: &Value) -> Option<Workspace> {
+    let node = output.get("project").filter(|value| value.is_object()).unwrap_or(output);
+    let project_id = ["id", "project_id", "project"]
+        .iter()
+        .find_map(|key| node.get(*key).and_then(Value::as_str))?;
+    let path = ["path", "root"]
+        .iter()
+        .find_map(|key| node.get(*key).and_then(Value::as_str))?;
+    Some(Workspace {
+        project_id: project_id.to_string(),
+        path: path.to_string(),
+    })
+}
+
+/// Chadex's own git commands: pinned git dir/work tree, no hooks, no
+/// fsmonitor, no signing prompts, so no repository-controlled program runs
+/// outside the sandbox.
+fn hardened_git(git_dir: &str, args: &[&str]) -> ProcessSpec {
+    let mut argv: Vec<String> = vec![
+        format!("--git-dir={git_dir}"),
+        "--work-tree=.".to_string(),
+        "-c".to_string(),
+        "core.hooksPath=/dev/null".to_string(),
+        "-c".to_string(),
+        "core.fsmonitor=false".to_string(),
+        "-c".to_string(),
+        "commit.gpgsign=false".to_string(),
+    ];
+    argv.extend(args.iter().map(|value| value.to_string()));
+    ProcessSpec {
+        executable: "git".to_string(),
+        args: argv,
+        stdin: None,
+        cwd: None,
+        timeout_secs: 120,
+    }
+}
+
 fn spec_label(kind: &str, spec: &ProcessSpec) -> String {
     if kind == "verify" {
-        std::iter::once(spec.executable.as_str())
+        let argv: Vec<&str> = std::iter::once(spec.executable.as_str())
             .chain(spec.args.iter().map(String::as_str))
+            .collect();
+        let start = argv.iter().position(|arg| *arg == "--").map_or(0, |index| index + 1);
+        argv[start..]
+            .iter()
+            .copied()
             .collect::<Vec<_>>()
             .join(" ")
             .chars()
@@ -961,6 +1190,8 @@ fn build_prompt(db: &Database, run: &GoalRunRecord, iteration: i64, feedback: Op
         .flatten()
         .map(|revision| revision.content)
         .unwrap_or_default();
+    // Never truncate the rules: bound the plan body and the feedback instead.
+    let plan = head_bytes(&plan, MAX_PROMPT_BYTES - 2 * MAX_FEEDBACK_BYTES - 4096);
     let checks = run
         .spec
         .acceptance
@@ -979,6 +1210,7 @@ fn build_prompt(db: &Database, run: &GoalRunRecord, iteration: i64, feedback: Op
         })
         .collect::<Vec<_>>()
         .join("\n");
+    let checks = head_bytes(&checks, 4096);
     let mut prompt = format!(
         "You are the unattended coding agent for Chadex Goal Mode, working in an isolated Git worktree (your current directory is its root).\n\
          Implement the approved plan below. This is iteration {iteration} of at most {max}.\n\n\
@@ -994,6 +1226,7 @@ fn build_prompt(db: &Database, run: &GoalRunRecord, iteration: i64, feedback: Op
         sha = run.content_sha256,
     );
     if let Some(feedback) = feedback {
+        let feedback = tail_bytes(feedback, MAX_FEEDBACK_BYTES);
         prompt.push_str(&format!(
             "\nThe previous iteration did not pass acceptance. Failing checks:\n{feedback}\n"
         ));
@@ -1001,7 +1234,19 @@ fn build_prompt(db: &Database, run: &GoalRunRecord, iteration: i64, feedback: Op
             prompt.push_str("\nThe same failure has now repeated. Re-examine your assumptions and try a different approach.\n");
         }
     }
-    tail_bytes(&prompt, MAX_PROMPT_BYTES)
+    // The Runner caps stdin; keep the header (rules first) if anything is long.
+    head_bytes(&prompt, MAX_PROMPT_BYTES)
+}
+
+fn head_bytes(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut end = max;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n…[plan truncated]", &text[..end])
 }
 
 /// Text of a process stream from a run_process/observe_jobs result.
@@ -1061,6 +1306,21 @@ pub(crate) fn classify_start(success: bool, output: &Value, error: Option<String
     if output.get("exit_code").and_then(Value::as_i64).is_some() {
         return Ok(StartResult::Finished(outcome_from_output(output)));
     }
+    // run_process contract: short work returns synchronously, longer work
+    // returns a job_id. The compact success projection carries only output
+    // streams (or nothing at all), so success without a job means exit 0.
+    let negative = output.get("command_ok").and_then(Value::as_bool) == Some(false)
+        || output.get("passed").and_then(Value::as_bool) == Some(false)
+        || output.get("terminal").and_then(Value::as_bool) == Some(false)
+        || output
+            .get("execution_state")
+            .and_then(Value::as_str)
+            .is_some_and(|state| !matches!(state, "completed" | "succeeded"));
+    if success && !negative && output.get("job_id").is_none() && output.get("error_kind").is_none() {
+        let mut outcome = outcome_from_output(output);
+        outcome.exit_code = Some(0);
+        return Ok(StartResult::Finished(outcome));
+    }
     let kind = output
         .get("error_kind")
         .or_else(|| output.get("failure_kind"))
@@ -1069,7 +1329,14 @@ pub(crate) fn classify_start(success: bool, output: &Value, error: Option<String
         .to_string();
     let message = error.unwrap_or_else(|| kind.clone());
     if success {
-        return Err(ExecError::Unknown(format!("unrecognized process result: {message}")));
+        let keys: Vec<&str> = output
+            .as_object()
+            .map(|object| object.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        return Err(ExecError::Unknown(format!(
+            "unrecognized process result (fields: {}) {message}",
+            keys.join(",")
+        )));
     }
     if kind.contains("timeout") && output.get("command_started").and_then(Value::as_bool) == Some(true) {
         return Ok(StartResult::Finished(outcome_from_output(output)));
@@ -1168,7 +1435,7 @@ impl GoalExecutor for RuntimeGoalExecutor {
                         run.binding.runner_client_id.clone(),
                         run.binding.project_root.clone(),
                         Some(run.binding.base_commit.clone()),
-                        run.goal_run_id.clone(),
+                        workspace_operation_id(&run.goal_run_id),
                         None,
                         auth.as_ref(),
                     )
@@ -1176,23 +1443,21 @@ impl GoalExecutor for RuntimeGoalExecutor {
             })
             .await;
             let output = &result.output;
-            let project = output
-                .get("project")
-                .or_else(|| output.get("project_id"))
-                .and_then(|value| value.as_str().or_else(|| value.get("id").and_then(Value::as_str)))
-                .map(str::to_string);
-            let path = output
-                .get("path")
-                .or_else(|| output.get("root"))
-                .or_else(|| output.pointer("/worktree/path"))
-                .and_then(Value::as_str)
-                .map(str::to_string);
-            match (result.success, project, path) {
-                (true, Some(project_id), Some(path)) => Ok(Workspace { project_id, path }),
-                (true, _, _) => Err(ExecError::Unknown(format!("unrecognized worktree result: {output}"))),
-                (false, _, _) => {
+            let parsed = parse_workspace(output);
+            match (result.success, parsed) {
+                (true, Some(workspace)) => Ok(workspace),
+                (true, None) => Err(ExecError::Unknown(format!("unrecognized worktree result: {output}"))),
+                (false, _) => {
                     let kind = output.get("error_kind").and_then(Value::as_str).unwrap_or_default();
-                    let message = result.error.clone().unwrap_or_else(|| kind.to_string());
+                    let detail = output
+                        .get("message")
+                        .or_else(|| output.get("error"))
+                        .and_then(Value::as_str);
+                    let message = match (result.error.as_deref(), detail) {
+                        (Some(error), _) => format!("{kind}: {error}"),
+                        (None, Some(detail)) => format!("{kind}: {detail}"),
+                        (None, None) => kind.to_string(),
+                    };
                     if is_denial(kind) {
                         Err(ExecError::Denied(message))
                     } else {

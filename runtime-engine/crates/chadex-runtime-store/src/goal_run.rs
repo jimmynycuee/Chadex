@@ -447,6 +447,19 @@ impl Database {
         lease_ms: i64,
         limit: usize,
     ) -> Result<Vec<(GoalRunRecord, GoalLease)>, PlanStoreError> {
+        self.goal_run_claim_excluding(owner, now, lease_ms, limit, &[])
+    }
+
+    /// Claim, skipping runs this process is still driving (e.g. its lease
+    /// expired while the Mac slept): those keep their current driver.
+    pub fn goal_run_claim_excluding(
+        &self,
+        owner: &str,
+        now: i64,
+        lease_ms: i64,
+        limit: usize,
+        exclude: &[String],
+    ) -> Result<Vec<(GoalRunRecord, GoalLease)>, PlanStoreError> {
         let mut conn = self.lock_connection(crate::StoreDomain::Goal);
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -463,6 +476,7 @@ impl Database {
                 |row| row.get(0),
             )
             .map_err(plan_store_error)?;
+        let held = held.max(exclude.len() as i64);
         let available = (limit as i64 - held).max(0);
         let ids: Vec<String> = {
             let mut statement = tx
@@ -470,13 +484,18 @@ impl Database {
                     "SELECT goal_run_id FROM wc_goal_runs
                      WHERE state IN ('queued', 'running')
                        AND (lease_owner IS NULL OR lease_expires_at_unix_ms <= ?1)
-                     ORDER BY created_at_unix_ms LIMIT ?2",
+                     ORDER BY created_at_unix_ms",
                 )
                 .map_err(plan_store_error)?;
             let rows = statement
-                .query_map(params![now, available], |row| row.get(0))
+                .query_map(params![now], |row| row.get::<_, String>(0))
                 .map_err(plan_store_error)?;
-            rows.collect::<Result<_, _>>().map_err(plan_store_error)?
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(plan_store_error)?
+                .into_iter()
+                .filter(|id| !exclude.contains(id))
+                .take(available as usize)
+                .collect()
         };
         let mut claimed = Vec::new();
         for id in ids {
@@ -559,6 +578,25 @@ impl Database {
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(plan_store_error)?;
+        // A cancel the user requested must not be lost because the driver
+        // parked for another reason at the same time.
+        let pending_cancel: Option<String> = tx
+            .query_row(
+                "SELECT control_request FROM wc_goal_runs WHERE goal_run_id = ?1",
+                params![run_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(plan_store_error)?
+            .flatten();
+        let (state, reason) = if pending_cancel.as_deref() == Some("cancel")
+            && matches!(state, GoalRunState::Paused | GoalRunState::NeedsAttention)
+        {
+            (GoalRunState::Cancelled, format!("cancel requested (was: {reason})"))
+        } else {
+            (state, reason.to_string())
+        };
+        let reason = reason.as_str();
         let finished = state.terminal().then_some(now);
         let changed = tx
             .execute(
@@ -783,6 +821,16 @@ impl Database {
         }
         let detail = match action {
             GoalControlAction::Pause | GoalControlAction::Cancel => {
+                // Pausing is only a way to stop active work. It must never turn
+                // a run that needs attention into a resumable one.
+                if action == GoalControlAction::Pause
+                    && !matches!(run.state, GoalRunState::Queued | GoalRunState::Running)
+                {
+                    return Err(PlanStoreError::new(
+                        "goal_pause_not_allowed",
+                        format!("A {} run cannot be paused", run.state.as_str()),
+                    ));
+                }
                 let request = if action == GoalControlAction::Pause {
                     "pause"
                 } else {

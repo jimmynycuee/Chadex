@@ -14,8 +14,15 @@ struct ProjectDetailView: View {
     @StateObject private var computerPermissions = ComputerPermissionMonitor()
 
     var body: some View {
-        ChadexPageColumn {
-            workspaceContent
+        Group {
+            if destination == .planGoal {
+                // Has its own always-visible emergency-stop bar above the scrolling page.
+                PlanGoalView(project: project)
+            } else {
+                ChadexPageColumn {
+                    workspaceContent
+                }
+            }
         }
         .navigationTitle(navigationTitle)
         .task(id: "\(project.id.uuidString):\(destination.rawValue)") {
@@ -24,7 +31,7 @@ struct ProjectDetailView: View {
             switch destination {
             case .computerUse:
                 await model.refreshComputerSafety()
-            case .overview, .agentSettings, .skills:
+            case .overview, .agentSettings, .skills, .planGoal:
                 // The Skills page refreshes its own catalog.
                 break
             }
@@ -61,6 +68,9 @@ struct ProjectDetailView: View {
 
         case .computerUse:
             computerControlSection
+
+        case .planGoal:
+            EmptyView()
         }
     }
 
@@ -80,6 +90,8 @@ struct ProjectDetailView: View {
             return L10n.string("sidebar.skills")
         case .computerUse:
             return L10n.string("sidebar.computerUse")
+        case .planGoal:
+            return L10n.string("sidebar.planGoal")
         }
     }
 

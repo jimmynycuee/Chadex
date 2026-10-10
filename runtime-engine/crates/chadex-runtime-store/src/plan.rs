@@ -796,6 +796,7 @@ impl Database {
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(plan_store_error)?;
+        release_expired_locks(&tx, now)?;
         let plan = load_owned_plan(&tx, PlanReader::Operator, plan_id, now)?;
         if plan.state == PlanState::Closed {
             return Err(PlanStoreError::new("plan_closed", "This plan is closed"));
@@ -814,6 +815,35 @@ impl Database {
                 decided_at_unix_ms, consumed_by_goal_run_id
              ) VALUES (?1, ?2, ?3, ?4, 'rejected', NULL, ?5, 'chadex_app', ?6, ?7, NULL, ?7, NULL)",
             params![approval_id, plan_id, revision, content_sha256, approver, reason, now],
+        )
+        .map_err(plan_store_error)?;
+        // Requesting changes withdraws any approval and returns the plan to
+        // read-only drafting for its owner.
+        tx.execute(
+            "UPDATE wc_plan_decisions SET state = 'revoked', decided_at_unix_ms = ?2
+             WHERE plan_id = ?1 AND state = 'active'",
+            params![plan_id, now],
+        )
+        .map_err(plan_store_error)?;
+        let owner: String = tx
+            .query_row(
+                "SELECT owner_key FROM wc_plans WHERE plan_id = ?1",
+                params![plan_id],
+                |row| row.get(0),
+            )
+            .map_err(plan_store_error)?;
+        let other_lock = active_lock_plan(&tx, &owner)?.filter(|other| other != plan_id);
+        tx.execute(
+            "UPDATE wc_plans SET state = 'drafting', lock_active = ?2,
+                 lock_expires_at_unix_ms = CASE WHEN ?2 = 1 THEN ?3 ELSE lock_expires_at_unix_ms END,
+                 updated_at_unix_ms = ?4
+             WHERE plan_id = ?1",
+            params![
+                plan_id,
+                if other_lock.is_none() { 1 } else { 0 },
+                now + DEFAULT_PLAN_LOCK_TTL_MS,
+                now
+            ],
         )
         .map_err(plan_store_error)?;
         let decision = load_decision(&tx, &approval_id)?;

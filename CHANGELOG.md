@@ -2,6 +2,10 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## Unreleased
+
+- Plan Mode / Goal Mode (feature branch `feature/plan-goal-mode`, not released): backend-enforced read-only planning with immutable, hash-approved plan revisions; approval only from the Chadex app; an in-process Goal supervisor that iterates `codex exec` in an isolated worktree and succeeds only on the approved acceptance checks (run sandboxed), with durable recovery, budgets, pause/cancel and emergency stop. See `docs/PLAN_GOAL_MODE.md`.
+
 ## 0.6.5
 
 - Computer Use no longer leaves Chromium/Electron web accessibility on for good: an app Chadex switched on is switched back off after 120 s without an observation that needs it, or when the runtime exits. Apps that already had it on are left alone. This fixes ChatGPT pages in Brave/Chrome slowing down after Computer Use looked at the browser.

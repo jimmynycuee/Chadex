@@ -401,3 +401,74 @@ fn pause_cancel_and_emergency_stop() {
     assert_eq!(detail.run.state, GoalRunState::Stopped);
     assert!(detail.events.iter().any(|event| event.kind == "emergency_stop"));
 }
+
+#[test]
+fn review_h1_owner_cannot_launder_needs_attention_through_pause() {
+    let (_temp, db) = db();
+    let (plan_id, v1) = started_plan(&db);
+    approve(&db, &plan_id, &v1, T0 + 2);
+    let run = start_run(&db, &plan_id, T0 + 3).unwrap().run;
+    let (_, lease) = db.goal_run_claim("sup", T0 + 4, 30_000, 1).unwrap().remove(0);
+    db.goal_run_transition(&run.goal_run_id, &lease, GoalRunState::NeedsAttention, "outcome_unknown", T0 + 5)
+        .unwrap();
+    for reader in [PlanReader::Owner(OWNER), PlanReader::Operator] {
+        assert_eq!(
+            db.goal_run_control(reader, &run.goal_run_id, GoalControlAction::Pause, T0 + 6)
+                .unwrap_err()
+                .code(),
+            "goal_pause_not_allowed"
+        );
+    }
+    assert_eq!(
+        db.goal_run_control(PlanReader::Owner(OWNER), &run.goal_run_id, GoalControlAction::Resume, T0 + 7)
+            .unwrap_err()
+            .code(),
+        "goal_resume_not_allowed"
+    );
+    assert!(db.goal_run_claim("sup", T0 + 8, 30_000, 1).unwrap().is_empty());
+}
+
+#[test]
+fn review_m1_requesting_changes_withdraws_approval_and_relocks() {
+    let (_temp, db) = db();
+    let (plan_id, v1) = started_plan(&db);
+    approve(&db, &plan_id, &v1, T0 + 2);
+    db.plan_reject(&plan_id, 1, &v1.revision.content_sha256, "operator", "not yet", T0 + 3)
+        .unwrap();
+    let detail = db.plan_read(PlanReader::Operator, &plan_id, None, T0 + 4).unwrap();
+    assert_eq!(detail.plan.state, PlanState::Drafting);
+    assert!(detail.plan.plan_mode_active);
+    assert!(detail.decisions.iter().all(|d| d.state != PlanDecisionState::Active));
+    assert_eq!(start_run(&db, &plan_id, T0 + 5).unwrap_err().code(), "plan_not_approved");
+}
+
+#[test]
+fn review_l1_pending_cancel_wins_over_parking() {
+    let (_temp, db) = db();
+    let (plan_id, v1) = started_plan(&db);
+    approve(&db, &plan_id, &v1, T0 + 2);
+    let run = start_run(&db, &plan_id, T0 + 3).unwrap().run;
+    let (_, lease) = db.goal_run_claim("sup", T0 + 4, 30_000, 1).unwrap().remove(0);
+    db.goal_run_control(PlanReader::Owner(OWNER), &run.goal_run_id, GoalControlAction::Cancel, T0 + 5)
+        .unwrap();
+    let parked = db
+        .goal_run_transition(&run.goal_run_id, &lease, GoalRunState::NeedsAttention, "no_progress", T0 + 6)
+        .unwrap();
+    assert_eq!(parked.state, GoalRunState::Cancelled);
+}
+
+#[test]
+fn review_m5_claim_skips_runs_this_process_still_drives() {
+    let (_temp, db) = db();
+    let (plan_id, v1) = started_plan(&db);
+    approve(&db, &plan_id, &v1, T0 + 2);
+    let run = start_run(&db, &plan_id, T0 + 3).unwrap().run;
+    let (_, lease) = db.goal_run_claim("sup", T0 + 4, 10, 1).unwrap().remove(0);
+    // Lease expired (sleep) but this process still drives it: not re-claimed.
+    let again = db
+        .goal_run_claim_excluding("sup", T0 + 100, 10, 1, &[run.goal_run_id.clone()])
+        .unwrap();
+    assert!(again.is_empty());
+    // The original driver can still renew after waking up.
+    db.goal_run_renew_lease(&run.goal_run_id, &lease, T0 + 101, 30_000).unwrap();
+}

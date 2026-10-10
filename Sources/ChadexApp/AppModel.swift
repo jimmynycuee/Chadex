@@ -1309,6 +1309,34 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Calls the helper's `planGoalOperator` bridge for the selected project.
+    /// Backend failures (`success == false`) and transport errors both come
+    /// back as `.failure` with a message the panel can show inline.
+    func planGoalOperator<Output: Decodable>(
+        tool: String,
+        arguments: PlanGoalArguments,
+        as outputType: Output.Type
+    ) async -> PlanGoalResult<Output> {
+        guard let selectedProject else {
+            return .failure(message: L10n.string("planGoal.error.noProject"), kind: nil)
+        }
+        do {
+            let envelope: PlanGoalEnvelope<Output> = try await helper.request(
+                method: "planGoalOperator",
+                params: PlanGoalOperatorParams(path: selectedProject.path, tool: tool, arguments: arguments)
+            )
+            if envelope.success, let output = envelope.output {
+                return .success(output)
+            }
+            let message = envelope.error
+                ?? envelope.failure?.message
+                ?? L10n.string("planGoal.error.unknown")
+            return .failure(message: message, kind: envelope.failure?.errorKind)
+        } catch {
+            return .failure(message: helperErrorMessage(error), kind: nil)
+        }
+    }
+
     func refreshProjectMemory() async {
         guard let selectedProject else {
             clearProjectMemory()

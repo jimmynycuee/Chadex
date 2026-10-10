@@ -39,6 +39,7 @@ struct FakeState {
     deny_agent: bool,
     lose_agent_job: bool,
     verify_calls: u32,
+    git_dir_override: Option<String>,
 }
 
 struct FakeExecutor {
@@ -134,7 +135,13 @@ impl GoalExecutor for FakeExecutor {
                     done(1, "test result: FAILED", &stderr)
                 }));
             }
-            // checkpoint commit / branch
+            if spec.args.iter().any(|arg| arg == "rev-parse") {
+                let git_dir = state.git_dir_override.clone().unwrap_or_else(|| "/repo/.git/worktrees/repo-1".to_string());
+                return Ok(StartResult::Finished(done(0, &git_dir, "")));
+            }
+            // checkpoint commit / branch: Chadex's git must be hardened.
+            assert!(spec.args.contains(&"core.hooksPath=/dev/null".to_string()), "{:?}", spec.args);
+            assert!(spec.args.iter().any(|arg| arg.starts_with("--git-dir=/repo/.git/worktrees/")), "{:?}", spec.args);
             Ok(StartResult::Finished(done(0, "", "")))
         })
     }
@@ -176,10 +183,14 @@ fn config() -> GoalSupervisorConfig {
 }
 
 fn supervisor(db: &Arc<Database>, executor: Arc<FakeExecutor>) -> Arc<GoalSupervisor> {
+    supervisor_with(db, executor, GoalProvider::custom_for_tests(&[AGENT]))
+}
+
+fn supervisor_with(db: &Arc<Database>, executor: Arc<FakeExecutor>, provider: GoalProvider) -> Arc<GoalSupervisor> {
     GoalSupervisor::new(
         db.clone(),
         executor,
-        GoalProvider::custom_for_tests(&[AGENT]),
+        provider,
         config(),
         Arc::new(Notify::new()),
     )
@@ -500,14 +511,44 @@ fn provider_default_is_hardened_codex() {
         assert!(debug.contains(required), "missing {required}: {debug}");
     }
     assert!(!debug.contains("danger"), "{debug}");
+    if std::env::var("CHADEX_GOAL_CHECK_SANDBOX_ARGV").is_err() {
+        let (executable, args) = provider.sandboxed_check(&["cargo".to_string(), "test".to_string()]).unwrap();
+        assert_eq!(executable, "codex");
+        assert_eq!(&args[..1], &["sandbox".to_string()]);
+        assert!(args.contains(&"sandbox_workspace_write.network_access=false".to_string()));
+        assert_eq!(&args[args.len() - 3..], &["--".to_string(), "cargo".to_string(), "test".to_string()]);
+    }
 }
 
 #[test]
 fn output_classifiers_are_conservative() {
     use crate::tool_runtime::goal_supervisor::{classify_observation, classify_start, parse_tokens_used};
     assert_eq!(parse_tokens_used("x\ntokens used\n12,345\n"), Some(12345));
+    // Real Runner shape captured in the isolated end-to-end run.
+    let workspace = crate::tool_runtime::goal_supervisor::parse_workspace(&json!({
+        "id": "agent:device-1:calc-f4af179c-9cd965bf",
+        "agent_project_id": "calc-f4af179c-9cd965bf",
+        "path": "/data/managed-worktrees/calc-f4af179c",
+        "kind": "auto_registered"
+    }))
+    .unwrap();
+    assert_eq!(workspace.project_id, "agent:device-1:calc-f4af179c-9cd965bf");
+    assert_eq!(workspace.path, "/data/managed-worktrees/calc-f4af179c");
+    let id = crate::tool_runtime::goal_supervisor::workspace_operation_id("wc_grun_x");
+    assert!(uuid::Uuid::parse_str(&id).is_ok());
+    assert_eq!(id, crate::tool_runtime::goal_supervisor::workspace_operation_id("wc_grun_x"));
+    assert_ne!(id, crate::tool_runtime::goal_supervisor::workspace_operation_id("wc_grun_y"));
     assert_eq!(parse_tokens_used("tokens used: 77"), Some(77));
     assert_eq!(parse_tokens_used("no usage"), None);
+    // Real compact success projection (captured end to end): exit 0.
+    assert!(matches!(
+        classify_start(true, &json!({"stdout_lines": 2, "stdout_tail": "ok"}), None),
+        Ok(StartResult::Finished(outcome)) if outcome.exit_code == Some(0)
+    ));
+    assert!(matches!(
+        classify_start(true, &json!({}), None),
+        Ok(StartResult::Finished(outcome)) if outcome.exit_code == Some(0)
+    ));
     // A job id without a terminal result is a started job.
     assert!(matches!(
         classify_start(true, &json!({"job_id": "j1", "promoted_to_job": true}), None),
@@ -544,4 +585,43 @@ fn output_classifiers_are_conservative() {
         classify_observation(&json!({"status": "completed", "terminal": true, "exit_code": 0})),
         Ok(ObserveResult::Finished(outcome)) if outcome.exit_code == Some(0)
     ));
+}
+
+#[tokio::test]
+async fn review_n2_custom_provider_without_sandbox_never_runs_checks() {
+    let (_tmp, db) = crate::test_support::test_db();
+    let run_id = approved_run(&db, GoalBudget::default());
+    let fake = FakeExecutor::new(|state| state.fix_after_agent_runs = 0);
+    supervisor_with(&db, fake.clone(), GoalProvider::unsandboxed_custom_for_tests(&[AGENT]))
+        .tick_once()
+        .await;
+    let run = wait_for(&db, &run_id, PARKED).await;
+    assert_eq!(run.state, GoalRunState::NeedsAttention);
+    assert!(run.state_reason.unwrap().starts_with("acceptance_sandbox_unconfigured"));
+    assert_eq!(fake.state.lock().unwrap().verify_calls, 0);
+}
+
+#[tokio::test]
+async fn review_n1_unexpected_git_dir_parks_before_agent_work() {
+    let (_tmp, db) = crate::test_support::test_db();
+    let run_id = approved_run(&db, GoalBudget::default());
+    let fake = FakeExecutor::new(|state| state.git_dir_override = Some("/tmp/evil".to_string()));
+    supervisor(&db, fake.clone()).tick_once().await;
+    let run = wait_for(&db, &run_id, PARKED).await;
+    assert_eq!(run.state, GoalRunState::NeedsAttention);
+    assert!(run.state_reason.unwrap().starts_with("workspace_git_dir_unexpected"));
+    assert_eq!(fake.agent_starts(), 0);
+}
+
+#[test]
+fn review_n4_negative_fields_are_not_presumed_success() {
+    use crate::tool_runtime::goal_supervisor::classify_start;
+    for output in [
+        json!({"command_ok": false}),
+        json!({"passed": false}),
+        json!({"terminal": false}),
+        json!({"execution_state": "running"}),
+    ] {
+        assert!(classify_start(true, &output, None).is_err(), "{output}");
+    }
 }
