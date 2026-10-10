@@ -89,6 +89,7 @@ else:
 - **效能**：Chromium 打開 accessibility 後，所有分頁的 renderer 都會維護 AX 樹，大頁面（Google Sheets、長文件）的 CPU 和記憶體會上升，通常在個位數到十幾個百分點，要實機量測（L6）。效果持續到瀏覽器重啟，或被 Chromium 的 auto-disable 關掉為止。
 - **其他輔助工具**：開啟不會干擾 VoiceOver 或其他工具（它們本來就會打開同一個 mode）。
 - **不復原（建議）**：設回 `false` 可能把其他輔助工具需要的 accessibility 一起關掉，而且 Chromium 重建樹也有成本。runner 結束時也沒有可靠的時機可以做復原。決策 D4 讓使用者確認。
+- **2026-10-11 修訂（CM6）**：實際使用時，在 Brave 裡開 ChatGPT 的使用者被觀察過一次後，長對話頁面明顯變卡，而且效果一直持續。D4 改為「閒置後復原」：Chadex 第一次寫入前先讀 `AXManualAccessibility`，原本就是 `true` 的 app 不會被 Chadex 關掉；其餘 app 在最後一次需要它的觀察後閒置 `RELEASE_IDLE`（120 秒）就寫回 `false`，runtime 結束（`WebAxRegistry` drop）時也會寫回。下一次觀察會重新開啟並等待樹建好。
 - **輸出揭露**：新 kind 的輸出帶 `web_accessibility`（§4），讓模型和稽核紀錄知道 Chadex 對目標 app 做過什麼。
 - **「唯讀工具」語意**：`computer_observe` 的 `readOnlyHint = true`。打開 Chromium accessibility 會改變目標 app 的內部狀態，但不會改到使用者資料，也看不到畫面變化，和 VoiceOver 的行為一樣。這是設計上的取捨（決策 D5），另一個做法是改成需要批准的 `computer_control(action=enable_web_accessibility)`。
 
@@ -457,7 +458,7 @@ cargo clippy --workspace --all-targets
 | D1 | 只對偵測到的 Chromium／Electron 設定 | `web_accessibility.rs::classify_web_engine`、`enable_web_accessibility` |
 | D2 | 沒有 `AXEnhancedUserInterface` 備用方案 | 未實作 |
 | D3 | 預設 `Auto`；`CHADEX_COMPUTER_WEB_ACCESSIBILITY=off`（不分大小寫）關閉 | `WebAccessibilityPolicy`、runner `computer_config` |
-| D4 | 不復原 | 未實作 |
+| D4 | 閒置 120 秒或 runtime 結束時寫回 `false`；原本就開著的 app 不動（CM6 修訂） | `WebAxRegistry` lease、背景 sweeper、`release_manual_accessibility` |
 | D5 | 放在 `computer_observe` 裡，輸出帶 `web_accessibility`，稽核紀錄也記錄這個值 | `tool_audit.rs` |
 | D6 | 沒有擴充 `sensitive_auth_title` | 未改 |
 | D7 | 加嚴只套用帶 root 的 subtree 和 find；不帶 root 的 `accessibility_tree` 與舊 kind 行為相同。見 12.3 第 1 點 | `TreeMode::{Legacy, Query}` |

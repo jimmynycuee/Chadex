@@ -706,6 +706,12 @@ impl WebAxEnvironment for MacWebEnvironment<'_> {
         })
     }
 
+    fn manual_accessibility(&self) -> Option<bool> {
+        optional_ax_bool(self.deadline, &self.application, "AXManualAccessibility")
+            .ok()
+            .flatten()
+    }
+
     fn probe(&self, budget: Duration) -> Result<WebProbe, String> {
         probe_web_content(
             &MacAxSource {
@@ -728,6 +734,45 @@ impl WebAxEnvironment for MacWebEnvironment<'_> {
     }
 }
 
+/// Launch time in whole seconds, the second half of a `ProcessKey`.
+#[cfg(target_os = "macos")]
+fn launch_seconds(running: &NSRunningApplication) -> Option<i64> {
+    running
+        .launchDate()
+        .map(|date| date.timeIntervalSince1970().floor() as i64)
+}
+
+/// Upper bound for the single AX write of a release, so a hung app cannot stall the
+/// sweeper.
+#[cfg(target_os = "macos")]
+const RELEASE_MESSAGING_TIMEOUT_SECS: f32 = 1.0;
+
+/// Switches web accessibility back off for a process Chadex enabled it on (the
+/// `WebAxReleaser`). Does nothing when the pid now belongs to another launch.
+#[cfg(target_os = "macos")]
+pub(crate) fn release_manual_accessibility((pid, launch): ProcessKey) {
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return;
+    };
+    let Some(running) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) else {
+        return;
+    };
+    if launch_seconds(&running) != launch {
+        return;
+    }
+    let application = unsafe { AXUIElement::new_application(pid) };
+    unsafe {
+        if application.set_messaging_timeout(RELEASE_MESSAGING_TIMEOUT_SECS) != AXError::Success {
+            return;
+        }
+        // Best effort: an app that quit or ignores the attribute needs nothing more.
+        let _ = application.set_attribute_value(
+            &CFString::from_static_str("AXManualAccessibility"),
+            CFBoolean::new(false),
+        );
+    }
+}
+
 /// Resolves which web engine (if any) runs the surface's process and a key that
 /// survives pid reuse. Reads bundle metadata only, never process memory.
 #[cfg(target_os = "macos")]
@@ -737,10 +782,7 @@ fn identify_web_process(
 ) -> Option<(WebEngine, ProcessKey)> {
     let pid = checked_surface_pid(surface).ok()?;
     let running = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?;
-    let launch_seconds = running
-        .launchDate()
-        .map(|date| date.timeIntervalSince1970().floor() as i64);
-    let process = (surface.pid, launch_seconds);
+    let process = (surface.pid, launch_seconds(&running));
     let bundle_path = PathBuf::from(running.bundleURL()?.path()?.to_string());
     let engine = match registry.cached_engine(&bundle_path) {
         Some(engine) => engine,
