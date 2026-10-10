@@ -5,7 +5,7 @@ name: Windows Unsigned Pre-release
 # pre-release. The macOS free release workflow (release.yml) is unchanged.
 on:
   push:
-    tags: ["v*-win*"]
+    tags: ["win-v*"]
 
 permissions:
   contents: write
