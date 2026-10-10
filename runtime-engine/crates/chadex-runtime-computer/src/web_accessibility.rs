@@ -11,8 +11,8 @@
 use crate::WebAccessibilityPolicy;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use std::time::Duration;
+use std::sync::{Arc, Mutex, Weak};
+use std::time::{Duration, Instant};
 
 const MEMO_CAPACITY: usize = 64;
 const ENGINE_CACHE_CAPACITY: usize = 32;
@@ -142,19 +142,61 @@ pub(crate) enum WebMemo {
     Waited,
 }
 
-/// Process-wide bookkeeping. It only decides how long to *wait*; the attribute itself is
+/// How long an app keeps the web accessibility Chadex switched on after the last
+/// observation that needed it. A full web accessibility tree makes Chromium noticeably
+/// slower (every open tab, including a long ChatGPT conversation, keeps it up to date),
+/// so the switch is a lease rather than a permanent change.
+pub(crate) const RELEASE_IDLE: Duration = Duration::from_secs(120);
+/// How often the background sweeper looks for idle leases.
+const SWEEP_INTERVAL: Duration = Duration::from_secs(20);
+
+/// Writes `AXManualAccessibility = false` for a process (the native half of a release).
+/// Implementations must re-check the launch time so a recycled pid is never touched.
+pub(crate) type WebAxReleaser = fn(ProcessKey);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Lease {
+    last_used: Instant,
+    /// False when the attribute was already on before Chadex first wrote it (another
+    /// assistive tool turned it on); such apps are never switched off by Chadex.
+    restore: bool,
+}
+
+#[derive(Default)]
+struct Leases {
+    entries: HashMap<ProcessKey, Lease>,
+    sweeper_running: bool,
+}
+
+#[derive(Default)]
+struct RegistryState {
+    memos: Mutex<VecDeque<(ProcessKey, WebMemo)>>,
+    engines: Mutex<HashMap<PathBuf, WebEngine>>,
+    leases: Mutex<Leases>,
+}
+
+/// Process-wide bookkeeping. It decides how long to *wait*, and which apps Chadex
+/// switched on so they can be switched off again once idle. The attribute itself is
 /// re-applied on every observation because Chromium auto-disables accessibility after a
 /// period without assistive-technology requests, so even a `Confirmed` memo is
 /// re-verified with one non-sleeping probe each time.
 #[derive(Default)]
 pub(crate) struct WebAxRegistry {
-    memos: Mutex<VecDeque<(ProcessKey, WebMemo)>>,
-    engines: Mutex<HashMap<PathBuf, WebEngine>>,
+    state: Arc<RegistryState>,
+    /// `None` (tests, platforms without the switch) never spawns the sweeper.
+    releaser: Option<WebAxReleaser>,
 }
 
 impl WebAxRegistry {
+    pub(crate) fn with_releaser(releaser: WebAxReleaser) -> Self {
+        Self {
+            state: Arc::default(),
+            releaser: Some(releaser),
+        }
+    }
+
     pub(crate) fn memo(&self, key: ProcessKey) -> Option<WebMemo> {
-        self.memos.lock().ok().and_then(|memos| {
+        self.state.memos.lock().ok().and_then(|memos| {
             memos
                 .iter()
                 .find(|(candidate, _)| *candidate == key)
@@ -163,7 +205,7 @@ impl WebAxRegistry {
     }
 
     pub(crate) fn set_memo(&self, key: ProcessKey, memo: WebMemo) {
-        if let Ok(mut memos) = self.memos.lock() {
+        if let Ok(mut memos) = self.state.memos.lock() {
             if let Some(entry) = memos.iter_mut().find(|(candidate, _)| *candidate == key) {
                 entry.1 = memo;
                 return;
@@ -176,18 +218,143 @@ impl WebAxRegistry {
     }
 
     pub(crate) fn cached_engine(&self, bundle_path: &Path) -> Option<WebEngine> {
-        self.engines
+        self.state
+            .engines
             .lock()
             .ok()
             .and_then(|engines| engines.get(bundle_path).copied())
     }
 
     pub(crate) fn cache_engine(&self, bundle_path: &Path, engine: WebEngine) {
-        if let Ok(mut engines) = self.engines.lock() {
+        if let Ok(mut engines) = self.state.engines.lock() {
             if engines.len() >= ENGINE_CACHE_CAPACITY {
                 engines.clear();
             }
             engines.insert(bundle_path.to_path_buf(), engine);
+        }
+    }
+
+    pub(crate) fn has_lease(&self, key: ProcessKey) -> bool {
+        self.state
+            .leases
+            .lock()
+            .is_ok_and(|leases| leases.entries.contains_key(&key))
+    }
+
+    /// Records that Chadex wrote the attribute for `key` at `now`. The first write
+    /// decides whether a release may switch it off again (`restore`); later writes only
+    /// extend the lease.
+    pub(crate) fn touch_lease(&self, key: ProcessKey, now: Instant, restore: bool) {
+        let Ok(mut leases) = self.state.leases.lock() else {
+            return;
+        };
+        leases
+            .entries
+            .entry(key)
+            .and_modify(|lease| lease.last_used = now)
+            .or_insert(Lease {
+                last_used: now,
+                restore,
+            });
+        if let Some(releaser) = self.releaser {
+            if !leases.sweeper_running {
+                leases.sweeper_running = true;
+                spawn_sweeper(Arc::downgrade(&self.state), releaser);
+            }
+        }
+    }
+
+    /// Ends every lease idle for at least `idle` and returns the processes whose
+    /// attribute must be switched off. Their memos are dropped too, so the next
+    /// observation waits for the tree again instead of trusting a stale `Confirmed`.
+    /// The sweeper calls the same logic on the shared state.
+    #[cfg(test)]
+    pub(crate) fn release_idle(&self, now: Instant, idle: Duration) -> Vec<ProcessKey> {
+        self.state.release_idle(now, idle)
+    }
+
+    /// Ends every lease (runtime shutdown).
+    pub(crate) fn release_all(&self) -> Vec<ProcessKey> {
+        self.state.release_matching(|_| true)
+    }
+}
+
+impl RegistryState {
+    fn release_idle(&self, now: Instant, idle: Duration) -> Vec<ProcessKey> {
+        self.release_matching(|lease| now.saturating_duration_since(lease.last_used) >= idle)
+    }
+
+    fn release_matching(&self, expired: impl Fn(&Lease) -> bool) -> Vec<ProcessKey> {
+        let released: Vec<(ProcessKey, bool)> = match self.leases.lock() {
+            Ok(mut leases) => {
+                let keys: Vec<ProcessKey> = leases
+                    .entries
+                    .iter()
+                    .filter(|(_, lease)| expired(lease))
+                    .map(|(key, _)| *key)
+                    .collect();
+                keys.into_iter()
+                    .filter_map(|key| leases.entries.remove(&key).map(|lease| (key, lease.restore)))
+                    .collect()
+            }
+            Err(_) => return Vec::new(),
+        };
+        if let Ok(mut memos) = self.memos.lock() {
+            memos.retain(|(key, _)| !released.iter().any(|(released, _)| released == key));
+        }
+        released
+            .into_iter()
+            .filter_map(|(key, restore)| restore.then_some(key))
+            .collect()
+    }
+
+    /// Clears the running flag when nothing is left to watch; the check and the flag
+    /// share the lease lock so a concurrent `touch_lease` either sees the sweeper still
+    /// running or starts a new one.
+    fn sweeper_may_stop(&self) -> bool {
+        self.leases.lock().map_or(true, |mut leases| {
+            if leases.entries.is_empty() {
+                leases.sweeper_running = false;
+                true
+            } else {
+                false
+            }
+        })
+    }
+}
+
+fn spawn_sweeper(state: Weak<RegistryState>, releaser: WebAxReleaser) {
+    let watched = state.clone();
+    let spawned = std::thread::Builder::new()
+        .name("chadex-web-ax-release".to_string())
+        .spawn(move || loop {
+            std::thread::sleep(SWEEP_INTERVAL);
+            let Some(state) = watched.upgrade() else {
+                return;
+            };
+            for key in state.release_idle(Instant::now(), RELEASE_IDLE) {
+                releaser(key);
+            }
+            if state.sweeper_may_stop() {
+                return;
+            }
+        });
+    if spawned.is_err() {
+        // Without a sweeper the leases still end on shutdown (`Drop`).
+        if let Some(state) = state.upgrade() {
+            if let Ok(mut leases) = state.leases.lock() {
+                leases.sweeper_running = false;
+            }
+        }
+    }
+}
+
+impl Drop for WebAxRegistry {
+    fn drop(&mut self) {
+        if let Some(releaser) = self.releaser {
+            for key in self.release_all() {
+                releaser(key);
+            }
         }
     }
 }
@@ -224,6 +391,9 @@ pub(crate) enum WebProbe {
 pub(crate) trait WebAxEnvironment {
     /// Writes `AXManualAccessibility = true` on the application element.
     fn set_manual_accessibility(&self) -> Result<SetOutcome, String>;
+    /// Current value of `AXManualAccessibility`, if the app reports one. Read once,
+    /// before Chadex first writes it, to avoid switching off what someone else enabled.
+    fn manual_accessibility(&self) -> Option<bool>;
     /// One readiness probe that must stop on its own after roughly `budget`.
     fn probe(&self, budget: Duration) -> Result<WebProbe, String>;
     fn sleep(&self, duration: Duration);
@@ -323,8 +493,10 @@ pub(crate) fn enable_web_accessibility(
     if engine == WebEngine::None {
         return Ok(WebAxState::NotApplicable);
     }
+    let registry = context.registry;
+    let already_on = !registry.has_lease(process) && env.manual_accessibility() == Some(true);
     match env.set_manual_accessibility() {
-        Ok(SetOutcome::Set) => {}
+        Ok(SetOutcome::Set) => registry.touch_lease(process, Instant::now(), !already_on),
         Ok(SetOutcome::Unsupported) => return Ok(WebAxState::Unsupported),
         Ok(SetOutcome::PermissionDenied) => {
             return Err(
@@ -334,7 +506,6 @@ pub(crate) fn enable_web_accessibility(
         Err(error) if is_fatal_web_error(&error) => return Err(error),
         Err(_) => return Ok(WebAxState::Unsupported),
     }
-    let registry = context.registry;
     if registry.memo(process).is_some() {
         // Waited (or confirmed) before: never sleep again, verify with one probe.
         let budget = single_probe_budget(env);

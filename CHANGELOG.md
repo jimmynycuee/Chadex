@@ -2,6 +2,11 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## Unreleased
+
+- Computer Use no longer leaves Chromium/Electron web accessibility on for good: an app Chadex switched on is switched back off after 120 s without an observation that needs it, or when the runtime exits. Apps that already had it on are left alone. This fixes ChatGPT pages in Brave/Chrome slowing down after Computer Use looked at the browser.
+- The `computer_observe` / `computer_control` descriptions now say when to use them, so ChatGPT reaches for Computer Use for desktop tasks, and tell it to stop and ask when the user keeps changing the foreground window.
+
 ## 0.6.4
 
 - macOS buttons use a Chadex Liquid Glass style whose label follows the 80–160% interface size; native buttons on the macOS 26 SDK ignored the font and barely grew. The connect button no longer jumps while connecting.
