@@ -307,30 +307,30 @@ phases:
   - id: D1
     name: macOS design v2 (Liquid Glass sidebar, connection circuit, activity timeline, dark default)
     branch: feature/d1-design-v2
-    status: in_progress  # PR #2 open; design pending validation (AI review only)
+    status: done  # PR #2 merged 2026-10-09, shipped in v0.6.0
     owner: claude
     depends_on: []
-    # PR #2。只有 AI 評審，沒有外部設計驗證，也沒有使用者實機驗收；不可宣稱得獎水準。
+    # PR #2。AI 評審加使用者實機驗收，沒有外部設計驗證；不可宣稱得獎水準。
     gate:
       - cmd: "release_check.sh"
         expect: "exit 0"
-        result: null
+        result: "exit 0 on eddc98d (2026-10-09, V060)"
       - cmd: "manual acceptance (macOS)"
         expect: "design v2 visual review by the user"
-        result: null
-    closed_commit: null
+        result: "accepted 2026-10-09 on a physical Mac (docs/releases/0.6.0.md)"
+    closed_commit: 7e5aa88
   - id: W-design
     name: Windows design v2 (Fluent type, connection circuit, activity timeline, Mica, dark default)
     branch: feature/w-design-v2
-    status: in_progress  # PR #1 open; CI-only validation
+    status: done  # PR #1 merged 2026-10-09, shipped in v0.6.0
     owner: claude
     depends_on: []
     # PR #1。只有 CI 驗證，沒有 Windows 實機測試。
     gate:
       - cmd: "full CI"
         expect: "all jobs success"
-        result: null
-    closed_commit: null
+        result: "success in the v0.6.0 release CI (V060); no physical Windows testing"
+    closed_commit: b1b912e
   - id: V060
     name: v0.6.0 release prep (version bump, changelog, release notes)
     branch: chore/v0.6.0-prep
