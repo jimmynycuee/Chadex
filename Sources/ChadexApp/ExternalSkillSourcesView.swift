@@ -42,7 +42,7 @@ struct ExternalSkillSourcesView: View {
                 Spacer(minLength: 12)
                 if busy { ProgressView().chadexControlSize(.small) }
                 Button(L10n.string("skills.external.chooseFolder")) { chooseFolder() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ChadexButtonStyle(kind: .secondary))
                     .chadexControlSize(.small)
                     .disabled(!canEdit)
             }
@@ -81,7 +81,7 @@ struct ExternalSkillSourcesView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Button(L10n.string("skills.external.import")) { onImport() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(ChadexButtonStyle(kind: .primary))
                         .chadexControlSize(.regular)
                         .disabled(model.skillInstallInFlight || model.isSwitchingProject)
                         .accessibilityIdentifier("skills.external.import")

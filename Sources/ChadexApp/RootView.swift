@@ -164,7 +164,7 @@ struct RootView: View {
                                     .chadexFont(.callout, weight: .semibold)
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(ChadexButtonStyle(kind: .primary))
                         .tint(.blue)
                         .chadexControlSize(.small)
                         .disabled(updateManager.isBusy)
@@ -704,7 +704,7 @@ private struct EmptyProjectView: View {
             }
 
             Button(L10n.string("project.add")) { model.addProjectFromPanel() }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ChadexButtonStyle(kind: .primary))
                 .chadexControlSize(.regular)
         }
         .frame(maxWidth: 420)

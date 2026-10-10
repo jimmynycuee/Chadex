@@ -204,7 +204,7 @@ struct ComputerPermissionsCard: View {
                 Button(L10n.string("computer.permission.open")) {
                     monitor.requestAccess(permission)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ChadexButtonStyle(kind: .primary))
                 .chadexControlSize(.regular)
                 .fixedSize()
                 .help(L10n.string("computer.permission.openHelp"))

@@ -80,7 +80,7 @@ struct SkillsCenterView: View {
             Button(L10n.string("skills.create")) {
                 showingSkillDraft = true
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(ChadexButtonStyle(kind: .secondary))
             .chadexControlSize(.small)
             .disabled(model.projectSkillWriteInFlight || model.isSwitchingProject)
 
@@ -89,7 +89,7 @@ struct SkillsCenterView: View {
                 Button(L10n.string("skills.install")) {
                     showingSkillInstall = true
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(ChadexButtonStyle(kind: .secondary))
                 .chadexControlSize(.small)
                 .disabled(model.skillInstallInFlight || model.isSwitchingProject)
             }
@@ -312,7 +312,7 @@ struct SkillsCenterView: View {
                     } label: {
                         Label(L10n.string("skills.remove"), systemImage: "trash")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ChadexButtonStyle(kind: .secondary))
                     .chadexControlSize(.small)
                     .tint(.red)
                     .disabled(inFlight)
@@ -523,7 +523,7 @@ private struct SkillDraftSheet: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ChadexButtonStyle(kind: .primary))
                 .keyboardShortcut(.defaultAction)
                 .disabled(
                     !validKey
@@ -580,7 +580,7 @@ private struct SkillInstallSheet: View {
                     .textSelection(.enabled)
                 Spacer(minLength: 12)
                 Button(L10n.string("skills.chooseArchive"), action: chooseArchive)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ChadexButtonStyle(kind: .secondary))
             }
 
             Label(L10n.string("skills.archiveBoundary"), systemImage: "folder.badge.questionmark")
@@ -609,7 +609,7 @@ private struct SkillInstallSheet: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ChadexButtonStyle(kind: .primary))
                 .keyboardShortcut(.defaultAction)
                 .disabled(!validKey || archiveURL == nil || model.skillInstallInFlight)
             }

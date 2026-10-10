@@ -93,7 +93,7 @@ struct ProjectMemoryView: View {
             Button(L10n.string("memory.add")) {
                 editorTarget = MemoryEditorTarget(record: nil)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(ChadexButtonStyle(kind: .secondary))
             .chadexControlSize(.small)
             .disabled(model.isSwitchingProject)
         }
@@ -237,14 +237,14 @@ struct ProjectMemoryView: View {
                     Button(L10n.string("memory.edit")) {
                         editorTarget = MemoryEditorTarget(record: record)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ChadexButtonStyle(kind: .secondary))
                     .chadexControlSize(.small)
                     .disabled(model.projectMemoryMutationInFlightKeys.contains(descriptor.memoryKey))
 
                     Button(L10n.string("memory.delete"), role: .destructive) {
                         deleteTarget = descriptor
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ChadexButtonStyle(kind: .secondary))
                     .chadexControlSize(.small)
                     .disabled(model.projectMemoryMutationInFlightKeys.contains(descriptor.memoryKey))
                 }
