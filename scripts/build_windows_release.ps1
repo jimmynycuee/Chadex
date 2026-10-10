@@ -80,8 +80,8 @@ try {
         if ($BuildUpgradeFixture) {
             # Synthetic older installer metadata around the SAME production binaries.
             # This tests installer migration, not historical application compatibility.
-            if ($version -ne '0.6.2') { throw "Update the synthetic upgrade fixture for the candidate version." }
-            $upgradeBaselineVersion = '0.6.1'
+            if ($version -ne '0.6.3') { throw "Update the synthetic upgrade fixture for the candidate version." }
+            $upgradeBaselineVersion = '0.6.2'
             $fixtureConfig = Get-Content -Raw -LiteralPath "src-tauri/tauri.release.conf.json" | ConvertFrom-Json
             $fixtureConfig | Add-Member -NotePropertyName version -NotePropertyValue $upgradeBaselineVersion
             $fixtureConfigPath = Join-Path $repo "apps/windows/src-tauri/w5-fixture.generated.json"

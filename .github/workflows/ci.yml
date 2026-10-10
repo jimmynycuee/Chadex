@@ -93,7 +93,7 @@ jobs:
     name: Source release gate
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -465,16 +465,16 @@ jobs:
           name: windows-w5-unsigned-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/windows-w5-candidate
 
-      - name: Build historical v0.6.1 source candidate
+      - name: Build historical v0.6.2 source candidate
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $false
-          $baselineSource = Join-Path $env:RUNNER_TEMP "chadex-v0.6.1-source"
-          $baselineCandidate = Join-Path $env:RUNNER_TEMP "windows-w5-v0.6.1-candidate"
-          $tagCommit = (& git rev-parse "refs/tags/v0.6.1^{commit}").Trim()
+          $baselineSource = Join-Path $env:RUNNER_TEMP "chadex-v0.6.2-source"
+          $baselineCandidate = Join-Path $env:RUNNER_TEMP "windows-w5-v0.6.2-candidate"
+          $tagCommit = (& git rev-parse "refs/tags/v0.6.2^{commit}").Trim()
           if ($LASTEXITCODE -ne 0 -or $tagCommit -notmatch '^[0-9a-f]{40}$') {
-            throw "Historical v0.6.1 tag is unavailable."
+            throw "Historical v0.6.2 tag is unavailable."
           }
           git worktree add --detach $baselineSource $tagCommit
           if ($LASTEXITCODE -ne 0) { throw "Historical worktree creation failed." }
@@ -486,12 +486,12 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Historical worktree cleanup failed." }
           }
 
-      - name: Upgrade actual v0.6.1 source install to current candidate
+      - name: Upgrade actual v0.6.2 source install to current candidate
         shell: pwsh
         run: |
           python -B scripts/windows_installer_smoke.py `
             --candidate-dir (Join-Path $env:RUNNER_TEMP "windows-w5-candidate") `
-            --historical-baseline-dir (Join-Path $env:RUNNER_TEMP "windows-w5-v0.6.1-candidate") `
+            --historical-baseline-dir (Join-Path $env:RUNNER_TEMP "windows-w5-v0.6.2-candidate") `
             --output (Join-Path $env:RUNNER_TEMP "windows-w5-historical-upgrade.json")
           if ($LASTEXITCODE -ne 0) { throw "Historical installed upgrade acceptance failed." }
 
@@ -508,7 +508,7 @@ jobs:
     name: ARM64 package gate
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

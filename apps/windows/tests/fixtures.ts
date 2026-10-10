@@ -12,7 +12,7 @@ export function snapshot(overrides: Partial<BackendSnapshot> = {}): BackendSnaps
 export function desktop(overrides: Partial<DesktopState> = {}): DesktopState {
   return { helper: { state: 'running', pid: 100, error: null }, runtime: snapshot(), activity: [],
     preferences: { ...defaultPreferences, recent_projects: ['C:\\work\\chadex'], tunnel_id: 'test-tunnel' },
-    credential_stored: true, paths: { helper: 'C:\\app\\helper.exe', runtime: 'C:\\app\\runtime', data: 'C:\\user\\Chadex' }, version: '0.6.2', ...overrides };
+    credential_stored: true, paths: { helper: 'C:\\app\\helper.exe', runtime: 'C:\\app\\runtime', data: 'C:\\user\\Chadex' }, version: '0.6.3', ...overrides };
 }
 export function task(overrides: Partial<TaskProgress> = {}): TaskProgress {
   return { task_id: 'task-1', project: 'C:\\work\\chadex', goal: 'Fix a bug', status: 'running', current_step: 0,
