@@ -8,7 +8,7 @@
 
 `macOS 14+` · `Apple Silicon` · `Free & Open Source`
 
-**Latest stable release: v0.6.2** — patch releases 0.6.1 and 0.6.2 fix off-centre macOS button labels at larger interface sizes and give all buttons the capsule shape of the status pills. v0.6.0 brought design v2 to macOS and Windows, a Computer Use permission card, an agent cursor overlay and Chromium web accessibility on macOS, Tunnel ID validation before saving, and a stricter local runtime (no shared-key login, loopback-only CORS and Host checks), while keeping public distribution macOS-only.
+**Latest stable release: v0.6.3** — releases are now built with the macOS 26 SDK, so the design v2 Liquid Glass and capsule buttons appear in the released app. Patch releases 0.6.1–0.6.3 fix off-centre macOS button labels at larger interface sizes and give all buttons the capsule shape of the status pills. v0.6.0 brought design v2 to macOS and Windows, a Computer Use permission card, an agent cursor overlay and Chromium web accessibility on macOS, Tunnel ID validation before saving, and a stricter local runtime (no shared-key login, loopback-only CORS and Host checks), while keeping public distribution macOS-only.
 
 > On the Releases page, expand **Assets** and download the latest `Chadex-...-macos-arm64.dmg`.
 
@@ -116,6 +116,7 @@ Release profile、簽署、DMG、GitHub Actions 與 distribution boundary 的完
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime、project isolation、execution lifecycle 與安全邊界
 - [`docs/BRIDGE_PROTOCOL.md`](docs/BRIDGE_PROTOCOL.md) — Swift ↔ Rust bridge protocol
 - [`docs/RELEASE.md`](docs/RELEASE.md) — release gate、簽署、DMG 與 GitHub 發佈流程
+- [`docs/releases/0.6.3.md`](docs/releases/0.6.3.md) — 改用 macOS 26 SDK 建置正式版
 - [`docs/releases/0.6.2.md`](docs/releases/0.6.2.md) — macOS 按鈕膠囊形修正
 - [`docs/releases/0.6.1.md`](docs/releases/0.6.1.md) — macOS 按鈕標籤在大介面尺寸置中修正、膠囊按鈕形狀
 - [`docs/releases/0.6.0.md`](docs/releases/0.6.0.md) — Design v2、Computer Use 權限卡／游標疊加層／網頁無障礙、Tunnel ID 驗證、本機 runtime 加固與已知限制
