@@ -2,6 +2,10 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.6.4
+
+- macOS buttons use a Chadex Liquid Glass style whose label follows the 80–160% interface size; native buttons on the macOS 26 SDK ignored the font and barely grew. The connect button no longer jumps while connecting.
+
 ## 0.6.3
 
 - Release and CI builds run on `macos-26` and must link a macOS 26+ SDK. Earlier releases linked the 15.5 SDK, so on macOS 26+ they ran in compatibility mode without Liquid Glass and with old button shapes.
