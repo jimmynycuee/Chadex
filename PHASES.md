@@ -2,7 +2,7 @@
 schema_version: 1
 project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
-updated: 2026-10-09
+updated: 2026-10-10
 updated_by: claude           # codex | webcodex | chadex | claude | human
 tracks:
   W: Windows 版
@@ -11,7 +11,7 @@ tracks:
   V: 版本發佈
   LS: 啟動速度
   D: 介面設計
-current_phase: V060
+current_phase: V063
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -334,21 +334,40 @@ phases:
   - id: V060
     name: v0.6.0 release prep (version bump, changelog, release notes)
     branch: chore/v0.6.0-prep
-    status: in_progress
+    status: done
     owner: claude
     depends_on: [D1, W-design]
-    # 預計包含 PR #1–#7；#8（游標疊加層）與 #9（Chromium 網頁 AX）原規劃 v0.6.1，視合併情況再決定。
+    # 實際包含 #1–#15、#17、#18；#8、#9 也在 0.6.0。2026-10-09 發布，tag v0.6.0 -> 0864465。
     gate:
       - cmd: "release_check.sh"
         expect: "exit 0"
-        result: null
+        result: "exit 0 on eddc98d (2026-10-09)"
       - cmd: "full CI"
         expect: "all jobs success"
-        result: null
+        result: "success on eddc98d; Windows core gate W3 flake process_ownership_ambiguous passed on rerun"
       - cmd: "manual acceptance (dist/Chadex.app)"
         expect: "design v2, Computer Use permission card, #8 screenshot exclusion if included"
-        result: null
-    closed_commit: null
+        result: "accepted 2026-10-09 (local build); credential_push ok, overlay not in recording, Brave AX ok"
+    closed_commit: 0864465
+  - id: V063
+    name: v0.6.1–v0.6.3 patch releases (button labels, capsule shape, macOS 26 SDK)
+    branch: ci/macos-26-sdk
+    status: done
+    owner: claude
+    depends_on: [V060]
+    # 0.6.1 (#20, #22)、0.6.2 (#23) 在 macos-15 建置、連結 SDK 15.5，正式版外觀未生效；
+    # 0.6.3 (#24) 改用 macos-26 並在 release.yml 檢查 SDK >= 26。外觀驗收須用 CI 建置的 App。
+    gate:
+      - cmd: "release_check.sh"
+        expect: "exit 0"
+        result: "exit 0 on 6c2f058 (0.6.1); 0.6.2/0.6.3 relied on the release workflow source gate"
+      - cmd: "Free Release workflow"
+        expect: "all jobs success, linked SDK >= 26"
+        result: "v0.6.3 run 38044443784 success, SDK 26.5"
+      - cmd: "manual acceptance (CI-built app)"
+        expect: "capsule buttons, centred labels"
+        result: "accepted 2026-10-10 on v0.6.3"
+    closed_commit: 2435154
 ---
 
 # Phases
