@@ -390,12 +390,19 @@ phases:
   - id: CM6
     name: Computer Use web accessibility lease and usage hints
     branch: fix/cm6-chatgpt-browser-and-hints
-    status: in_progress
+    status: done
     owner: claude
     depends_on: [CM5, V064]
     # 使用者回報：Brave 裡的 ChatGPT 在 computer use 後變卡；ChatGPT 不會主動用 computer use；
     # 使用者手動切前景造成 control 結果不穩。AXManualAccessibility 改為閒置 120 s 後復原，
     # 並補強 computer_observe／computer_control 工具描述。
+    gate:
+      - cmd: "cargo test -p chadex-runtime-computer / -p chadex-runtime-tool-contracts / -p chadex-runtime-engine --lib"
+        result: "172 / 141 / 2754 passed"
+      - cmd: "CI DMG v0.6.5-preview (Free Release run 38074983512) installed to /Applications"
+        expect: "ChatGPT uses computer use on its own; Brave ChatGPT not sluggish afterwards"
+        result: "accepted 2026-10-11: ChatGPT drove Brave via computer_control to completion (13m52s); user reports no lag afterwards. AXManualAccessibility=false not read back directly (shell lacks AX permission)"
+    closed_commit: 405e72e
 ---
 
 # Phases
