@@ -1,0 +1,96 @@
+name: Windows Unsigned Pre-release
+
+# Tag-triggered only. Builds the unsigned W5 NSIS installer candidate that the
+# CI `windows-release` job already validates, then publishes it as a GitHub
+# pre-release. The macOS free release workflow (release.yml) is unchanged.
+on:
+  push:
+    tags: ["v*-win*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-installer:
+    name: Build unsigned Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: apps/windows/package-lock.json
+
+      - name: Install pinned Rust
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          rustup toolchain install 1.98.1 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Rust installation failed." }
+          rustup default 1.98.1
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Rust selection failed." }
+
+      - name: Validate release tooling
+        shell: pwsh
+        run: |
+          python -B scripts/test_prepare_windows_release.py
+          if ($LASTEXITCODE -ne 0) { throw "Release staging regression failed." }
+          python -B scripts/test_windows_installer_smoke.py
+          if ($LASTEXITCODE -ne 0) { throw "Installer harness regression failed." }
+
+      - name: Build unsigned release candidate
+        shell: pwsh
+        run: |
+          .\scripts\build_windows_release.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP "windows-prerelease")
+
+      - name: Install and uninstall the production candidate
+        shell: pwsh
+        run: |
+          python -B scripts/windows_installer_smoke.py --candidate-dir (Join-Path $env:RUNNER_TEMP "windows-prerelease") --output (Join-Path $env:RUNNER_TEMP "windows-prerelease-smoke.json")
+          if ($LASTEXITCODE -ne 0) { throw "Installed production acceptance failed." }
+
+      - name: Upload unsigned installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-prerelease-${{ github.ref_name }}
+          path: |
+            ${{ runner.temp }}/windows-prerelease/*unsigned-setup.exe
+            ${{ runner.temp }}/windows-prerelease/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish Windows pre-release
+    needs: build-windows-installer
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download unsigned installer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-prerelease-${{ github.ref_name }}
+          path: ${{ runner.temp }}/release
+
+      - name: Publish GitHub pre-release
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          RELEASE_TAG: ${{ github.ref_name }}
+          TARGET_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=("$RUNNER_TEMP"/release/*unsigned-setup.exe "$RUNNER_TEMP"/release/*.sha256)
+          [ "${#assets[@]}" -ge 2 ] || { echo "error: installer or checksum missing" >&2; exit 1; }
+          gh release create "$RELEASE_TAG" "${assets[@]}" \
+            --target "$TARGET_SHA" \
+            --prerelease \
+            --title "Chadex $RELEASE_TAG (Windows, unsigned pre-release)" \
+            --notes "Unsigned Windows pre-release. Windows SmartScreen may warn on first run. Not code-signed, no auto-update. macOS distribution is unchanged."
