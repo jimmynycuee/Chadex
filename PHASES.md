@@ -405,10 +405,17 @@ phases:
     closed_commit: 405e72e
   - id: V065
     name: v0.6.5 Computer Use web accessibility lease and usage hints
-    branch: release/0.6.5
-    status: in_progress
+    branch: fix/cm6-chatgpt-browser-and-hints
+    status: done
     owner: claude
     depends_on: [CM6]
+    # release commit 6d3a027 shipped in PR #28 together with CM6; tag v0.6.5 -> main bbcc867.
+    gate:
+      - cmd: "PR #28 CI (run 38079743666)"
+        result: "all 10 jobs success after rerunning a Windows W5 process_inventory_failed flake"
+      - cmd: "Free Release on tag v0.6.5 (run 38085501827)"
+        result: "success; DMG + .sha256 published, SDK 26.5, installed to /Applications"
+    closed_commit: bbcc867
 ---
 
 # Phases
