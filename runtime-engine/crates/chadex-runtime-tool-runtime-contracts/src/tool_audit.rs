@@ -3971,6 +3971,59 @@ impl ToolCall {
                 "items": items,
                 "with_line_numbers": with_line_numbers,
             }),
+            Self::PlanStart { project, title } => serde_json::json!({
+                "project": project,
+                "title_chars": title.chars().count(),
+            }),
+            Self::PlanSave {
+                plan_id,
+                parent_revision,
+                content,
+                acceptance,
+                budget,
+            } => serde_json::json!({
+                "plan_id": plan_id,
+                "parent_revision": parent_revision,
+                "content_bytes": content.len(),
+                "acceptance_count": acceptance.as_ref().and_then(Value::as_array).map(Vec::len),
+                "budget_present": budget.is_some(),
+            }),
+            Self::PlanGet {
+                plan_id,
+                revision,
+                diff_from,
+            } => serde_json::json!({
+                "plan_id": plan_id,
+                "revision": revision,
+                "diff_from": diff_from,
+            }),
+            Self::PlanList { include_closed } => {
+                serde_json::json!({"include_closed": include_closed})
+            }
+            Self::GoalRunStart { plan_id } => serde_json::json!({"plan_id": plan_id}),
+            Self::GoalRunStatus { goal_run_id } => serde_json::json!({"goal_run_id": goal_run_id}),
+            Self::GoalRunList {} => serde_json::json!({}),
+            Self::GoalRunControl {
+                goal_run_id,
+                action,
+            } => serde_json::json!({"goal_run_id": goal_run_id, "action": action}),
+            Self::PlanReview {
+                action,
+                plan_id,
+                revision,
+                approval_id,
+                ..
+            } => serde_json::json!({
+                "action": action,
+                "plan_id": plan_id,
+                "revision": revision,
+                "approval_id": approval_id,
+            }),
+            Self::GoalOperator {
+                action,
+                goal_run_id,
+                ..
+            } => serde_json::json!({"action": action, "goal_run_id": goal_run_id}),
             Self::CreateGoal {
                 title,
                 objective,

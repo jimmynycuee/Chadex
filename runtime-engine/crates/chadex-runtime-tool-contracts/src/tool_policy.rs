@@ -469,6 +469,11 @@ const ADAPTIVE_RUNTIME_INITIAL_DIRECT_TOOLS: &[&str] = &[
     "computer_control",
     "plugin_tool",
     "session_handoff_summary",
+    // Plan/Goal Mode entry points. The model must find them when the user asks
+    // for "Chadex Plan Mode" / "Goal Mode"; follow-up plan/goal tools stay on
+    // the gateway and each result names the next tool.
+    "plan_start",
+    "goal_run_start",
     // Descriptor-time Host/App bindings cannot be reconstructed by call_runtime_tool:
     // their direct descriptors carry UI resource metadata or continuation-card identity.
     "present_goal_plan",

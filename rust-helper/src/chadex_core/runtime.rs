@@ -238,6 +238,17 @@ impl ChadexRuntimeCore {
             .await
     }
 
+    pub async fn plan_goal_operator(
+        &self,
+        project_path: &str,
+        tool: &str,
+        arguments: Value,
+    ) -> ChadexResult<Value> {
+        self.backend
+            .plan_goal_operator(project_path, tool, arguments)
+            .await
+    }
+
     pub async fn memory_catalog(&self, project_path: &str) -> ChadexResult<Value> {
         self.backend.memory_catalog(project_path).await
     }

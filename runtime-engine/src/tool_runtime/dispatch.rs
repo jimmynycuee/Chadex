@@ -2368,6 +2368,98 @@ impl ToolRuntime {
                 .await
             }
 
+            ToolCall::PlanStart { project, title } => self.plan_start(auth, project, title).await,
+
+            ToolCall::PlanSave {
+                plan_id,
+                parent_revision,
+                content,
+                acceptance,
+                budget,
+            } => {
+                let acceptance = match acceptance
+                    .map(serde_json::from_value::<Vec<crate::db::AcceptanceCheck>>)
+                    .transpose()
+                {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return ToolResult::err_with_output(
+                            format!("invalid acceptance: {error}"),
+                            serde_json::json!({"error_kind": "invalid_plan_acceptance", "state_changed": false}),
+                        )
+                        .with_recovery(super::RecoveryKind::FixInput)
+                    }
+                };
+                let budget = match budget
+                    .map(serde_json::from_value::<crate::db::GoalBudget>)
+                    .transpose()
+                {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return ToolResult::err_with_output(
+                            format!("invalid budget: {error}"),
+                            serde_json::json!({"error_kind": "invalid_plan_budget", "state_changed": false}),
+                        )
+                        .with_recovery(super::RecoveryKind::FixInput)
+                    }
+                };
+                self.plan_save(auth, plan_id, parent_revision, content, acceptance, budget)
+                    .await
+            }
+
+            ToolCall::PlanGet {
+                plan_id,
+                revision,
+                diff_from,
+            } => self.plan_get(auth, plan_id, revision, diff_from),
+
+            ToolCall::PlanList { include_closed } => {
+                self.plan_list(auth, include_closed.unwrap_or(false))
+            }
+
+            ToolCall::GoalRunStart { plan_id } => self.goal_run_start(auth, plan_id).await,
+
+            ToolCall::GoalRunStatus { goal_run_id } => self.goal_run_status(auth, goal_run_id),
+
+            ToolCall::GoalRunList {} => self.goal_run_list(auth),
+
+            ToolCall::GoalRunControl {
+                goal_run_id,
+                action,
+            } => self.goal_run_control(auth, goal_run_id, action),
+
+            ToolCall::PlanReview {
+                action,
+                plan_id,
+                revision,
+                content_sha256,
+                reason,
+                approval_id,
+                ttl_minutes,
+            } => {
+                self.plan_review(
+                    auth,
+                    transport,
+                    action,
+                    plan_id,
+                    revision,
+                    content_sha256,
+                    reason,
+                    approval_id,
+                    ttl_minutes,
+                )
+                .await
+            }
+
+            ToolCall::GoalOperator {
+                action,
+                goal_run_id,
+                reason,
+            } => {
+                self.goal_operator(auth, transport, action, goal_run_id, reason)
+                    .await
+            }
+
             ToolCall::CreateGoal {
                 title,
                 objective,

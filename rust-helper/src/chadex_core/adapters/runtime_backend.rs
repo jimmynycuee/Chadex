@@ -767,6 +767,49 @@ impl RuntimeBackendAdapter {
         ))
     }
 
+    /// Plan/Goal Mode operator controls. Sent over operator REST
+    /// (`/api/tools/call`) with the local owner's user token: the runtime only
+    /// accepts these tools from that principal on that transport, never from
+    /// the ChatGPT connector, which reaches the runtime over MCP.
+    pub(crate) async fn plan_goal_operator(
+        &self,
+        project_path: &str,
+        tool: &str,
+        arguments: Value,
+    ) -> ChadexResult<Value> {
+        if !matches!(tool, "plan_review" | "goal_operator") || !arguments.is_object() {
+            return Err(ChadexError::new(
+                "plan_goal_operator_invalid",
+                "Unsupported Plan/Goal operator request",
+                "Refresh the Plan & Goal view and retry.",
+            ));
+        }
+        let unavailable = || {
+            ChadexError::new(
+                "plan_goal_operator_unavailable",
+                "The local runtime is not available for Plan/Goal controls",
+                "Start the local runtime and retry.",
+            )
+        };
+        let target = self.exact_runtime_probe_target(project_path).await?;
+        let token = read_probe_token(&target.user_token_file)
+            .await
+            .ok_or_else(unavailable)?;
+        let cancellation =
+            CancellationContext::new(CancellationSignal::new(), CancellationSignal::new());
+        post_local_operator_json(
+            &self.probe_client,
+            &target.server_url,
+            "/api/tools/call",
+            token.as_str(),
+            json!({"tool": tool, "params": arguments}),
+            &cancellation,
+        )
+        .await
+        .map_err(map_desktop_error)?
+        .ok_or_else(unavailable)
+    }
+
     pub(crate) async fn memory_catalog(&self, project_path: &str) -> ChadexResult<Value> {
         let mut offset = 0usize;
         let mut catalog_revision: Option<String> = None;

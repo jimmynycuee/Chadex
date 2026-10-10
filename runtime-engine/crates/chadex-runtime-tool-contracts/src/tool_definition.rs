@@ -22,6 +22,7 @@ mod edits;
 mod files;
 mod git;
 mod goals;
+mod plans;
 mod hygiene;
 mod jobs;
 mod lsp;
@@ -1291,6 +1292,7 @@ const TOOL_DEFINITION_GROUPS: &[&[ToolDefinition]] = &[
     chadex_tasks::DEFINITIONS,
     communication::DEFINITIONS,
     goals::DEFINITIONS,
+    plans::DEFINITIONS,
     agent_tasks::DEFINITIONS,
     agent_waits::DEFINITIONS,
     memory::DEFINITIONS,

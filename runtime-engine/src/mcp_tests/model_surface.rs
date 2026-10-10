@@ -107,8 +107,9 @@ async fn adaptive_tools_list_exposes_ranked_direct_tools_and_gateway() {
             "{demoted} should not be effectively direct"
         );
     }
+    // 30 + the two Plan/Goal Mode entry points (plan_start, goal_run_start).
     assert!(
-        names.len() <= 30,
+        names.len() <= 32,
         "Phase 16B non-UI startup surface regressed to {} direct callables",
         names.len()
     );
@@ -196,10 +197,11 @@ async fn phase16b_ui_surface_stays_bounded_and_preserves_presentation_tools() {
     assert!(app_only_count >= 6, "expected app-only tool projection");
     // 22 Adaptive direct tools (including the Computer observe/control pair), the
     // gateway, six operator-extension Skill/Memory tools and eleven app-only tools.
+    // +2 for the Plan/Goal Mode entry points (plan_start, goal_run_start).
     let max_tools = if cfg!(feature = "experimental-code-mode") {
-        43
+        45
     } else {
-        40
+        42
     };
     assert!(
         names.len() <= max_tools,

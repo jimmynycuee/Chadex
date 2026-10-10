@@ -1674,6 +1674,24 @@ pub(super) async fn handle_call(
     if let Some(lc) = lifecycle.as_deref() {
         lc.dispatch_started();
     }
+    // Plan Mode must also cover tools this adapter dispatches outside the
+    // kernel (local MCP gateway, Plugin, SSH resource). Kernel-dispatched tools
+    // are re-checked there with their parsed project.
+    if let Some(denied) = runtime.plan_mode_denial(auth, &params.name, None) {
+        if let Some(lc) = lifecycle.as_deref() {
+            lc.dispatch_failed("plan_mode_read_only");
+            lc.dispatch_finished(true, Some(false), "tool_error");
+        }
+        let result = mcp_runtime_tool_result_fallback(denied);
+        return McpOutcome::Ok(rpc_result(
+            id,
+            if stateless_2026 {
+                mcp_stateless_result(result, false)
+            } else {
+                result
+            },
+        ));
+    }
     if params.name == crate::mcp_gateway::MCP_TOOL_NAME {
         if let Some(outcome) = require_mcp_scope(auth, crate::auth::SCOPE_MCP_LOCAL) {
             if let Some(lc) = lifecycle.as_deref() {

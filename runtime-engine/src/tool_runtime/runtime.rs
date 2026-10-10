@@ -187,6 +187,10 @@ pub struct ToolRuntime {
     /// created only when the durable communication database is injected and is
     /// intentionally empty again after process restart.
     pub(crate) agent_continuations: Option<crate::agent_wake::AgentContinuationController>,
+    /// Backend Plan Mode enforcement (mirror of durable plan locks).
+    pub(crate) plan_guard: Arc<super::plan_mode::PlanGuard>,
+    /// Set once the in-process Goal supervisor runs; wakes it after changes.
+    pub(crate) goal_supervisor_wake: Option<Arc<tokio::sync::Notify>>,
 }
 
 impl ToolRuntime {
@@ -237,6 +241,8 @@ impl ToolRuntime {
             memory_db: None,
             communication_db: None,
             agent_continuations: None,
+            plan_guard: Arc::new(super::plan_mode::PlanGuard::default()),
+            goal_supervisor_wake: None,
         }
     }
 
@@ -266,6 +272,7 @@ impl ToolRuntime {
         self.agent_continuations = Some(crate::agent_wake::AgentContinuationController::new(
             db.clone(),
         ));
+        self.plan_guard = Arc::new(super::plan_mode::PlanGuard::with_database(db.clone()));
         self.communication_db = Some(db);
         self
     }

@@ -1714,6 +1714,83 @@ pub enum ToolCall {
         session_id: Option<String>,
     },
 
+    /// Enter backend-enforced read-only Plan Mode for one project.
+    PlanStart {
+        project: String,
+        title: String,
+    },
+
+    /// Append one immutable plan revision (CAS on expected_revision).
+    PlanSave {
+        plan_id: String,
+        parent_revision: i64,
+        content: String,
+        #[serde(default)]
+        acceptance: Option<Value>,
+        #[serde(default)]
+        budget: Option<Value>,
+    },
+
+    /// Read one owned plan revision, history, decisions, and optional diff.
+    PlanGet {
+        plan_id: String,
+        #[serde(default)]
+        revision: Option<i64>,
+        #[serde(default)]
+        diff_from: Option<i64>,
+    },
+
+    /// List the caller's plans.
+    PlanList {
+        #[serde(default)]
+        include_closed: Option<bool>,
+    },
+
+    /// Start Goal Mode for an approved plan revision.
+    GoalRunStart {
+        plan_id: String,
+    },
+
+    /// Read one owned Goal run.
+    GoalRunStatus {
+        goal_run_id: String,
+    },
+
+    /// List the caller's Goal runs.
+    GoalRunList {},
+
+    /// Pause, resume (user-paused only) or cancel one owned Goal run.
+    GoalRunControl {
+        goal_run_id: String,
+        action: String,
+    },
+
+    /// Operator-only plan review over local operator REST.
+    PlanReview {
+        action: String,
+        #[serde(default)]
+        plan_id: Option<String>,
+        #[serde(default)]
+        revision: Option<i64>,
+        #[serde(default)]
+        content_sha256: Option<String>,
+        #[serde(default)]
+        reason: Option<String>,
+        #[serde(default)]
+        approval_id: Option<String>,
+        #[serde(default)]
+        ttl_minutes: Option<i64>,
+    },
+
+    /// Operator-only Goal controls and emergency stop.
+    GoalOperator {
+        action: String,
+        #[serde(default)]
+        goal_run_id: Option<String>,
+        #[serde(default)]
+        reason: Option<String>,
+    },
+
     /// Create explicit high-level durable intent/control state without execution authority.
     CreateGoal {
         title: String,
@@ -3396,6 +3473,16 @@ impl ToolCall {
             Self::SkillActivate { .. } => "skill_activate",
             Self::SkillDeactivate { .. } => "skill_deactivate",
             Self::SkillRemoveRevision { .. } => "skill_remove_revision",
+            Self::PlanStart { .. } => "plan_start",
+            Self::PlanSave { .. } => "plan_save",
+            Self::PlanGet { .. } => "plan_get",
+            Self::PlanList { .. } => "plan_list",
+            Self::GoalRunStart { .. } => "goal_run_start",
+            Self::GoalRunStatus { .. } => "goal_run_status",
+            Self::GoalRunList { .. } => "goal_run_list",
+            Self::GoalRunControl { .. } => "goal_run_control",
+            Self::PlanReview { .. } => "plan_review",
+            Self::GoalOperator { .. } => "goal_operator",
             Self::CreateGoal { .. } => "create_goal",
             Self::GetGoal { .. } => "get_goal",
             Self::PresentGoalPlan { .. } => "present_goal_plan",
@@ -3645,6 +3732,7 @@ impl ToolCall {
             Self::CodeModeExec { project, .. }
             | Self::CodeModeExecEffectful { project, .. }
             | Self::CodeModeExecMutating { project, .. } => Some(project.as_str()),
+            Self::PlanStart { project, .. } => Some(project.as_str()),
             Self::RunProcess { project, .. }
             | Self::RunDetachedProcess { project, .. }
             | Self::CodingAgentStart { project, .. }

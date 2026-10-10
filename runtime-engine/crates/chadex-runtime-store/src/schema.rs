@@ -397,6 +397,8 @@ impl Database {
         // Goal is independent high-level durable intent/control state. It may
         // correlate AgentTasks and Workflow Sessions, but owns no execution authority.
         Self::ensure_goal_schema(&mut conn)?;
+        Self::ensure_plan_schema(&mut conn)?;
+        Self::ensure_goal_run_schema(&mut conn)?;
 
         // Agent attention is a narrow semantic-fact domain. The first and only
         // event kind records terminal Goal-correlated AgentTask facts; it is not
