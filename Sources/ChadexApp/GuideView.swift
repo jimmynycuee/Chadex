@@ -128,7 +128,7 @@ struct GuideView: View {
                     Button(L10n.string("project.add")) {
                         model.addProjectFromPanel()
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ChadexButtonStyle(kind: .secondary))
                     .chadexControlSize(.regular)
                 }
                 .id(GuideSection.localProject)
@@ -143,7 +143,7 @@ struct GuideView: View {
                         Button(L10n.string("guide.openConnectionSetup")) {
                             model.showConnectionSettings()
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(ChadexButtonStyle(kind: .secondary))
                         .chadexControlSize(.regular)
 
                         if model.snapshot.tunnelReady {
@@ -154,7 +154,7 @@ struct GuideView: View {
                             Button(L10n.string("connection.connect")) {
                                 model.primaryAction()
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(ChadexButtonStyle(kind: .primary))
                             .chadexControlSize(.regular)
                             .disabled(model.connectionActionInFlight)
                         } else {

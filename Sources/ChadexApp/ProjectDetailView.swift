@@ -264,7 +264,7 @@ struct ProjectDetailView: View {
                     } label: {
                         Label(L10n.string("computer.resume"), systemImage: "play.fill")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(ChadexButtonStyle(kind: .primary))
                     .chadexControlSize(.regular)
                     .disabled(model.computerSafetyMutationInFlight)
                     .help(L10n.string("computer.resumeHelp"))
@@ -352,7 +352,7 @@ struct ProjectDetailView: View {
                     } label: {
                         Label(L10n.string("computer.stop"), systemImage: "stop.circle.fill")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ChadexButtonStyle(kind: .secondary))
                     .chadexControlSize(.regular)
                     .fixedSize()
                     .disabled(model.computerSafetyMutationInFlight)
@@ -450,21 +450,21 @@ struct ProjectDetailView: View {
         Button(L10n.string("computer.deny")) {
             Task { await model.denyComputerControl(approval) }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(ChadexButtonStyle(kind: .secondary))
         .chadexControlSize(.small)
         .disabled(model.computerSafetyMutationInFlight)
 
         Button(L10n.string("computer.allowOnce")) {
             Task { await model.approveComputerControl(approval) }
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(ChadexButtonStyle(kind: .primary))
         .chadexControlSize(.small)
         .disabled(model.computerSafetyMutationInFlight)
 
         Button(L10n.string("computer.alwaysAllow")) {
             Task { await model.alwaysAllowComputerControl(approval) }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(ChadexButtonStyle(kind: .secondary))
         .chadexControlSize(.small)
         .disabled(model.computerSafetyMutationInFlight)
         .help(L10n.string("computer.alwaysAllowHelp"))
@@ -551,7 +551,7 @@ struct ProjectDetailView: View {
                 Button(primaryActionTitle) {
                     model.showConnectionSettings()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ChadexButtonStyle(kind: .primary))
                 .chadexControlSize(.regular)
             } else if model.connectionPresentationPhase == .waitingForChatGPTVerification || model.connectionPresentationPhase == .verified {
                 Button(role: .destructive) {
@@ -559,13 +559,16 @@ struct ProjectDetailView: View {
                 } label: {
                     HStack(spacing: 6) {
                         if model.connectionAction == .disconnecting {
+                            // Kept within the label's line height so the
+                            // button does not grow while busy.
                             ProgressView()
-                                .chadexControlSize(.mini)
+                                .controlSize(.mini)
+                                .frame(width: 12, height: 12)
                         }
                         Text(primaryActionTitle)
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(ChadexButtonStyle(kind: .secondary))
                 .chadexControlSize(.regular)
                 .help(L10n.string("connection.disconnect"))
                 .disabled(model.connectionActionInFlight || model.isSwitchingProject)
@@ -575,13 +578,16 @@ struct ProjectDetailView: View {
                 } label: {
                     HStack(spacing: 6) {
                         if model.connectionActionInFlight {
+                            // Kept within the label's line height so the
+                            // button does not grow while busy.
                             ProgressView()
-                                .chadexControlSize(.mini)
+                                .controlSize(.mini)
+                                .frame(width: 12, height: 12)
                         }
                         Text(primaryActionTitle)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ChadexButtonStyle(kind: .primary))
                 .chadexControlSize(.regular)
                 .disabled(!model.primaryActionEnabled)
             }
@@ -612,10 +618,10 @@ struct ProjectDetailView: View {
                     Button(L10n.string("connection.editSettings")) {
                         model.showConnectionSettings()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(ChadexButtonStyle(kind: .primary))
                 } else {
                     Button(L10n.string("connection.retry")) { model.primaryAction() }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(ChadexButtonStyle(kind: .secondary))
                 }
 
                 DisclosureGroup(L10n.string("error.technicalDetails"), isExpanded: $showingErrorDetails) {
@@ -779,7 +785,7 @@ struct GlobalInstructionsEditor: View {
                         Text(L10n.string("globalInstructions.save"))
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ChadexButtonStyle(kind: .primary))
                 .chadexControlSize(.small)
                 .disabled(!canSave)
             }

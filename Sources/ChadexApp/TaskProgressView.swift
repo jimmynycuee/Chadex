@@ -43,7 +43,7 @@ struct TaskProgressView: View {
                                 ? L10n.string("task.status.cancelling")
                                 : L10n.string("common.cancel"))
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(ChadexButtonStyle(kind: .secondary))
                         .chadexControlSize(.small)
                         .disabled(!task.canCancel)
                     }

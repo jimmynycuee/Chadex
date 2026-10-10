@@ -576,6 +576,7 @@ private struct ChadexControlSizeModifier: ViewModifier {
             // Set on the control itself: the root-level environment value does
             // not reach buttons inside the window's container views.
             .buttonBorderShape(.capsule)
+            .environment(\.chadexBaseControlSize, base)
             .font(.system(size: max(ChadexFontStyle.minimumSize, baseFontSize * layout.controlScale)))
     }
 
@@ -594,6 +595,87 @@ private struct ChadexControlSizeModifier: ViewModifier {
         case .small: return .regular
         default: return .large
         }
+    }
+}
+
+private struct ChadexBaseControlSizeKey: EnvironmentKey {
+    static let defaultValue: ControlSize = .regular
+}
+
+extension EnvironmentValues {
+    /// The control size a view asked for before interface-size stepping.
+    var chadexBaseControlSize: ControlSize {
+        get { self[ChadexBaseControlSizeKey.self] }
+        set { self[ChadexBaseControlSizeKey.self] = newValue }
+    }
+}
+
+/// Capsule glass button drawn by Chadex. Native bordered buttons on the
+/// macOS 26 SDK ignore `.font` and barely grow with the control size, so the
+/// label could not follow the 80–160% interface size. This draws the label at
+/// a scaled size and wraps it in Liquid Glass (a filled capsule before 26).
+struct ChadexButtonStyle: ButtonStyle {
+    enum Kind { case primary, secondary }
+    let kind: Kind
+
+    func makeBody(configuration: Configuration) -> some View {
+        ChadexButtonBody(kind: kind, configuration: configuration)
+    }
+}
+
+private struct ChadexButtonBody: View {
+    @Environment(\.chadexLayout) private var layout
+    @Environment(\.chadexBaseControlSize) private var base
+    @Environment(\.isEnabled) private var isEnabled
+    let kind: ChadexButtonStyle.Kind
+    let configuration: ButtonStyleConfiguration
+
+    private var fontSize: CGFloat {
+        let size: CGFloat
+        switch base {
+        case .mini: size = 10
+        case .small: size = 11.5
+        case .large, .extraLarge: size = 15
+        default: size = 13
+        }
+        return max(ChadexFontStyle.minimumSize, size * layout.fontScale)
+    }
+
+    private var isDestructive: Bool { configuration.role == .destructive }
+
+    var body: some View {
+        configuration.label
+            .font(.system(size: fontSize, weight: kind == .primary ? .semibold : .medium))
+            .lineLimit(1)
+            .foregroundStyle(kind == .primary ? AnyShapeStyle(.white) : (isDestructive ? AnyShapeStyle(.red) : AnyShapeStyle(.primary)))
+            .padding(.vertical, fontSize * 0.42)
+            .padding(.horizontal, fontSize * 0.95)
+            .background { background }
+            .contentShape(Capsule())
+            .opacity(isEnabled ? 1 : 0.5)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            Capsule()
+                .fill(.clear)
+                .glassEffect(kind == .primary ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: Capsule())
+        } else {
+            fallback
+        }
+        #else
+        fallback
+        #endif
+    }
+
+    private var fallback: some View {
+        Capsule()
+            .fill(kind == .primary ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary))
+            .opacity(configuration.isPressed ? 0.8 : 1)
     }
 }
 

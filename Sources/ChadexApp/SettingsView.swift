@@ -306,7 +306,7 @@ private struct GeneralSettingsView: View {
                                 Button(L10n.string("updates.check")) {
                                     Task { await updateManager.checkForUpdates(userInitiated: true) }
                                 }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(ChadexButtonStyle(kind: .secondary))
                                 .chadexControlSize(.small)
                                 .disabled(updateManager.isBusy)
 
@@ -318,7 +318,7 @@ private struct GeneralSettingsView: View {
                                             }
                                         }
                                     }
-                                    .buttonStyle(.borderedProminent)
+                                    .buttonStyle(ChadexButtonStyle(kind: .primary))
                                     .chadexControlSize(.small)
                                     .disabled(updateManager.isBusy || model.hasUpdateBlockingWork)
 
@@ -347,7 +347,7 @@ private struct GeneralSettingsView: View {
                         Button(L10n.string("settings.resetGuide")) {
                             confirmingGuideReset = true
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(ChadexButtonStyle(kind: .secondary))
                         .chadexControlSize(.small)
                     }
                 }
@@ -479,7 +479,7 @@ struct ConnectionSettingsSheet: View {
                     Button(L10n.string("settings.save")) {
                         Task { await saveAndDismiss() }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(ChadexButtonStyle(kind: .primary))
                     .keyboardShortcut(.defaultAction)
                     .disabled(saving || !isDirty)
                 }
@@ -580,7 +580,7 @@ struct ConnectionSettingsView: View {
                         Button(L10n.string("settings.saveChanges")) {
                             Task { await save() }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(ChadexButtonStyle(kind: .primary))
                         .disabled(saving || !isDirty)
                     }
                 }
@@ -731,13 +731,13 @@ private struct AdvancedSettingsView: View {
                             Button(L10n.string("settings.refresh")) {
                                 Task { await model.refreshDiagnostics() }
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(ChadexButtonStyle(kind: .secondary))
                             .chadexControlSize(.small)
 
                             Button(L10n.string("settings.exportDiagnostics")) {
                                 model.exportDiagnostics()
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(ChadexButtonStyle(kind: .secondary))
                             .chadexControlSize(.small)
                         }
 
@@ -763,7 +763,7 @@ private struct AdvancedSettingsView: View {
                         Button(L10n.string("settings.stopService"), role: .destructive) {
                             model.stopLocalService()
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(ChadexButtonStyle(kind: .secondary))
                         .chadexControlSize(.small)
                         .disabled(model.connectionActionInFlight)
                     }
