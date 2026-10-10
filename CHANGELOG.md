@@ -2,6 +2,10 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.6.2
+
+- macOS buttons now get the capsule shape on each control; 0.6.1 set it at the window root, where it did not reach the buttons.
+
 ## 0.6.1
 
 ### Design

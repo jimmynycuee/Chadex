@@ -573,6 +573,9 @@ private struct ChadexControlSizeModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .controlSize(size)
+            // Set on the control itself: the root-level environment value does
+            // not reach buttons inside the window's container views.
+            .buttonBorderShape(.capsule)
             .font(.system(size: max(ChadexFontStyle.minimumSize, baseFontSize * layout.controlScale)))
     }
 

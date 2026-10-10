@@ -500,7 +500,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-runtime-process"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
@@ -508,7 +508,7 @@ dependencies = [
 
 [[package]]
 name = "chadex-windows"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "chadex-desktop-bridge",
  "chadex-runtime-process",
