@@ -112,7 +112,7 @@ pub(crate) fn permission_readiness() -> Result<Value, String> {
 
 pub(crate) use accessibility::{
     accessibility_status, accessibility_subtree, activate_window, control, element_state,
-    find_elements, observe_accessibility_tree, scroll_to_element,
+    find_elements, observe_accessibility_tree, release_manual_accessibility, scroll_to_element,
 };
 use accessibility::{
     ax_attribute_settable, checked_surface_pid, exact_ax_window, optional_ax_bool,

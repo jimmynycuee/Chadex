@@ -155,6 +155,8 @@ struct FakeEnvironment {
     probe_cost: Cell<Duration>,
     sleeps: RefCell<Vec<Duration>>,
     remaining: Cell<Duration>,
+    manual: Cell<Option<bool>>,
+    manual_reads: Cell<usize>,
 }
 
 impl FakeEnvironment {
@@ -172,6 +174,8 @@ impl FakeEnvironment {
             probe_cost: Cell::new(Duration::ZERO),
             sleeps: RefCell::new(Vec::new()),
             remaining: Cell::new(Duration::from_secs(10)),
+            manual: Cell::new(None),
+            manual_reads: Cell::new(0),
         }
     }
 
@@ -184,6 +188,11 @@ impl WebAxEnvironment for FakeEnvironment {
     fn set_manual_accessibility(&self) -> Result<SetOutcome, String> {
         self.set_calls.set(self.set_calls.get() + 1);
         self.set_outcome.borrow().clone()
+    }
+
+    fn manual_accessibility(&self) -> Option<bool> {
+        self.manual_reads.set(self.manual_reads.get() + 1);
+        self.manual.get()
     }
 
     fn probe(&self, budget: Duration) -> Result<WebProbe, String> {
@@ -599,20 +608,120 @@ fn registry_memo_and_engine_cache_are_bounded() {
     assert_eq!(registry.memo((0, None)), None, "oldest entry is evicted");
     let newest = (MEMO_CAPACITY as u32 + 9, None);
     assert_eq!(registry.memo(newest), Some(WebMemo::Confirmed));
-    assert_eq!(registry.memos.lock().unwrap().len(), MEMO_CAPACITY);
+    assert_eq!(registry.state.memos.lock().unwrap().len(), MEMO_CAPACITY);
     // Setting twice updates in place instead of duplicating.
     registry.set_memo(newest, WebMemo::Waited);
     assert_eq!(registry.memo(newest), Some(WebMemo::Waited));
-    assert_eq!(registry.memos.lock().unwrap().len(), MEMO_CAPACITY);
+    assert_eq!(registry.state.memos.lock().unwrap().len(), MEMO_CAPACITY);
 
     for index in 0..(ENGINE_CACHE_CAPACITY + 5) {
         registry.cache_engine(Path::new(&format!("/apps/{index}.app")), WebEngine::Chromium);
     }
-    assert!(registry.engines.lock().unwrap().len() <= ENGINE_CACHE_CAPACITY);
+    assert!(registry.state.engines.lock().unwrap().len() <= ENGINE_CACHE_CAPACITY);
     registry.cache_engine(Path::new("/apps/x.app"), WebEngine::Electron);
     assert_eq!(
         registry.cached_engine(Path::new("/apps/x.app")),
         Some(WebEngine::Electron)
     );
     assert_eq!(registry.cached_engine(Path::new("/apps/unknown.app")), None);
+}
+
+// ---------------------------------------------------------------------------
+// leases: switching web accessibility back off once idle
+// ---------------------------------------------------------------------------
+
+const LEASED: ProcessKey = (4242, Some(1_700_000_000));
+
+fn enable_once(registry: &WebAxRegistry, env: &FakeEnvironment) -> WebAxState {
+    enable_web_accessibility(env, &context(registry, WebAccessibilityPolicy::Auto, false), || {
+        Some((WebEngine::Chromium, LEASED))
+    })
+    .unwrap()
+}
+
+#[test]
+fn a_successful_write_starts_a_lease_that_is_released_once_idle() {
+    let registry = WebAxRegistry::default();
+    let env = FakeEnvironment::new(vec![WebProbe::Content]);
+    assert_eq!(enable_once(&registry, &env), WebAxState::Enabled);
+    assert!(registry.has_lease(LEASED));
+    assert_eq!(registry.memo(LEASED), Some(WebMemo::Confirmed));
+
+    let now = Instant::now();
+    assert!(registry.release_idle(now, RELEASE_IDLE).is_empty(), "still fresh");
+    assert_eq!(
+        registry.release_idle(now + RELEASE_IDLE, RELEASE_IDLE),
+        vec![LEASED]
+    );
+    assert!(!registry.has_lease(LEASED));
+    // The next observation must wait for the tree again, not trust the old memo.
+    assert_eq!(registry.memo(LEASED), None);
+    assert!(registry.release_idle(now + RELEASE_IDLE * 2, RELEASE_IDLE).is_empty());
+}
+
+#[test]
+fn later_observations_extend_the_lease_and_read_the_prior_value_only_once() {
+    let registry = WebAxRegistry::default();
+    let env = FakeEnvironment::new(vec![WebProbe::Content]);
+    enable_once(&registry, &env);
+    let first_release = Instant::now() + RELEASE_IDLE;
+    std::thread::sleep(Duration::from_millis(5));
+    // Chadex's own write makes the attribute read as on; that must not count as
+    // "someone else enabled it".
+    env.manual.set(Some(true));
+    assert_eq!(enable_once(&registry, &env), WebAxState::AlreadyEnabled);
+    assert_eq!(env.manual_reads.get(), 1);
+    assert!(registry.release_idle(first_release, RELEASE_IDLE).is_empty());
+    assert_eq!(
+        registry.release_idle(first_release + RELEASE_IDLE, RELEASE_IDLE),
+        vec![LEASED]
+    );
+}
+
+#[test]
+fn an_app_that_already_had_web_accessibility_on_is_never_switched_off() {
+    let registry = WebAxRegistry::default();
+    let env = FakeEnvironment::new(vec![WebProbe::Content]);
+    env.manual.set(Some(true));
+    enable_once(&registry, &env);
+    assert!(registry.has_lease(LEASED));
+    let released = registry.release_idle(Instant::now() + RELEASE_IDLE, RELEASE_IDLE);
+    assert!(released.is_empty());
+    assert!(!registry.has_lease(LEASED), "the lease still ends");
+}
+
+#[test]
+fn no_lease_without_a_successful_write() {
+    for outcome in [Ok(SetOutcome::Unsupported), Err("cannot_complete".to_string())] {
+        let registry = WebAxRegistry::default();
+        let env = FakeEnvironment::new(vec![WebProbe::Content]);
+        *env.set_outcome.borrow_mut() = outcome;
+        assert_eq!(enable_once(&registry, &env), WebAxState::Unsupported);
+        assert!(!registry.has_lease(LEASED));
+    }
+    // Off policy and sensitive surfaces return before reading anything.
+    let registry = WebAxRegistry::default();
+    let env = FakeEnvironment::new(vec![WebProbe::Content]);
+    for (policy, sensitive) in [
+        (WebAccessibilityPolicy::Off, false),
+        (WebAccessibilityPolicy::Auto, true),
+    ] {
+        enable_web_accessibility(&env, &context(&registry, policy, sensitive), || {
+            Some((WebEngine::Chromium, LEASED))
+        })
+        .unwrap();
+    }
+    assert_eq!(env.manual_reads.get(), 0);
+    assert!(!registry.has_lease(LEASED));
+}
+
+#[test]
+fn release_all_ends_every_restorable_lease() {
+    let registry = WebAxRegistry::default();
+    let other: ProcessKey = (7, None);
+    let now = Instant::now();
+    registry.touch_lease(LEASED, now, true);
+    registry.touch_lease(other, now, false);
+    assert_eq!(registry.release_all(), vec![LEASED]);
+    assert!(!registry.has_lease(other));
 }

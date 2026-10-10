@@ -1217,6 +1217,19 @@ impl WebAccessibilityPolicy {
     }
 }
 
+/// Registry whose web accessibility leases are switched off again once idle (macOS
+/// only; elsewhere nothing is ever switched on).
+fn web_ax_registry() -> WebAxRegistry {
+    #[cfg(target_os = "macos")]
+    {
+        WebAxRegistry::with_releaser(platform::release_manual_accessibility)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        WebAxRegistry::default()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ComputerConfig {
     pub max_encoded_image_bytes: usize,
@@ -1241,7 +1254,7 @@ impl ComputerRuntime {
     pub fn new(config: ComputerConfig) -> Self {
         Self {
             config,
-            web_ax: WebAxRegistry::default(),
+            web_ax: web_ax_registry(),
             surfaces: Mutex::new(HashMap::new()),
             elements: Mutex::new(ElementRegistry::default()),
             applications: Mutex::new(HashMap::new()),

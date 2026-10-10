@@ -2,7 +2,7 @@
 schema_version: 1
 project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
-updated: 2026-10-10
+updated: 2026-10-11
 updated_by: claude           # codex | webcodex | chadex | claude | human
 tracks:
   W: Windows 版
@@ -11,7 +11,7 @@ tracks:
   V: 版本發佈
   LS: 啟動速度
   D: 介面設計
-current_phase: V064
+current_phase: CM6
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -387,6 +387,15 @@ phases:
         expect: "buttons scale 80-160%, light/dark, no jump while connecting"
         result: "accepted 2026-10-10 on preview run 38052007198"
     closed_commit: 086c220
+  - id: CM6
+    name: Computer Use web accessibility lease and usage hints
+    branch: fix/cm6-chatgpt-browser-and-hints
+    status: in_progress
+    owner: claude
+    depends_on: [CM5, V064]
+    # 使用者回報：Brave 裡的 ChatGPT 在 computer use 後變卡；ChatGPT 不會主動用 computer use；
+    # 使用者手動切前景造成 control 結果不穩。AXManualAccessibility 改為閒置 120 s 後復原，
+    # 並補強 computer_observe／computer_control 工具描述。
 ---
 
 # Phases
