@@ -11,7 +11,7 @@ tracks:
   V: 版本發佈
   LS: 啟動速度
   D: 介面設計
-current_phase: CM6
+current_phase: V065
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -403,6 +403,12 @@ phases:
         expect: "ChatGPT uses computer use on its own; Brave ChatGPT not sluggish afterwards"
         result: "accepted 2026-10-11: ChatGPT drove Brave via computer_control to completion (13m52s); user reports no lag afterwards. AXManualAccessibility=false not read back directly (shell lacks AX permission)"
     closed_commit: 405e72e
+  - id: V065
+    name: v0.6.5 Computer Use web accessibility lease and usage hints
+    branch: release/0.6.5
+    status: in_progress
+    owner: claude
+    depends_on: [CM6]
 ---
 
 # Phases
