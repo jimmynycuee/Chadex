@@ -62,6 +62,11 @@ final class PlanGoalPanelModel: ObservableObject {
         await refresh()
     }
 
+    /// Tapping the open card again closes its detail.
+    func toggle(_ item: Selection) async {
+        await select(selection == item ? nil : item)
+    }
+
     func selectRevision(_ revision: Int?) async {
         guard viewedRevision != revision else { return }
         viewedRevision = revision

@@ -158,7 +158,7 @@ struct PlanGoalView: View {
 
     private func planRow(_ plan: PlanSummary) -> some View {
         Button {
-            Task { await panel.select(.plan(plan.planId)) }
+            Task { await panel.toggle(.plan(plan.planId)) }
         } label: {
             HStack(alignment: .center, spacing: layout.spacing(10)) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -230,7 +230,7 @@ struct PlanGoalView: View {
 
     private func runRow(_ run: GoalRun) -> some View {
         Button {
-            Task { await panel.select(.run(run.goalRunId)) }
+            Task { await panel.toggle(.run(run.goalRunId)) }
         } label: {
             HStack(alignment: .center, spacing: layout.spacing(10)) {
                 VStack(alignment: .leading, spacing: 4) {
