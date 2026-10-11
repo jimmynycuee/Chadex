@@ -414,8 +414,14 @@ impl ToolRuntime {
         let owner = plan_principal_key(auth);
         let outcome = db.plan_start(&owner, &project_id, &title, now_unix_ms());
         self.plan_guard.reload();
+        // After the lock, so the check runs exactly as the locked principal.
+        let git_readiness = match &outcome {
+            Ok(_) => self.plan_git_readiness(auth, &project_id).await,
+            Err(_) => None,
+        };
         match outcome {
             Ok(outcome) => ToolResult::ok(json!({
+                "git_readiness": git_readiness,
                 "pending_change_request": db
                     .plan_read(PlanReader::Owner(&owner), &outcome.plan.plan_id, None, now_unix_ms())
                     .ok()
@@ -502,6 +508,7 @@ impl ToolRuntime {
                     "revision": outcome.revision,
                     "superseded_approvals": outcome.superseded_approvals,
                     "addressed_change_request": change_request,
+                    "git_readiness": self.plan_git_readiness(auth, &outcome.plan.project_id).await,
                     "diff_from_previous": diff,
                     "next": "Tell the user the plan id and revision; they review and approve this exact revision (content_sha256) in the Chadex app. Do not claim it is approved until goal_run_start succeeds.",
                 }))
@@ -587,8 +594,14 @@ impl ToolRuntime {
             budget: budget.unwrap_or_default(),
         };
         let owner = plan_principal_key(auth);
-        match db.goal_request_create(&owner, &project_id, &title, &objective, spec, &dispatch, now_unix_ms()) {
+        let created = db.goal_request_create(&owner, &project_id, &title, &objective, spec, &dispatch, now_unix_ms());
+        let git_readiness = match &created {
+            Ok(_) => self.plan_git_readiness(auth, &project_id).await,
+            Err(_) => None,
+        };
+        match created {
             Ok(outcome) => ToolResult::ok(json!({
+                "git_readiness": git_readiness,
                 "plan": outcome.plan,
                 "revision": outcome.revision,
                 "state": "awaiting_start",
@@ -764,7 +777,20 @@ impl ToolRuntime {
                             .map(|detail| detail.plan.latest_revision),
                     };
                     let diff_from = shown.map(|revision| revision - 1).filter(|value| *value >= 1);
-                    plan_read_result(&db, PlanReader::Operator, &plan_id, revision, diff_from)
+                    let mut result =
+                        plan_read_result(&db, PlanReader::Operator, &plan_id, revision, diff_from);
+                    let open_project = result.output["plan"]
+                        .as_object()
+                        .filter(|plan| plan.get("state").and_then(Value::as_str) != Some("closed"))
+                        .and_then(|plan| plan.get("project_id").and_then(Value::as_str))
+                        .map(str::to_string);
+                    if let (Some(project), true) = (open_project, result.success) {
+                        let readiness = self.plan_git_readiness(auth, &project).await;
+                        if let Some(output) = result.output.as_object_mut() {
+                            output.insert("git_readiness".into(), readiness.unwrap_or(Value::Null));
+                        }
+                    }
+                    result
                 }
                 Err(result) => result,
             },
@@ -1094,13 +1120,99 @@ impl ToolRuntime {
             .map(str::trim)
             .find(|line| line.len() == 40 && line.chars().all(|c| c.is_ascii_hexdigit()))
             .map(str::to_string);
-        commit.ok_or_else(|| {
-            ToolResult::err_with_output(
-                "Could not read the project's Git HEAD; Goal Mode requires a Git repository with at least one commit",
-                json!({"error_kind": "plan_base_commit_unavailable", "state_changed": false}),
-            )
-            .with_recovery(RecoveryKind::UserAction)
+        if let Some(commit) = commit {
+            return Ok(commit);
+        }
+        let readiness = self.plan_git_readiness(auth, project).await;
+        let message = match readiness.as_ref() {
+            Some(readiness) if readiness["blocks_goal_start"] == json!(true) => format!(
+                "Goal Mode starts from a Git commit, and this project has none yet. Make a first commit, then approve again: {}",
+                readiness["how_to_commit"]
+                    .as_array()
+                    .map(|steps| steps.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" && "))
+                    .unwrap_or_default()
+            ),
+            _ => "Could not read the project's Git HEAD; Goal Mode requires a Git repository with at least one commit".to_string(),
+        };
+        Err(ToolResult::err_with_output(
+            message,
+            json!({
+                "error_kind": "plan_base_commit_unavailable",
+                "git_readiness": readiness,
+                "state_changed": false,
+            }),
+        )
+        .with_recovery(RecoveryKind::UserAction))
+    }
+
+    /// Read-only Git check for Goal Mode, through the Plan Mode allowlisted
+    /// git tools so it also works for a locked principal. `None` when the Git
+    /// state cannot be determined.
+    ///
+    /// Runs on its own task, so the nested kernel calls do not deepen the
+    /// caller's stack, and gives up after a few seconds so an unresponsive
+    /// Runner never delays plan tools.
+    pub(crate) async fn plan_git_readiness(
+        &self,
+        auth: Option<&AuthContext>,
+        project: &str,
+    ) -> Option<Value> {
+        let mut probe = tokio::spawn(self.clone().git_readiness_probe(auth.cloned(), project.to_string()));
+        match tokio::time::timeout(GIT_READINESS_TIMEOUT, &mut probe).await {
+            Ok(joined) => joined.ok().flatten(),
+            Err(_) => {
+                probe.abort();
+                None
+            }
+        }
+    }
+
+    /// A concrete boxed future: naming the type breaks the kernel -> plan tool
+    /// -> kernel cycle that an `async fn` here would create.
+    fn git_readiness_probe(
+        self,
+        auth: Option<AuthContext>,
+        project: String,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Value>> + Send>> {
+        Box::pin(async move {
+            let auth = auth.as_ref();
+            let (project_id, config) = self.plan_project_environment(&project, auth).await.ok()?;
+            let status = self
+                .plan_kernel_read(auth, "git_status", json!({"project": project_id}))
+                .await?;
+            let log = if status.get("non_git_project").and_then(Value::as_bool) == Some(false) {
+                self.plan_kernel_read(auth, "git_log", json!({"project": project_id, "limit": 1}))
+                    .await
+            } else {
+                None
+            };
+            git_readiness_from_outputs(&status, log.as_ref(), &config.path)
         })
+    }
+
+    async fn plan_kernel_read(
+        &self,
+        auth: Option<&AuthContext>,
+        tool_name: &str,
+        arguments: Value,
+    ) -> Option<Value> {
+        // Boxed: this re-enters the kernel from inside a dispatched tool.
+        let call = Box::pin(self.call_tool_with_context(
+            ToolCallRequest {
+                tool_name: tool_name.to_string(),
+                arguments,
+            },
+            ToolCallContext {
+                transport: ToolTransport::Api,
+                session_id: None,
+                auth,
+                window: None,
+                record_oauth_scope_denials: false,
+                host_file_import_trust: Default::default(),
+            },
+        ));
+        let outcome = call.await;
+        outcome.result.filter(|result| result.success).map(|result| result.output)
     }
 }
 
@@ -1326,6 +1438,99 @@ fn bounded_diff(lines: Vec<String>, max: usize) -> Value {
         "lines": lines.into_iter().take(max).collect::<Vec<_>>(),
         "truncated": truncated,
     })
+}
+
+const GIT_READINESS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Shell-quote a path for a paste-ready command.
+fn shell_quote(value: &str) -> String {
+    let mut quoted = String::with_capacity(value.len() + 2);
+    quoted.push('"');
+    for ch in value.chars() {
+        if matches!(ch, '"' | '\\' | '$' | '`') {
+            quoted.push('\\');
+        }
+        quoted.push(ch);
+    }
+    quoted.push('"');
+    quoted
+}
+
+/// Whether a Goal can start from this project, built from the git_status and
+/// git_log outputs. `None` when the outputs do not settle it, so callers never
+/// warn (or block) on a guess.
+pub(crate) fn git_readiness_from_outputs(
+    status: &Value,
+    log: Option<&Value>,
+    project_root: &str,
+) -> Option<Value> {
+    let is_git_repo = !status.get("non_git_project")?.as_bool()?;
+    let head_commit = if is_git_repo {
+        // git_log reports an unborn HEAD as a successful empty log.
+        match log?.get("head_commit")? {
+            Value::Null => None,
+            Value::String(commit) if !commit.is_empty() => Some(commit.clone()),
+            _ => return None,
+        }
+    } else {
+        None
+    };
+    let has_commit = head_commit.is_some();
+    let uncommitted_files = if is_git_repo && status.get("git_error").is_none_or(Value::is_null) {
+        status.get("files_total").and_then(Value::as_i64)
+    } else {
+        None
+    };
+    let short = head_commit.as_deref().map_or("", |commit| &commit[..commit.len().min(12)]);
+    let blocks_goal_start = !is_git_repo || !has_commit;
+    let root = shell_quote(project_root);
+    let git = |args: &str| format!("git -C {root} {args}");
+    let mut how_to_commit = Vec::new();
+    if !is_git_repo {
+        how_to_commit.push(git("init"));
+    }
+    if blocks_goal_start {
+        how_to_commit.push(git("add -A"));
+        how_to_commit.push(git("commit -m \"Initial commit\""));
+    } else if uncommitted_files.unwrap_or(0) > 0 {
+        how_to_commit.push(git("add -A"));
+        how_to_commit.push(git("commit -m \"Save work before Goal\""));
+    }
+    let message = if !is_git_repo {
+        "This project is not a Git repository yet. Goal Mode starts from a Git commit, so this plan cannot be approved or started until the user creates a repository and makes a first commit. Tell the user this now and show them the how_to_commit commands.".to_string()
+    } else if !has_commit {
+        "This project has no Git commit yet. Goal Mode starts from the commit that is current when the plan is approved, so this plan cannot be approved or started until the user makes a first commit. Tell the user this now and show them the how_to_commit commands.".to_string()
+    } else if let Some(count) = uncommitted_files.filter(|count| *count > 0) {
+        format!(
+            "Goal will start from commit {}. The project has {count} uncommitted file(s); Goal only sees committed content, so tell the user to commit them (how_to_commit) before approving if the Goal needs them.",
+            short
+        )
+    } else {
+        format!(
+            "Ready: Goal will start from commit {}.",
+            short
+        )
+    };
+    let tips: Vec<String> = if how_to_commit.is_empty() {
+        Vec::new()
+    } else {
+        vec![
+            format!("Review what will be committed first: git -C {root} status"),
+            "Before `git add -A`, make sure .gitignore excludes dependencies, build output, caches and secrets (for example node_modules/, __pycache__/, .env).".to_string(),
+            "After committing, approve the plan again in the Chadex app (Plan & Goal).".to_string(),
+        ]
+    };
+    Some(json!({
+        "is_git_repo": is_git_repo,
+        "has_commit": has_commit,
+        "head_commit": head_commit,
+        "uncommitted_files": uncommitted_files,
+        "blocks_goal_start": blocks_goal_start,
+        "project_root": project_root,
+        "message": message,
+        "how_to_commit": how_to_commit,
+        "tips": tips,
+    }))
 }
 
 fn plan_read_result(

@@ -739,3 +739,53 @@ async fn approve_and_start_needs_a_principal_recorded_for_the_latest_revision() 
     assert!(!ok);
     assert_eq!(error_kind(&output), "goal_dispatch_unknown");
 }
+
+#[test]
+fn git_readiness_blocks_goal_start_without_a_commit_and_teaches_how_to_commit() {
+    use crate::tool_runtime::plan_mode::git_readiness_from_outputs;
+    let root = "/Users/me/投資手機介面";
+    let repo = |files: i64| json!({"non_git_project": false, "git_error": null, "files_total": files});
+
+    // Repository without any commit: git_log reports an unborn HEAD.
+    let unborn = git_readiness_from_outputs(&repo(16), Some(&json!({"head_commit": null})), root).unwrap();
+    assert_eq!(unborn["blocks_goal_start"], json!(true));
+    assert_eq!(unborn["has_commit"], json!(false));
+    assert_eq!(unborn["uncommitted_files"], json!(16));
+    assert_eq!(
+        unborn["how_to_commit"],
+        json!([
+            "git -C \"/Users/me/投資手機介面\" add -A",
+            "git -C \"/Users/me/投資手機介面\" commit -m \"Initial commit\"",
+        ])
+    );
+    assert!(unborn["message"].as_str().unwrap().contains("no Git commit"));
+    assert!(!unborn["tips"].as_array().unwrap().is_empty());
+
+    // Not a repository at all: init first.
+    let plain = git_readiness_from_outputs(&json!({"non_git_project": true, "git_error": "not a git repository"}), None, root).unwrap();
+    assert_eq!(plain["is_git_repo"], json!(false));
+    assert_eq!(plain["blocks_goal_start"], json!(true));
+    assert_eq!(plain["how_to_commit"][0], json!("git -C \"/Users/me/投資手機介面\" init"));
+    assert_eq!(plain["uncommitted_files"], Value::Null);
+
+    // Committed with local changes: a hint only, never a block.
+    let head = json!({"head_commit": "b8de8677ac56b7b63a2f46d624511e6cf01e92ba"});
+    let dirty = git_readiness_from_outputs(&repo(3), Some(&head), root).unwrap();
+    assert_eq!(dirty["blocks_goal_start"], json!(false));
+    assert_eq!(dirty["how_to_commit"].as_array().unwrap().len(), 2);
+    assert!(dirty["message"].as_str().unwrap().contains("b8de8677ac56"));
+
+    let clean = git_readiness_from_outputs(&repo(0), Some(&head), root).unwrap();
+    assert_eq!(clean["blocks_goal_start"], json!(false));
+    assert_eq!(clean["how_to_commit"], json!([]));
+    assert_eq!(clean["tips"], json!([]));
+
+    // Unknown state never warns or blocks.
+    assert!(git_readiness_from_outputs(&json!({}), None, root).is_none());
+    assert!(git_readiness_from_outputs(&repo(0), None, root).is_none());
+    assert!(git_readiness_from_outputs(&repo(0), Some(&json!({})), root).is_none());
+
+    // Paths are quoted for the shell.
+    let odd = git_readiness_from_outputs(&repo(1), Some(&json!({"head_commit": null})), "/tmp/a \"b\" $c").unwrap();
+    assert_eq!(odd["how_to_commit"][0], json!("git -C \"/tmp/a \\\"b\\\" \\$c\" add -A"));
+}
