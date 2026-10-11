@@ -1132,7 +1132,10 @@ impl Database {
             let mut statement = conn
                 .prepare(
                     "SELECT goal_run_id FROM wc_goal_runs
-                     WHERE (?1 IS NULL OR owner_key = ?1) AND dismissed_at_unix_ms IS NULL
+                     WHERE (?1 IS NULL OR owner_key = ?1)
+                       -- Dismissal only tidies the app's lists; the model can
+                       -- still find a finished run to report its result.
+                       AND (?1 IS NOT NULL OR dismissed_at_unix_ms IS NULL)
                      ORDER BY updated_at_unix_ms DESC, goal_run_id LIMIT ?2",
                 )
                 .map_err(plan_store_error)?;

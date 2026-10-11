@@ -624,7 +624,8 @@ fn only_a_finished_goal_run_can_be_removed_from_the_lists() {
         .unwrap();
     db.goal_run_dismiss(&run.goal_run_id, T0 + 7).unwrap();
     assert!(db.goal_run_list(PlanReader::Operator, 30).unwrap().is_empty());
-    assert!(db.goal_run_list(PlanReader::Owner(OWNER), 30).unwrap().is_empty());
+    // The model still finds it, to report the result.
+    assert_eq!(db.goal_run_list(PlanReader::Owner(OWNER), 30).unwrap().len(), 1);
     // Still readable by id, with the removal audited.
     let detail = db.goal_run_read(PlanReader::Operator, &run.goal_run_id).unwrap();
     assert_eq!(detail.run.state, GoalRunState::Failed);
