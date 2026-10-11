@@ -1,15 +1,23 @@
 # Plan Mode 與 Goal Mode
 
-在 ChatGPT 提出目標 → 先以**後端強制唯讀**的 Plan Mode 規劃 → 使用者在 Chadex App 核准**確切版本** → Goal Mode 由 Chadex 自己的執行機制連續推進、以客觀驗收判定完成。
+兩種入口，執行都由 Chadex 自己的機制連續推進、以客觀驗收判定完成：
+
+- **直接 Goal**：在 ChatGPT 給目標與驗收指令 → Chadex 記下請求並通知 → 使用者在 App 按「開始 Goal」。不需要先 Plan。
+- **先 Plan**：以**後端強制唯讀**的 Plan Mode 規劃 → 使用者在 App 核准**確切版本**（可「核准並開始 Goal」一步完成）。適合大型或不確定的工作。
+
+模型永遠不能自己啟動無人值守的執行：啟動一定要在 App 按一下。
 
 ## 使用方式（ChatGPT）
 
 | 想做的事 | 在 ChatGPT 輸入 | 實際入口 |
 | --- | --- | --- |
+| 直接給目標 | 「`@chadex-goal` 修好 ○○，驗收用 `python3 -m unittest`」 | `goal_run_start`（project、title、objective、acceptance）→ 狀態 `awaiting_start` |
+| 開始直接 Goal | **不在 ChatGPT**：App「計畫與目標」（⌘6）→「開始 Goal」；Mac 會跳通知 | `plan_review` `approve_and_start`（只限 App） |
 | 規劃、不動程式 | 「使用 Chadex Plan Mode 規劃 ○○，先不要改程式」或 `@chadex-plan` | `plan_start` → 唯讀調查 → `plan_save` |
-| 核准 | **不在 ChatGPT**：Chadex App 側欄「計畫與目標」（⌘6）→ 檢視內容、驗收、與前版差異 → 「核准第 N 版」 | `plan_review`（只限 App） |
-| 執行 | 「使用 Chadex Goal Mode 執行已核准計畫」或 `@chadex-goal` | `goal_run_start` |
-| 查進度／暫停／取消 | 「查 Chadex Goal 進度」 | `goal_run_status`、`goal_run_control` |
+| 核准計畫 | **不在 ChatGPT**：App →「核准第 N 版並開始 Goal」或「只核准」 | `plan_review` `approve_and_start`／`approve`（只限 App） |
+| 執行已核准（只核准時） | 「使用 Chadex Goal Mode 執行已核准計畫」 | `goal_run_start`（plan_id） |
+| 查進度／暫停／取消 | 「查 Chadex Goal 進度」 | `goal_run_status`（`wait_secs` 最多等 45 秒）、`goal_run_list`、`goal_run_control` |
+| 得知完成 | Goal 結束（成功、失敗、需要處理、取消）時 App 跳 macOS 通知。ChatGPT 不會被通知，要問它才會查 | App 每 10 秒讀 `goal_operator` overview |
 | 緊急停止 | Chadex App「緊急停止所有 Goal」 | `goal_operator`（只限 App） |
 
 - `plan_start` 與 `goal_run_start` 在 ChatGPT 的直接工具清單中；其餘工具經 `call_runtime_tool` gateway，每個結果都會指出下一步。因此**即使沒有 Skill，一般文字指令也能完整使用**。
@@ -57,6 +65,8 @@ Chadex App ──bridge planGoalOperator──► helper ──REST /api/tools/c
 ### 版本與核准
 
 - 只有最新 revision 可審核；送出時須附顯示中的 revision 與 hash（`plan_revision_stale`、`plan_content_hash_mismatch`）。
+- 直接 Goal 是只有一版、`origin = goal` 的 plan：建立時**不上 Plan Mode 鎖**、不能修訂（`goal_request_immutable`，要改就重新呼叫 `goal_run_start`，舊的未開始請求自動關閉）、不能「要求修改」（避免把擁有者鎖成唯讀，改用捨棄）。建立時記下受限的 Goal dispatch principal；Plan Mode 中不能建立。
+- `approve_and_start`：核准前先檢查所有可能拒絕的條件，包括：擁有者是否正在 Plan Mode 規劃別的 plan（`goal_owner_in_plan_mode`）、有沒有為**最新版**記錄的 dispatch principal 且不超過 7 天（`goal_dispatch_unknown`）、緊急停止、以擁有者記錄的 principal 重新解析專案時，Runner／root 是否與操作者看到的相同。之後才核准（綁定 HEAD）、以 plan 擁有者身分 consume 核准並建立 run。若啟動仍失敗，剛建立的核准會被撤回（`approval_withdrawn`），不會留下可被啟動的核准。`plan_save` 每次都會為該版重新記錄（或在算不出來時清除）dispatch principal，所以一般計畫也能一步核准並開始，且不會沿用舊版或過期的權限。
 - 儲存新 revision 會 supersede 舊核准並重新上鎖；要求修改會撤銷 active 核准並重新上鎖；核准單次使用（`goal_run_start` 在同一交易內 consume），重複 start 回放同一個 run。
 - Goal 啟動時 Runner／root 必須與核准時相同（`plan_approval_environment_changed`）；核准需至少一個驗收指令。
 
@@ -101,6 +111,7 @@ Chadex App ──bridge planGoalOperator──► helper ──REST /api/tools/c
 
 ## 遷移與回復
 
-- 只新增資料表（`CREATE TABLE IF NOT EXISTS`），不修改既有表。舊版本會忽略這些表，所以回退舊版本是安全的；回退後沒有 Plan Mode 強制。
+- 只新增資料表（`CREATE TABLE IF NOT EXISTS`），不修改 Plan/Goal 以外的既有表。`wc_plans` 之後以 `ALTER TABLE ADD COLUMN` 加了 `origin`（預設 `plan`）與 `dispatch_json`，舊版本會忽略這兩欄。舊版本會忽略這些表，所以回退舊版本是安全的；回退後沒有 Plan Mode 強制。
+- 回退到不認得 `origin` 的舊版本時，直接 Goal 請求會被當成一般 plan 顯示；在舊版上對它「要求修改」或由模型 `plan_save` 會重新上 Plan Mode 鎖。回退前建議先捨棄尚未開始的 Goal 請求。
 - `CHADEX_GOAL_SUPERVISOR=0` 停用 supervisor；run 保持持久狀態，之後再啟用即可繼續。
 - 緊急停止持久保存在 DB，重啟後仍有效，只有 App 能解除。

@@ -89,6 +89,7 @@ final class AppModel: ObservableObject {
     private let keychainACLVersionKey = "app.chadex.keychain-acl-version"
     private let currentKeychainACLVersion = 1
     private var pollingTask: Task<Void, Never>?
+    private let goalNotifier = GoalNotifier()
     private(set) var runtimePrewarmTask: Task<Void, Never>?
     /// Code of the last Skill catalog or inventory failure, used to recognise a
     /// runtime that serves another project than the selected one.
@@ -298,6 +299,7 @@ final class AppModel: ObservableObject {
 
     func start() {
         guard pollingTask == nil else { return }
+        goalNotifier.start(app: self)
         isBootstrapping = true
         pollingTask = Task { [weak self] in
             guard let self else { return }
@@ -344,6 +346,7 @@ final class AppModel: ObservableObject {
         isShuttingDown = true
         overlayController.hideImmediately()
         pollingTask?.cancel()
+        goalNotifier.stop()
         runtimePrewarmTask?.cancel()
         pollWaker.signal()
         await helper.shutdown()

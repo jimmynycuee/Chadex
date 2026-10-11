@@ -261,12 +261,23 @@ pub struct PlanSummary {
     pub title: String,
     pub state: PlanState,
     pub latest_revision: i64,
+    /// `plan` for a Plan Mode plan, `goal` for a direct Goal request that the
+    /// operator starts from the Chadex app.
+    pub origin: String,
     /// True while the owning principal is restricted to read-only tools.
     pub plan_mode_active: bool,
     pub plan_mode_expires_at_unix_ms: Option<i64>,
     pub created_at_unix_ms: i64,
     pub updated_at_unix_ms: i64,
     pub closed_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanStartContext {
+    pub owner_key: String,
+    pub dispatch: Option<serde_json::Value>,
+    pub dispatch_recorded_at_unix_ms: Option<i64>,
+    pub owner_locked_plan: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -447,7 +458,192 @@ impl Database {
                 ON wc_plan_decisions(plan_id, created_at_unix_ms DESC);
             ",
         )?;
+        // Added after the first Plan/Goal schema: plan origin and the owner's
+        // Goal dispatch principal as recorded for one revision (so the
+        // operator can start exactly that revision).
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for (column, definition) in [
+            ("origin", "TEXT NOT NULL DEFAULT 'plan' CHECK(origin IN ('plan', 'goal'))"),
+            ("dispatch_json", "TEXT"),
+            ("dispatch_revision", "INTEGER"),
+            ("dispatch_recorded_at_unix_ms", "INTEGER"),
+        ] {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('wc_plans') WHERE name = ?1)",
+                params![column],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                tx.execute_batch(&format!("ALTER TABLE wc_plans ADD COLUMN {column} {definition}"))?;
+            }
+        }
+        tx.commit()?;
         Ok(())
+    }
+
+    /// Create a direct Goal request: a one-revision plan that never engages
+    /// Plan Mode and waits for the operator to start it in the Chadex app.
+    /// Earlier unstarted requests of the same owner and project are closed.
+    #[allow(clippy::too_many_arguments)]
+    pub fn goal_request_create(
+        &self,
+        owner_key: &str,
+        project_id: &str,
+        title: &str,
+        content: &str,
+        spec: PlanSpec,
+        dispatch: &serde_json::Value,
+        now: i64,
+    ) -> Result<PlanRevisionOutcome, PlanStoreError> {
+        validate_key(owner_key, "owner_key")?;
+        validate_key(project_id, "project")?;
+        let title = validate_plan_title(title)?;
+        let content = content.trim();
+        if content.is_empty() || content.len() > MAX_PLAN_CONTENT_BYTES {
+            return Err(PlanStoreError::new(
+                "invalid_plan_content",
+                format!("objective must contain 1..={MAX_PLAN_CONTENT_BYTES} UTF-8 bytes"),
+            ));
+        }
+        let spec = spec.normalized()?;
+        if spec.acceptance.is_empty() {
+            return Err(PlanStoreError::new(
+                "plan_missing_acceptance",
+                "A Goal needs at least one acceptance check (a command whose exit code 0 means done)",
+            ));
+        }
+        let content_sha256 = plan_content_sha256(content, &spec);
+        let spec_json = serde_json::to_string(&spec).expect("PlanSpec serializes");
+        let dispatch_json = serde_json::to_string(dispatch).expect("dispatch serializes");
+        let mut conn = self.lock_connection(crate::StoreDomain::Goal);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(plan_store_error)?;
+        release_expired_locks(&tx, now)?;
+        if let Some(locked) = active_lock_plan(&tx, owner_key)? {
+            return Err(PlanStoreError::new(
+                "plan_mode_active_for_other_plan",
+                format!("Plan Mode is active for plan {locked}; finish or exit it first"),
+            ));
+        }
+        tx.execute(
+            "UPDATE wc_plans SET state = 'closed', closed_reason = 'replaced by a newer Goal request',
+                 updated_at_unix_ms = ?3
+             WHERE owner_key = ?1 AND project_id = ?2 AND origin = 'goal' AND state = 'drafting'",
+            params![owner_key, project_id, now],
+        )
+        .map_err(plan_store_error)?;
+        let plan_id = allocate_identity(
+            &tx,
+            PLAN_ID_PREFIX,
+            "SELECT EXISTS(SELECT 1 FROM wc_plans WHERE plan_id = ?1)",
+        )
+        .map_err(|error| PlanStoreError::new("plan_store_unavailable", error.message().to_string()))?;
+        tx.execute(
+            "INSERT INTO wc_plans (
+                plan_id, owner_key, project_id, title, state, latest_revision,
+                lock_active, lock_expires_at_unix_ms, created_at_unix_ms,
+                updated_at_unix_ms, closed_reason, origin, dispatch_json, dispatch_revision,
+                dispatch_recorded_at_unix_ms
+             ) VALUES (?1, ?2, ?3, ?4, 'drafting', 1, 0, NULL, ?5, ?5, NULL, 'goal', ?6, 1, ?5)",
+            params![plan_id, owner_key, project_id, title, now, dispatch_json],
+        )
+        .map_err(plan_store_error)?;
+        tx.execute(
+            "INSERT INTO wc_plan_revisions (
+                plan_id, revision, content, spec_json, content_sha256, author_key,
+                created_at_unix_ms
+             ) VALUES (?1, 1, ?2, ?3, ?4, ?5, ?6)",
+            params![plan_id, content, spec_json, content_sha256, owner_key, now],
+        )
+        .map_err(plan_store_error)?;
+        let plan = load_plan_summary(&tx, &plan_id, now)?;
+        tx.commit().map_err(plan_store_error)?;
+        Ok(PlanRevisionOutcome {
+            plan,
+            revision: PlanRevisionSummary {
+                revision: 1,
+                content_sha256,
+                created_at_unix_ms: now,
+            },
+            superseded_approvals: 0,
+        })
+    }
+
+    /// Record (or, with `None`, clear) the owner's Goal dispatch principal
+    /// for `revision` of a plan they own. It only counts while `revision` is
+    /// the latest, so a later save without a fresh principal never inherits
+    /// an older one.
+    pub fn plan_record_dispatch(
+        &self,
+        owner_key: &str,
+        plan_id: &str,
+        revision: i64,
+        dispatch: Option<&serde_json::Value>,
+        now: i64,
+    ) -> Result<(), PlanStoreError> {
+        let mut conn = self.lock_connection(crate::StoreDomain::Goal);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(plan_store_error)?;
+        load_owned_plan(&tx, PlanReader::Owner(owner_key), plan_id, now)?;
+        tx.execute(
+            "UPDATE wc_plans SET dispatch_json = ?3, dispatch_revision = ?2,
+                 dispatch_recorded_at_unix_ms = ?4
+             WHERE plan_id = ?1 AND latest_revision = ?2",
+            params![
+                plan_id,
+                revision,
+                dispatch.map(|value| serde_json::to_string(value).expect("dispatch serializes")),
+                now
+            ],
+        )
+        .map_err(plan_store_error)?;
+        tx.commit().map_err(plan_store_error)?;
+        Ok(())
+    }
+
+    /// Operator view for "approve and start": the plan owner, the dispatch
+    /// principal recorded for the latest revision (None when missing or
+    /// recorded for an older revision), and any other plan the owner is
+    /// currently planning in Plan Mode.
+    pub fn plan_start_context(
+        &self,
+        plan_id: &str,
+        now: i64,
+    ) -> Result<PlanStartContext, PlanStoreError> {
+        validate_key(plan_id, "plan_id")?;
+        let mut conn = self.lock_connection(crate::StoreDomain::Goal);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(plan_store_error)?;
+        release_expired_locks(&tx, now)?;
+        let row: Option<(String, i64, Option<String>, Option<i64>, Option<i64>)> = tx
+            .query_row(
+                "SELECT owner_key, latest_revision, dispatch_json, dispatch_revision,
+                        dispatch_recorded_at_unix_ms
+                 FROM wc_plans WHERE plan_id = ?1",
+                params![plan_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .optional()
+            .map_err(plan_store_error)?;
+        let (owner_key, latest, dispatch, dispatch_revision, recorded_at) =
+            row.ok_or_else(|| PlanStoreError::new("plan_not_found", "Plan not found"))?;
+        let dispatch = match dispatch.filter(|_| dispatch_revision == Some(latest)) {
+            Some(text) => Some(serde_json::from_str(&text).map_err(|_| {
+                PlanStoreError::new("plan_store_corrupt", "Stored dispatch principal is unreadable")
+            })?),
+            None => None,
+        };
+        let owner_locked_plan = active_lock_plan(&tx, &owner_key)?.filter(|other| other != plan_id);
+        tx.commit().map_err(plan_store_error)?;
+        Ok(PlanStartContext {
+            owner_key,
+            dispatch_recorded_at_unix_ms: if dispatch.is_some() { recorded_at } else { None },
+            dispatch,
+            owner_locked_plan,
+        })
     }
 
     /// Enter Plan Mode for `owner_key` on `project_id`. Idempotent for the same
@@ -552,6 +748,12 @@ impl Database {
             return Err(PlanStoreError::new(
                 "plan_closed",
                 "This plan is closed; start a new plan instead",
+            ));
+        }
+        if summary.origin == "goal" {
+            return Err(PlanStoreError::new(
+                "goal_request_immutable",
+                "A direct Goal request cannot be revised; call goal_run_start again with the new objective",
             ));
         }
         if summary.latest_revision != expected_revision {
@@ -800,6 +1002,14 @@ impl Database {
         let plan = load_owned_plan(&tx, PlanReader::Operator, plan_id, now)?;
         if plan.state == PlanState::Closed {
             return Err(PlanStoreError::new("plan_closed", "This plan is closed"));
+        }
+        if plan.origin == "goal" {
+            // A direct Goal request cannot be revised, and must never put its
+            // owner into Plan Mode: discard it instead.
+            return Err(PlanStoreError::new(
+                "goal_request_immutable",
+                "A direct Goal request cannot be sent back for changes; discard it instead",
+            ));
         }
         check_reviewable_revision(&tx, &plan, revision, content_sha256)?;
         let approval_id = allocate_identity(
@@ -1053,7 +1263,8 @@ pub(crate) fn load_plan_summary(
 ) -> Result<PlanSummary, PlanStoreError> {
     conn.query_row(
         "SELECT plan_id, project_id, title, state, latest_revision, lock_active,
-                lock_expires_at_unix_ms, created_at_unix_ms, updated_at_unix_ms, closed_reason
+                lock_expires_at_unix_ms, created_at_unix_ms, updated_at_unix_ms, closed_reason,
+                origin
          FROM wc_plans WHERE plan_id = ?1",
         params![plan_id],
         |row| {
@@ -1066,6 +1277,7 @@ pub(crate) fn load_plan_summary(
                 title: row.get(2)?,
                 state: PlanState::from_db(&row.get::<_, String>(3)?)?,
                 latest_revision: row.get(4)?,
+                origin: row.get(10)?,
                 plan_mode_active: active,
                 plan_mode_expires_at_unix_ms: if active { expires } else { None },
                 created_at_unix_ms: row.get(7)?,

@@ -75,9 +75,12 @@ struct PlanSummary: Decodable, Equatable, Identifiable, Hashable {
     var createdAtUnixMs: Int?
     var updatedAtUnixMs: Int?
     var closedReason: String?
+    /// "plan" (Plan Mode) or "goal" (a direct Goal request awaiting Start).
+    var origin: String?
 
     var id: String { planId }
     var isPlanModeActive: Bool { planModeActive ?? false }
+    var isGoalRequest: Bool { origin == "goal" }
 }
 
 struct PlanAcceptanceCheck: Decodable, Equatable, Hashable {
@@ -159,6 +162,25 @@ struct PlanInspectOutput: Decodable, Equatable {
     var revisions: [PlanRevisionInfo]?
     var decisions: [PlanDecision]?
     var diff: PlanDiff?
+    /// Nil when Chadex could not tell (Runner offline, git failed).
+    var gitReadiness: GitReadiness?
+}
+
+/// Whether the project can be the starting point of a Goal: a Goal always
+/// starts from a commit, and only sees committed content.
+struct GitReadiness: Decodable, Equatable {
+    var isGitRepo: Bool?
+    var hasCommit: Bool?
+    var headCommit: String?
+    var uncommittedFiles: Int?
+    var blocksGoalStart: Bool?
+    var projectRoot: String?
+    var message: String?
+    var howToCommit: [String]?
+    var tips: [String]?
+
+    var blocks: Bool { blocksGoalStart ?? false }
+    var hasUncommittedWork: Bool { !blocks && (uncommittedFiles ?? 0) > 0 }
 }
 
 struct PlanDecisionOutput: Decodable, Equatable {

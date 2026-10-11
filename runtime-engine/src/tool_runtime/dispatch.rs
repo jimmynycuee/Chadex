@@ -2377,32 +2377,11 @@ impl ToolRuntime {
                 acceptance,
                 budget,
             } => {
-                let acceptance = match acceptance
-                    .map(serde_json::from_value::<Vec<crate::db::AcceptanceCheck>>)
-                    .transpose()
-                {
-                    Ok(value) => value,
-                    Err(error) => {
-                        return ToolResult::err_with_output(
-                            format!("invalid acceptance: {error}"),
-                            serde_json::json!({"error_kind": "invalid_plan_acceptance", "state_changed": false}),
-                        )
-                        .with_recovery(super::RecoveryKind::FixInput)
-                    }
-                };
-                let budget = match budget
-                    .map(serde_json::from_value::<crate::db::GoalBudget>)
-                    .transpose()
-                {
-                    Ok(value) => value,
-                    Err(error) => {
-                        return ToolResult::err_with_output(
-                            format!("invalid budget: {error}"),
-                            serde_json::json!({"error_kind": "invalid_plan_budget", "state_changed": false}),
-                        )
-                        .with_recovery(super::RecoveryKind::FixInput)
-                    }
-                };
+                let (acceptance, budget) =
+                    match super::plan_mode::parse_plan_spec_parts(acceptance, budget) {
+                        Ok(value) => value,
+                        Err(result) => return result,
+                    };
                 self.plan_save(auth, plan_id, parent_revision, content, acceptance, budget)
                     .await
             }
@@ -2417,9 +2396,37 @@ impl ToolRuntime {
                 self.plan_list(auth, include_closed.unwrap_or(false))
             }
 
-            ToolCall::GoalRunStart { plan_id } => self.goal_run_start(auth, plan_id).await,
+            ToolCall::GoalRunStart {
+                plan_id,
+                project,
+                title,
+                objective,
+                acceptance,
+                budget,
+            } => match (plan_id, objective) {
+                (Some(plan_id), None) if project.is_none() && acceptance.is_none() && budget.is_none() => {
+                    self.goal_run_start(auth, plan_id).await
+                }
+                (None, Some(objective)) => {
+                    let (acceptance, budget) =
+                        match super::plan_mode::parse_plan_spec_parts(acceptance, budget) {
+                            Ok(value) => value,
+                            Err(result) => return result,
+                        };
+                    self.goal_request(auth, project, title, objective, acceptance, budget)
+                        .await
+                }
+                _ => ToolResult::err_with_output(
+                    "Pass either plan_id (an approved plan) or project + title + objective + acceptance (a direct Goal), not both",
+                    serde_json::json!({"error_kind": "invalid_arguments", "state_changed": false}),
+                )
+                .with_recovery(super::RecoveryKind::FixInput),
+            },
 
-            ToolCall::GoalRunStatus { goal_run_id } => self.goal_run_status(auth, goal_run_id),
+            ToolCall::GoalRunStatus {
+                goal_run_id,
+                wait_secs,
+            } => self.goal_run_status(auth, goal_run_id, wait_secs.unwrap_or(0)).await,
 
             ToolCall::GoalRunList {} => self.goal_run_list(auth),
 

@@ -454,3 +454,288 @@ async fn review_m4_plan_mode_blocks_resuming_goals() {
     assert!(!ok);
     assert_eq!(error_kind(&output), "plan_mode_read_only");
 }
+
+#[tokio::test]
+async fn direct_goal_request_waits_for_the_operator_and_never_engages_plan_mode() {
+    let fx = fixture().await;
+    let tunnel = chatgpt_via_tunnel();
+    let request = json!({
+        "project": fx.project,
+        "title": "Fix add",
+        "objective": "add() must add; keep the API",
+        "acceptance": [{"name": "unit", "argv": ["python3", "-m", "unittest"]}],
+    });
+    // Mixing the two forms, or omitting acceptance, is refused.
+    let mut mixed = request.clone();
+    mixed["plan_id"] = json!("wc_plan_aaaaaaaaaaaa");
+    let (ok, output) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_start", mixed).await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "invalid_arguments");
+    let mut no_checks = request.clone();
+    no_checks.as_object_mut().unwrap().remove("acceptance");
+    let (ok, output) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_start", no_checks).await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "plan_missing_acceptance");
+
+    let (ok, created) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_start", request.clone()).await;
+    assert!(ok, "{created}");
+    assert_eq!(created["state"], json!("awaiting_start"));
+    assert_eq!(created["plan"]["origin"], json!("goal"));
+    assert_eq!(created["plan"]["plan_mode_active"], json!(false));
+    let plan_id = created["plan"]["plan_id"].as_str().unwrap().to_string();
+    // The connection stays fully usable: no read-only lock.
+    assert!(fx.runtime.plan_mode_denial(Some(&tunnel), "run_process", Some(&fx.project)).is_none());
+    // The model can neither start it nor use the operator's one-step start.
+    let (ok, output) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "plan_not_approved");
+    for transport in [ToolTransport::Mcp, ToolTransport::Api] {
+        let (ok, output) = call(
+            &fx.runtime,
+            &tunnel,
+            transport,
+            "plan_review",
+            json!({"action": "approve_and_start", "plan_id": plan_id, "revision": 1, "content_sha256": created["revision"]["content_sha256"]}),
+        )
+        .await;
+        assert!(!ok);
+        assert_eq!(error_kind(&output), "operator_only");
+    }
+    // The recorded dispatch principal is the restricted Runner-owner one.
+    let db = fx.runtime.communication_db.clone().unwrap();
+    let dispatch = db
+        .plan_start_context(&plan_id, crate::tool_runtime::plan_mode::now_unix_ms())
+        .unwrap()
+        .dispatch
+        .unwrap();
+    assert_eq!(dispatch["token_kind"], json!("goal_run"));
+    assert_eq!(dispatch["username"], json!("alice"));
+
+    // After the operator approves, the model's start returns the run.
+    db.plan_approve(
+        &plan_id,
+        1,
+        created["revision"]["content_sha256"].as_str().unwrap(),
+        PlanApprovalBinding {
+            project_id: fx.project.clone(),
+            runner_client_id: "client-a".to_string(),
+            project_root: fx.root.clone(),
+            base_commit: "abc".to_string(),
+        },
+        "operator:alice",
+        DEFAULT_PLAN_APPROVAL_TTL_MS,
+        crate::tool_runtime::plan_mode::now_unix_ms(),
+    )
+    .unwrap();
+    let (ok, started) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
+    assert!(ok, "{started}");
+    let run_id = started["goal_run"]["goal_run_id"].as_str().unwrap().to_string();
+
+    // Status wait returns as soon as the run settles.
+    let (ok, _) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_control", json!({"goal_run_id": run_id, "action": "cancel"})).await;
+    assert!(ok);
+    let begin = std::time::Instant::now();
+    let (ok, status) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_status", json!({"goal_run_id": run_id, "wait_secs": 45})).await;
+    assert!(ok, "{status}");
+    assert_eq!(status["goal_run"]["state"], json!("cancelled"));
+    assert!(begin.elapsed() < std::time::Duration::from_secs(5));
+}
+
+#[tokio::test]
+async fn direct_goal_request_is_blocked_while_plan_mode_is_active() {
+    let fx = fixture().await;
+    let alice = chatgpt("alice");
+    let _plan = start_plan(&fx, &alice).await;
+    let (ok, output) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "goal_run_start",
+        json!({"project": fx.project, "title": "x", "objective": "y", "acceptance": [{"name": "t", "argv": ["true"]}]}),
+    )
+    .await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "plan_mode_read_only");
+}
+
+#[tokio::test]
+async fn plan_save_records_the_goal_principal_for_one_step_start() {
+    let fx = fixture().await;
+    let alice = chatgpt("alice");
+    let plan_id = start_plan(&fx, &alice).await;
+    let (ok, saved) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_save",
+        json!({"plan_id": plan_id, "parent_revision": 0, "content": "plan", "acceptance": [{"name": "t", "argv": ["true"]}]}),
+    )
+    .await;
+    assert!(ok, "{saved}");
+    let db = fx.runtime.communication_db.clone().unwrap();
+    let context = db
+        .plan_start_context(&plan_id, crate::tool_runtime::plan_mode::now_unix_ms())
+        .unwrap();
+    assert_eq!(context.owner_key, crate::tool_runtime::plan_mode::plan_principal_key(Some(&alice)));
+    let dispatch = context.dispatch.unwrap();
+    let scopes: Vec<_> = dispatch["scopes"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+    assert!(scopes.contains(&"job:run"));
+    assert!(!scopes.iter().any(|scope| scope.starts_with("computer")));
+}
+
+#[tokio::test]
+async fn requested_changes_are_returned_to_the_model_and_steer_blocked_writes_to_plan_save() {
+    let fx = fixture().await;
+    let alice = chatgpt("alice");
+    let plan_id = start_plan(&fx, &alice).await;
+    let acceptance = json!([{"name": "tests", "argv": ["cargo", "test"]}]);
+    let (ok, v1) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_save",
+        json!({"plan_id": plan_id, "parent_revision": 0, "content": "step one", "acceptance": acceptance}),
+    )
+    .await;
+    assert!(ok, "{v1}");
+    assert_eq!(v1["addressed_change_request"], Value::Null);
+    let (_, detail) = call(&fx.runtime, &alice, ToolTransport::Mcp, "plan_get", json!({"plan_id": plan_id})).await;
+    assert_eq!(detail["pending_change_request"], Value::Null);
+
+    let db = fx.runtime.communication_db.clone().unwrap();
+    db.plan_reject(
+        &plan_id,
+        1,
+        v1["revision"]["content_sha256"].as_str().unwrap(),
+        "operator:alice",
+        "Add a rollback step",
+        crate::tool_runtime::plan_mode::now_unix_ms(),
+    )
+    .unwrap();
+    fx.runtime.plan_guard.reload();
+
+    let (ok, detail) = call(&fx.runtime, &alice, ToolTransport::Mcp, "plan_get", json!({"plan_id": plan_id})).await;
+    assert!(ok, "{detail}");
+    assert_eq!(detail["pending_change_request"]["feedback"], json!("Add a rollback step"));
+    assert_eq!(detail["pending_change_request"]["revision"], json!(1));
+
+    // Re-entering Plan Mode shows the feedback too.
+    let (ok, started) = call(&fx.runtime, &alice, ToolTransport::Mcp, "plan_start", json!({"project": fx.project, "title": "Add retries"})).await;
+    assert!(ok, "{started}");
+    assert_eq!(started["pending_change_request"]["feedback"], json!("Add a rollback step"));
+
+    // A blocked write points at plan_save with the feedback, not at unlocking.
+    let denied = fx
+        .runtime
+        .plan_mode_denial(Some(&alice), "run_process", Some(&fx.project))
+        .expect("still in Plan Mode");
+    let message = denied.error.clone().unwrap_or_default();
+    assert!(message.contains("plan_save") && message.contains("Add a rollback step"), "{message}");
+    assert!(!message.contains("exit Plan Mode"), "{message}");
+    assert_eq!(denied.output["pending_change_request"]["feedback"], json!("Add a rollback step"));
+
+    // A save that fails keeps the feedback visible; a successful one reports it addressed.
+    let (ok, stale) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_save",
+        json!({"plan_id": plan_id, "parent_revision": 0, "content": "step one\nrollback"}),
+    )
+    .await;
+    assert!(!ok);
+    assert_eq!(stale["pending_change_request"]["feedback"], json!("Add a rollback step"));
+    let (ok, v2) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_save",
+        json!({"plan_id": plan_id, "parent_revision": 1, "content": "step one\nrollback"}),
+    )
+    .await;
+    assert!(ok, "{v2}");
+    assert_eq!(v2["addressed_change_request"]["feedback"], json!("Add a rollback step"));
+    let (_, detail) = call(&fx.runtime, &alice, ToolTransport::Mcp, "plan_get", json!({"plan_id": plan_id})).await;
+    assert_eq!(detail["pending_change_request"], Value::Null);
+    let denied = fx.runtime.plan_mode_denial(Some(&alice), "run_process", Some(&fx.project)).unwrap();
+    assert!(denied.error.unwrap_or_default().contains("exit Plan Mode"));
+}
+
+#[tokio::test]
+async fn approve_and_start_refuses_before_approving_and_records_nothing() {
+    let fx = fixture().await;
+    let tunnel = chatgpt_via_tunnel();
+    let op = operator("alice");
+    let db = fx.runtime.communication_db.clone().unwrap();
+    let request = json!({
+        "project": fx.project, "title": "Fix add", "objective": "make add add",
+        "acceptance": [{"name": "unit", "argv": ["true"]}],
+    });
+    let (ok, created) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_start", request).await;
+    assert!(ok, "{created}");
+    let plan_id = created["plan"]["plan_id"].as_str().unwrap().to_string();
+    let start = json!({"action": "approve_and_start", "plan_id": plan_id, "revision": 1,
+                       "content_sha256": created["revision"]["content_sha256"]});
+    let no_decisions = |db: &crate::db::Database| {
+        db.plan_read(PlanReader::Operator, &plan_id, None, crate::tool_runtime::plan_mode::now_unix_ms())
+            .unwrap()
+            .decisions
+            .is_empty()
+    };
+
+    // Emergency stop: refused before any approval exists.
+    db.goal_kill_switch_set(true, "test", crate::tool_runtime::plan_mode::now_unix_ms()).unwrap();
+    let (ok, output) = call(&fx.runtime, &op, ToolTransport::Api, "plan_review", start.clone()).await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "goal_emergency_stop_engaged");
+    assert!(no_decisions(&db));
+    db.goal_kill_switch_set(false, "test", crate::tool_runtime::plan_mode::now_unix_ms()).unwrap();
+
+    // Owner now planning something else in Plan Mode: refused.
+    let _other = start_plan(&fx, &tunnel).await;
+    let (ok, output) = call(&fx.runtime, &op, ToolTransport::Api, "plan_review", start.clone()).await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "goal_owner_in_plan_mode");
+    assert!(no_decisions(&db));
+}
+
+#[tokio::test]
+async fn approve_and_start_needs_a_principal_recorded_for_the_latest_revision() {
+    let fx = fixture().await;
+    let alice = chatgpt("alice");
+    let op = operator("alice");
+    let plan_id = start_plan(&fx, &alice).await;
+    let (ok, saved) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_save",
+        json!({"plan_id": plan_id, "parent_revision": 0, "content": "plan", "acceptance": [{"name": "t", "argv": ["true"]}]}),
+    )
+    .await;
+    assert!(ok, "{saved}");
+    // A later revision saved by a connection that can no longer run Goals
+    // clears the recorded principal instead of keeping the older one.
+    let mut weaker = chatgpt("alice");
+    weaker.scopes.retain(|scope| scope != crate::auth::SCOPE_JOB_RUN);
+    let (ok, v2) = call(
+        &fx.runtime,
+        &weaker,
+        ToolTransport::Mcp,
+        "plan_save",
+        json!({"plan_id": plan_id, "parent_revision": 1, "content": "plan v2"}),
+    )
+    .await;
+    assert!(ok, "{v2}");
+    let (ok, output) = call(
+        &fx.runtime,
+        &op,
+        ToolTransport::Api,
+        "plan_review",
+        json!({"action": "approve_and_start", "plan_id": plan_id, "revision": 2,
+               "content_sha256": v2["revision"]["content_sha256"]}),
+    )
+    .await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "goal_dispatch_unknown");
+}

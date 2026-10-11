@@ -133,10 +133,10 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
                     ToolIdempotency::Keyed,
                     PROJECT_WRITE,
                 ),
-                "Start Chadex Goal Mode for a plan whose latest revision the user approved in the Chadex app. Use when the user says to execute the approved plan / 'Chadex Goal Mode' / @goal. Chadex then works autonomously on this Mac without further ChatGPT messages: agent work in an isolated Git worktree, a checkpoint commit per iteration, and the approved acceptance checks as the only success criterion, within the approved budget. Fails without an active approval of the exact latest revision. Repeating the call returns the same run. The result is a branch for the user to review; nothing is merged, pushed or deployed.",
+                "Chadex Goal Mode: autonomous work on this Mac until objective acceptance checks pass. Direct Goal (no plan needed): pass project, title, objective and acceptance (argv commands; exit 0 = done); the user then presses Start in the Chadex app (Plan & Goal). Or pass plan_id of a plan approved in the app (calling again returns the same run). Use when the user gives a goal / 'Chadex Goal Mode' / @goal. Once started it needs no ChatGPT messages: agent work in an isolated Git worktree, a checkpoint commit per iteration, success only when every check passes, within the budget. The result is a branch for the user to review; nothing is merged, pushed or deployed. ChatGPT is not notified when it ends: say Chadex notifies the user on the Mac and they can ask you (goal_run_status).",
                 goal_run_start_input_schema,
             )
-            .with_gpt_action_description("Start autonomous Goal Mode execution of an approved plan revision."),
+            .with_gpt_action_description("Request a direct Goal or start an approved plan in autonomous Goal Mode."),
             62,
         ),
         GOAL_RUN_START_SCOPES,
@@ -151,7 +151,7 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
                 ToolIdempotency::PureRead,
                 PROJECT_READ,
             ),
-            "Read a Goal run's state (queued/running/paused/needs_attention/succeeded/failed/cancelled/stopped), reason, iteration, acceptance evidence per iteration, journaled operations, recent audit events, result branch, and reported token usage (or unknown).",
+            "Read a Goal run's state (queued/running/paused/needs_attention/succeeded/failed/cancelled/stopped), reason, iteration, acceptance evidence per iteration, journaled operations, recent audit events, result branch, and reported token usage (or unknown). Pass wait_secs (up to 45) to wait for the run to finish before answering. Use goal_run_list to find a run started from the Chadex app.",
             goal_run_status_input_schema,
         )
         .with_gpt_action_description("Read Goal run progress, acceptance evidence and state."),
@@ -190,7 +190,7 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
             ToolIdempotency::NonIdempotent,
             RUNTIME_READ,
         ),
-        "Operator-only (Chadex app over local operator REST): list, inspect, approve, reject (request changes), revoke, or close plans. Approval binds the exact revision and content hash, the project's Runner and root, and its Git HEAD.",
+        "Operator-only (Chadex app over local operator REST): list, inspect, approve, approve_and_start, reject (request changes), revoke, or close plans. Approval binds the exact revision and content hash, the project's Runner and root, and its Git HEAD.",
         plan_review_input_schema,
     ),
     model_spec(

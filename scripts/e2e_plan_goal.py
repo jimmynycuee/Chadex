@@ -159,7 +159,8 @@ def main():
         agent.write_text(f"""#!/bin/sh
 cat >/dev/null
 n=$(cat {counter} 2>/dev/null || echo 0); n=$((n+1)); echo $n > {counter}
-if [ "$n" -eq 1 ]; then sed -i '' 's/return a - b/return a * b/' calc.py; echo 'All done, tests pass!';
+# Stateless per worktree: first a wrong fix (claiming success), then the real one.
+if grep -q 'return a - b' calc.py; then sed -i '' 's/return a - b/return a * b/' calc.py; echo 'All done, tests pass!';
 else sed -i '' 's/return a \\* b/return a + b/' calc.py; echo 'Fixed add().'; fi
 echo 'tokens used'; echo '1,000'
 sleep {AGENT_SLEEP}
@@ -317,6 +318,40 @@ sleep {AGENT_SLEEP}
     inside = subprocess.run(SANDBOX_PREFIX + probe, capture_output=True, text=True, cwd=project)
     step("sandbox_loopback_probe", outside=outside.stdout.strip() or outside.stderr.strip()[-200:],
          inside=inside.stdout.strip() or inside.stderr.strip()[-200:], inside_exit=inside.returncode)
+    # ---------------- Direct Goal (no plan) ----------------
+    ok, req = chatgpt.call("goal_run_start", {
+        "project": proj_id, "title": "Fix add() directly",
+        "objective": "add() subtracts; make it add. Keep the API unchanged.",
+        "acceptance": [{"name": "unit tests", "argv": ["python3", "-m", "unittest", "-q"]}],
+        "budget": {"max_iterations": 4, "max_minutes": 30, "agent_timeout_secs": 900}})
+    dplan = (req.get("plan") or {}).get("plan_id")
+    drev = req.get("revision") or {}
+    ok_w, write_ok = chatgpt.call("read_files", {"project": proj_id, "items": [{"path": "calc.py"}]})
+    step("direct_goal_request", ok=ok, state=req.get("state"), origin=(req.get("plan") or {}).get("origin"),
+         plan_mode_active=(req.get("plan") or {}).get("plan_mode_active"), connection_still_usable=ok_w)
+    ok_s, self_start = chatgpt.call("goal_run_start", {"plan_id": dplan})
+    ok_o, self_op = chatgpt.call("plan_review", {"action": "approve_and_start", "plan_id": dplan,
+                                                "revision": 1, "content_sha256": drev.get("content_sha256")})
+    step("direct_goal_model_cannot_start", start_ok=ok_s, start_error=self_start.get("error_kind"),
+         operator_ok=ok_o, operator_error=self_op.get("error_kind") if isinstance(self_op, dict) else self_op)
+    ok, started2 = operator(helper, project, "plan_review", {"action": "approve_and_start", "plan_id": dplan,
+                                                              "revision": 1, "content_sha256": drev.get("content_sha256")})
+    run2 = ((started2 or {}).get("goal_run") or {}).get("goal_run_id")
+    step("operator_start_direct_goal", ok=ok, run_id=run2, error=None if ok else started2)
+    ok, replay2 = chatgpt.call("goal_run_start", {"plan_id": dplan})
+    step("chatgpt_finds_started_run", ok=ok, same=(replay2.get("goal_run") or {}).get("goal_run_id") == run2)
+    t1 = time.time()
+    ok, waited = chatgpt.call("goal_run_status", {"goal_run_id": run2, "wait_secs": 45})
+    while ok and waited.get("goal_run", {}).get("state") in ("queued", "running") and time.time() - t1 < 900:
+        ok, waited = chatgpt.call("goal_run_status", {"goal_run_id": run2, "wait_secs": 45})
+    gr2 = waited.get("goal_run", {})
+    step("direct_goal_final", state=gr2.get("state"), reason=gr2.get("state_reason"), branch=gr2.get("result_branch"),
+         iteration=gr2.get("iteration"), seconds=round(time.time() - t1), polls_used_wait=True)
+    if gr2.get("result_branch"):
+        check2 = root / "verify-direct"
+        subprocess.run(["git", "clone", "-q", "-b", gr2["result_branch"], str(project), str(check2)], check=True)
+        r2 = subprocess.run(["python3", "-m", "unittest", "-q"], cwd=check2, capture_output=True, text=True)
+        step("direct_goal_branch_check", exit_code=r2.returncode, calc=(check2 / "calc.py").read_text())
     # Emergency stop round trip.
     ok, es = operator(helper, project, "goal_operator", {"action": "emergency_stop", "reason": "e2e"})
     ok2, rel = operator(helper, project, "goal_operator", {"action": "release_emergency_stop"})

@@ -15,8 +15,8 @@ use super::{RecoveryKind, ToolResult, ToolRuntime};
 use crate::auth::{AuthContext, AuthKind};
 use crate::db::{
     plan_line_diff, AcceptanceCheck, Database, GoalBudget, GoalControlAction, GoalRunDetail,
-    GoalRunRecord, GoalStartEnvironment, PlanApprovalBinding, PlanLockRecord, PlanReader,
-    PlanSpec, PlanStoreError, DEFAULT_PLAN_APPROVAL_TTL_MS,
+    GoalRunRecord, GoalRunState, GoalStartEnvironment, PlanApprovalBinding, PlanDecisionRecord,
+    PlanDecisionState, PlanDetail, PlanLockRecord, PlanReader, PlanSpec, PlanState, PlanStoreError, DEFAULT_PLAN_APPROVAL_TTL_MS,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -238,22 +238,83 @@ impl PlanGuard {
     }
 }
 
-fn plan_mode_denied(tool_name: &str, lock: &PlanLockRecord, why: &str) -> ToolResult {
-    ToolResult::err_with_output(
-        format!(
-            "Plan Mode is active (plan {}): '{tool_name}' is blocked because {why}. Plan Mode allows only read-only inspection and saving plan revisions. Ask the user to approve the plan or exit Plan Mode in the Chadex app.",
-            lock.plan_id
+fn plan_mode_denied(
+    tool_name: &str,
+    lock: &PlanLockRecord,
+    why: &str,
+    change_request: Option<&PlanDecisionRecord>,
+) -> ToolResult {
+    let (message, recovery) = match change_request {
+        // The approver sent the plan back: the model can resolve this itself,
+        // so point it at plan_save instead of asking the user to unlock.
+        Some(request) => (
+            format!(
+                "Plan Mode is active (plan {}): '{tool_name}' is blocked because {why}. The approver requested changes to revision {}: \"{}\". Submit a revised plan with plan_save (parent_revision {}) that addresses this feedback.",
+                lock.plan_id,
+                request.revision,
+                request.reason.as_deref().unwrap_or(""),
+                request.revision,
+            ),
+            RecoveryKind::FixInput,
         ),
+        None => (
+            format!(
+                "Plan Mode is active (plan {}): '{tool_name}' is blocked because {why}. Plan Mode allows only read-only inspection and saving plan revisions. Ask the user to approve the plan or exit Plan Mode in the Chadex app.",
+                lock.plan_id
+            ),
+            RecoveryKind::UserAction,
+        ),
+    };
+    ToolResult::err_with_output(
+        message,
         json!({
             "error_kind": "plan_mode_read_only",
             "tool": tool_name,
             "plan_id": lock.plan_id,
             "project": lock.project_id,
             "plan_mode_expires_at_unix_ms": lock.expires_at_unix_ms,
+            "pending_change_request": change_request.map(change_request_projection),
             "state_changed": false,
         }),
     )
-    .with_recovery(RecoveryKind::UserAction)
+    .with_recovery(recovery)
+}
+
+/// The approver's "request changes" decision on the latest revision that no
+/// newer revision has answered yet.
+fn pending_change_request(detail: &PlanDetail) -> Option<&PlanDecisionRecord> {
+    if detail.plan.state == PlanState::Closed {
+        return None;
+    }
+    detail
+        .decisions
+        .first()
+        .filter(|decision| {
+            decision.state == PlanDecisionState::Rejected
+                && decision.revision == detail.plan.latest_revision
+        })
+}
+
+/// Keeps the approver's feedback visible when a revision fails to save.
+fn with_change_request(mut result: ToolResult, change_request: Option<Value>) -> ToolResult {
+    if let (Some(request), Some(output)) = (change_request, result.output.as_object_mut()) {
+        output.insert("pending_change_request".into(), request);
+    }
+    result
+}
+
+fn change_request_projection(request: &PlanDecisionRecord) -> Value {
+    json!({
+        "approval_id": request.approval_id,
+        "revision": request.revision,
+        "feedback": request.reason.as_deref().unwrap_or(""),
+        "approver": request.approver,
+        "requested_at_unix_ms": request.created_at_unix_ms,
+        "next": format!(
+            "Revise the plan to address this feedback and submit it with plan_save (parent_revision {}).",
+            request.revision
+        ),
+    })
 }
 
 impl ToolRuntime {
@@ -297,23 +358,18 @@ impl ToolRuntime {
                 );
             }
         };
-        if !PLAN_MODE_READ_ONLY_TOOLS.contains(&tool_name) {
-            return Some(plan_mode_denied(
-                tool_name,
-                &lock,
-                "it is not on the Plan Mode read-only allowlist",
-            ));
-        }
-        if let Some(project) = project.filter(|project| !project.is_empty()) {
-            if project != lock.project_id {
-                return Some(plan_mode_denied(
-                    tool_name,
-                    &lock,
-                    "Plan Mode is limited to the plan's project",
-                ));
-            }
-        }
-        None
+        let why = if !PLAN_MODE_READ_ONLY_TOOLS.contains(&tool_name) {
+            "it is not on the Plan Mode read-only allowlist"
+        } else if project.is_some_and(|project| !project.is_empty() && project != lock.project_id) {
+            "Plan Mode is limited to the plan's project"
+        } else {
+            return None;
+        };
+        let detail = self.communication_db.as_ref().and_then(|db| {
+            db.plan_read(PlanReader::Owner(&key), &lock.plan_id, None, now_unix_ms()).ok()
+        });
+        let change_request = detail.as_ref().and_then(pending_change_request);
+        Some(plan_mode_denied(tool_name, &lock, why, change_request))
     }
 
     fn plan_db(&self) -> Result<&Arc<Database>, ToolResult> {
@@ -360,6 +416,10 @@ impl ToolRuntime {
         self.plan_guard.reload();
         match outcome {
             Ok(outcome) => ToolResult::ok(json!({
+                "pending_change_request": db
+                    .plan_read(PlanReader::Owner(&owner), &outcome.plan.plan_id, None, now_unix_ms())
+                    .ok()
+                    .and_then(|detail| pending_change_request(&detail).map(change_request_projection)),
                 "plan": outcome.plan,
                 "created": outcome.created,
                 "plan_mode": {
@@ -388,6 +448,10 @@ impl ToolRuntime {
         };
         let owner = plan_principal_key(auth);
         let now = now_unix_ms();
+        let change_request = db
+            .plan_read(PlanReader::Owner(&owner), &plan_id, None, now)
+            .ok()
+            .and_then(|detail| pending_change_request(&detail).map(change_request_projection));
         let previous = if expected_revision > 0 {
             db.plan_read(PlanReader::Owner(&owner), &plan_id, Some(expected_revision), now)
                 .ok()
@@ -414,6 +478,21 @@ impl ToolRuntime {
         self.plan_guard.reload();
         match outcome {
             Ok(outcome) => {
+                // Lets the operator approve and start this revision in one
+                // step. Recorded per revision, and cleared when it cannot be
+                // computed now, so a stale principal is never reused.
+                let dispatch = self
+                    .goal_dispatch_for_project(&outcome.plan.project_id, auth)
+                    .await
+                    .ok()
+                    .map(|(_, _, dispatch)| dispatch);
+                let _ = db.plan_record_dispatch(
+                    &owner,
+                    &plan_id,
+                    outcome.revision.revision,
+                    dispatch.as_ref(),
+                    now,
+                );
                 let diff = previous
                     .as_ref()
                     .and_then(|previous| plan_line_diff(&previous.content, content.trim()))
@@ -422,11 +501,12 @@ impl ToolRuntime {
                     "plan": outcome.plan,
                     "revision": outcome.revision,
                     "superseded_approvals": outcome.superseded_approvals,
+                    "addressed_change_request": change_request,
                     "diff_from_previous": diff,
                     "next": "Tell the user the plan id and revision; they review and approve this exact revision (content_sha256) in the Chadex app. Do not claim it is approved until goal_run_start succeeds.",
                 }))
             }
-            Err(error) => plan_error(error),
+            Err(error) => with_change_request(plan_error(error), change_request),
         }
     }
 
@@ -472,32 +552,84 @@ impl ToolRuntime {
             Ok(detail) => detail.plan,
             Err(error) => return plan_error(error),
         };
-        let (_, config) = match self.plan_project_environment(&plan.project_id, auth).await {
+        let (_, config, dispatch_auth) =
+            match self.goal_dispatch_for_project(&plan.project_id, auth).await {
+                Ok(value) => value,
+                Err(result) => return result,
+            };
+        self.start_goal_run(&db, &owner, &plan_id, &config, &dispatch_auth, now)
+    }
+
+    /// Direct Goal: record objective + acceptance as a one-revision request
+    /// that the user starts in the Chadex app. The model never starts it.
+    pub(crate) async fn goal_request(
+        &self,
+        auth: Option<&AuthContext>,
+        project: Option<String>,
+        title: Option<String>,
+        objective: String,
+        acceptance: Option<Vec<AcceptanceCheck>>,
+        budget: Option<GoalBudget>,
+    ) -> ToolResult {
+        let db = match self.plan_db() {
+            Ok(db) => db.clone(),
+            Err(result) => return result,
+        };
+        let (Some(project), Some(title)) = (project, title) else {
+            return invalid_action("A direct Goal needs project, title, objective and acceptance");
+        };
+        let (project_id, _, dispatch) = match self.goal_dispatch_for_project(&project, auth).await {
             Ok(value) => value,
             Err(result) => return result,
         };
+        let spec = PlanSpec {
+            acceptance: acceptance.unwrap_or_default(),
+            budget: budget.unwrap_or_default(),
+        };
+        let owner = plan_principal_key(auth);
+        match db.goal_request_create(&owner, &project_id, &title, &objective, spec, &dispatch, now_unix_ms()) {
+            Ok(outcome) => ToolResult::ok(json!({
+                "plan": outcome.plan,
+                "revision": outcome.revision,
+                "state": "awaiting_start",
+                "next": "Tell the user to press Start Goal in the Chadex app (Plan & Goal); the model cannot start it. Afterwards find the run with goal_run_list (match this plan_id) and follow it with goal_run_status. Chadex notifies the user on the Mac when the Goal finishes; ChatGPT is not notified.",
+            })),
+            Err(error) => plan_error(error),
+        }
+    }
+
+    /// Resolve a project for `auth` plus the restricted principal a Goal run
+    /// will dispatch as.
+    async fn goal_dispatch_for_project(
+        &self,
+        project: &str,
+        auth: Option<&AuthContext>,
+    ) -> Result<(String, crate::projects::ProjectConfig, Value), ToolResult> {
+        let (project_id, config) = self.plan_project_environment(project, auth).await?;
         let runner_owner = self
             .runner_registry
             .get_runner_semantic_view_for_auth(&config.client_id, None)
             .await
             .and_then(|runner| runner.view.owner);
-        let dispatch_auth = match goal_dispatch_auth_json(auth, runner_owner.as_deref()) {
-            Ok(value) => value,
-            Err(result) => return result,
-        };
+        let dispatch = goal_dispatch_auth_json(auth, runner_owner.as_deref())?;
+        Ok((project_id, config, dispatch))
+    }
+
+    fn start_goal_run(
+        &self,
+        db: &Database,
+        owner: &str,
+        plan_id: &str,
+        config: &crate::projects::ProjectConfig,
+        dispatch_auth: &Value,
+        now: i64,
+    ) -> ToolResult {
         let provider = super::goal_supervisor::GoalProvider::from_env();
         let environment = GoalStartEnvironment {
             runner_client_id: config.client_id.clone(),
             project_root: config.path.clone(),
         };
-        match db.goal_run_start(
-            &owner,
-            &plan_id,
-            &environment,
-            &dispatch_auth,
-            provider.name(),
-            now,
-        ) {
+        match db.goal_run_start(owner, plan_id, &environment, dispatch_auth, provider.name(), now) {
             Ok(outcome) => {
                 if let Some(wake) = self.goal_supervisor_wake.as_ref() {
                     wake.notify_one();
@@ -506,22 +638,36 @@ impl ToolRuntime {
                     "goal_run": goal_run_projection(&outcome.run),
                     "created": outcome.created,
                     "supervisor_running": self.goal_supervisor_wake.is_some(),
-                    "note": "The Goal now runs inside Chadex on this Mac, independent of this ChatGPT conversation: it iterates agent work, commits each iteration in an isolated worktree, and only succeeds when every approved acceptance check passes. Closing ChatGPT does not stop it; quitting the Chadex app or sleeping the Mac pauses it until Chadex runs again. Check progress with goal_run_status.",
+                    "note": "The Goal now runs inside Chadex on this Mac, independent of this ChatGPT conversation: it iterates agent work, commits each iteration in an isolated worktree, and only succeeds when every acceptance check passes. Closing ChatGPT does not stop it; quitting the Chadex app or sleeping the Mac pauses it until Chadex runs again. ChatGPT is not notified when it finishes; Chadex notifies the user on the Mac. Check progress with goal_run_status (wait_secs waits for completion).",
                 }))
             }
             Err(error) => plan_error(error),
         }
     }
 
-    pub(crate) fn goal_run_status(&self, auth: Option<&AuthContext>, goal_run_id: String) -> ToolResult {
+    pub(crate) async fn goal_run_status(
+        &self,
+        auth: Option<&AuthContext>,
+        goal_run_id: String,
+        wait_secs: u64,
+    ) -> ToolResult {
         let db = match self.plan_db() {
             Ok(db) => db.clone(),
             Err(result) => return result,
         };
         let owner = plan_principal_key(auth);
-        match db.goal_run_read(PlanReader::Owner(&owner), &goal_run_id) {
-            Ok(detail) => ToolResult::ok(goal_run_detail_projection(&detail)),
-            Err(error) => plan_error(error),
+        let deadline = std::time::Instant::now()
+            + std::time::Duration::from_secs(wait_secs.min(GOAL_STATUS_MAX_WAIT_SECS));
+        loop {
+            let detail = match db.goal_run_read(PlanReader::Owner(&owner), &goal_run_id) {
+                Ok(detail) => detail,
+                Err(error) => return plan_error(error),
+            };
+            let settled = !matches!(detail.run.state, GoalRunState::Queued | GoalRunState::Running);
+            if settled || std::time::Instant::now() >= deadline {
+                return ToolResult::ok(goal_run_detail_projection(&detail));
+            }
+            tokio::time::sleep(GOAL_STATUS_POLL).await;
         }
     }
 
@@ -630,40 +776,26 @@ impl ToolRuntime {
                 let (Some(revision), Some(content_sha256)) = (revision, content_sha256) else {
                     return invalid_action("approve requires revision and content_sha256");
                 };
-                let plan = match db.plan_read(PlanReader::Operator, &plan_id, None, now) {
-                    Ok(detail) => detail.plan,
-                    Err(error) => return plan_error(error),
-                };
-                let (project_id, config) =
-                    match self.plan_project_environment(&plan.project_id, auth).await {
-                        Ok(value) => value,
-                        Err(result) => return result,
-                    };
-                let base_commit = match self.operator_head_commit(auth, &project_id).await {
-                    Ok(commit) => commit,
+                match self
+                    .operator_approve(&db, auth, &plan_id, revision, &content_sha256, &approver, ttl_minutes, now)
+                    .await
+                {
+                    Ok(decision) => ToolResult::ok(json!({"decision": decision.record})),
+                    Err(result) => result,
+                }
+            }
+            "approve_and_start" => {
+                let plan_id = match require_plan() {
+                    Ok(value) => value,
                     Err(result) => return result,
                 };
-                let binding = PlanApprovalBinding {
-                    project_id,
-                    runner_client_id: config.client_id,
-                    project_root: config.path,
-                    base_commit,
+                let (Some(revision), Some(content_sha256)) = (revision, content_sha256) else {
+                    return invalid_action("approve_and_start requires revision and content_sha256");
                 };
-                let ttl_ms = ttl_minutes
-                    .map(|minutes| minutes.saturating_mul(60_000))
-                    .unwrap_or(DEFAULT_PLAN_APPROVAL_TTL_MS);
-                match db.plan_approve(
-                    &plan_id,
-                    revision,
-                    &content_sha256,
-                    binding,
-                    &approver,
-                    ttl_ms,
-                    now,
-                ) {
-                    Ok(decision) => ToolResult::ok(json!({"decision": decision})),
-                    Err(error) => plan_error(error),
-                }
+                self.operator_approve_and_start(
+                    &db, auth, &plan_id, revision, &content_sha256, &approver, ttl_minutes, now,
+                )
+                .await
             }
             "reject" => {
                 let plan_id = match require_plan() {
@@ -703,7 +835,9 @@ impl ToolRuntime {
                 }
                 Err(result) => result,
             },
-            _ => invalid_action("action must be one of: list, inspect, approve, reject, revoke, close"),
+            _ => invalid_action(
+                "action must be one of: list, inspect, approve, approve_and_start, reject, revoke, close",
+            ),
         };
         self.plan_guard.reload();
         result
@@ -785,6 +919,147 @@ impl ToolRuntime {
         result
     }
 
+    /// One-step "approve and start" from the Chadex app. Everything that can
+    /// refuse is checked before approving; if the start still fails, the new
+    /// approval is withdrawn so a failed click never leaves a startable plan.
+    #[allow(clippy::too_many_arguments)]
+    async fn operator_approve_and_start(
+        &self,
+        db: &Database,
+        auth: Option<&AuthContext>,
+        plan_id: &str,
+        revision: i64,
+        content_sha256: &str,
+        approver: &str,
+        ttl_minutes: Option<i64>,
+        now: i64,
+    ) -> ToolResult {
+        let refuse = |kind: &str, message: &str| {
+            ToolResult::err_with_output(
+                message.to_string(),
+                json!({"error_kind": kind, "state_changed": false}),
+            )
+            .with_recovery(RecoveryKind::UserAction)
+        };
+        let context = match db.plan_start_context(plan_id, now) {
+            Ok(context) => context,
+            Err(error) => return plan_error(error),
+        };
+        if let Some(other) = context.owner_locked_plan {
+            return refuse(
+                "goal_owner_in_plan_mode",
+                &format!("This ChatGPT connection is planning another plan ({other}) in Plan Mode; finish or exit that plan first"),
+            );
+        }
+        let plan = match db.plan_read(PlanReader::Operator, plan_id, None, now) {
+            Ok(detail) => detail.plan,
+            Err(error) => return plan_error(error),
+        };
+        let fresh = context
+            .dispatch_recorded_at_unix_ms
+            .is_some_and(|at| now - at <= GOAL_DISPATCH_MAX_AGE_MS);
+        let (Some(dispatch), true) = (context.dispatch, fresh) else {
+            return refuse(
+                "goal_dispatch_unknown",
+                if plan.origin == "goal" {
+                    "This Goal request is too old to start. Ask ChatGPT to send the Goal again, then start the new request."
+                } else {
+                    "Chadex has no current record of which connection this plan runs as. Use Approve only, then ask ChatGPT to start it (goal_run_start)."
+                },
+            );
+        };
+        match db.goal_kill_switch_engaged() {
+            Ok(false) => {}
+            Ok(true) => {
+                return refuse(
+                    "goal_emergency_stop_engaged",
+                    "Goal emergency stop is engaged; release it before starting a Goal",
+                )
+            }
+            Err(error) => return plan_error(error),
+        }
+        // The run dispatches as the owner's recorded principal: it must still
+        // reach the same project, Runner and root that the operator approves.
+        let owner_auth = match goal_dispatch_auth(&dispatch) {
+            Ok(value) => value,
+            Err(message) => return refuse("goal_dispatch_unknown", &message),
+        };
+        let project = plan.project_id;
+        let owner_config = match self.plan_project_environment(&project, owner_auth.as_ref()).await {
+            Ok((_, config)) => config,
+            Err(result) => return result,
+        };
+        let operator_config = match self.plan_project_environment(&project, auth).await {
+            Ok((_, config)) => config,
+            Err(result) => return result,
+        };
+        if owner_config.client_id != operator_config.client_id || owner_config.path != operator_config.path {
+            return refuse(
+                "plan_approval_environment_changed",
+                "The plan's connection resolves this project to a different Runner or root",
+            );
+        }
+        let decision = match self
+            .operator_approve(db, auth, plan_id, revision, content_sha256, approver, ttl_minutes, now)
+            .await
+        {
+            Ok(decision) => decision,
+            Err(result) => return result,
+        };
+        let started = self.start_goal_run(db, &context.owner_key, plan_id, &owner_config, &dispatch, now);
+        if started.success {
+            return ToolResult::ok(json!({
+                "decision": decision.record,
+                "goal_run": started.output.get("goal_run"),
+                "created": started.output.get("created"),
+            }));
+        }
+        let withdrawn = db.plan_revoke_approval(&decision.record.approval_id, now).is_ok();
+        let mut failed = started;
+        if let Some(output) = failed.output.as_object_mut() {
+            output.insert("approval_withdrawn".into(), json!(withdrawn));
+            output.insert("state_changed".into(), json!(!withdrawn));
+        }
+        failed
+    }
+
+    /// Approve one exact revision, bound to the project's Runner, root and HEAD.
+    #[allow(clippy::too_many_arguments)]
+    async fn operator_approve(
+        &self,
+        db: &Database,
+        auth: Option<&AuthContext>,
+        plan_id: &str,
+        revision: i64,
+        content_sha256: &str,
+        approver: &str,
+        ttl_minutes: Option<i64>,
+        now: i64,
+    ) -> Result<OperatorApproval, ToolResult> {
+        let plan = db
+            .plan_read(PlanReader::Operator, plan_id, None, now)
+            .map_err(plan_error)?
+            .plan;
+        let (project_id, config) = self.plan_project_environment(&plan.project_id, auth).await?;
+        let base_commit = self.operator_head_commit(auth, &project_id).await?;
+        let binding = PlanApprovalBinding {
+            project_id: project_id.clone(),
+            runner_client_id: config.client_id,
+            project_root: config.path,
+            base_commit,
+        };
+        let ttl_ms = ttl_minutes
+            .map(|minutes| minutes.saturating_mul(60_000))
+            .unwrap_or(DEFAULT_PLAN_APPROVAL_TTL_MS);
+        let record = db
+            .plan_approve(plan_id, revision, content_sha256, binding, approver, ttl_ms, now)
+            .map_err(plan_error)?;
+        Ok(OperatorApproval {
+            record,
+            plan_project: project_id,
+        })
+    }
+
     /// Resolve the commit the reviewer is approving against.
     async fn operator_head_commit(
         &self,
@@ -827,6 +1102,46 @@ impl ToolRuntime {
             .with_recovery(RecoveryKind::UserAction)
         })
     }
+}
+
+struct OperatorApproval {
+    record: crate::db::PlanDecisionRecord,
+    plan_project: String,
+}
+
+const GOAL_STATUS_MAX_WAIT_SECS: u64 = 45;
+/// A recorded Goal principal older than this must be re-recorded by the model.
+const GOAL_DISPATCH_MAX_AGE_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+const GOAL_STATUS_POLL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Parse the optional acceptance/budget arguments shared by plan_save and a
+/// direct goal_run_start.
+#[allow(clippy::type_complexity)]
+pub(crate) fn parse_plan_spec_parts(
+    acceptance: Option<Value>,
+    budget: Option<Value>,
+) -> Result<(Option<Vec<AcceptanceCheck>>, Option<GoalBudget>), ToolResult> {
+    let acceptance = acceptance
+        .map(serde_json::from_value::<Vec<AcceptanceCheck>>)
+        .transpose()
+        .map_err(|error| {
+            ToolResult::err_with_output(
+                format!("invalid acceptance: {error}"),
+                json!({"error_kind": "invalid_plan_acceptance", "state_changed": false}),
+            )
+            .with_recovery(RecoveryKind::FixInput)
+        })?;
+    let budget = budget
+        .map(serde_json::from_value::<GoalBudget>)
+        .transpose()
+        .map_err(|error| {
+            ToolResult::err_with_output(
+                format!("invalid budget: {error}"),
+                json!({"error_kind": "invalid_plan_budget", "state_changed": false}),
+            )
+            .with_recovery(RecoveryKind::FixInput)
+        })?;
+    Ok((acceptance, budget))
 }
 
 /// The local operator is the Chadex app talking to the runtime over
@@ -1036,6 +1351,7 @@ fn plan_read_result(
         _ => None,
     };
     ToolResult::ok(json!({
+        "pending_change_request": pending_change_request(&detail).map(change_request_projection),
         "plan": detail.plan,
         "revision": detail.revision,
         "revisions": detail.revisions,

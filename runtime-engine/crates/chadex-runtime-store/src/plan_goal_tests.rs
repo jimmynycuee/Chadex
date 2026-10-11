@@ -472,3 +472,113 @@ fn review_m5_claim_skips_runs_this_process_still_drives() {
     // The original driver can still renew after waking up.
     db.goal_run_renew_lease(&run.goal_run_id, &lease, T0 + 101, 30_000).unwrap();
 }
+
+#[test]
+fn direct_goal_request_never_locks_needs_acceptance_and_starts_only_after_operator_approval() {
+    let (_temp, db) = db();
+    let dispatch = json!({"kind": "test"});
+    let no_checks = PlanSpec {
+        acceptance: vec![],
+        budget: GoalBudget::default(),
+    };
+    let missing = db
+        .goal_request_create(OWNER, PROJECT, "Fix add", "make add add", no_checks, &dispatch, T0)
+        .unwrap_err();
+    assert_eq!(missing.code(), "plan_missing_acceptance");
+
+    let first = db
+        .goal_request_create(OWNER, PROJECT, "Fix add", "make add add", spec(), &dispatch, T0)
+        .unwrap();
+    assert_eq!(first.plan.origin, "goal");
+    assert_eq!(first.revision.revision, 1);
+    // A direct Goal request never makes the connection read-only.
+    assert!(!first.plan.plan_mode_active);
+    assert!(db.plan_active_locks(T0 + 1).unwrap().is_empty());
+    // The model cannot start it, and cannot revise it into something else.
+    assert_eq!(
+        start_run(&db, &first.plan.plan_id, T0 + 1).unwrap_err().code(),
+        "plan_not_approved"
+    );
+    assert_eq!(
+        db.plan_save_revision(OWNER, &first.plan.plan_id, 1, "other", spec(), T0 + 1)
+            .unwrap_err()
+            .code(),
+        "goal_request_immutable"
+    );
+
+    // Sending it back for changes would lock the owner: refused.
+    assert_eq!(
+        db.plan_reject(&first.plan.plan_id, 1, &first.revision.content_sha256, "operator", "no", T0 + 1)
+            .unwrap_err()
+            .code(),
+        "goal_request_immutable"
+    );
+    assert!(db.plan_active_locks(T0 + 1).unwrap().is_empty());
+    // A newer request replaces the unstarted one.
+    let second = db
+        .goal_request_create(OWNER, PROJECT, "Fix add", "make add add, keep API", spec(), &dispatch, T0 + 2)
+        .unwrap();
+    let old = db
+        .plan_read(PlanReader::Owner(OWNER), &first.plan.plan_id, None, T0 + 3)
+        .unwrap();
+    assert_eq!(old.plan.state, PlanState::Closed);
+
+    let context = db.plan_start_context(&second.plan.plan_id, T0 + 3).unwrap();
+    assert_eq!(context.owner_key, OWNER);
+    assert_eq!(context.dispatch, Some(dispatch));
+    assert_eq!(context.dispatch_recorded_at_unix_ms, Some(T0 + 2));
+    assert_eq!(context.owner_locked_plan, None);
+    approve(&db, &second.plan.plan_id, &second, T0 + 4);
+    let run = start_run(&db, &second.plan.plan_id, T0 + 5).unwrap();
+    assert!(run.created);
+    assert_eq!(run.run.state, GoalRunState::Queued);
+}
+
+#[test]
+fn direct_goal_request_is_refused_while_plan_mode_is_active() {
+    let (_temp, db) = db();
+    let _ = started_plan(&db);
+    let error = db
+        .goal_request_create(OWNER, PROJECT, "Fix add", "x", spec(), &json!({}), T0 + 2)
+        .unwrap_err();
+    assert_eq!(error.code(), "plan_mode_active_for_other_plan");
+}
+
+#[test]
+fn plan_dispatch_is_owner_only_and_never_outlives_its_revision() {
+    let (_temp, db) = db();
+    let (plan_id, _) = started_plan(&db);
+    assert_eq!(db.plan_start_context(&plan_id, T0 + 2).unwrap().dispatch, None);
+    assert_eq!(
+        db.plan_record_dispatch("someone-else", &plan_id, 1, Some(&json!({"kind": "x"})), T0 + 2)
+            .unwrap_err()
+            .code(),
+        "plan_not_found"
+    );
+    db.plan_record_dispatch(OWNER, &plan_id, 1, Some(&json!({"kind": "test"})), T0 + 2)
+        .unwrap();
+    let context = db.plan_start_context(&plan_id, T0 + 3).unwrap();
+    assert_eq!(context.dispatch, Some(json!({"kind": "test"})));
+    // Its own Plan Mode lock is not "another plan".
+    assert_eq!(context.owner_locked_plan, None);
+    // A newer revision saved without a fresh principal does not inherit it.
+    db.plan_save_revision(OWNER, &plan_id, 1, "v2", spec(), T0 + 4).unwrap();
+    assert_eq!(db.plan_start_context(&plan_id, T0 + 5).unwrap().dispatch, None);
+    // Recording for a stale revision is a no-op; clearing works.
+    db.plan_record_dispatch(OWNER, &plan_id, 1, Some(&json!({"kind": "old"})), T0 + 6).unwrap();
+    assert_eq!(db.plan_start_context(&plan_id, T0 + 7).unwrap().dispatch, None);
+    db.plan_record_dispatch(OWNER, &plan_id, 2, Some(&json!({"kind": "new"})), T0 + 8).unwrap();
+    db.plan_record_dispatch(OWNER, &plan_id, 2, None, T0 + 9).unwrap();
+    assert_eq!(db.plan_start_context(&plan_id, T0 + 10).unwrap().dispatch, None);
+}
+
+#[test]
+fn start_context_reports_the_owner_planning_another_plan() {
+    let (_temp, db) = db();
+    let request = db
+        .goal_request_create(OWNER, PROJECT, "Fix add", "x", spec(), &json!({"kind": "t"}), T0)
+        .unwrap();
+    let (other, _) = started_plan(&db);
+    let context = db.plan_start_context(&request.plan.plan_id, T0 + 3).unwrap();
+    assert_eq!(context.owner_locked_plan, Some(other));
+}

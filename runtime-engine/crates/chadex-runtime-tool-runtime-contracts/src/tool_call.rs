@@ -1746,14 +1746,28 @@ pub enum ToolCall {
         include_closed: Option<bool>,
     },
 
-    /// Start Goal Mode for an approved plan revision.
+    /// Start Goal Mode for an approved plan revision, or request a direct
+    /// Goal (objective + acceptance) that the user starts in the Chadex app.
     GoalRunStart {
-        plan_id: String,
+        #[serde(default)]
+        plan_id: Option<String>,
+        #[serde(default)]
+        project: Option<String>,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        objective: Option<String>,
+        #[serde(default)]
+        acceptance: Option<Value>,
+        #[serde(default)]
+        budget: Option<Value>,
     },
 
-    /// Read one owned Goal run.
+    /// Read one owned Goal run, optionally waiting for it to finish.
     GoalRunStatus {
         goal_run_id: String,
+        #[serde(default)]
+        wait_secs: Option<u64>,
     },
 
     /// List the caller's Goal runs.
@@ -3733,6 +3747,10 @@ impl ToolCall {
             | Self::CodeModeExecEffectful { project, .. }
             | Self::CodeModeExecMutating { project, .. } => Some(project.as_str()),
             Self::PlanStart { project, .. } => Some(project.as_str()),
+            Self::GoalRunStart {
+                project: Some(project),
+                ..
+            } => Some(project.as_str()),
             Self::RunProcess { project, .. }
             | Self::RunDetachedProcess { project, .. }
             | Self::CodingAgentStart { project, .. }

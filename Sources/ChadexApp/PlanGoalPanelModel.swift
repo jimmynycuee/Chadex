@@ -158,6 +158,14 @@ final class PlanGoalPanelModel: ObservableObject {
         ))
     }
 
+    /// Approves the displayed revision and starts its Goal in one step.
+    @discardableResult
+    func approveAndStart(planId: String, revision: Int, contentSha256: String) async -> Bool {
+        await act(tool: "plan_review", PlanGoalArguments(
+            action: "approve_and_start", planId: planId, revision: revision, contentSha256: contentSha256
+        ))
+    }
+
     @discardableResult
     func requestChanges(planId: String, revision: Int, contentSha256: String, reason: String) async -> Bool {
         await act(tool: "plan_review", PlanGoalArguments(

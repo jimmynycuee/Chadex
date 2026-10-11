@@ -94,11 +94,27 @@ pub fn plan_list_input_schema() -> Value {
 }
 
 pub fn goal_run_start_input_schema() -> Value {
-    object(json!({"plan_id": plan_id()}), &["plan_id"])
+    object(
+        json!({
+            "plan_id": {"type": "string", "pattern": PLAN_ID_PATTERN, "description": "Approved Plan Mode plan to execute. Omit for a direct Goal."},
+            "project": {"type": "string", "minLength": 1, "description": "Direct Goal: configured project id to work in."},
+            "title": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Direct Goal: short title."},
+            "objective": {"type": "string", "minLength": 1, "maxLength": 65536, "description": "Direct Goal: what must be true when done, constraints, and anything the agent must not change."},
+            "acceptance": acceptance_schema(),
+            "budget": budget_schema()
+        }),
+        &[],
+    )
 }
 
 pub fn goal_run_status_input_schema() -> Value {
-    object(json!({"goal_run_id": goal_run_id()}), &["goal_run_id"])
+    object(
+        json!({
+            "goal_run_id": goal_run_id(),
+            "wait_secs": {"type": "integer", "minimum": 0, "maximum": 45, "default": 0, "description": "Wait up to this many seconds for the run to finish or stop before answering."}
+        }),
+        &["goal_run_id"],
+    )
 }
 
 pub fn goal_run_list_input_schema() -> Value {
@@ -118,7 +134,7 @@ pub fn goal_run_control_input_schema() -> Value {
 pub fn plan_review_input_schema() -> Value {
     object(
         json!({
-            "action": {"type": "string", "enum": ["list", "inspect", "approve", "reject", "revoke", "close"]},
+            "action": {"type": "string", "enum": ["list", "inspect", "approve", "approve_and_start", "reject", "revoke", "close"]},
             "plan_id": plan_id(),
             "revision": {"type": "integer", "minimum": 1},
             "content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},

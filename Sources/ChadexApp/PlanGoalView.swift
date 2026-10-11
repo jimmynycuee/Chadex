@@ -166,7 +166,16 @@ struct PlanGoalView: View {
                         .chadexFont(.callout, weight: .semibold)
                         .lineLimit(2)
                     HStack(spacing: 10) {
-                        planStateLabel(plan.state)
+                        if plan.isGoalRequest && plan.state == "drafting" {
+                            ChadexStatusLabel(
+                                title: L10n.string("planGoal.goalRequest.waiting"),
+                                systemImage: "flag.checkered.circle.fill",
+                                tint: ChadexBrand.signal,
+                                emphasized: true
+                            )
+                        } else {
+                            planStateLabel(plan.state)
+                        }
                         if plan.isPlanModeActive {
                             ChadexStatusLabel(
                                 title: L10n.string("planGoal.planModeActive"),
@@ -367,6 +376,10 @@ struct PlanGoalView: View {
                 }
             }
 
+            if let readiness = detail.gitReadiness, plan.state != "closed" {
+                gitReadinessBlock(readiness)
+            }
+
             if let revisions = detail.revisions, revisions.count > 1 {
                 Picker(L10n.string("planGoal.revisionPicker"), selection: Binding(
                     get: { panel.viewedRevision ?? plan.latestRevision },
@@ -401,6 +414,83 @@ struct PlanGoalView: View {
             decisionsBlock(detail.decisions ?? [])
             planActions(detail)
         }
+    }
+
+    @ViewBuilder
+    private func gitReadinessBlock(_ readiness: GitReadiness) -> some View {
+        if readiness.blocks {
+            VStack(alignment: .leading, spacing: layout.spacing(8)) {
+                Label(
+                    L10n.string(readiness.isGitRepo == false ? "planGoal.git.notRepo" : "planGoal.git.noCommit"),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .chadexFont(.callout, weight: .semibold)
+                Text(L10n.string("planGoal.git.blockedExplain"))
+                    .chadexFont(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                DisclosureGroup(L10n.string("planGoal.git.howTo")) {
+                    commitInstructions(readiness)
+                }
+                .chadexFont(.caption)
+                Button {
+                    Task { await panel.refresh() }
+                } label: {
+                    Label(L10n.string("planGoal.git.recheck"), systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(ChadexButtonStyle(kind: .secondary))
+                .chadexControlSize(.small)
+                .disabled(panel.loading)
+            }
+            .chadexAttentionCard(tint: .orange, padding: 12)
+        } else if readiness.hasUncommittedWork {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(
+                    L10n.string("planGoal.git.uncommitted", readiness.uncommittedFiles ?? 0),
+                    systemImage: "info.circle"
+                )
+                .chadexFont(.caption)
+                .foregroundStyle(.secondary)
+                DisclosureGroup(L10n.string("planGoal.git.howTo")) {
+                    commitInstructions(readiness)
+                }
+                .chadexFont(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func commitInstructions(_ readiness: GitReadiness) -> some View {
+        let commands = readiness.howToCommit ?? []
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.string("planGoal.git.howToExplain"))
+                .chadexFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if !commands.isEmpty {
+                Text(commands.joined(separator: "\n"))
+                    .chadexFont(.caption, design: .monospaced)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .chadexPadding(8)
+                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(commands.joined(separator: "\n"), forType: .string)
+                } label: {
+                    Label(L10n.string("planGoal.git.copy"), systemImage: "doc.on.doc")
+                }
+                .buttonStyle(ChadexButtonStyle(kind: .secondary))
+                .chadexControlSize(.small)
+            }
+            ForEach(readiness.tips ?? [], id: \.self) { tip in
+                Label(tip, systemImage: "lightbulb")
+                    .chadexFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.top, 4)
     }
 
     private func acceptanceBlock(_ spec: PlanSpec?) -> some View {
@@ -543,6 +633,7 @@ struct PlanGoalView: View {
         let plan = detail.plan
         if plan.state != "closed", let revision = detail.revision {
             let isLatest = revision.revision == plan.latestRevision
+            let gitBlocked = detail.gitReadiness?.blocks ?? false
             let alreadyApproved = (detail.decisions ?? []).contains {
                 $0.isActive && $0.revision == revision.revision && $0.contentSha256 == revision.contentSha256
             }
@@ -552,22 +643,45 @@ struct PlanGoalView: View {
                         .chadexFont(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if gitBlocked {
+                    Label(L10n.string("planGoal.git.buttonsDisabled"), systemImage: "lock")
+                        .chadexFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 HStack(spacing: 10) {
                     Button {
-                        confirmation = .approve(
-                            planId: plan.planId, title: plan.title,
+                        confirmation = .approveAndStart(
+                            planId: plan.planId, title: plan.title, isGoalRequest: plan.isGoalRequest,
                             revision: revision.revision, contentSha256: revision.contentSha256
                         )
                     } label: {
                         Label(
-                            alreadyApproved
-                                ? L10n.string("planGoal.approved", revision.revision)
-                                : L10n.string("planGoal.approve", revision.revision),
-                            systemImage: alreadyApproved ? "checkmark.seal.fill" : "checkmark.seal"
+                            plan.isGoalRequest
+                                ? L10n.string("planGoal.goalRequest.start")
+                                : L10n.string("planGoal.approveAndStart", revision.revision),
+                            systemImage: "play.circle"
                         )
                     }
                     .buttonStyle(ChadexButtonStyle(kind: .primary))
-                    .disabled(panel.actionInFlight || !isLatest || alreadyApproved)
+                    .disabled(panel.actionInFlight || !isLatest || alreadyApproved || gitBlocked)
+
+                    if !plan.isGoalRequest {
+                        Button {
+                            confirmation = .approve(
+                                planId: plan.planId, title: plan.title,
+                                revision: revision.revision, contentSha256: revision.contentSha256
+                            )
+                        } label: {
+                            Label(
+                                alreadyApproved
+                                    ? L10n.string("planGoal.approved", revision.revision)
+                                    : L10n.string("planGoal.approveOnly"),
+                                systemImage: alreadyApproved ? "checkmark.seal.fill" : "checkmark.seal"
+                            )
+                        }
+                        .buttonStyle(ChadexButtonStyle(kind: .secondary))
+                        .disabled(panel.actionInFlight || !isLatest || alreadyApproved || gitBlocked)
+                    }
 
                     Button {
                         confirmation = .closePlan(planId: plan.planId, title: plan.title)
@@ -577,6 +691,7 @@ struct PlanGoalView: View {
                     .buttonStyle(ChadexButtonStyle(kind: .secondary))
                     .disabled(panel.actionInFlight)
                 }
+                if !plan.isGoalRequest {
                 HStack(spacing: 10) {
                     TextField(L10n.string("planGoal.reject.placeholder"), text: $rejectReason)
                         .textFieldStyle(.roundedBorder)
@@ -594,6 +709,7 @@ struct PlanGoalView: View {
                     .buttonStyle(ChadexButtonStyle(kind: .secondary))
                     .disabled(panel.actionInFlight || !isLatest
                               || rejectReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
                 }
             }
         }
@@ -796,6 +912,8 @@ struct PlanGoalView: View {
         case .approve(let planId, _, let revision, let sha):
             // Exactly the revision and hash shown in the confirmation.
             Task { await panel.approve(planId: planId, revision: revision, contentSha256: sha) }
+        case .approveAndStart(let planId, _, _, let revision, let sha):
+            Task { await panel.approveAndStart(planId: planId, revision: revision, contentSha256: sha) }
         case .closePlan(let planId, _):
             Task { await panel.closePlan(planId: planId) }
         case .revoke(let approvalId, _):
@@ -812,6 +930,7 @@ struct PlanGoalView: View {
 /// It captures the displayed values so the request matches the dialog.
 enum PlanGoalConfirmation: Identifiable {
     case approve(planId: String, title: String, revision: Int, contentSha256: String)
+    case approveAndStart(planId: String, title: String, isGoalRequest: Bool, revision: Int, contentSha256: String)
     case closePlan(planId: String, title: String)
     case revoke(approvalId: String, revision: Int)
     case cancelRun(goalRunId: String)
@@ -820,6 +939,7 @@ enum PlanGoalConfirmation: Identifiable {
     var id: String {
         switch self {
         case .approve(let planId, _, let revision, let sha): return "approve:\(planId):\(revision):\(sha)"
+        case .approveAndStart(let planId, _, _, let revision, let sha): return "start:\(planId):\(revision):\(sha)"
         case .closePlan(let planId, _): return "close:\(planId)"
         case .revoke(let approvalId, _): return "revoke:\(approvalId)"
         case .cancelRun(let id): return "cancel:\(id)"
@@ -830,6 +950,10 @@ enum PlanGoalConfirmation: Identifiable {
     var title: String {
         switch self {
         case .approve(_, _, let revision, _): return L10n.string("planGoal.approve.confirmTitle", revision)
+        case .approveAndStart(_, _, let isGoalRequest, let revision, _):
+            return isGoalRequest
+                ? L10n.string("planGoal.goalRequest.confirmTitle")
+                : L10n.string("planGoal.approveAndStart.confirmTitle", revision)
         case .closePlan: return L10n.string("planGoal.closePlan.confirmTitle")
         case .revoke: return L10n.string("planGoal.revoke.confirmTitle")
         case .cancelRun: return L10n.string("planGoal.cancel.confirmTitle")
@@ -841,6 +965,8 @@ enum PlanGoalConfirmation: Identifiable {
         switch self {
         case .approve(_, let title, let revision, let sha):
             return L10n.string("planGoal.approve.confirmMessage", title, revision, PlanGoalFormat.shortHash(sha))
+        case .approveAndStart(_, let title, _, let revision, let sha):
+            return L10n.string("planGoal.approveAndStart.confirmMessage", title, revision, PlanGoalFormat.shortHash(sha))
         case .closePlan(_, let title): return L10n.string("planGoal.closePlan.confirmMessage", title)
         case .revoke(_, let revision): return L10n.string("planGoal.revoke.confirmMessage", revision)
         case .cancelRun: return L10n.string("planGoal.cancel.confirmMessage")
@@ -851,6 +977,10 @@ enum PlanGoalConfirmation: Identifiable {
     var actionLabel: String {
         switch self {
         case .approve(_, _, let revision, _): return L10n.string("planGoal.approve", revision)
+        case .approveAndStart(_, _, let isGoalRequest, let revision, _):
+            return isGoalRequest
+                ? L10n.string("planGoal.goalRequest.start")
+                : L10n.string("planGoal.approveAndStart", revision)
         case .closePlan: return L10n.string("planGoal.closePlan")
         case .revoke: return L10n.string("planGoal.revoke")
         case .cancelRun: return L10n.string("planGoal.cancel")
@@ -860,6 +990,7 @@ enum PlanGoalConfirmation: Identifiable {
 
     var isDestructive: Bool {
         if case .approve = self { return false }
+        if case .approveAndStart = self { return false }
         return true
     }
 }
