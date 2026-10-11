@@ -188,6 +188,9 @@ fn sample_field_value(field: &str) -> Value {
         "execution_context" => json!({}),
         "skill_id" => json!("wc_skill_EREREREREREREREREREREQ"),
         "expected_definition_revision" => json!("a".repeat(64)),
+        "plan_id" => json!("wc_plan_AAAAAAAAAAAAAAAA"),
+        "goal_run_id" => json!("wc_grun_AAAAAAAAAAAAAAAA"),
+        "parent_revision" => json!(0),
         other => panic!("missing sample value for required field {other}"),
     }
 }

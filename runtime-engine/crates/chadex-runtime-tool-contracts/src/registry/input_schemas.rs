@@ -16,6 +16,7 @@ mod discovery;
 mod files;
 mod git;
 mod goals;
+mod plans;
 mod hygiene;
 mod jobs;
 mod line_edits;
@@ -102,6 +103,12 @@ pub use files::{
 pub use git::{
     git_commit_paths_input_schema, git_diff_hunks_input_schema, git_log_input_schema,
     git_review_summary_input_schema, git_status_input_schema, show_changes_input_schema,
+};
+pub use plans::{
+    goal_check_input_schema, goal_operator_input_schema, plan_wait_approval_input_schema, goal_run_control_input_schema, goal_run_list_input_schema,
+    goal_run_start_input_schema, goal_run_status_input_schema, plan_get_input_schema,
+    plan_list_input_schema, plan_review_input_schema, plan_save_input_schema,
+    plan_start_input_schema,
 };
 pub use goals::{
     associate_goal_agent_task_input_schema, associate_goal_workflow_session_input_schema,

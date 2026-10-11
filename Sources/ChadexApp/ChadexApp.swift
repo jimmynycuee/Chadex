@@ -184,8 +184,13 @@ struct ChadexApp: App {
                     appearance: appearance
                 )
         } label: {
-            Image(systemName: model.snapshot.phase == .verified ? "bolt.horizontal.circle.fill" : "bolt.horizontal.circle")
-                .accessibilityLabel(L10n.string("app.name"))
+            if case .active = model.computerActivity {
+                Image(systemName: "cursorarrow.motionlines")
+                    .accessibilityLabel(L10n.string("computer.activity.menuActive"))
+            } else {
+                Image(systemName: model.snapshot.phase == .verified ? "bolt.horizontal.circle.fill" : "bolt.horizontal.circle")
+                    .accessibilityLabel(L10n.string("app.name"))
+            }
         }
     }
 

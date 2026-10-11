@@ -88,6 +88,8 @@ fn tool_call_parser_name_gate_matches_tool_definitions() {
         "job_tail",
         "goal_plan_state",
         "work_result_state",
+        "plan_review",
+        "goal_operator",
         "changes_file_diff",
         "agent_continuation_bind",
         "agent_continuation_recover_endpoint",

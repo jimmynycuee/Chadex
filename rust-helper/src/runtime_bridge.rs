@@ -1014,6 +1014,18 @@ impl Bridge {
             .map_err(ErrorPayload::from)
     }
 
+    async fn plan_goal_operator(
+        &self,
+        path: &str,
+        tool: &str,
+        arguments: Value,
+    ) -> Result<Value, ErrorPayload> {
+        self.runtime
+            .plan_goal_operator(path, tool, arguments)
+            .await
+            .map_err(ErrorPayload::from)
+    }
+
     async fn memory_catalog(&self, path: &str) -> Result<Value, ErrorPayload> {
         self.runtime
             .memory_catalog(path)
@@ -2129,6 +2141,24 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
                     .await
                     .map(ResponseResult::Json),
                 (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => Err(error),
+            }
+        }
+        // Plan/Goal Mode operator controls (review, approve, emergency stop).
+        // Only the Chadex app reaches this; it uses the operator REST path.
+        "planGoalOperator" => {
+            let path = param_str(&request.params, "path");
+            let tool = param_str(&request.params, "tool");
+            let arguments = request
+                .params
+                .get("arguments")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
+            match (path, tool) {
+                (Ok(path), Ok(tool)) => bridge
+                    .plan_goal_operator(path, tool, arguments)
+                    .await
+                    .map(ResponseResult::Json),
+                (Err(error), _) | (_, Err(error)) => Err(error),
             }
         }
         "getProjectMemoryCatalog" => match param_str(&request.params, "path") {

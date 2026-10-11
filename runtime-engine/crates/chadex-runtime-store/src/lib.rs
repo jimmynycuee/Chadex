@@ -20,10 +20,12 @@ mod audit;
 mod communication;
 mod connection_observation;
 mod goal;
+mod goal_run;
 mod job_receipts;
 mod memory;
 pub mod models;
 mod oauth;
+mod plan;
 mod schema;
 mod server_instance;
 mod window_activity;
@@ -69,6 +71,18 @@ pub use self::goal::{
     GoalPatch, GoalStoreError, GoalSummary, NewGoal, GOAL_ID_PREFIX, MAX_GOAL_CORRELATIONS,
     MAX_GOAL_LIST_LIMIT, MAX_GOAL_OBJECTIVE_BYTES, MAX_GOAL_TERMINAL_REASON_BYTES,
     MAX_GOAL_TITLE_CHARS, WORKFLOW_SESSION_ID_PREFIX,
+};
+pub use self::goal_run::{
+    GoalControlAction, GoalEventRecord, GoalLease, GoalOpRecord, GoalOpState, GoalRunDetail,
+    GoalRunRecord, GoalRunStartOutcome, GoalRunState, GoalStartEnvironment, CHATGPT_GOAL_IDLE_MS,
+    CHATGPT_GOAL_PROVIDER, GOAL_RUN_ID_PREFIX, UNBORN_BASE_COMMIT,
+};
+pub use self::plan::{
+    plan_content_sha256, plan_line_diff, AcceptanceCheck, GoalBudget, PlanApprovalBinding,
+    PlanDecisionRecord, PlanDecisionState, PlanDetail, PlanLockRecord, PlanReader,
+    PlanRevisionOutcome, PlanRevisionRecord, PlanRevisionSummary, PlanSpec, PlanStartOutcome,
+    PlanState, PlanStoreError, PlanSummary, DEFAULT_PLAN_APPROVAL_TTL_MS,
+    DEFAULT_PLAN_LOCK_TTL_MS, PLAN_ID_PREFIX,
 };
 #[allow(unused_imports)]
 pub use self::memory::{
@@ -149,6 +163,8 @@ mod communication_tests;
 mod db_tests;
 #[cfg(test)]
 mod goal_tests;
+#[cfg(test)]
+mod plan_goal_tests;
 #[cfg(test)]
 mod memory_tests;
 

@@ -540,6 +540,8 @@ fn adaptive_runtime_direct_declarations_are_visible_ranked_and_unique() {
         "computer_control",
         "plugin_tool",
         "session_handoff_summary",
+        "plan_start",
+        "goal_run_start",
         "present_goal_plan",
         "present_work_result",
         "present_changes",

@@ -286,6 +286,14 @@ only for local/trusted-network demos."
         tool_runtime_builder =
             tool_runtime_builder.with_activity_recorder(Arc::new(activity_store));
     }
+    // Goal Mode supervisor: drives approved Goal runs inside this runtime
+    // process, independent of any ChatGPT turn. CHADEX_GOAL_SUPERVISOR=0
+    // disables it (runs then wait, durable, until a supervisor runs).
+    if std::env::var("CHADEX_GOAL_SUPERVISOR").as_deref() != Ok("0") {
+        if tool_runtime_builder.start_goal_supervisor().is_some() {
+            tracing::info!("Goal supervisor started");
+        }
+    }
     let tool_runtime = Arc::new(tool_runtime_builder);
     tracing::info!(
         project_scoped = project_auth.is_configured(),

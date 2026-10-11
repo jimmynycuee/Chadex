@@ -340,6 +340,19 @@ impl ToolRuntime {
         invocation_metadata: ToolInvocationMetadata,
         capabilities: ToolProtocolCapabilities,
     ) -> ToolCallOutcome {
+        // Plan Mode, name level, first: nothing below (including the
+        // specialized Computer/Plugin/SSH gateways) runs for a denied tool.
+        // The project-level check follows argument parsing.
+        if let Some(denied) = self.plan_mode_denial(context.auth, &request.tool_name, None) {
+            return ToolCallOutcome {
+                success: false,
+                result: Some(denied),
+                error_status: None,
+                project: None,
+                model_ergonomics: None,
+                correlation: Default::default(),
+            };
+        }
         let context_continuity_capable = capabilities.context_continuity
             && super::tool_definition::runtime_tool_accepts_context_ack(&request.tool_name);
         let ack_session_context_revision =
@@ -794,6 +807,27 @@ impl ToolRuntime {
                 };
             }
         };
+        // Backend Plan Mode enforcement: default-deny for a principal holding
+        // an active plan lock, before any business execution.
+        if let Some(denied) =
+            self.plan_mode_denial(context.auth, &request.tool_name, call.project())
+        {
+            self.sessions.record_tool_call_finished(
+                session_event,
+                false,
+                &denied.output,
+                denied.error.as_deref(),
+                Some("plan_mode_read_only"),
+            );
+            return ToolCallOutcome {
+                success: false,
+                result: Some(denied),
+                error_status: None,
+                project: None,
+                model_ergonomics: None,
+                correlation: Default::default(),
+            };
+        }
         if let (Some(session_id), Some(message_resolution)) =
             (context.session_id, session_message_resolution.as_ref())
         {

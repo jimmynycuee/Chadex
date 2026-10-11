@@ -800,17 +800,36 @@ async fn control_plane_stays_observable_and_cancel_is_exact_while_mutation_is_st
 
 #[cfg(target_os = "macos")]
 fn mac_process_exists(pid: u32) -> bool {
+    // Same tree-liveness contract as ManagedChild: an unreaped zombie (for
+    // example a killed descendant launchd has not reaped yet) still occupies
+    // a PID but cannot execute code. Unknown probe failures stay conservative.
     let Ok(pid) = i32::try_from(pid) else {
         return false;
     };
-    let result = unsafe { libc::kill(pid, 0) };
-    if result == 0 {
-        return true;
+    if unsafe { libc::kill(pid, 0) } != 0 {
+        return !matches!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ESRCH)
+        );
     }
-    !matches!(
-        std::io::Error::last_os_error().raw_os_error(),
-        Some(libc::ESRCH)
-    )
+    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+    let size = std::mem::size_of::<libc::proc_bsdinfo>();
+    let bytes = unsafe {
+        libc::proc_pidinfo(
+            pid,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size as libc::c_int,
+        )
+    };
+    if bytes == size as libc::c_int {
+        return unsafe { info.assume_init() }.pbi_status != libc::SZOMB;
+    }
+    if bytes == 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+        return false;
+    }
+    true
 }
 
 #[cfg(target_os = "macos")]

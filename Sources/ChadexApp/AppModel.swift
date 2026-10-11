@@ -80,6 +80,12 @@ final class AppModel: ObservableObject {
     /// Agent cursor overlay (Computer Use). Best effort: the panel is created on the
     /// first event, and nothing here can fail an action or a request.
     private let overlayController: ComputerOverlayController
+    /// Whether ChatGPT is operating the Mac (menu bar and corner notice).
+    @Published private(set) var computerActivity: ComputerActivityState = .idle
+    private let activityTracker = ComputerActivityTracker.live()
+    /// Only in a real app bundle (not `swift test`).
+    private let activityNotice: ComputerActivityNotice? =
+        Bundle.main.bundleURL.pathExtension == "app" ? ComputerActivityNotice() : nil
     private var overlaySystemObservers: ComputerOverlaySystemObservers?
     private var overlaySyncTask: Task<Void, Never>?
     private var overlaySyncGeneration = 0
@@ -89,6 +95,7 @@ final class AppModel: ObservableObject {
     private let keychainACLVersionKey = "app.chadex.keychain-acl-version"
     private let currentKeychainACLVersion = 1
     private var pollingTask: Task<Void, Never>?
+    private let goalNotifier = GoalNotifier()
     private(set) var runtimePrewarmTask: Task<Void, Never>?
     /// Code of the last Skill catalog or inventory failure, used to recognise a
     /// runtime that serves another project than the selected one.
@@ -122,6 +129,11 @@ final class AppModel: ObservableObject {
     // the connection green. Users usually switch to ChatGPT at this point, so
     // keep a fast poll even in the background for a bounded window.
     private var awaitingChatGPTSinceUptime: TimeInterval?
+    /// Plan & Goal keeps no leftovers: the board is cleared once per launch
+    /// and whenever ChatGPT's connection to the same project ends.
+    private var planGoalBoardClearedThisLaunch = false
+    private var lastChatGPTConnection: (connected: Bool, projectPath: String?)?
+    private var planGoalBoardClearInFlight = false
     private let awaitingChatGPTFastPollWindow: TimeInterval = 120
     private let skillsRefreshMaxAge: TimeInterval = 5
     private let projectMemoryRefreshMaxAge: TimeInterval = 5
@@ -298,6 +310,7 @@ final class AppModel: ObservableObject {
 
     func start() {
         guard pollingTask == nil else { return }
+        goalNotifier.start(app: self)
         isBootstrapping = true
         pollingTask = Task { [weak self] in
             guard let self else { return }
@@ -343,7 +356,9 @@ final class AppModel: ObservableObject {
         // asking it to quit: the poll loop and any in-flight launch warm-up.
         isShuttingDown = true
         overlayController.hideImmediately()
+        activityTracker.reset()
         pollingTask?.cancel()
+        goalNotifier.stop()
         runtimePrewarmTask?.cancel()
         pollWaker.signal()
         await helper.shutdown()
@@ -649,11 +664,18 @@ final class AppModel: ObservableObject {
     // MARK: - Agent cursor overlay
 
     private func installOverlayHooks() {
+        activityTracker.onChange = { [weak self] state in
+            self?.computerActivity = state
+            self?.activityNotice?.update(state)
+        }
         // Events arrive on a background thread. DispatchQueue.main.async keeps the
         // helper's order (separate `Task { @MainActor }` hops would not).
         helper.onEvent = { [weak self] event in
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { self?.overlayController.handle(event) }
+                MainActor.assumeIsolated {
+                    self?.overlayController.handle(event)
+                    self?.activityTracker.handle(event)
+                }
             }
         }
         helper.onLifecycle = { [weak self] event in
@@ -663,7 +685,10 @@ final class AppModel: ObservableObject {
                 Task { @MainActor [weak self] in await self?.syncOverlayEvents() }
             case .terminated:
                 DispatchQueue.main.async {
-                    MainActor.assumeIsolated { self?.overlayController.hideImmediately() }
+                    MainActor.assumeIsolated {
+                        self?.overlayController.hideImmediately()
+                        self?.activityTracker.reset()
+                    }
                 }
             }
         }
@@ -690,7 +715,7 @@ final class AppModel: ObservableObject {
         await syncOverlayEvents()
     }
 
-    /// Tell the helper whether to forward overlay events. Failures are logged only:
+    /// Tell the helper to forward overlay events (always on; see the loop). Failures are logged only:
     /// the overlay is cosmetic, so it never shows an error.
     ///
     /// Requests are serialized (the helper handles them concurrently, so two in
@@ -717,7 +742,9 @@ final class AppModel: ObservableObject {
         defer { overlaySyncTask = nil }
         while !isShuttingDown && helper.isRunning {
             let generation = overlaySyncGeneration
-            let enabled = preferences.computerCursorOverlayEnabled
+            // Always on: the activity notice needs every action even when the
+            // cursor is switched off (the controller then draws nothing).
+            let enabled = true
             do {
                 let _: JSONValue = try await helper.request(
                     method: "setComputerOverlayEvents",
@@ -852,6 +879,7 @@ final class AppModel: ObservableObject {
     func stopComputerControl() async {
         // Stop means stop: hide the agent cursor now, before the helper answers.
         overlayController.hideImmediately()
+        activityTracker.reset()
         guard !computerSafetyMutationInFlight else { return }
         computerSafetyMutationInFlight = true
         defer { computerSafetyMutationInFlight = false }
@@ -1306,6 +1334,62 @@ final class AppModel: ObservableObject {
             await refreshSkills()
             skillsError = removeError
             return false
+        }
+    }
+
+    /// Calls the helper's `planGoalOperator` bridge for the selected project.
+    /// Backend failures (`success == false`) and transport errors both come
+    /// back as `.failure` with a message the panel can show inline.
+    /// Clears the Plan & Goal board on the first ready snapshot of a launch
+    /// and when ChatGPT disconnects from the same project. A project switch is
+    /// not a disconnect. Running Goals keep going; nothing is deleted.
+    private func clearPlanGoalBoardWhenStale(_ candidate: BackendSnapshot) {
+        let projectPath = selectedProject?.path
+        let previous = lastChatGPTConnection
+        lastChatGPTConnection = (candidate.chatGPTConnected, projectPath)
+        let disconnected = previous?.connected == true
+            && !candidate.chatGPTConnected
+            && previous?.projectPath == projectPath
+        let launch = !planGoalBoardClearedThisLaunch && candidate.runtimeReady == true
+        guard (launch || disconnected), projectPath != nil, !planGoalBoardClearInFlight else { return }
+        planGoalBoardClearInFlight = true
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.planGoalBoardClearInFlight = false }
+            // Let the notifier see runs that just finished before they leave
+            // the lists.
+            await self.goalNotifier.pollNow()
+            let result = await self.planGoalOperator(
+                tool: "goal_operator",
+                arguments: PlanGoalArguments(action: "clear_board"),
+                as: JSONValue.self
+            )
+            if case .success = result { self.planGoalBoardClearedThisLaunch = true }
+        }
+    }
+
+    func planGoalOperator<Output: Decodable>(
+        tool: String,
+        arguments: PlanGoalArguments,
+        as outputType: Output.Type
+    ) async -> PlanGoalResult<Output> {
+        guard let selectedProject else {
+            return .failure(message: L10n.string("planGoal.error.noProject"), kind: nil)
+        }
+        do {
+            let envelope: PlanGoalEnvelope<Output> = try await helper.request(
+                method: "planGoalOperator",
+                params: PlanGoalOperatorParams(path: selectedProject.path, tool: tool, arguments: arguments)
+            )
+            if envelope.success, let output = envelope.output {
+                return .success(output)
+            }
+            let message = envelope.error
+                ?? envelope.failure?.message
+                ?? L10n.string("planGoal.error.unknown")
+            return .failure(message: message, kind: envelope.failure?.errorKind)
+        } catch {
+            return .failure(message: helperErrorMessage(error), kind: nil)
         }
     }
 
@@ -2386,6 +2470,7 @@ final class AppModel: ObservableObject {
         let previousPollInterval = pollInterval
         snapshot = candidate
         snapshotFreshnessGate.markApplied(at: ProcessInfo.processInfo.systemUptime)
+        clearPlanGoalBoardWhenStale(candidate)
         if candidate.tunnelReady && !candidate.chatGPTConnected {
             if awaitingChatGPTSinceUptime == nil {
                 awaitingChatGPTSinceUptime = ProcessInfo.processInfo.systemUptime

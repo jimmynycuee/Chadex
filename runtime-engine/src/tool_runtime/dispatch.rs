@@ -2368,6 +2368,116 @@ impl ToolRuntime {
                 .await
             }
 
+            ToolCall::PlanStart { project, title } => self.plan_start(auth, project, title).await,
+
+            ToolCall::PlanSave {
+                plan_id,
+                parent_revision,
+                content,
+                acceptance,
+                budget,
+            } => {
+                let (acceptance, budget) =
+                    match super::plan_mode::parse_plan_spec_parts(acceptance, budget) {
+                        Ok(value) => value,
+                        Err(result) => return result,
+                    };
+                self.plan_save(auth, plan_id, parent_revision, content, acceptance, budget)
+                    .await
+            }
+
+            ToolCall::PlanGet {
+                plan_id,
+                revision,
+                diff_from,
+            } => self.plan_get(auth, plan_id, revision, diff_from),
+
+            ToolCall::PlanList { include_closed } => {
+                self.plan_list(auth, include_closed.unwrap_or(false))
+            }
+
+            ToolCall::GoalRunStart {
+                plan_id,
+                project,
+                title,
+                objective,
+                acceptance,
+                budget,
+            } => match (plan_id, objective) {
+                (Some(plan_id), None) if project.is_none() && acceptance.is_none() && budget.is_none() => {
+                    self.goal_run_start(auth, plan_id).await
+                }
+                (None, Some(objective)) => {
+                    let (acceptance, budget) =
+                        match super::plan_mode::parse_plan_spec_parts(acceptance, budget) {
+                            Ok(value) => value,
+                            Err(result) => return result,
+                        };
+                    self.goal_request(auth, project, title, objective, acceptance, budget)
+                        .await
+                }
+                _ => ToolResult::err_with_output(
+                    "Pass either plan_id (to find a Goal the user started) or project + title + objective + acceptance (a direct Goal request), not both",
+                    serde_json::json!({"error_kind": "invalid_arguments", "state_changed": false}),
+                )
+                .with_recovery(super::RecoveryKind::FixInput),
+            },
+
+            ToolCall::PlanWaitApproval { plan_id, wait_secs } => {
+                self.plan_wait_approval(auth, plan_id, wait_secs.unwrap_or(45)).await
+            }
+
+            ToolCall::GoalCheck {
+                goal_run_id,
+                wait_secs,
+            } => self.goal_check(auth, goal_run_id, wait_secs.unwrap_or(45)).await,
+
+            ToolCall::GoalRunStatus {
+                goal_run_id,
+                wait_secs,
+            } => self.goal_run_status(auth, goal_run_id, wait_secs.unwrap_or(0)).await,
+
+            ToolCall::GoalRunList {} => self.goal_run_list(auth),
+
+            ToolCall::GoalRunControl {
+                goal_run_id,
+                action,
+            } => self.goal_run_control(auth, goal_run_id, action),
+
+            ToolCall::PlanReview {
+                action,
+                plan_id,
+                revision,
+                content_sha256,
+                reason,
+                approval_id,
+                ttl_minutes,
+                mode,
+            } => {
+                self.plan_review(
+                    auth,
+                    transport,
+                    action,
+                    plan_id,
+                    revision,
+                    content_sha256,
+                    reason,
+                    approval_id,
+                    ttl_minutes,
+                    mode,
+                )
+                .await
+            }
+
+            ToolCall::GoalOperator {
+                action,
+                goal_run_id,
+                reason,
+            } => {
+                self.goal_operator(auth, transport, action, goal_run_id, reason)
+                    .await
+            }
+
             ToolCall::CreateGoal {
                 title,
                 objective,

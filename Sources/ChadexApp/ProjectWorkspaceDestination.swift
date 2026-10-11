@@ -3,4 +3,5 @@ enum ProjectWorkspaceDestination: String, Hashable {
     case agentSettings
     case skills
     case computerUse
+    case planGoal
 }
