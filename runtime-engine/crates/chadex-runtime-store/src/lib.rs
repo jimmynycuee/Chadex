@@ -74,7 +74,8 @@ pub use self::goal::{
 };
 pub use self::goal_run::{
     GoalControlAction, GoalEventRecord, GoalLease, GoalOpRecord, GoalOpState, GoalRunDetail,
-    GoalRunRecord, GoalRunStartOutcome, GoalRunState, GoalStartEnvironment, GOAL_RUN_ID_PREFIX,
+    GoalRunRecord, GoalRunStartOutcome, GoalRunState, GoalStartEnvironment, CHATGPT_GOAL_IDLE_MS,
+    CHATGPT_GOAL_PROVIDER, GOAL_RUN_ID_PREFIX, UNBORN_BASE_COMMIT,
 };
 pub use self::plan::{
     plan_content_sha256, plan_line_diff, AcceptanceCheck, GoalBudget, PlanApprovalBinding,

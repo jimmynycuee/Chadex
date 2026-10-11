@@ -24,6 +24,7 @@ use super::plan_mode::{goal_dispatch_auth, now_unix_ms, with_goal_run_dispatch};
 use super::ToolRuntime;
 use crate::db::{
     Database, GoalLease, GoalOpState, GoalRunRecord, GoalRunState, PlanReader, PlanStoreError,
+    CHATGPT_GOAL_IDLE_MS, CHATGPT_GOAL_PROVIDER,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -565,16 +566,49 @@ impl GoalSupervisor {
                 );
             }
 
-            // 1. Agent work (exactly once per iteration).
-            let feedback = self.previous_feedback(run_id, iteration - 1);
-            let prompt = build_prompt(&self.db, &run, iteration, feedback.as_deref());
-            let spec = self.provider.spec(prompt, run.spec.budget.agent_timeout_secs);
-            let agent = match self
-                .run_op(&run, &workspace, lease, lost, &format!("agent:{iteration}"), "agent", iteration, spec, OpPolicy::ExactlyOnce)
-                .await?
-            {
-                OpOutcome::Done(outcome) => outcome,
-                OpOutcome::Park(park) => return self.park(run_id, lease, park),
+            // 1. Agent work (exactly once per iteration). In ChatGPT mode the
+            //    work is ChatGPT's own edits, signalled by goal_check.
+            let agent = if run.provider == CHATGPT_GOAL_PROVIDER {
+                if run.chatgpt_ready_iteration < iteration {
+                    // Fresh read: a goal_check that just arrived must win.
+                    let run = self.db.goal_run_fenced(run_id, lease)?;
+                    if run.chatgpt_ready_iteration >= iteration {
+                        continue;
+                    }
+                    let seen = run.chatgpt_seen_at_unix_ms.unwrap_or(run.created_at_unix_ms);
+                    if now_unix_ms() - seen >= CHATGPT_GOAL_IDLE_MS {
+                        return self.park(
+                            run_id,
+                            lease,
+                            Park::new(
+                                GoalRunState::Paused,
+                                "chatgpt_idle: no goal_check from ChatGPT for 30 minutes; tell ChatGPT to continue to resume",
+                            ),
+                        );
+                    }
+                    // Nothing to do until ChatGPT reports its edits: give the
+                    // lease back so the run is claimed again only then.
+                    self.db.goal_run_release_lease(run_id, lease)?;
+                    return Ok(());
+                }
+                self.event(run_id, "chatgpt_turn", json!({"iteration": iteration}));
+                ProcessOutcome {
+                    exit_code: Some(0),
+                    timed_out: false,
+                    stdout_tail: String::new(),
+                    stderr_tail: String::new(),
+                }
+            } else {
+                let feedback = self.previous_feedback(run_id, iteration - 1);
+                let prompt = build_prompt(&self.db, &run, iteration, feedback.as_deref());
+                let spec = self.provider.spec(prompt, run.spec.budget.agent_timeout_secs);
+                match self
+                    .run_op(&run, &workspace, lease, lost, &format!("agent:{iteration}"), "agent", iteration, spec, OpPolicy::ExactlyOnce)
+                    .await?
+                {
+                    OpOutcome::Done(outcome) => outcome,
+                    OpOutcome::Park(park) => return self.park(run_id, lease, park),
+                }
             };
             if let Some(used) = parse_tokens_used(&agent.stdout_tail).or_else(|| parse_tokens_used(&agent.stderr_tail)) {
                 tokens = Some(tokens.unwrap_or(0) + used);
@@ -852,10 +886,18 @@ impl GoalSupervisor {
     }
 
     fn previous_feedback(&self, run_id: &str, iteration: i64) -> Option<String> {
+        acceptance_feedback(&self.db, run_id, iteration)
+    }
+}
+
+/// Failed acceptance output of one iteration, bounded, for the next agent
+/// turn (Codex prompt or ChatGPT's goal_check result).
+pub(crate) fn acceptance_feedback(db: &Database, run_id: &str, iteration: i64) -> Option<String> {
+    {
         if iteration < 1 {
             return None;
         }
-        let detail = self.db.goal_run_read(PlanReader::Operator, run_id).ok()?;
+        let detail = db.goal_run_read(PlanReader::Operator, run_id).ok()?;
         let mut feedback = String::new();
         for op in detail
             .ops
@@ -880,7 +922,9 @@ impl GoalSupervisor {
         }
         (!feedback.is_empty()).then(|| tail_bytes(&feedback, MAX_FEEDBACK_BYTES))
     }
+}
 
+impl GoalSupervisor {
     /// Execute one journaled operation and wait for its terminal outcome.
     #[allow(clippy::too_many_arguments)]
     async fn run_op(

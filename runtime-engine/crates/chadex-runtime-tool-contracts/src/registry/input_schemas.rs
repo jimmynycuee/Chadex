@@ -105,7 +105,7 @@ pub use git::{
     git_review_summary_input_schema, git_status_input_schema, show_changes_input_schema,
 };
 pub use plans::{
-    goal_operator_input_schema, goal_run_control_input_schema, goal_run_list_input_schema,
+    goal_check_input_schema, goal_operator_input_schema, plan_wait_approval_input_schema, goal_run_control_input_schema, goal_run_list_input_schema,
     goal_run_start_input_schema, goal_run_status_input_schema, plan_get_input_schema,
     plan_list_input_schema, plan_review_input_schema, plan_save_input_schema,
     plan_start_input_schema,

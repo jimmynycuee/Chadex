@@ -25,6 +25,8 @@ struct PlanGoalArguments: Encodable, Equatable {
     var approvalId: String?
     var ttlMinutes: Int?
     var goalRunId: String?
+    /// Goal execution mode for `approve_and_start`: "codex" or "chatgpt".
+    var mode: String?
 }
 
 // MARK: - Envelope
@@ -209,8 +211,17 @@ struct GoalRun: Decodable, Equatable, Identifiable {
     var createdAtUnixMs: Int?
     var updatedAtUnixMs: Int?
     var finishedAtUnixMs: Int?
+    /// "codex" or "chatgpt"; a missing value means codex.
+    var mode: String?
+    var workspaceProject: String?
+    var waitingForChatgpt: Bool?
+    /// English hint written for the model, not shown to the person.
+    var nextAction: String?
 
     var id: String { goalRunId }
+    var isChatgptMode: Bool { mode == "chatgpt" }
+    var isWaitingForChatgpt: Bool { isChatgptMode && (waitingForChatgpt ?? false) }
+    var isChatgptIdle: Bool { isChatgptMode && state == "paused" && (stateReason ?? "").hasPrefix("chatgpt_idle") }
     var canPause: Bool { state == "running" || state == "queued" }
     var canResume: Bool { state == "paused" || state == "needs_attention" }
     var canCancel: Bool {

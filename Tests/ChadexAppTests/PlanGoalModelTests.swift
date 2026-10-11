@@ -116,4 +116,38 @@ final class PlanGoalModelTests: XCTestCase {
         XCTAssertEqual(arguments["content_sha256"] as? String, planHash)
         XCTAssertNil(arguments["reason"])
     }
+
+    func testGoalRunDecodesModeFieldsAndDefaultsToCodex() throws {
+        let legacy = try XCTUnwrap(try decode(GoalRunOutput.self,
+            #"{"success":true,"output":{"goal_run":{"goal_run_id":"r1","state":"running"}}}"#).output?.goalRun)
+        XCTAssertNil(legacy.mode)
+        XCTAssertFalse(legacy.isChatgptMode)
+        XCTAssertFalse(legacy.isWaitingForChatgpt)
+        XCTAssertFalse(legacy.isChatgptIdle)
+
+        let waiting = try XCTUnwrap(try decode(GoalRunOutput.self, #"""
+        {"success":true,"output":{"goal_run":{"goal_run_id":"r2","state":"running","mode":"chatgpt",
+         "workspace_project":"/tmp/p","waiting_for_chatgpt":true,"next_action":"call goal_check"}}}
+        """#).output?.goalRun)
+        XCTAssertTrue(waiting.isChatgptMode)
+        XCTAssertTrue(waiting.isWaitingForChatgpt)
+        XCTAssertEqual(waiting.workspaceProject, "/tmp/p")
+        XCTAssertEqual(waiting.nextAction, "call goal_check")
+
+        let idle = try XCTUnwrap(try decode(GoalRunOutput.self, #"""
+        {"success":true,"output":{"goal_run":{"goal_run_id":"r3","state":"paused",
+         "state_reason":"chatgpt_idle: no goal_check","mode":"chatgpt"}}}
+        """#).output?.goalRun)
+        XCTAssertTrue(idle.isChatgptIdle)
+        XCTAssertFalse(idle.isWaitingForChatgpt)
+    }
+
+    func testApproveAndStartArgumentsEncodeMode() throws {
+        let args = PlanGoalArguments(action: "approve_and_start", planId: "p1", revision: 1,
+                                     contentSha256: "abc", mode: "chatgpt")
+        let json = String(decoding: try JSONEncoder.chadex.encode(args), as: UTF8.self)
+        XCTAssertTrue(json.contains(#""mode":"chatgpt""#), json)
+        let none = String(decoding: try JSONEncoder.chadex.encode(PlanGoalArguments(action: "approve")), as: UTF8.self)
+        XCTAssertFalse(none.contains("mode"), none)
+    }
 }

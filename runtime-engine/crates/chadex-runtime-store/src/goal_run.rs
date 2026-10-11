@@ -15,6 +15,12 @@ use serde::Serialize;
 use serde_json::Value;
 
 pub const GOAL_RUN_ID_PREFIX: &str = "wc_grun_";
+/// Approval binding of a plan approved while the project had no commit.
+pub const UNBORN_BASE_COMMIT: &str = "unborn";
+/// Provider name of a Goal whose agent work is done by ChatGPT itself.
+pub const CHATGPT_GOAL_PROVIDER: &str = "chatgpt";
+/// A ChatGPT-mode run with no goal_check for this long is paused.
+pub const CHATGPT_GOAL_IDLE_MS: i64 = 30 * 60 * 1000;
 const MAX_GOAL_RUN_EVENTS_RETURNED: usize = 60;
 const MAX_GOAL_EVENT_DETAIL_BYTES: usize = 16 * 1024;
 const MAX_OP_RESULT_BYTES: usize = 32 * 1024;
@@ -147,6 +153,13 @@ pub struct GoalRunRecord {
     pub deadline_at_unix_ms: i64,
     pub updated_at_unix_ms: i64,
     pub finished_at_unix_ms: Option<i64>,
+    /// ChatGPT mode: the iteration ChatGPT has finished editing for (the
+    /// supervisor checks it once `iteration` catches up).
+    pub chatgpt_ready_iteration: i64,
+    pub chatgpt_seen_at_unix_ms: Option<i64>,
+    /// The last iteration whose result goal_check showed to ChatGPT. A new
+    /// round starts only after ChatGPT has seen the previous one.
+    pub chatgpt_reported_iteration: i64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -295,6 +308,23 @@ impl Database {
         if !dismissed_exists {
             conn.execute_batch("ALTER TABLE wc_goal_runs ADD COLUMN dismissed_at_unix_ms INTEGER")?;
         }
+        // Added later: ChatGPT-mode turn handshake (see goal_run_chatgpt_ready).
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for (column, definition) in [
+            ("chatgpt_ready_iteration", "INTEGER NOT NULL DEFAULT 0"),
+            ("chatgpt_seen_at_unix_ms", "INTEGER"),
+            ("chatgpt_reported_iteration", "INTEGER NOT NULL DEFAULT 0"),
+        ] {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('wc_goal_runs') WHERE name = ?1)",
+                params![column],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                tx.execute_batch(&format!("ALTER TABLE wc_goal_runs ADD COLUMN {column} {definition}"))?;
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -368,6 +398,12 @@ impl Database {
             return Err(PlanStoreError::new(
                 "plan_approval_environment_changed",
                 "The project's Runner or root changed since approval; review and approve again",
+            ));
+        }
+        if binding.base_commit == UNBORN_BASE_COMMIT {
+            return Err(PlanStoreError::new(
+                "plan_base_commit_unavailable",
+                "This plan was approved without a Git commit. A Goal starts from a commit: commit the project, then approve again.",
             ));
         }
         if kill_switch_engaged(&tx)? {
@@ -496,11 +532,20 @@ impl Database {
                     "SELECT goal_run_id FROM wc_goal_runs
                      WHERE state IN ('queued', 'running')
                        AND (lease_owner IS NULL OR lease_expires_at_unix_ms <= ?1)
+                       -- A ChatGPT-mode run is driven only when it has work:
+                       -- its worktree, a finished ChatGPT turn, a control
+                       -- request, or a deadline/idle limit to enforce.
+                       AND (provider <> 'chatgpt'
+                            OR workspace_path IS NULL
+                            OR chatgpt_ready_iteration > iteration
+                            OR control_request IS NOT NULL
+                            OR deadline_at_unix_ms <= ?1
+                            OR COALESCE(chatgpt_seen_at_unix_ms, created_at_unix_ms) <= ?1 - ?2)
                      ORDER BY created_at_unix_ms",
                 )
                 .map_err(plan_store_error)?;
             let rows = statement
-                .query_map(params![now], |row| row.get::<_, String>(0))
+                .query_map(params![now, CHATGPT_GOAL_IDLE_MS], |row| row.get::<_, String>(0))
                 .map_err(plan_store_error)?;
             rows.collect::<Result<Vec<_>, _>>()
                 .map_err(plan_store_error)?
@@ -559,6 +604,141 @@ impl Database {
         } else {
             Err(lease_lost())
         }
+    }
+
+    /// Give the lease back without changing state, so a waiting ChatGPT-mode
+    /// run is claimed again as soon as it has work.
+    pub fn goal_run_release_lease(&self, run_id: &str, lease: &GoalLease) -> Result<(), PlanStoreError> {
+        let conn = self.lock_connection(crate::StoreDomain::Goal);
+        conn.execute(
+            "UPDATE wc_goal_runs SET lease_owner = NULL, lease_expires_at_unix_ms = NULL
+             WHERE goal_run_id = ?1 AND lease_owner = ?2 AND lease_generation = ?3",
+            params![run_id, lease.owner, lease.generation],
+        )
+        .map_err(plan_store_error)?;
+        Ok(())
+    }
+
+    /// ChatGPT mode: the owner reports that its edits for the next iteration
+    /// are done. Only the approved acceptance checks run afterwards; nothing
+    /// the model sends is executed. Idempotent while that check is pending,
+    /// a no-op before the worktree exists, and it resumes a run that was
+    /// paused only because ChatGPT went idle.
+    pub fn goal_run_chatgpt_ready(
+        &self,
+        owner_key: &str,
+        run_id: &str,
+        now: i64,
+    ) -> Result<GoalRunRecord, PlanStoreError> {
+        let mut conn = self.lock_connection(crate::StoreDomain::Goal);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(plan_store_error)?;
+        let run = load_run(&tx, run_id)?;
+        if run.owner_key != owner_key {
+            return Err(PlanStoreError::new("goal_run_not_found", "Goal run not found"));
+        }
+        if run.provider != CHATGPT_GOAL_PROVIDER {
+            return Err(PlanStoreError::new(
+                "goal_run_not_chatgpt_mode",
+                "This Goal runs in Codex mode inside Chadex; follow it with goal_run_status",
+            ));
+        }
+        if run.state.terminal() {
+            tx.commit().map_err(plan_store_error)?;
+            return Ok(run);
+        }
+        let idle_paused = run.state == GoalRunState::Paused
+            && run.state_reason.as_deref().is_some_and(|reason| reason.starts_with("chatgpt_idle"));
+        if !matches!(run.state, GoalRunState::Queued | GoalRunState::Running) && !idle_paused {
+            return Err(PlanStoreError::new(
+                "goal_run_not_waiting",
+                "This Goal is paused or needs attention; resume it in the Chadex app first",
+            ));
+        }
+        if kill_switch_engaged(&tx)? || run.control_request.is_some() {
+            return Err(PlanStoreError::new(
+                "goal_run_stopping",
+                "This Goal is being paused, cancelled or emergency-stopped; do not continue",
+            ));
+        }
+        // A new round starts only once ChatGPT has seen the previous round's
+        // result; otherwise this call just reports where the run is.
+        let ready = if run.workspace_path.is_some()
+            && run.chatgpt_ready_iteration <= run.iteration
+            && run.chatgpt_reported_iteration >= run.iteration
+        {
+            run.iteration + 1
+        } else {
+            run.chatgpt_ready_iteration
+        };
+        tx.execute(
+            "UPDATE wc_goal_runs SET chatgpt_ready_iteration = ?2, chatgpt_seen_at_unix_ms = ?3,
+                 state = CASE WHEN state = 'paused' THEN 'queued' ELSE state END,
+                 state_reason = CASE WHEN state = 'paused' THEN NULL ELSE state_reason END,
+                 updated_at_unix_ms = ?3
+             WHERE goal_run_id = ?1",
+            params![run_id, ready, now],
+        )
+        .map_err(plan_store_error)?;
+        if ready != run.chatgpt_ready_iteration || idle_paused {
+            append_event(
+                &tx,
+                run_id,
+                now,
+                "chatgpt_ready",
+                &serde_json::json!({"iteration": ready, "resumed": idle_paused}),
+            )?;
+        }
+        let run = load_run(&tx, run_id)?;
+        tx.commit().map_err(plan_store_error)?;
+        Ok(run)
+    }
+
+    /// Record that goal_check showed ChatGPT the result of `iteration`.
+    pub fn goal_run_chatgpt_reported(
+        &self,
+        owner_key: &str,
+        run_id: &str,
+        iteration: i64,
+    ) -> Result<(), PlanStoreError> {
+        let conn = self.lock_connection(crate::StoreDomain::Goal);
+        conn.execute(
+            "UPDATE wc_goal_runs SET chatgpt_reported_iteration = MAX(chatgpt_reported_iteration, ?3)
+             WHERE goal_run_id = ?1 AND owner_key = ?2 AND iteration >= ?3",
+            params![run_id, owner_key, iteration],
+        )
+        .map_err(plan_store_error)?;
+        Ok(())
+    }
+
+    /// The run an approval of this plan's latest revision already started,
+    /// if any. Never consumes an approval: only the Chadex app starts Goals.
+    pub fn goal_run_for_plan(
+        &self,
+        owner_key: &str,
+        plan_id: &str,
+        now: i64,
+    ) -> Result<Option<GoalRunRecord>, PlanStoreError> {
+        let mut conn = self.lock_connection(crate::StoreDomain::Goal);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(plan_store_error)?;
+        let plan = load_owned_plan(&tx, PlanReader::Owner(owner_key), plan_id, now)?;
+        let run_id: Option<String> = tx
+            .query_row(
+                "SELECT consumed_by_goal_run_id FROM wc_plan_decisions
+                 WHERE plan_id = ?1 AND state = 'consumed' AND revision = ?2
+                 ORDER BY decided_at_unix_ms DESC LIMIT 1",
+                params![plan_id, plan.latest_revision],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(plan_store_error)?
+            .flatten();
+        let run = run_id.map(|id| load_run(&tx, &id)).transpose()?;
+        tx.commit().map_err(plan_store_error)?;
+        Ok(run)
     }
 
     /// Fenced read used by the supervisor at every safe point.
@@ -864,7 +1044,10 @@ impl Database {
                 } else {
                     "cancel"
                 };
-                if run.state == GoalRunState::Running {
+                // A ChatGPT-mode run waiting for its next turn holds no lease
+                // and has nothing in flight: apply directly, like a queued run.
+                let idle_chatgpt = run.provider == CHATGPT_GOAL_PROVIDER && run.lease_owner.is_none();
+                if run.state == GoalRunState::Running && !idle_chatgpt {
                     // The supervisor applies it at the next safe point and
                     // never dispatches after observing it.
                     tx.execute(
@@ -916,7 +1099,8 @@ impl Database {
                 }
                 tx.execute(
                     "UPDATE wc_goal_runs SET state = 'queued', state_reason = 'resumed',
-                         control_request = NULL, updated_at_unix_ms = ?2
+                         control_request = NULL, updated_at_unix_ms = ?2,
+                         chatgpt_seen_at_unix_ms = ?2
                      WHERE goal_run_id = ?1",
                     params![run_id, now],
                 )
@@ -963,7 +1147,10 @@ impl Database {
             let ids: Vec<(String, String)> = {
                 let mut statement = tx
                     .prepare(
-                        "SELECT goal_run_id, state FROM wc_goal_runs
+                        "SELECT goal_run_id,
+                                CASE WHEN state = 'running' AND provider = 'chatgpt' AND lease_owner IS NULL
+                                     THEN 'idle' ELSE state END
+                         FROM wc_goal_runs
                          WHERE state IN ('queued', 'running', 'paused', 'needs_attention')",
                     )
                     .map_err(plan_store_error)?;
@@ -1012,6 +1199,18 @@ impl Database {
         conn.execute(
             "UPDATE wc_goal_runs SET deadline_at_unix_ms = ?2 WHERE goal_run_id = ?1",
             params![run_id, deadline],
+        )
+        .map_err(plan_store_error)?;
+        Ok(())
+    }
+
+    /// Test support: pretend ChatGPT was last seen at `at`.
+    #[doc(hidden)]
+    pub fn goal_run_override_chatgpt_seen(&self, run_id: &str, at: i64) -> Result<(), PlanStoreError> {
+        let conn = self.lock_connection(crate::StoreDomain::Goal);
+        conn.execute(
+            "UPDATE wc_goal_runs SET chatgpt_seen_at_unix_ms = ?2 WHERE goal_run_id = ?1",
+            params![run_id, at],
         )
         .map_err(plan_store_error)?;
         Ok(())
@@ -1263,7 +1462,8 @@ pub(crate) fn load_run(conn: &Connection, run_id: &str) -> Result<GoalRunRecord,
                 state_reason, control_request, iteration, same_failure_streak,
                 last_failure_digest, workspace_project_id, workspace_path, workspace_branch,
                 tokens_used, lease_owner, lease_generation, lease_expires_at_unix_ms,
-                created_at_unix_ms, deadline_at_unix_ms, updated_at_unix_ms, finished_at_unix_ms
+                created_at_unix_ms, deadline_at_unix_ms, updated_at_unix_ms, finished_at_unix_ms,
+                chatgpt_ready_iteration, chatgpt_seen_at_unix_ms, chatgpt_reported_iteration
          FROM wc_goal_runs WHERE goal_run_id = ?1",
         params![run_id],
         |row| {
@@ -1308,6 +1508,9 @@ pub(crate) fn load_run(conn: &Connection, run_id: &str) -> Result<GoalRunRecord,
                 deadline_at_unix_ms: row.get(25)?,
                 updated_at_unix_ms: row.get(26)?,
                 finished_at_unix_ms: row.get(27)?,
+                chatgpt_ready_iteration: row.get(28)?,
+                chatgpt_seen_at_unix_ms: row.get(29)?,
+                chatgpt_reported_iteration: row.get(30)?,
             })
         },
     )

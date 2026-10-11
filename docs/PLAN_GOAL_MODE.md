@@ -1,21 +1,23 @@
 # Plan Mode 與 Goal Mode
 
-兩種入口，執行都由 Chadex 自己的機制連續推進、以客觀驗收判定完成：
+兩個獨立的功能：
 
-- **直接 Goal**：在 ChatGPT 給目標與驗收指令 → Chadex 記下請求並通知 → 使用者在 App 按「開始 Goal」。不需要先 Plan。
-- **先 Plan**：以**後端強制唯讀**的 Plan Mode 規劃 → 使用者在 App 核准**確切版本**（可「核准並開始 Goal」一步完成）。適合大型或不確定的工作。
+- **Plan Mode**：以**後端強制唯讀**的 Plan Mode 規劃 → 使用者在 App 核准**確切版本**（「核准，讓 ChatGPT 開工」）→ ChatGPT 在同一則回覆裡（`plan_wait_approval` 拿到 `approved`）直接在專案中實作並跑驗收。不建立 Goal、不使用 Codex。
+- **Goal Mode**：在 ChatGPT 給目標與驗收指令 → Chadex 記下請求並通知 → 使用者在 App 選模式開始：
+  - **Codex 模式**：Chadex 在背景用 Codex CLI 一輪輪修改直到驗收通過，可關閉 ChatGPT；**會消耗使用者的 Codex token／額度**。
+  - **ChatGPT 模式**：ChatGPT 在對話中自己修改 Goal 的隔離 worktree，每輪呼叫 `goal_check`，Chadex commit 並跑核准的驗收，沒過就叫它繼續；不消耗 Codex 額度，但對話要開著。
 
-模型永遠不能自己啟動無人值守的執行：啟動一定要在 App 按一下。
+模型永遠不能自己啟動 Goal：開始一定要在 App 按一下，模式也由使用者在 App 選。
 
 ## 使用方式（ChatGPT）
 
 | 想做的事 | 在 ChatGPT 輸入 | 實際入口 |
 | --- | --- | --- |
+| 規劃、不動程式 | 「`@chadex-plan` 規劃 ○○，先不要改程式」 | `plan_start` → 唯讀調查 → `plan_save` → `plan_wait_approval`（每次最多等 45 秒，同一則回覆內重複呼叫） |
+| 核准計畫並開工 | **不在 ChatGPT**：App「Plan & Goal」（⌘6）→「核准第 N 版，讓 ChatGPT 開工」 | `plan_review` `approve`（只限 App）；ChatGPT 的 `plan_wait_approval` 回 `approved` 後直接實作。若 ChatGPT 的回覆已結束，回去說「開始」 |
 | 直接給目標 | 「`@chadex-goal` 修好 ○○，驗收用 `python3 -m unittest`」 | `goal_run_start`（project、title、objective、acceptance）→ 狀態 `awaiting_start` |
-| 開始直接 Goal | **不在 ChatGPT**：App「Plan & Goal」（⌘6）→「開始 Goal」；Mac 會跳通知 | `plan_review` `approve_and_start`（只限 App） |
-| 規劃、不動程式 | 「使用 Chadex Plan Mode 規劃 ○○，先不要改程式」或 `@chadex-plan` | `plan_start` → 唯讀調查 → `plan_save` |
-| 核准計畫 | **不在 ChatGPT**：App →「核准第 N 版並開始 Goal」或「只核准」 | `plan_review` `approve_and_start`／`approve`（只限 App） |
-| 執行已核准（只核准時） | 「使用 Chadex Goal Mode 執行已核准計畫」 | `goal_run_start`（plan_id） |
+| 開始 Goal | **不在 ChatGPT**：App →「用 Codex 在背景執行」（消耗 Codex token）或「在 ChatGPT 對話中執行」 | `plan_review` `approve_and_start` + `mode`（`codex`／`chatgpt`，只限 App） |
+| ChatGPT 模式的每一輪 | ChatGPT 自己改 `workspace_project`，再呼叫 `goal_check` | `goal_check`：commit + sandbox 驗收；`achieved` 為 true 才算完成。30 分鐘沒呼叫會暫停（`chatgpt_idle`），下一次 `goal_check` 恢復 |
 | 查進度／暫停／取消 | 「查 Chadex Goal 進度」 | `goal_run_status`（`wait_secs` 最多等 45 秒）、`goal_run_list`、`goal_run_control` |
 | 得知完成 | Goal 結束（成功、失敗、需要處理、取消）時 App 跳 macOS 通知。ChatGPT 不會被通知，要問它才會查 | App 每 10 秒讀 `goal_operator` overview |
 | 緊急停止 | Chadex App「緊急停止所有 Goal」 | `goal_operator`（只限 App） |
@@ -67,7 +69,7 @@ Chadex App ──bridge planGoalOperator──► helper ──REST /api/tools/c
 - 只有最新 revision 可審核；送出時須附顯示中的 revision 與 hash（`plan_revision_stale`、`plan_content_hash_mismatch`）。
 - 直接 Goal 是只有一版、`origin = goal` 的 plan：建立時**不上 Plan Mode 鎖**、不能修訂（`goal_request_immutable`，要改就重新呼叫 `goal_run_start`，舊的未開始請求自動關閉）、不能「要求修改」（避免把擁有者鎖成唯讀，改用捨棄）。建立時記下受限的 Goal dispatch principal；Plan Mode 中不能建立。
 - `approve_and_start`：核准前先檢查所有可能拒絕的條件，包括：擁有者是否正在 Plan Mode 規劃別的 plan（`goal_owner_in_plan_mode`）、有沒有為**最新版**記錄的 dispatch principal 且不超過 7 天（`goal_dispatch_unknown`）、緊急停止、以擁有者記錄的 principal 重新解析專案時，Runner／root 是否與操作者看到的相同。之後才核准（綁定 HEAD）、以 plan 擁有者身分 consume 核准並建立 run。若啟動仍失敗，剛建立的核准會被撤回（`approval_withdrawn`），不會留下可被啟動的核准。`plan_save` 每次都會為該版重新記錄（或在算不出來時清除）dispatch principal，所以一般計畫也能一步核准並開始，且不會沿用舊版或過期的權限。
-- 儲存新 revision 會 supersede 舊核准並重新上鎖；要求修改會撤銷 active 核准並重新上鎖；核准單次使用（`goal_run_start` 在同一交易內 consume），重複 start 回放同一個 run。
+- 儲存新 revision 會 supersede 舊核准並重新上鎖；要求修改會撤銷 active 核准並重新上鎖；核准單次使用（App 的 `approve_and_start` 在同一交易內 consume；模型的 `goal_run_start(plan_id)` 只會找已開始的 run，永遠不會 consume），重複 start 回放同一個 run。
 - Goal 啟動時 Runner／root 必須與核准時相同（`plan_approval_environment_changed`）；核准需至少一個驗收指令。
 
 ### Goal 執行
@@ -120,6 +122,7 @@ Chadex App ──bridge planGoalOperator──► helper ──REST /api/tools/c
 ## 遷移與回復
 
 - 只新增資料表（`CREATE TABLE IF NOT EXISTS`），不修改 Plan/Goal 以外的既有表。`wc_plans` 之後以 `ALTER TABLE ADD COLUMN` 加了 `origin`（預設 `plan`）與 `dispatch_json`，舊版本會忽略這兩欄。舊版本會忽略這些表，所以回退舊版本是安全的；回退後沒有 Plan Mode 強制。
+- ChatGPT 模式：worktree 建好後才會出現 `workspace_project`，但 `.git` 路徑在第一次 commit 前才釘選，中間有很短的時間窗；模型本來就能寫原專案，所以不構成提權。
 - 回退到不認得 `origin` 的舊版本時，直接 Goal 請求會被當成一般 plan 顯示；在舊版上對它「要求修改」或由模型 `plan_save` 會重新上 Plan Mode 鎖。回退前建議先捨棄尚未開始的 Goal 請求。
 - `CHADEX_GOAL_SUPERVISOR=0` 停用 supervisor；run 保持持久狀態，之後再啟用即可繼續。
 - 緊急停止持久保存在 DB，重啟後仍有效，只有 App 能解除。

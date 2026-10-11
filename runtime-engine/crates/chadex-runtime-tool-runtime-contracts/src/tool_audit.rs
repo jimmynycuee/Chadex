@@ -4008,6 +4008,8 @@ impl ToolCall {
             } => serde_json::json!({"plan_id": plan_id, "project": project, "title": title}),
             Self::GoalRunStatus { goal_run_id, .. } => serde_json::json!({"goal_run_id": goal_run_id}),
             Self::GoalRunList {} => serde_json::json!({}),
+            Self::PlanWaitApproval { plan_id, .. } => serde_json::json!({"plan_id": plan_id}),
+            Self::GoalCheck { goal_run_id, .. } => serde_json::json!({"goal_run_id": goal_run_id}),
             Self::GoalRunControl {
                 goal_run_id,
                 action,

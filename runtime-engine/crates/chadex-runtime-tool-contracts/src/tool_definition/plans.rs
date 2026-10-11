@@ -10,7 +10,8 @@ use crate::metadata::{
 };
 use crate::registry::input_schemas::{
     goal_operator_input_schema, goal_run_control_input_schema, goal_run_list_input_schema,
-    goal_run_start_input_schema, goal_run_status_input_schema, plan_get_input_schema,
+    goal_check_input_schema, goal_run_start_input_schema, plan_wait_approval_input_schema, goal_run_status_input_schema,
+    plan_get_input_schema,
     plan_list_input_schema, plan_review_input_schema, plan_save_input_schema,
     plan_start_input_schema,
 };
@@ -133,10 +134,10 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
                     ToolIdempotency::Keyed,
                     PROJECT_WRITE,
                 ),
-                "Chadex Goal Mode: autonomous work on this Mac until objective acceptance checks pass. Direct Goal (no plan needed): pass project, title, objective and acceptance (argv commands; exit 0 = done); the user then presses Start in the Chadex app (Plan & Goal). Or pass plan_id of a plan approved in the app (calling again returns the same run). Use when the user gives a goal / 'Chadex Goal Mode' / @goal. Once started it needs no ChatGPT messages: agent work in an isolated Git worktree, a checkpoint commit per iteration, success only when every check passes, within the budget. The result is a branch for the user to review; nothing is merged, pushed or deployed. ChatGPT is not notified when it ends: say Chadex notifies the user on the Mac and they can ask you (goal_run_status).",
+                "Chadex Goal Mode: work until objective acceptance checks pass. Send a goal with project, title, objective and acceptance (argv commands; exit 0 = done). You cannot start it: the user starts it in the Chadex app (Plan & Goal) and picks the mode: Codex (Chadex runs Codex CLI in the background, uses their Codex tokens, ChatGPT can be closed) or ChatGPT (you edit the Goal's workspace project here and call goal_check until achieved). Calling with plan_id returns the run once started. Use when the user gives a goal / 'Chadex Goal Mode' / @goal. Not for implementing an approved Plan Mode plan (use plan_wait_approval). The result is a branch for the user to review; nothing is merged, pushed or deployed. ChatGPT is not notified when a Codex-mode Goal ends: Chadex notifies the user on the Mac.",
                 goal_run_start_input_schema,
             )
-            .with_gpt_action_description("Request a direct Goal or start an approved plan in autonomous Goal Mode."),
+            .with_gpt_action_description("Send a direct Goal request (the user starts it in the Chadex app) or find a started Goal."),
             62,
         ),
         GOAL_RUN_START_SCOPES,
@@ -156,6 +157,34 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
         )
         .with_gpt_action_description("Read Goal run progress, acceptance evidence and state."),
         64,
+    ),
+    model_spec(
+        plan_def(
+            "plan_wait_approval",
+            ModelVisible,
+            ToolEffect::Observe,
+            Read,
+            ToolIdempotency::PureRead,
+            PROJECT_READ,
+        ),
+        "After plan_save, keep calling this in the same reply while the user reviews the plan in the Chadex app. Returns approved (Plan Mode has ended: implement the approved revision right away in the project with your normal tools, then run its acceptance checks and report), changes_requested (revise with plan_save, then wait again), closed or approval_withdrawn (stop and tell the user), goal_started (the user started a Goal instead: do not edit; follow it with goal_run_status), or waiting (call again). Do not end your reply while it says waiting unless the user asked you to stop.",
+        plan_wait_approval_input_schema,
+    ),
+    require_all_scopes(
+        model_spec(
+            plan_def(
+                "goal_check",
+                ModelVisible,
+                ToolEffect::Execute,
+                JobRun,
+                ToolIdempotency::Keyed,
+                PROJECT_WRITE,
+            ),
+            "ChatGPT-mode Goal: after you finish a round of edits in the Goal's workspace project (workspace_project in goal_run_status), call this. Chadex commits the round and runs the Goal's approved acceptance checks (sandboxed; you cannot change them). If achieved is false, read the failures, fix them in the same workspace project and call goal_check again in the same reply; keep going until achieved is true or the run stops. Never claim the goal is done without achieved: true. Calling again while checks are still running does not start another round.",
+            goal_check_input_schema,
+        )
+        .with_gpt_action_description("Check a ChatGPT-mode Goal's acceptance after a round of edits."),
+        GOAL_RUN_START_SCOPES,
     ),
     model_spec(
         plan_def(

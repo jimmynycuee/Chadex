@@ -262,6 +262,7 @@ struct PlanGoalView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 10) {
                         runStateLabel(run.state)
+                        modeLabel(run)
                         Text(L10n.string("planGoal.iterationOf", run.iteration ?? 0, run.maxIterations ?? 0))
                             .chadexFont(.caption)
                             .foregroundStyle(.secondary)
@@ -269,6 +270,7 @@ struct PlanGoalView: View {
                             .chadexFont(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    chatgptHints(run)
                     if let reason = run.stateReason, !reason.isEmpty {
                         Text(reason)
                             .chadexFont(.caption)
@@ -393,7 +395,7 @@ struct PlanGoalView: View {
                 }
             }
 
-            if let readiness = detail.gitReadiness, plan.state != "closed" {
+            if let readiness = detail.gitReadiness, plan.state != "closed", plan.isGoalRequest {
                 gitReadinessBlock(readiness)
             }
 
@@ -645,6 +647,51 @@ struct PlanGoalView: View {
         }
     }
 
+    /// One explicit way to start the Goal: a button plus a line saying what it costs.
+    private func startOption(plan: PlanSummary, revision: PlanRevision, mode: String, disabled: Bool) -> some View {
+        let suffix = mode == "chatgpt" ? "chatgpt" : "codex"
+        return VStack(alignment: .leading, spacing: 4) {
+            Button {
+                confirmation = .approveAndStart(
+                    planId: plan.planId, title: plan.title, isGoalRequest: plan.isGoalRequest,
+                    revision: revision.revision, contentSha256: revision.contentSha256, mode: mode
+                )
+            } label: {
+                Label(
+                    plan.isGoalRequest
+                        ? L10n.string("planGoal.start.\(suffix).goalRequest")
+                        : L10n.string("planGoal.start.\(suffix)", revision.revision),
+                    systemImage: mode == "chatgpt" ? "bubble.left.and.bubble.right" : "play.circle"
+                )
+            }
+            .buttonStyle(ChadexButtonStyle(kind: mode == "chatgpt" ? .secondary : .primary))
+            .disabled(disabled)
+            Text(L10n.string("planGoal.start.\(suffix).note"))
+                .chadexFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private func chatgptHints(_ run: GoalRun) -> some View {
+        if run.isChatgptIdle {
+            Label(L10n.string("planGoal.chatgpt.idle"), systemImage: "moon.zzz")
+                .chadexFont(.caption)
+                .foregroundStyle(.orange)
+        } else if run.isWaitingForChatgpt {
+            Label(L10n.string("planGoal.chatgpt.waiting"), systemImage: "bubble.left.and.text.bubble.right")
+                .chadexFont(.caption)
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private func modeLabel(_ run: GoalRun) -> some View {
+        Text(L10n.string(run.isChatgptMode ? "planGoal.mode.chatgpt" : "planGoal.mode.codex"))
+            .chadexFont(.caption)
+            .foregroundStyle(.secondary)
+    }
+
     @ViewBuilder
     private func planActions(_ detail: PlanInspectOutput) -> some View {
         let plan = detail.plan
@@ -660,29 +707,21 @@ struct PlanGoalView: View {
                         .chadexFont(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if gitBlocked {
-                    Label(L10n.string("planGoal.git.buttonsDisabled"), systemImage: "lock")
-                        .chadexFont(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                HStack(spacing: 10) {
-                    Button {
-                        confirmation = .approveAndStart(
-                            planId: plan.planId, title: plan.title, isGoalRequest: plan.isGoalRequest,
-                            revision: revision.revision, contentSha256: revision.contentSha256
-                        )
-                    } label: {
-                        Label(
-                            plan.isGoalRequest
-                                ? L10n.string("planGoal.goalRequest.start")
-                                : L10n.string("planGoal.approveAndStart", revision.revision),
-                            systemImage: "play.circle"
-                        )
+                if plan.isGoalRequest {
+                    // A Goal starts from a commit; the user picks who does the work.
+                    if gitBlocked {
+                        Label(L10n.string("planGoal.git.buttonsDisabled"), systemImage: "lock")
+                            .chadexFont(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(ChadexButtonStyle(kind: .primary))
-                    .disabled(panel.actionInFlight || !isLatest || alreadyApproved || gitBlocked)
-
-                    if !plan.isGoalRequest {
+                    startOption(plan: plan, revision: revision, mode: "codex",
+                                disabled: panel.actionInFlight || !isLatest || alreadyApproved || gitBlocked)
+                    startOption(plan: plan, revision: revision, mode: "chatgpt",
+                                disabled: panel.actionInFlight || !isLatest || alreadyApproved || gitBlocked)
+                } else {
+                    // A plan is implemented by ChatGPT itself once approved;
+                    // it is not a Goal and uses no Codex quota.
+                    VStack(alignment: .leading, spacing: 4) {
                         Button {
                             confirmation = .approve(
                                 planId: plan.planId, title: plan.title,
@@ -692,13 +731,19 @@ struct PlanGoalView: View {
                             Label(
                                 alreadyApproved
                                     ? L10n.string("planGoal.approved", revision.revision)
-                                    : L10n.string("planGoal.approveOnly"),
+                                    : L10n.string("planGoal.approveForChatGPT", revision.revision),
                                 systemImage: alreadyApproved ? "checkmark.seal.fill" : "checkmark.seal"
                             )
                         }
-                        .buttonStyle(ChadexButtonStyle(kind: .secondary))
-                        .disabled(panel.actionInFlight || !isLatest || alreadyApproved || gitBlocked)
+                        .buttonStyle(ChadexButtonStyle(kind: .primary))
+                        .disabled(panel.actionInFlight || !isLatest || alreadyApproved)
+                        Text(L10n.string("planGoal.approveForChatGPT.hint"))
+                            .chadexFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+                HStack(spacing: 10) {
 
                     if plan.isPlanModeActive {
                         Button {
@@ -749,6 +794,7 @@ struct PlanGoalView: View {
         return VStack(alignment: .leading, spacing: layout.spacing(14)) {
             VStack(alignment: .leading, spacing: 6) {
                 runStateLabel(run.state)
+                chatgptHints(run)
                 if let reason = run.stateReason, !reason.isEmpty {
                     Text(reason).chadexFont(.callout).textSelection(.enabled)
                 }
@@ -757,6 +803,8 @@ struct PlanGoalView: View {
                         .chadexFont(.caption).foregroundStyle(.secondary)
                 }
                 Text(L10n.string("planGoal.iterationOf", run.iteration ?? 0, run.maxIterations ?? 0))
+                    .chadexFont(.caption).foregroundStyle(.secondary)
+                Text(L10n.string("planGoal.mode", L10n.string(run.isChatgptMode ? "planGoal.mode.chatgpt" : "planGoal.mode.codex")))
                     .chadexFont(.caption).foregroundStyle(.secondary)
                 if let provider = run.provider, !provider.isEmpty {
                     Text(L10n.string("planGoal.provider", provider))
@@ -948,8 +996,8 @@ struct PlanGoalView: View {
         case .approve(let planId, _, let revision, let sha):
             // Exactly the revision and hash shown in the confirmation.
             Task { await panel.approve(planId: planId, revision: revision, contentSha256: sha) }
-        case .approveAndStart(let planId, _, _, let revision, let sha):
-            Task { await panel.approveAndStart(planId: planId, revision: revision, contentSha256: sha) }
+        case .approveAndStart(let planId, _, _, let revision, let sha, let mode):
+            Task { await panel.approveAndStart(planId: planId, revision: revision, contentSha256: sha, mode: mode) }
         case .closePlan(let planId, _):
             Task { await panel.closePlan(planId: planId) }
         case .revoke(let approvalId, _):
@@ -970,7 +1018,7 @@ struct PlanGoalView: View {
 /// It captures the displayed values so the request matches the dialog.
 enum PlanGoalConfirmation: Identifiable {
     case approve(planId: String, title: String, revision: Int, contentSha256: String)
-    case approveAndStart(planId: String, title: String, isGoalRequest: Bool, revision: Int, contentSha256: String)
+    case approveAndStart(planId: String, title: String, isGoalRequest: Bool, revision: Int, contentSha256: String, mode: String)
     case closePlan(planId: String, title: String)
     case revoke(approvalId: String, revision: Int)
     case cancelRun(goalRunId: String)
@@ -981,7 +1029,7 @@ enum PlanGoalConfirmation: Identifiable {
     var id: String {
         switch self {
         case .approve(let planId, _, let revision, let sha): return "approve:\(planId):\(revision):\(sha)"
-        case .approveAndStart(let planId, _, _, let revision, let sha): return "start:\(planId):\(revision):\(sha)"
+        case .approveAndStart(let planId, _, _, let revision, let sha, let mode): return "start:\(planId):\(revision):\(sha):\(mode)"
         case .closePlan(let planId, _): return "close:\(planId)"
         case .revoke(let approvalId, _): return "revoke:\(approvalId)"
         case .cancelRun(let id): return "cancel:\(id)"
@@ -994,10 +1042,11 @@ enum PlanGoalConfirmation: Identifiable {
     var title: String {
         switch self {
         case .approve(_, _, let revision, _): return L10n.string("planGoal.approve.confirmTitle", revision)
-        case .approveAndStart(_, _, let isGoalRequest, let revision, _):
+        case .approveAndStart(_, _, let isGoalRequest, let revision, _, let mode):
+            let suffix = mode == "chatgpt" ? "chatgpt" : "codex"
             return isGoalRequest
-                ? L10n.string("planGoal.goalRequest.confirmTitle")
-                : L10n.string("planGoal.approveAndStart.confirmTitle", revision)
+                ? L10n.string("planGoal.start.\(suffix).goalRequest.confirmTitle")
+                : L10n.string("planGoal.start.\(suffix).confirmTitle", revision)
         case .closePlan: return L10n.string("planGoal.closePlan.confirmTitle")
         case .revoke: return L10n.string("planGoal.revoke.confirmTitle")
         case .cancelRun: return L10n.string("planGoal.cancel.confirmTitle")
@@ -1011,8 +1060,9 @@ enum PlanGoalConfirmation: Identifiable {
         switch self {
         case .approve(_, let title, let revision, let sha):
             return L10n.string("planGoal.approve.confirmMessage", title, revision, PlanGoalFormat.shortHash(sha))
-        case .approveAndStart(_, let title, _, let revision, let sha):
-            return L10n.string("planGoal.approveAndStart.confirmMessage", title, revision, PlanGoalFormat.shortHash(sha))
+        case .approveAndStart(_, let title, _, let revision, let sha, let mode):
+            let suffix = mode == "chatgpt" ? "chatgpt" : "codex"
+            return L10n.string("planGoal.start.\(suffix).confirmMessage", title, revision, PlanGoalFormat.shortHash(sha))
         case .closePlan(_, let title): return L10n.string("planGoal.closePlan.confirmMessage", title)
         case .revoke(_, let revision): return L10n.string("planGoal.revoke.confirmMessage", revision)
         case .cancelRun: return L10n.string("planGoal.cancel.confirmMessage")
@@ -1025,10 +1075,11 @@ enum PlanGoalConfirmation: Identifiable {
     var actionLabel: String {
         switch self {
         case .approve(_, _, let revision, _): return L10n.string("planGoal.approve", revision)
-        case .approveAndStart(_, _, let isGoalRequest, let revision, _):
+        case .approveAndStart(_, _, let isGoalRequest, let revision, _, let mode):
+            let suffix = mode == "chatgpt" ? "chatgpt" : "codex"
             return isGoalRequest
-                ? L10n.string("planGoal.goalRequest.start")
-                : L10n.string("planGoal.approveAndStart", revision)
+                ? L10n.string("planGoal.start.\(suffix).goalRequest")
+                : L10n.string("planGoal.start.\(suffix)", revision)
         case .closePlan: return L10n.string("planGoal.closePlan")
         case .revoke: return L10n.string("planGoal.revoke")
         case .cancelRun: return L10n.string("planGoal.cancel")

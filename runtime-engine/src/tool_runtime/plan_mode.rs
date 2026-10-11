@@ -15,7 +15,7 @@ use super::{RecoveryKind, ToolResult, ToolRuntime};
 use crate::auth::{AuthContext, AuthKind};
 use crate::db::{
     plan_line_diff, AcceptanceCheck, Database, GoalBudget, GoalControlAction, GoalRunDetail,
-    GoalRunRecord, GoalRunState, GoalStartEnvironment, PlanApprovalBinding, PlanDecisionRecord,
+    GoalRunRecord, GoalRunState, GoalStartEnvironment, CHATGPT_GOAL_PROVIDER, PlanApprovalBinding, PlanDecisionRecord,
     PlanDecisionState, PlanDetail, PlanLockRecord, PlanReader, PlanSpec, PlanState, PlanStoreError, DEFAULT_PLAN_APPROVAL_TTL_MS,
 };
 use serde_json::{json, Value};
@@ -84,6 +84,7 @@ pub(crate) const PLAN_CONTROL_TOOLS: &[&str] = &[
     "plan_save",
     "plan_get",
     "plan_list",
+    "plan_wait_approval",
     "goal_run_status",
     "goal_run_list",
     "goal_run_control",
@@ -510,7 +511,7 @@ impl ToolRuntime {
                     "addressed_change_request": change_request,
                     "git_readiness": self.plan_git_readiness(auth, &outcome.plan.project_id).await,
                     "diff_from_previous": diff,
-                    "next": "Tell the user the plan id and revision; they review and approve this exact revision (content_sha256) in the Chadex app. Do not claim it is approved until goal_run_start succeeds.",
+                    "next": "Tell the user the plan id, revision and acceptance checks, and that they approve this exact revision in the Chadex app (Plan & Goal). Then call plan_wait_approval and keep calling it in this same reply; when it returns approved, start implementing right away. Never claim the plan is approved before plan_wait_approval says so.",
                 }))
             }
             Err(error) => with_change_request(plan_error(error), change_request),
@@ -544,27 +545,27 @@ impl ToolRuntime {
         }
     }
 
-    pub(crate) async fn goal_run_start(
-        &self,
-        auth: Option<&AuthContext>,
-        plan_id: String,
-    ) -> ToolResult {
+    pub(crate) async fn goal_run_start(&self, auth: Option<&AuthContext>, plan_id: String) -> ToolResult {
         let db = match self.plan_db() {
             Ok(db) => db.clone(),
             Err(result) => return result,
         };
         let owner = plan_principal_key(auth);
-        let now = now_unix_ms();
-        let plan = match db.plan_read(PlanReader::Owner(&owner), &plan_id, None, now) {
-            Ok(detail) => detail.plan,
-            Err(error) => return plan_error(error),
-        };
-        let (_, config, dispatch_auth) =
-            match self.goal_dispatch_for_project(&plan.project_id, auth).await {
-                Ok(value) => value,
-                Err(result) => return result,
-            };
-        self.start_goal_run(&db, &owner, &plan_id, &config, &dispatch_auth, now)
+        // Goals start only in the Chadex app (approve_and_start), where the
+        // user also picks Codex or ChatGPT mode. The model can only find the
+        // run an earlier start created.
+        match db.goal_run_for_plan(&owner, &plan_id, now_unix_ms()) {
+            Ok(Some(run)) => ToolResult::ok(json!({
+                "goal_run": goal_run_projection(&run),
+                "created": false,
+            })),
+            Ok(None) => ToolResult::err_with_output(
+                "This Goal has not been started. Only the user can start it, in the Chadex app (Plan & Goal), where they also choose Codex or ChatGPT mode.",
+                json!({"error_kind": "goal_not_started", "state_changed": false}),
+            )
+            .with_recovery(RecoveryKind::UserAction),
+            Err(error) => plan_error(error),
+        }
     }
 
     /// Direct Goal: record objective + acceptance as a one-revision request
@@ -635,17 +636,25 @@ impl ToolRuntime {
         plan_id: &str,
         config: &crate::projects::ProjectConfig,
         dispatch_auth: &Value,
+        provider: &str,
         now: i64,
     ) -> ToolResult {
-        let provider = super::goal_supervisor::GoalProvider::from_env();
         let environment = GoalStartEnvironment {
             runner_client_id: config.client_id.clone(),
             project_root: config.path.clone(),
         };
-        match db.goal_run_start(owner, plan_id, &environment, dispatch_auth, provider.name(), now) {
+        match db.goal_run_start(owner, plan_id, &environment, dispatch_auth, provider, now) {
             Ok(outcome) => {
                 if let Some(wake) = self.goal_supervisor_wake.as_ref() {
                     wake.notify_one();
+                }
+                if outcome.run.provider == CHATGPT_GOAL_PROVIDER {
+                    return ToolResult::ok(json!({
+                        "goal_run": goal_run_projection(&outcome.run),
+                        "created": outcome.created,
+                        "supervisor_running": self.goal_supervisor_wake.is_some(),
+                        "note": "ChatGPT mode: you do the work in this conversation, no Codex quota is used. Chadex prepares an isolated worktree (workspace_project in goal_run_status). Edit files there, then call goal_check; repeat until achieved is true. Chadex only runs the approved acceptance checks.",
+                    }));
                 }
                 ToolResult::ok(json!({
                     "goal_run": goal_run_projection(&outcome.run),
@@ -655,6 +664,134 @@ impl ToolRuntime {
                 }))
             }
             Err(error) => plan_error(error),
+        }
+    }
+
+    /// Bounded wait for the user's decision on the latest revision, so an
+    /// approval in the Chadex app lets the model start work in the same reply.
+    pub(crate) async fn plan_wait_approval(
+        &self,
+        auth: Option<&AuthContext>,
+        plan_id: String,
+        wait_secs: u64,
+    ) -> ToolResult {
+        let db = match self.plan_db() {
+            Ok(db) => db.clone(),
+            Err(result) => return result,
+        };
+        let owner = plan_principal_key(auth);
+        let deadline = std::time::Instant::now()
+            + std::time::Duration::from_secs(wait_secs.min(GOAL_STATUS_MAX_WAIT_SECS));
+        loop {
+            let detail = match db.plan_read(PlanReader::Owner(&owner), &plan_id, None, now_unix_ms()) {
+                Ok(detail) => detail,
+                Err(error) => return plan_error(error),
+            };
+            let latest = detail.plan.latest_revision;
+            if detail.plan.origin == "goal" {
+                return invalid_action("This is a Goal request, not a plan; follow it with goal_run_list and goal_run_status");
+            }
+            let decision = detail.decisions.first().filter(|decision| decision.revision == latest);
+            match decision.map(|decision| decision.state) {
+                Some(PlanDecisionState::Consumed) => {
+                    return ToolResult::ok(json!({
+                        "status": "goal_started",
+                        "plan": detail.plan,
+                        "goal_run_id": decision.and_then(|decision| decision.consumed_by_goal_run_id.clone()),
+                        "next": "This revision was started as a Goal in the Chadex app. Do not implement it yourself; follow the Goal with goal_run_status.",
+                    }));
+                }
+                Some(PlanDecisionState::Revoked) | Some(PlanDecisionState::Expired) => {
+                    return ToolResult::ok(json!({
+                        "status": "approval_withdrawn",
+                        "plan": detail.plan,
+                        "next": "The approval was withdrawn or expired. Do not implement; ask the user what they want.",
+                    }));
+                }
+                _ => {}
+            }
+            let approved = decision.is_some_and(|decision| decision.state == PlanDecisionState::Active);
+            if approved {
+                // The approval released Plan Mode; make sure this connection
+                // sees that before it starts writing.
+                self.plan_guard.reload();
+                return ToolResult::ok(json!({
+                    "status": "approved",
+                    "plan": detail.plan,
+                    "revision": detail.revision,
+                    "next": format!(
+                        "The user approved revision {latest} in the Chadex app and Plan Mode has ended. Implement exactly this plan now, in this same reply, directly in project {} with your normal tools. Then run each acceptance check (literal argv) with run_process in the project, report the results, and fix and re-run until they pass or you need the user. This is not a Goal: do not call goal_run_start.",
+                        detail.plan.project_id
+                    ),
+                }));
+            }
+            if let Some(request) = pending_change_request(&detail) {
+                return ToolResult::ok(json!({
+                    "status": "changes_requested",
+                    "plan": detail.plan,
+                    "pending_change_request": change_request_projection(request),
+                    "next": "The user asked for changes. Revise the plan with plan_save (still read-only), tell them what changed, then call plan_wait_approval again.",
+                }));
+            }
+            if detail.plan.state == PlanState::Closed {
+                return ToolResult::ok(json!({
+                    "status": "closed",
+                    "plan": detail.plan,
+                    "next": "The user closed this plan in the Chadex app. Stop and ask what they want next.",
+                }));
+            }
+            if std::time::Instant::now() >= deadline {
+                return ToolResult::ok(json!({
+                    "status": "waiting",
+                    "plan": detail.plan,
+                    "next": "Still waiting for the user's decision in the Chadex app (Plan & Goal). Call plan_wait_approval again now.",
+                }));
+            }
+            tokio::time::sleep(GOAL_STATUS_POLL).await;
+        }
+    }
+
+    /// ChatGPT-mode turn: mark this round's edits as done, let the supervisor
+    /// commit and run the approved checks, and tell the model whether to
+    /// keep going. Only the stored, approved acceptance argv ever runs.
+    pub(crate) async fn goal_check(
+        &self,
+        auth: Option<&AuthContext>,
+        goal_run_id: String,
+        wait_secs: u64,
+    ) -> ToolResult {
+        let db = match self.plan_db() {
+            Ok(db) => db.clone(),
+            Err(result) => return result,
+        };
+        let owner = plan_principal_key(auth);
+        let run = match db.goal_run_chatgpt_ready(&owner, &goal_run_id, now_unix_ms()) {
+            Ok(run) => run,
+            Err(error) => return plan_error(error),
+        };
+        if let Some(wake) = self.goal_supervisor_wake.as_ref() {
+            wake.notify_one();
+        }
+        let target = run.chatgpt_ready_iteration;
+        let deadline = std::time::Instant::now()
+            + std::time::Duration::from_secs(wait_secs.min(GOAL_STATUS_MAX_WAIT_SECS));
+        loop {
+            let detail = match db.goal_run_read(PlanReader::Owner(&owner), &goal_run_id) {
+                Ok(detail) => detail,
+                Err(error) => return plan_error(error),
+            };
+            let run = &detail.run;
+            let checked = target > 0 && run.iteration >= target;
+            let settled = run.state.terminal()
+                || matches!(run.state, GoalRunState::Paused | GoalRunState::NeedsAttention);
+            let shown = run.iteration > run.chatgpt_reported_iteration && run.workspace_path.is_some();
+            if checked || settled || shown || std::time::Instant::now() >= deadline {
+                if run.iteration > 0 {
+                    let _ = db.goal_run_chatgpt_reported(&owner, &goal_run_id, run.iteration);
+                }
+                return ToolResult::ok(goal_check_projection(&db, &detail, target, checked || shown));
+            }
+            tokio::time::sleep(GOAL_STATUS_POLL).await;
         }
     }
 
@@ -748,6 +885,7 @@ impl ToolRuntime {
         reason: Option<String>,
         approval_id: Option<String>,
         ttl_minutes: Option<i64>,
+        mode: Option<String>,
     ) -> ToolResult {
         if let Some(denied) = operator_denial(auth, transport) {
             return denied;
@@ -803,7 +941,7 @@ impl ToolRuntime {
                     return invalid_action("approve requires revision and content_sha256");
                 };
                 match self
-                    .operator_approve(&db, auth, &plan_id, revision, &content_sha256, &approver, ttl_minutes, now)
+                    .operator_approve(&db, auth, &plan_id, revision, &content_sha256, &approver, ttl_minutes, false, now)
                     .await
                 {
                     Ok(decision) => ToolResult::ok(json!({"decision": decision})),
@@ -818,8 +956,12 @@ impl ToolRuntime {
                 let (Some(revision), Some(content_sha256)) = (revision, content_sha256) else {
                     return invalid_action("approve_and_start requires revision and content_sha256");
                 };
+                let provider = match goal_provider_for_mode(mode.as_deref()) {
+                    Ok(provider) => provider,
+                    Err(result) => return result,
+                };
                 self.operator_approve_and_start(
-                    &db, auth, &plan_id, revision, &content_sha256, &approver, ttl_minutes, now,
+                    &db, auth, &plan_id, revision, &content_sha256, &approver, ttl_minutes, &provider, now,
                 )
                 .await
             }
@@ -978,6 +1120,7 @@ impl ToolRuntime {
         content_sha256: &str,
         approver: &str,
         ttl_minutes: Option<i64>,
+        provider: &str,
         now: i64,
     ) -> ToolResult {
         let refuse = |kind: &str, message: &str| {
@@ -1046,13 +1189,14 @@ impl ToolRuntime {
             );
         }
         let decision = match self
-            .operator_approve(db, auth, plan_id, revision, content_sha256, approver, ttl_minutes, now)
+            .operator_approve(db, auth, plan_id, revision, content_sha256, approver, ttl_minutes, true, now)
             .await
         {
             Ok(decision) => decision,
             Err(result) => return result,
         };
-        let started = self.start_goal_run(db, &context.owner_key, plan_id, &owner_config, &dispatch, now);
+        let started =
+            self.start_goal_run(db, &context.owner_key, plan_id, &owner_config, &dispatch, provider, now);
         if started.success {
             return ToolResult::ok(json!({
                 "decision": decision,
@@ -1080,6 +1224,7 @@ impl ToolRuntime {
         content_sha256: &str,
         approver: &str,
         ttl_minutes: Option<i64>,
+        require_commit: bool,
         now: i64,
     ) -> Result<crate::db::PlanDecisionRecord, ToolResult> {
         let plan = db
@@ -1087,7 +1232,23 @@ impl ToolRuntime {
             .map_err(plan_error)?
             .plan;
         let (project_id, config) = self.plan_project_environment(&plan.project_id, auth).await?;
-        let base_commit = self.operator_head_commit(auth, &project_id).await?;
+        // Approving a plan for ChatGPT to implement needs no commit; only a
+        // Goal starts from one, and goal_run_start refuses an unborn base.
+        let base_commit = match self.operator_head_commit(auth, &project_id).await {
+            Ok(commit) => commit,
+            Err(result) if !require_commit => {
+                let no_commit = self
+                    .plan_git_readiness(auth, &project_id)
+                    .await
+                    .and_then(|readiness| readiness.get("blocks_goal_start").and_then(Value::as_bool))
+                    == Some(true);
+                if !no_commit {
+                    return Err(result);
+                }
+                crate::db::UNBORN_BASE_COMMIT.to_string()
+            }
+            Err(result) => return Err(result),
+        };
         let binding = PlanApprovalBinding {
             project_id,
             runner_client_id: config.client_id,
@@ -1232,6 +1393,51 @@ impl ToolRuntime {
 }
 
 const GOAL_STATUS_MAX_WAIT_SECS: u64 = 45;
+
+/// "codex" (default: the configured background agent) or "chatgpt".
+fn goal_provider_for_mode(mode: Option<&str>) -> Result<String, ToolResult> {
+    match mode {
+        None | Some("codex") => Ok(super::goal_supervisor::GoalProvider::from_env().name().to_string()),
+        Some("chatgpt") => Ok(CHATGPT_GOAL_PROVIDER.to_string()),
+        Some(_) => Err(invalid_action("mode must be codex or chatgpt")),
+    }
+}
+
+fn goal_check_projection(db: &Database, detail: &GoalRunDetail, target: i64, checked: bool) -> Value {
+    let run = &detail.run;
+    let workspace = run.workspace_project_id.clone();
+    let mut result = json!({
+        "goal_run": goal_run_projection(run),
+        "achieved": run.state == GoalRunState::Succeeded,
+    });
+    let next = if run.state == GoalRunState::Succeeded {
+        "Goal achieved: every acceptance check passed. Tell the user the result branch; nothing was merged or pushed. Stop here.".to_string()
+    } else if run.state.terminal() || run.state == GoalRunState::NeedsAttention {
+        format!(
+            "The Goal stopped ({}). Tell the user why; it continues only after review in the Chadex app.",
+            run.state_reason.as_deref().unwrap_or("no reason recorded")
+        )
+    } else if run.state == GoalRunState::Paused {
+        "The Goal is paused. Tell the user; it continues only after it is resumed in the Chadex app.".to_string()
+    } else if workspace.is_none() || target == 0 {
+        "Chadex is still preparing the Goal's isolated worktree. Call goal_check again in a moment; nothing was checked yet.".to_string()
+    } else if !checked {
+        "The acceptance checks for this round are still running. Call goal_check again; it will not start another round.".to_string()
+    } else {
+        format!(
+            "Not achieved yet (round {} of {}). Fix the failures below in workspace project {}, then call goal_check again in this same reply.",
+            run.iteration,
+            run.spec.budget.max_iterations,
+            workspace.as_deref().unwrap_or("?")
+        )
+    };
+    if checked && run.state != GoalRunState::Succeeded {
+        let feedback = super::goal_supervisor::acceptance_feedback(db, &run.goal_run_id, run.iteration);
+        result["failures"] = json!(feedback);
+    }
+    result["next"] = json!(next);
+    result
+}
 /// A recorded Goal principal older than this must be re-recorded by the model.
 const GOAL_DISPATCH_MAX_AGE_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 const GOAL_STATUS_POLL: std::time::Duration = std::time::Duration::from_secs(2);
@@ -1604,7 +1810,17 @@ pub(crate) fn goal_run_projection(run: &GoalRunRecord) -> Value {
         "max_iterations": run.spec.budget.max_iterations,
         "deadline_at_unix_ms": run.deadline_at_unix_ms,
         "provider": run.provider,
+        "mode": if run.provider == CHATGPT_GOAL_PROVIDER { "chatgpt" } else { "codex" },
+        "workspace_project": run.workspace_project_id,
         "workspace_path": run.workspace_path,
+        "waiting_for_chatgpt": run.provider == CHATGPT_GOAL_PROVIDER
+            && matches!(run.state, GoalRunState::Queued | GoalRunState::Running)
+            && run.workspace_path.is_some()
+            && run.chatgpt_ready_iteration <= run.iteration,
+        "next_action": (run.provider == CHATGPT_GOAL_PROVIDER && !run.state.terminal()).then(|| format!(
+            "ChatGPT mode: edit files in workspace project {}, then call goal_check until achieved is true.",
+            run.workspace_project_id.as_deref().unwrap_or("(being prepared)")
+        )),
         "result_branch": run.workspace_branch,
         "tokens_used": run.tokens_used,
         "cost": if run.tokens_used.is_some() { "tokens_reported_by_provider" } else { "unknown" },

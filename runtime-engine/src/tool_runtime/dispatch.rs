@@ -2417,11 +2417,20 @@ impl ToolRuntime {
                         .await
                 }
                 _ => ToolResult::err_with_output(
-                    "Pass either plan_id (an approved plan) or project + title + objective + acceptance (a direct Goal), not both",
+                    "Pass either plan_id (to find a Goal the user started) or project + title + objective + acceptance (a direct Goal request), not both",
                     serde_json::json!({"error_kind": "invalid_arguments", "state_changed": false}),
                 )
                 .with_recovery(super::RecoveryKind::FixInput),
             },
+
+            ToolCall::PlanWaitApproval { plan_id, wait_secs } => {
+                self.plan_wait_approval(auth, plan_id, wait_secs.unwrap_or(45)).await
+            }
+
+            ToolCall::GoalCheck {
+                goal_run_id,
+                wait_secs,
+            } => self.goal_check(auth, goal_run_id, wait_secs.unwrap_or(45)).await,
 
             ToolCall::GoalRunStatus {
                 goal_run_id,
@@ -2443,6 +2452,7 @@ impl ToolRuntime {
                 reason,
                 approval_id,
                 ttl_minutes,
+                mode,
             } => {
                 self.plan_review(
                     auth,
@@ -2454,6 +2464,7 @@ impl ToolRuntime {
                     reason,
                     approval_id,
                     ttl_minutes,
+                    mode,
                 )
                 .await
             }

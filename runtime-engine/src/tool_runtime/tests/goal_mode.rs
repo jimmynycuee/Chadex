@@ -40,6 +40,9 @@ struct FakeState {
     lose_agent_job: bool,
     verify_calls: u32,
     git_dir_override: Option<String>,
+    /// When set, acceptance passes from this verify call on (ChatGPT mode,
+    /// where no agent job runs).
+    pass_from_verify: Option<u32>,
 }
 
 struct FakeExecutor {
@@ -123,7 +126,10 @@ impl GoalExecutor for FakeExecutor {
             }
             if spec.executable == "check" {
                 state.verify_calls += 1;
-                let passed = state.agent_runs >= state.fix_after_agent_runs;
+                let passed = match state.pass_from_verify {
+                    Some(from) => state.verify_calls >= from,
+                    None => state.agent_runs >= state.fix_after_agent_runs,
+                };
                 let stderr = if state.vary_failure {
                     format!("assertion failed: attempt {}", state.verify_calls)
                 } else {
@@ -198,6 +204,10 @@ fn supervisor_with(db: &Arc<Database>, executor: Arc<FakeExecutor>, provider: Go
 
 /// Create a plan, approve it via the store, and start a run.
 fn approved_run(db: &Database, budget: GoalBudget) -> String {
+    approved_run_with(db, budget, "custom")
+}
+
+fn approved_run_with(db: &Database, budget: GoalBudget, provider: &str) -> String {
     let now = crate::tool_runtime::plan_mode::now_unix_ms();
     let owner = "owner-test";
     let plan = db.plan_start(owner, "agent:c:repo", "Fix the bug", now).unwrap();
@@ -242,7 +252,7 @@ fn approved_run(db: &Database, budget: GoalBudget) -> String {
             project_root: "/repo".to_string(),
         },
         &json!({"local_development": true}),
-        "custom",
+        provider,
         now,
     )
     .unwrap()
@@ -624,4 +634,176 @@ fn review_n4_negative_fields_are_not_presumed_success() {
     ] {
         assert!(classify_start(true, &output, None).is_err(), "{output}");
     }
+}
+
+#[tokio::test]
+async fn chatgpt_mode_runs_checks_only_after_each_reported_turn_and_never_starts_an_agent() {
+    let (_tmp, db) = crate::test_support::test_db();
+    let run_id = approved_run_with(&db, GoalBudget::default(), crate::db::CHATGPT_GOAL_PROVIDER);
+    let fake = FakeExecutor::new(|state| state.pass_from_verify = Some(2));
+    let sup = supervisor(&db, fake.clone());
+    let owner = "owner-test";
+    let read = |db: &Database| db.goal_run_read(PlanReader::Operator, &run_id).unwrap().run;
+
+    // Before the worktree exists, a goal_check does not count as a turn.
+    let early = db.goal_run_chatgpt_ready(owner, &run_id, crate::tool_runtime::plan_mode::now_unix_ms()).unwrap();
+    assert_eq!(early.chatgpt_ready_iteration, 0);
+
+    // First claim prepares the worktree, then hands the lease back and waits.
+    sup.tick_once().await;
+    let mut run = read(&db);
+    for _ in 0..400 {
+        run = read(&db);
+        if run.workspace_path.is_some() && run.lease_owner.is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert!(run.workspace_path.is_some());
+    assert_eq!(run.iteration, 0);
+    assert_eq!(run.state, GoalRunState::Running);
+    assert!(run.lease_owner.is_none(), "a waiting ChatGPT run holds no lease");
+    // Nothing to do: it is not claimed again.
+    assert_eq!(sup.tick_once().await, 0);
+
+    // Only the owner can report a turn; a Codex-mode run refuses it.
+    assert_eq!(
+        db.goal_run_chatgpt_ready("someone-else", &run_id, crate::tool_runtime::plan_mode::now_unix_ms())
+            .unwrap_err()
+            .code(),
+        "goal_run_not_found"
+    );
+    let codex_run = approved_run(&db, GoalBudget::default());
+    assert_eq!(
+        db.goal_run_chatgpt_ready(owner, &codex_run, crate::tool_runtime::plan_mode::now_unix_ms())
+            .unwrap_err()
+            .code(),
+        "goal_run_not_chatgpt_mode"
+    );
+    db.goal_run_control(PlanReader::Operator, &codex_run, GoalControlAction::Cancel, crate::tool_runtime::plan_mode::now_unix_ms()).unwrap();
+
+    // Turn 1: checks fail, iteration 1 recorded, back to waiting.
+    let ready = db.goal_run_chatgpt_ready(owner, &run_id, crate::tool_runtime::plan_mode::now_unix_ms()).unwrap();
+    assert_eq!(ready.chatgpt_ready_iteration, 1);
+    // Repeating it while the check is pending does not add a turn.
+    let again = db.goal_run_chatgpt_ready(owner, &run_id, crate::tool_runtime::plan_mode::now_unix_ms()).unwrap();
+    assert_eq!(again.chatgpt_ready_iteration, 1);
+    sup.tick_once().await;
+    for _ in 0..400 {
+        run = read(&db);
+        if run.iteration == 1 && run.lease_owner.is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert_eq!(run.iteration, 1);
+    assert_eq!(run.state, GoalRunState::Running);
+    let feedback = crate::tool_runtime::goal_supervisor::acceptance_feedback(&db, &run_id, 1).unwrap();
+    assert!(feedback.contains("assertion failed"), "{feedback}");
+
+    // Asking again before ChatGPT has seen round 1's result starts nothing.
+    let unseen = db.goal_run_chatgpt_ready(owner, &run_id, crate::tool_runtime::plan_mode::now_unix_ms()).unwrap();
+    assert_eq!(unseen.chatgpt_ready_iteration, 1);
+    // goal_check shows round 1 to ChatGPT; its next call starts round 2.
+    db.goal_run_chatgpt_reported(owner, &run_id, 1).unwrap();
+    // Turn 2: checks pass, run succeeds with a result branch.
+    let next = db.goal_run_chatgpt_ready(owner, &run_id, crate::tool_runtime::plan_mode::now_unix_ms()).unwrap();
+    assert_eq!(next.chatgpt_ready_iteration, 2);
+    sup.tick_once().await;
+    let run = wait_for(&db, &run_id, PARKED).await;
+    assert_eq!(run.state, GoalRunState::Succeeded, "{:?}", run.state_reason);
+    assert_eq!(run.iteration, 2);
+    assert_eq!(fake.agent_starts(), 0, "ChatGPT mode never starts a Codex agent");
+    assert!(run.workspace_branch.is_some());
+}
+
+#[tokio::test]
+async fn chatgpt_mode_pauses_when_idle_and_a_new_turn_resumes_it() {
+    let (_tmp, db) = crate::test_support::test_db();
+    let run_id = approved_run_with(&db, GoalBudget::default(), crate::db::CHATGPT_GOAL_PROVIDER);
+    let fake = FakeExecutor::new(|state| state.pass_from_verify = Some(1));
+    let sup = supervisor(&db, fake.clone());
+    sup.tick_once().await;
+    for _ in 0..400 {
+        let run = db.goal_run_read(PlanReader::Operator, &run_id).unwrap().run;
+        if run.workspace_path.is_some() && run.lease_owner.is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    // Pretend ChatGPT was last seen long ago.
+    db.goal_run_override_chatgpt_seen(&run_id, 1).unwrap();
+    assert_eq!(sup.tick_once().await, 1, "an idle ChatGPT run is claimed to be paused");
+    let run = wait_for(&db, &run_id, PARKED).await;
+    assert_eq!(run.state, GoalRunState::Paused);
+    assert!(run.state_reason.as_deref().unwrap().starts_with("chatgpt_idle"));
+    // The next goal_check resumes it and counts as the next turn.
+    let resumed = db
+        .goal_run_chatgpt_ready("owner-test", &run_id, crate::tool_runtime::plan_mode::now_unix_ms())
+        .unwrap();
+    assert_eq!(resumed.state, GoalRunState::Queued);
+    assert_eq!(resumed.chatgpt_ready_iteration, 1);
+    sup.tick_once().await;
+    let run = wait_for(&db, &run_id, &[GoalRunState::Succeeded]).await;
+    assert_eq!(run.iteration, 1);
+}
+
+#[tokio::test]
+async fn controls_and_emergency_stop_apply_at_once_to_a_chatgpt_run_waiting_for_its_turn() {
+    let now = crate::tool_runtime::plan_mode::now_unix_ms;
+    let (_tmp, db) = crate::test_support::test_db();
+    let fake = FakeExecutor::new(|state| state.pass_from_verify = Some(1));
+    let sup = supervisor(&db, fake.clone());
+    let waiting = |db: &Arc<Database>| {
+        let run_id = approved_run_with(db, GoalBudget::default(), crate::db::CHATGPT_GOAL_PROVIDER);
+        run_id
+    };
+    // Pause applies directly (no supervisor holds it); resume refreshes the
+    // idle clock so it is not paused again for idleness right away.
+    let run_id = waiting(&db);
+    sup.tick_once().await;
+    for _ in 0..400 {
+        let run = db.goal_run_read(PlanReader::Operator, &run_id).unwrap().run;
+        if run.workspace_path.is_some() && run.lease_owner.is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let paused = db.goal_run_control(PlanReader::Operator, &run_id, GoalControlAction::Pause, now()).unwrap();
+    assert_eq!(paused.state, GoalRunState::Paused);
+    // A paused (not idle) run refuses goal_check.
+    assert_eq!(
+        db.goal_run_chatgpt_ready("owner-test", &run_id, now()).unwrap_err().code(),
+        "goal_run_not_waiting"
+    );
+    db.goal_run_override_chatgpt_seen(&run_id, 1).unwrap();
+    let resumed = db.goal_run_control(PlanReader::Operator, &run_id, GoalControlAction::Resume, now()).unwrap();
+    assert!(resumed.chatgpt_seen_at_unix_ms.unwrap() > 1);
+
+    // Emergency stop stops a waiting ChatGPT run immediately.
+    sup.tick_once().await;
+    for _ in 0..400 {
+        let run = db.goal_run_read(PlanReader::Operator, &run_id).unwrap().run;
+        if run.state == GoalRunState::Running && run.lease_owner.is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    db.goal_kill_switch_set(true, "test", now()).unwrap();
+    let run = db.goal_run_read(PlanReader::Operator, &run_id).unwrap().run;
+    assert_eq!(run.state, GoalRunState::Stopped);
+    db.goal_kill_switch_set(false, "test", now()).unwrap();
+
+    // Cancel also applies at once.
+    let other = waiting(&db);
+    sup.tick_once().await;
+    for _ in 0..400 {
+        let run = db.goal_run_read(PlanReader::Operator, &other).unwrap().run;
+        if run.workspace_path.is_some() && run.lease_owner.is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let cancelled = db.goal_run_control(PlanReader::Operator, &other, GoalControlAction::Cancel, now()).unwrap();
+    assert_eq!(cancelled.state, GoalRunState::Cancelled);
 }

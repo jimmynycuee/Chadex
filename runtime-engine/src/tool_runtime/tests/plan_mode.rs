@@ -112,6 +112,27 @@ async fn call(
     }
 }
 
+/// What the Chadex app's Start does after approving (its one-step path also
+/// needs a Runner that executes git): start the run as the plan's owner with
+/// the principal recorded for the latest revision.
+fn operator_start(fx: &Fixture, plan_id: &str, provider: &str) -> Result<crate::db::GoalRunRecord, crate::db::PlanStoreError> {
+    let db = fx.runtime.communication_db.clone().unwrap();
+    let now = crate::tool_runtime::plan_mode::now_unix_ms();
+    let context = db.plan_start_context(plan_id, now).unwrap();
+    db.goal_run_start(
+        &context.owner_key,
+        plan_id,
+        &crate::db::GoalStartEnvironment {
+            runner_client_id: "client-a".to_string(),
+            project_root: fx.root.clone(),
+        },
+        &context.dispatch.expect("principal recorded for the latest revision"),
+        provider,
+        now,
+    )
+    .map(|outcome| outcome.run)
+}
+
 fn error_kind(output: &Value) -> &str {
     output.get("error_kind").and_then(Value::as_str).unwrap_or("")
 }
@@ -330,14 +351,16 @@ async fn plan_revision_approval_and_goal_admission_through_the_kernel() {
     let (ok, _) = call(&fx.runtime, &read_only, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
     assert!(!ok);
 
-    let (ok, started) = call(&fx.runtime, &alice, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
-    assert!(ok, "{started}");
-    assert_eq!(started["created"], json!(true));
-    assert_eq!(started["goal_run"]["revision"], json!(2));
-    let run_id = started["goal_run"]["goal_run_id"].as_str().unwrap().to_string();
-    // Duplicate start replays the same run.
+    // Even with an approval, the model cannot start a Goal itself.
+    let (ok, output) = call(&fx.runtime, &alice, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "goal_not_started");
+    let started = operator_start(&fx, &plan_id, "codex").unwrap();
+    assert_eq!(started.revision, 2);
+    let run_id = started.goal_run_id.clone();
+    // After the app started it, the model finds that run.
     let (ok, again) = call(&fx.runtime, &alice, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
-    assert!(ok);
+    assert!(ok, "{again}");
     assert_eq!(again["created"], json!(false));
     assert_eq!(again["goal_run"]["goal_run_id"], json!(run_id));
     let (ok, status) = call(&fx.runtime, &alice, ToolTransport::Mcp, "goal_run_status", json!({"goal_run_id": run_id})).await;
@@ -423,10 +446,8 @@ async fn tunnel_bootstrap_principal_is_locked_cannot_approve_and_goal_dispatch_i
     )
     .unwrap();
     fx.runtime.plan_guard.reload();
-    let (ok, started) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
-    assert!(ok, "{started}");
-    let run_id = started["goal_run"]["goal_run_id"].as_str().unwrap();
-    let record = db.goal_run_read(PlanReader::Operator, run_id).unwrap().run;
+    let run_id = operator_start(&fx, &plan_id, "codex").unwrap().goal_run_id;
+    let record = db.goal_run_read(PlanReader::Operator, &run_id).unwrap().run;
     let dispatch = &record.dispatch_auth;
     assert_eq!(dispatch["kind"], json!("api_token"));
     assert_eq!(dispatch["token_kind"], json!("goal_run"));
@@ -488,7 +509,7 @@ async fn direct_goal_request_waits_for_the_operator_and_never_engages_plan_mode(
     // The model can neither start it nor use the operator's one-step start.
     let (ok, output) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
     assert!(!ok);
-    assert_eq!(error_kind(&output), "plan_not_approved");
+    assert_eq!(error_kind(&output), "goal_not_started");
     for transport in [ToolTransport::Mcp, ToolTransport::Api] {
         let (ok, output) = call(
             &fx.runtime,
@@ -511,7 +532,7 @@ async fn direct_goal_request_waits_for_the_operator_and_never_engages_plan_mode(
     assert_eq!(dispatch["token_kind"], json!("goal_run"));
     assert_eq!(dispatch["username"], json!("alice"));
 
-    // After the operator approves, the model's start returns the run.
+    // After the app approves and starts it, the model finds the run.
     db.plan_approve(
         &plan_id,
         1,
@@ -527,9 +548,10 @@ async fn direct_goal_request_waits_for_the_operator_and_never_engages_plan_mode(
         crate::tool_runtime::plan_mode::now_unix_ms(),
     )
     .unwrap();
+    let run_id = operator_start(&fx, &plan_id, "codex").unwrap().goal_run_id;
     let (ok, started) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
     assert!(ok, "{started}");
-    let run_id = started["goal_run"]["goal_run_id"].as_str().unwrap().to_string();
+    assert_eq!(started["goal_run"]["goal_run_id"], json!(run_id));
 
     // Status wait returns as soon as the run settles.
     let (ok, _) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_control", json!({"goal_run_id": run_id, "action": "cancel"})).await;
@@ -855,4 +877,126 @@ async fn git_readiness_reads_real_git_state_through_the_runner() {
     let readiness = readiness_for(plain.path(), "readiness-plain").await;
     assert_eq!(readiness["is_git_repo"], json!(false), "{readiness}");
     assert_eq!(readiness["blocks_goal_start"], json!(true), "{readiness}");
+}
+
+#[tokio::test]
+async fn plan_wait_approval_hands_the_approved_plan_straight_to_the_model() {
+    let fx = fixture().await;
+    let alice = chatgpt("alice");
+    let plan_id = start_plan(&fx, &alice).await;
+    let (ok, saved) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_save",
+        json!({"plan_id": plan_id, "parent_revision": 0, "content": "plan", "acceptance": [{"name": "t", "argv": ["true"]}]}),
+    )
+    .await;
+    assert!(ok, "{saved}");
+    // Callable while Plan Mode is active; nothing decided yet.
+    let (ok, waiting) = call(&fx.runtime, &alice, ToolTransport::Mcp, "plan_wait_approval", json!({"plan_id": plan_id, "wait_secs": 0})).await;
+    assert!(ok, "{waiting}");
+    assert_eq!(waiting["status"], json!("waiting"));
+    // Another principal cannot watch Alice's plan.
+    let (ok, _) = call(&fx.runtime, &chatgpt("bob"), ToolTransport::Mcp, "plan_wait_approval", json!({"plan_id": plan_id, "wait_secs": 0})).await;
+    assert!(!ok);
+
+    // Approved in the app while the model waits: it returns approved and the
+    // connection can write again at once.
+    let db = fx.runtime.communication_db.clone().unwrap();
+    let sha = saved["revision"]["content_sha256"].as_str().unwrap().to_string();
+    let approve = {
+        let db = db.clone();
+        let project = fx.project.clone();
+        let root = fx.root.clone();
+        let plan_id = plan_id.clone();
+        async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            db.plan_approve(
+                &plan_id,
+                1,
+                &sha,
+                PlanApprovalBinding {
+                    project_id: project,
+                    runner_client_id: "client-a".to_string(),
+                    project_root: root,
+                    base_commit: crate::db::UNBORN_BASE_COMMIT.to_string(),
+                },
+                "operator:alice",
+                DEFAULT_PLAN_APPROVAL_TTL_MS,
+                crate::tool_runtime::plan_mode::now_unix_ms(),
+            )
+            .unwrap();
+        }
+    };
+    let (_, (ok, approved)) = tokio::join!(
+        approve,
+        call(&fx.runtime, &alice, ToolTransport::Mcp, "plan_wait_approval", json!({"plan_id": plan_id, "wait_secs": 10}))
+    );
+    assert!(ok, "{approved}");
+    assert_eq!(approved["status"], json!("approved"));
+    assert!(approved["next"].as_str().unwrap().contains("not a Goal"));
+    assert!(fx.runtime.plan_mode_denial(Some(&alice), "write_project_file", Some(&fx.project)).is_none());
+    // The model cannot turn this approval into a Goal, and even the app
+    // cannot start one from an approval without a commit.
+    let (ok, output) = call(&fx.runtime, &alice, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "goal_not_started");
+    assert_eq!(operator_start(&fx, &plan_id, "codex").unwrap_err().code(), "plan_base_commit_unavailable");
+}
+
+#[tokio::test]
+async fn goal_check_is_owner_only_chatgpt_mode_only_and_blocked_in_plan_mode() {
+    let fx = fixture().await;
+    let tunnel = chatgpt_via_tunnel();
+    let db = fx.runtime.communication_db.clone().unwrap();
+    let (ok, created) = call(
+        &fx.runtime,
+        &tunnel,
+        ToolTransport::Mcp,
+        "goal_run_start",
+        json!({"project": fx.project, "title": "Fix", "objective": "fix it", "acceptance": [{"name": "t", "argv": ["true"]}]}),
+    )
+    .await;
+    assert!(ok, "{created}");
+    let plan_id = created["plan"]["plan_id"].as_str().unwrap().to_string();
+    db.plan_approve(
+        &plan_id,
+        1,
+        created["revision"]["content_sha256"].as_str().unwrap(),
+        PlanApprovalBinding {
+            project_id: fx.project.clone(),
+            runner_client_id: "client-a".to_string(),
+            project_root: fx.root.clone(),
+            base_commit: "abc".to_string(),
+        },
+        "operator:alice",
+        DEFAULT_PLAN_APPROVAL_TTL_MS,
+        crate::tool_runtime::plan_mode::now_unix_ms(),
+    )
+    .unwrap();
+    // The model picks no mode and starts nothing; the app starts ChatGPT mode.
+    let run_id = operator_start(&fx, &plan_id, crate::db::CHATGPT_GOAL_PROVIDER).unwrap().goal_run_id;
+    let (ok, started) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
+    assert!(ok, "{started}");
+    assert_eq!(started["goal_run"]["mode"], json!("chatgpt"));
+
+
+    // No worktree yet (no supervisor in this runtime): nothing is checked.
+    let (ok, early) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_check", json!({"goal_run_id": run_id, "wait_secs": 0})).await;
+    assert!(ok, "{early}");
+    assert_eq!(early["achieved"], json!(false));
+    assert!(early["next"].as_str().unwrap().contains("preparing"));
+    assert_eq!(db.goal_run_read(PlanReader::Operator, &run_id).unwrap().run.chatgpt_ready_iteration, 0);
+
+    // Someone else cannot drive it.
+    let (ok, output) = call(&fx.runtime, &chatgpt("bob"), ToolTransport::Mcp, "goal_check", json!({"goal_run_id": run_id, "wait_secs": 0})).await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "goal_run_not_found");
+
+    // While the owner is in Plan Mode, goal_check is refused like any execution.
+    let _plan = start_plan(&fx, &tunnel).await;
+    let (ok, output) = call(&fx.runtime, &tunnel, ToolTransport::Mcp, "goal_check", json!({"goal_run_id": run_id, "wait_secs": 0})).await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "plan_mode_read_only");
 }

@@ -249,16 +249,25 @@ sleep {AGENT_SLEEP}
     step("operator_approve_stale_v1", ok=ok, error_kind=stale.get("error_kind") if isinstance(stale, dict) else stale)
     ok, inspect = operator(helper, project, "plan_review", {"action": "inspect", "plan_id": plan_id})
     step("operator_inspect", ok=ok, revision=(inspect.get("revision") or {}).get("revision"), diff=inspect.get("diff"))
+    ok_w, waiting = chatgpt.call("plan_wait_approval", {"plan_id": plan_id, "wait_secs": 0})
+    step("plan_wait_before_approval", ok=ok_w, status=waiting.get("status"))
     ok, decision = operator(helper, project, "plan_review", {"action": "approve", "plan_id": plan_id, "revision": 2,
                                                              "content_sha256": s2["revision"]["content_sha256"]})
     step("operator_approve_v2", ok=ok, decision=decision.get("decision", decision))
+    ok_w, handed = chatgpt.call("plan_wait_approval", {"plan_id": plan_id, "wait_secs": 5})
+    ok_x, model_goal = chatgpt.call("goal_run_start", {"plan_id": plan_id})
+    step("plan_handed_to_chatgpt", ok=ok_w, status=handed.get("status"),
+         model_cannot_start_goal=(not ok_x and model_goal.get("error_kind") == "goal_not_started"))
 
-    # ---------------- Goal Mode ----------------
-    ok, run = chatgpt.call("goal_run_start", {"plan_id": plan_id})
-    run_id = run.get("goal_run", {}).get("goal_run_id")
+    # ---------------- Goal Mode (Codex), started in the app ----------------
+    ok, started = operator(helper, project, "plan_review", {"action": "approve_and_start", "plan_id": plan_id,
+                                                            "revision": 2, "mode": "codex",
+                                                            "content_sha256": s2["revision"]["content_sha256"]})
+    run = started if ok else {}
+    run_id = (run.get("goal_run") or {}).get("goal_run_id")
     ok_again, again = chatgpt.call("goal_run_start", {"plan_id": plan_id})
     step("goal_run_start", ok=ok, run_id=run_id, replay_same=again.get("goal_run", {}).get("goal_run_id") == run_id,
-         replay_created=again.get("created"), supervisor=run.get("supervisor_running"))
+         replay_created=again.get("created"), error=None if ok else started)
     step("chatgpt_disconnected", note="no further MCP calls; only the Chadex app polls status")
     t0 = time.time()
     restarted = False
@@ -335,7 +344,8 @@ sleep {AGENT_SLEEP}
     step("direct_goal_model_cannot_start", start_ok=ok_s, start_error=self_start.get("error_kind"),
          operator_ok=ok_o, operator_error=self_op.get("error_kind") if isinstance(self_op, dict) else self_op)
     ok, started2 = operator(helper, project, "plan_review", {"action": "approve_and_start", "plan_id": dplan,
-                                                              "revision": 1, "content_sha256": drev.get("content_sha256")})
+                                                              "revision": 1, "mode": "codex",
+                                                              "content_sha256": drev.get("content_sha256")})
     run2 = ((started2 or {}).get("goal_run") or {}).get("goal_run_id")
     step("operator_start_direct_goal", ok=ok, run_id=run2, error=None if ok else started2)
     ok, replay2 = chatgpt.call("goal_run_start", {"plan_id": dplan})
@@ -352,6 +362,47 @@ sleep {AGENT_SLEEP}
         subprocess.run(["git", "clone", "-q", "-b", gr2["result_branch"], str(project), str(check2)], check=True)
         r2 = subprocess.run(["python3", "-m", "unittest", "-q"], cwd=check2, capture_output=True, text=True)
         step("direct_goal_branch_check", exit_code=r2.returncode, calc=(check2 / "calc.py").read_text())
+    # ---------------- Goal Mode (ChatGPT): ChatGPT edits, Chadex checks ----------------
+    ok, creq = chatgpt.call("goal_run_start", {
+        "project": proj_id, "title": "Fix add() in ChatGPT mode",
+        "objective": "add() subtracts; make it add.",
+        "acceptance": [{"name": "unit tests", "argv": ["python3", "-m", "unittest", "-q"]}]})
+    cplan = (creq.get("plan") or {}).get("plan_id")
+    ok, cstart = operator(helper, project, "plan_review", {"action": "approve_and_start", "plan_id": cplan,
+                                                           "revision": 1, "mode": "chatgpt",
+                                                           "content_sha256": (creq.get("revision") or {}).get("content_sha256")})
+    crun = ((cstart or {}).get("goal_run") or {}).get("goal_run_id")
+    workspace = None
+    t2 = time.time()
+    while time.time() - t2 < 120:
+        ok_s, cstat = chatgpt.call("goal_run_status", {"goal_run_id": crun})
+        if (cstat.get("goal_run") or {}).get("waiting_for_chatgpt"):
+            workspace = cstat["goal_run"].get("workspace_project")
+            break
+        time.sleep(1)
+    # Round 1 without a fix. The first call returns before the checks finish;
+    # calling again only shows round 1's result and does not start round 2.
+    ok_c0, check0 = chatgpt.call("goal_check", {"goal_run_id": crun, "wait_secs": 0})
+    time.sleep(3)
+    ok_c1, check1 = chatgpt.call("goal_check", {"goal_run_id": crun, "wait_secs": 45})
+    check1b = check1
+    # ChatGPT edits the Goal's worktree with its normal tools, then checks.
+    ok_rd, read = chatgpt.call("read_files", {"project": workspace, "items": [{"path": "calc.py"}],
+                                             "include_read_revision": True})
+    rev = next((int(i["output"]["read_revision"]) for i in read.get("items", [])
+                if (i.get("output") or {}).get("read_revision") is not None), None)
+    ok_wr, wrote = chatgpt.call("write_project_file", {"project": workspace, "path": "calc.py",
+                                                      "content": "def add(a, b):\n    return a + b\n",
+                                                      "overwrite": True, "expected_read_revision": rev})
+    ok_c2, check2 = chatgpt.call("goal_check", {"goal_run_id": crun, "wait_secs": 45})
+    cgr = check2.get("goal_run") or {}
+    step("chatgpt_mode_goal", start_ok=ok, run_id=crun, mode=cgr.get("mode"), workspace=workspace,
+         round1_achieved=check1.get("achieved"), round1_has_failures=bool(check1.get("failures")),
+         round1_iteration=(check1.get("goal_run") or {}).get("iteration"),
+         chatgpt_wrote_worktree=ok_wr, write_error=None if ok_wr else wrote,
+         round2_achieved=check2.get("achieved"), state=cgr.get("state"), iteration=cgr.get("iteration"),
+         branch=cgr.get("result_branch"), main_untouched=(project / "calc.py").read_text().strip().endswith("a - b"))
+
     # ---------------- Git readiness: a project without any commit ----------------
     fresh = root / "fresh"
     fresh.mkdir()
@@ -375,7 +426,7 @@ sleep {AGENT_SLEEP}
     ok_i, finspect = operator(helper, fresh, "plan_review", {"action": "inspect", "plan_id": fplan})
     readiness = (finspect or {}).get("git_readiness") or {}
     ok_s, fstart = operator(helper, fresh, "plan_review", {
-        "action": "approve_and_start", "plan_id": fplan, "revision": 1,
+        "action": "approve_and_start", "plan_id": fplan, "revision": 1, "mode": "codex",
         "content_sha256": (freq.get("revision") or {}).get("content_sha256")})
     step("git_readiness_no_commit", project=fresh_id, request_ok=ok,
          request_readiness_blocks=((freq.get("git_readiness") or {}).get("blocks_goal_start")),

@@ -1763,6 +1763,21 @@ pub enum ToolCall {
         budget: Option<Value>,
     },
 
+    /// Wait (bounded) for the user's decision on a saved plan revision.
+    PlanWaitApproval {
+        plan_id: String,
+        #[serde(default)]
+        wait_secs: Option<u64>,
+    },
+
+    /// ChatGPT-mode Goal: report finished edits; Chadex runs the approved
+    /// acceptance checks and says whether to continue.
+    GoalCheck {
+        goal_run_id: String,
+        #[serde(default)]
+        wait_secs: Option<u64>,
+    },
+
     /// Read one owned Goal run, optionally waiting for it to finish.
     GoalRunStatus {
         goal_run_id: String,
@@ -1794,6 +1809,8 @@ pub enum ToolCall {
         approval_id: Option<String>,
         #[serde(default)]
         ttl_minutes: Option<i64>,
+        #[serde(default)]
+        mode: Option<String>,
     },
 
     /// Operator-only Goal controls and emergency stop.
@@ -3495,6 +3512,8 @@ impl ToolCall {
             Self::GoalRunStatus { .. } => "goal_run_status",
             Self::GoalRunList { .. } => "goal_run_list",
             Self::GoalRunControl { .. } => "goal_run_control",
+            Self::GoalCheck { .. } => "goal_check",
+            Self::PlanWaitApproval { .. } => "plan_wait_approval",
             Self::PlanReview { .. } => "plan_review",
             Self::GoalOperator { .. } => "goal_operator",
             Self::CreateGoal { .. } => "create_goal",
