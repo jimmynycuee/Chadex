@@ -171,6 +171,13 @@ cp "$ROOT/attribution/WebCodex-LICENSE.txt" "$CONTENTS/Resources/WebCodex-LICENS
 cp "$ROOT/LICENSE" "$CONTENTS/Resources/Chadex-LICENSE.txt"
 cp "$ROOT/UPSTREAM.md" "$CONTENTS/Resources/UPSTREAM.md"
 cp "$ROOT/Sources/ChadexApp/Resources/ChadexIcon.icns" "$CONTENTS/Resources/ChadexIcon.icns"
+# ChatGPT Skills; the app adds the user's tunnel dependency when exporting.
+mkdir -p "$CONTENTS/Resources/skills"
+for skill in chadex-plan chadex-goal; do
+  rm -rf "$CONTENTS/Resources/skills/$skill"
+  mkdir -p "$CONTENTS/Resources/skills/$skill"
+  cp "$ROOT/skills/$skill/SKILL.md" "$CONTENTS/Resources/skills/$skill/SKILL.md"
+done
 
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

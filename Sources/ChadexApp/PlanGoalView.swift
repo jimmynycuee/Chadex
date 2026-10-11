@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The "Plan & Goal" operator panel. Approving a plan happens only here: the
@@ -10,6 +11,8 @@ struct PlanGoalView: View {
 
     @State private var confirmation: PlanGoalConfirmation?
     @State private var rejectReason = ""
+    @State private var skillExportNote: String?
+    @State private var skillExportFailed = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -125,10 +128,70 @@ struct PlanGoalView: View {
         runsSection
         detailSection
 
+        skillExportSection
+
         Label(L10n.string("planGoal.authorityNote"), systemImage: "lock.shield")
             .chadexFont(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: Skill export
+
+    private var skillExportTunnelID: String {
+        model.preferences.tunnelID.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canExportSkills: Bool {
+        AppModel.isValidTunnelID(skillExportTunnelID) && SkillExport.bundledSkillsDirectory != nil
+    }
+
+    private var skillExportSection: some View {
+        VStack(alignment: .leading, spacing: layout.spacing(8)) {
+            SectionTitle(title: L10n.string("planGoal.skillExport.title"))
+            Text(L10n.string("planGoal.skillExport.hint"))
+                .chadexFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: layout.spacing(10)) {
+                Button(L10n.string("planGoal.skillExport.button")) { exportSkills() }
+                    .buttonStyle(ChadexButtonStyle(kind: .secondary))
+                    .chadexControlSize(.small)
+                    .disabled(!canExportSkills)
+                if !canExportSkills {
+                    Text(L10n.string("planGoal.skillExport.needTunnel"))
+                        .chadexFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let note = skillExportNote {
+                Text(note)
+                    .chadexFont(.caption)
+                    .foregroundStyle(skillExportFailed ? Color.red : Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private func exportSkills() {
+        guard let skills = SkillExport.bundledSkillsDirectory else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = L10n.string("planGoal.skillExport.choose")
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        do {
+            try SkillExport.export(tunnelID: skillExportTunnelID, skillsDirectory: skills, to: folder)
+            skillExportFailed = false
+            skillExportNote = L10n.string("planGoal.skillExport.done", folder.path)
+        } catch {
+            skillExportFailed = true
+            skillExportNote = L10n.string("planGoal.skillExport.failed", error.localizedDescription)
+        }
     }
 
     // MARK: Overview lists

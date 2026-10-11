@@ -860,3 +860,12 @@
 "planGoal.events.none" = "尚無事件。";
 "planGoal.operations" = "操作";
 "planGoal.operations.none" = "尚無操作。";
+
+/* Export ChatGPT Skills */
+"planGoal.skillExport.title" = "ChatGPT Skills";
+"planGoal.skillExport.hint" = "產生已指向你的 Chadex 通道的 chadex-plan.zip 與 chadex-goal.zip，ChatGPT 才能從 Skill 連到 Chadex。";
+"planGoal.skillExport.button" = "匯出 ChatGPT Skills…";
+"planGoal.skillExport.choose" = "匯出到這裡";
+"planGoal.skillExport.needTunnel" = "請先在設定填入有效的 Tunnel ID。";
+"planGoal.skillExport.done" = "已匯出到 %@。請在 ChatGPT 的「設定 → Skills」上傳這兩個 zip，並取代舊的。zip 內含你個人的通道位址，請勿分享。";
+"planGoal.skillExport.failed" = "匯出失敗：%@";
