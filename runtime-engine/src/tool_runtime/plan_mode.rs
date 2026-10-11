@@ -1175,7 +1175,7 @@ impl ToolRuntime {
             let status = self
                 .plan_kernel_read(auth, "git_status", json!({"project": project_id}))
                 .await?;
-            let log = if status.get("non_git_project").and_then(Value::as_bool) == Some(false) {
+            let log = if status.get("exit_code").and_then(Value::as_i64) == Some(0) {
                 self.plan_kernel_read(auth, "git_log", json!({"project": project_id, "limit": 1}))
                     .await
             } else {
@@ -1446,15 +1446,27 @@ fn shell_quote(value: &str) -> String {
     quoted
 }
 
-/// Whether a Goal can start from this project, built from the git_status and
-/// git_log outputs. `None` when the outputs do not settle it, so callers never
-/// warn (or block) on a guess.
+/// Whether a Goal can start from this project, built from the git_status
+/// (`git status --porcelain`: stdout, stderr, exit_code) and git_log outputs.
+/// `None` when the outputs do not settle it, so callers never warn (or block)
+/// on a guess.
 pub(crate) fn git_readiness_from_outputs(
     status: &Value,
     log: Option<&Value>,
     project_root: &str,
 ) -> Option<Value> {
-    let is_git_repo = !status.get("non_git_project")?.as_bool()?;
+    let is_git_repo = match status.get("exit_code")?.as_i64()? {
+        0 => true,
+        _ if status
+            .get("stderr")
+            .and_then(Value::as_str)?
+            .to_ascii_lowercase()
+            .contains("not a git repository") =>
+        {
+            false
+        }
+        _ => return None,
+    };
     let head_commit = if is_git_repo {
         // git_log reports an unborn HEAD as a successful empty log.
         match log?.get("head_commit")? {
@@ -1466,8 +1478,11 @@ pub(crate) fn git_readiness_from_outputs(
         None
     };
     let has_commit = head_commit.is_some();
-    let uncommitted_files = if is_git_repo && status.get("git_error").is_none_or(Value::is_null) {
-        status.get("files_total").and_then(Value::as_i64)
+    let uncommitted_files = if is_git_repo {
+        status
+            .get("stdout")
+            .and_then(Value::as_str)
+            .map(|stdout| stdout.lines().filter(|line| !line.trim().is_empty()).count() as i64)
     } else {
         None
     };

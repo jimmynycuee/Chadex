@@ -744,7 +744,11 @@ async fn approve_and_start_needs_a_principal_recorded_for_the_latest_revision() 
 fn git_readiness_blocks_goal_start_without_a_commit_and_teaches_how_to_commit() {
     use crate::tool_runtime::plan_mode::git_readiness_from_outputs;
     let root = "/Users/me/投資手機介面";
-    let repo = |files: i64| json!({"non_git_project": false, "git_error": null, "files_total": files});
+    // git_status output: `git status --porcelain`.
+    let repo = |files: usize| {
+        let stdout: String = (0..files).map(|n| format!("?? file{n}.py\n")).collect();
+        json!({"stdout": stdout, "stderr": "", "exit_code": 0})
+    };
 
     // Repository without any commit: git_log reports an unborn HEAD.
     let unborn = git_readiness_from_outputs(&repo(16), Some(&json!({"head_commit": null})), root).unwrap();
@@ -762,7 +766,8 @@ fn git_readiness_blocks_goal_start_without_a_commit_and_teaches_how_to_commit() 
     assert!(!unborn["tips"].as_array().unwrap().is_empty());
 
     // Not a repository at all: init first.
-    let plain = git_readiness_from_outputs(&json!({"non_git_project": true, "git_error": "not a git repository"}), None, root).unwrap();
+    let not_repo = json!({"stdout": "", "stderr": "fatal: not a git repository (or any of the parent directories): .git\n", "exit_code": 128});
+    let plain = git_readiness_from_outputs(&not_repo, None, root).unwrap();
     assert_eq!(plain["is_git_repo"], json!(false));
     assert_eq!(plain["blocks_goal_start"], json!(true));
     assert_eq!(plain["how_to_commit"][0], json!("git -C \"/Users/me/投資手機介面\" init"));
@@ -772,6 +777,7 @@ fn git_readiness_blocks_goal_start_without_a_commit_and_teaches_how_to_commit() 
     let head = json!({"head_commit": "b8de8677ac56b7b63a2f46d624511e6cf01e92ba"});
     let dirty = git_readiness_from_outputs(&repo(3), Some(&head), root).unwrap();
     assert_eq!(dirty["blocks_goal_start"], json!(false));
+    assert_eq!(dirty["uncommitted_files"], json!(3));
     assert_eq!(dirty["how_to_commit"].as_array().unwrap().len(), 2);
     assert!(dirty["message"].as_str().unwrap().contains("b8de8677ac56"));
 
@@ -782,10 +788,71 @@ fn git_readiness_blocks_goal_start_without_a_commit_and_teaches_how_to_commit() 
 
     // Unknown state never warns or blocks.
     assert!(git_readiness_from_outputs(&json!({}), None, root).is_none());
+    assert!(git_readiness_from_outputs(&json!({"stdout": "", "stderr": "fatal: permission denied", "exit_code": 128}), None, root).is_none());
     assert!(git_readiness_from_outputs(&repo(0), None, root).is_none());
     assert!(git_readiness_from_outputs(&repo(0), Some(&json!({})), root).is_none());
 
     // Paths are quoted for the shell.
     let odd = git_readiness_from_outputs(&repo(1), Some(&json!({"head_commit": null})), "/tmp/a \"b\" $c").unwrap();
     assert_eq!(odd["how_to_commit"][0], json!("git -C \"/tmp/a \\\"b\\\" \\$c\" add -A"));
+}
+
+/// End to end through the kernel and a Runner that really runs git, so the
+/// readiness check is exercised against the actual git_status/git_log output.
+#[tokio::test]
+async fn git_readiness_reads_real_git_state_through_the_runner() {
+    async fn readiness_for(root: &std::path::Path, client_id: &str) -> Value {
+        let runtime = test_runtime();
+        register_agent_with_projects(
+            &runtime,
+            client_id,
+            Some("alice"),
+            RunnerCapabilities {
+                shell: true,
+                git: true,
+                structured_process_argv: true,
+                internal_posix_script: true,
+                ..Default::default()
+            },
+            vec![registered_project("repo", &root.to_string_lossy())],
+        )
+        .await;
+        let project = crate::tool_runtime::runner_project_runtime_id(client_id, "repo");
+        let runtime_for_task = runtime.clone();
+        let task = tokio::spawn(async move {
+            runtime_for_task.plan_git_readiness(Some(&operator("alice")), &project).await
+        });
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !task.is_finished() {
+            assert!(tokio::time::Instant::now() < deadline, "readiness did not finish");
+            if let Some(request) = probe_patch_agent_request(&runtime, client_id).await {
+                complete_agent_request_by_running_locally(&runtime, client_id, request).await;
+            } else {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        }
+        task.await.unwrap().unwrap_or(Value::Null)
+    }
+
+    let unborn = tempfile::tempdir().unwrap();
+    init_git_repo(unborn.path());
+    std::fs::write(unborn.path().join("notes.py"), "print(1)\n").unwrap();
+    let readiness = readiness_for(unborn.path(), "readiness-unborn").await;
+    assert_eq!(readiness["is_git_repo"], json!(true), "{readiness}");
+    assert_eq!(readiness["has_commit"], json!(false), "{readiness}");
+    assert_eq!(readiness["blocks_goal_start"], json!(true), "{readiness}");
+    assert_eq!(readiness["uncommitted_files"], json!(1), "{readiness}");
+
+    let committed = tempfile::tempdir().unwrap();
+    init_git_repo(committed.path());
+    commit_file(committed.path(), "notes.py", "print(1)\n", "initial");
+    let readiness = readiness_for(committed.path(), "readiness-committed").await;
+    assert_eq!(readiness["has_commit"], json!(true), "{readiness}");
+    assert_eq!(readiness["blocks_goal_start"], json!(false), "{readiness}");
+    assert_eq!(readiness["uncommitted_files"], json!(0), "{readiness}");
+
+    let plain = tempfile::tempdir().unwrap();
+    let readiness = readiness_for(plain.path(), "readiness-plain").await;
+    assert_eq!(readiness["is_git_repo"], json!(false), "{readiness}");
+    assert_eq!(readiness["blocks_goal_start"], json!(true), "{readiness}");
 }
