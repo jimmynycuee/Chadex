@@ -860,3 +860,12 @@
 "planGoal.events.none" = "No events yet.";
 "planGoal.operations" = "Operations";
 "planGoal.operations.none" = "No operations yet.";
+
+/* Export ChatGPT Skills */
+"planGoal.skillExport.title" = "ChatGPT Skills";
+"planGoal.skillExport.hint" = "Creates chadex-plan.zip and chadex-goal.zip that already point at your Chadex tunnel, so ChatGPT can reach Chadex from the Skill.";
+"planGoal.skillExport.button" = "Export ChatGPT Skills…";
+"planGoal.skillExport.choose" = "Export Here";
+"planGoal.skillExport.needTunnel" = "Set a valid Tunnel ID in Settings first.";
+"planGoal.skillExport.done" = "Exported to %@. In ChatGPT open Settings → Skills and upload both zips, replacing the old ones. The zips contain your personal tunnel address, so do not share them.";
+"planGoal.skillExport.failed" = "Export failed: %@";

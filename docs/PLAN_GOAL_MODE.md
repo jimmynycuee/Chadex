@@ -24,6 +24,7 @@
 
 - `plan_start` 與 `goal_run_start` 在 ChatGPT 的直接工具清單中；其餘工具經 `call_runtime_tool` gateway，每個結果都會指出下一步。因此**即使沒有 Skill，一般文字指令也能完整使用**。
 - Skills：`skills/chadex-plan/SKILL.md`、`skills/chadex-goal/SKILL.md`。OpenAI 官方文件說明 ChatGPT 可用 `@` 呼叫 Skill，所以上傳後可用 `@chadex-plan`／`@chadex-goal`。它們也能以 ZIP 上傳到 Chadex Skills Center（managed skill），由 ChatGPT 透過 `skill_load` 讀取。**`@plan`／`@goal` 這種短名稱未驗證**：需把 Skill 改名為 `plan`／`goal`，且可能與其他 Skill 衝突；ChatGPT 個人方案的 Skill 上傳位置本次也未實測。
+- **匯出 Skill（必做）**：Skill 要在 `agents/openai.yaml` 宣告 Chadex MCP 連線，ChatGPT 才拿得到 Chadex 工具，而網址含你個人的 Tunnel ID。因此請用 App「Plan & Goal」頁底的「匯出 ChatGPT Skills…」選資料夾，產生 `chadex-plan.zip`、`chadex-goal.zip`，再到 ChatGPT「設定 → Skills」上傳並取代舊的。zip 含個人通道位址，請勿分享。需先在設定填好有效的 Tunnel ID。
 - Skill 只是程序說明，不是權限；所有限制都在後端。
 
 ## 架構
