@@ -78,10 +78,10 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
                 // project is optional: it defaults to the project open in the Chadex app.
                 false,
             ),
-            "Enter Chadex Plan Mode for one project. Use when the user asks to plan first / not change code yet / 'Chadex Plan Mode' / @plan. From this call until the user approves or exits in the Chadex app, the Chadex backend makes this connection read-only: only reviewed read tools (files, search, Git history, Memory, Skills) work and every write, shell, job, Git write, Computer Use, Plugin, MCP gateway or agent call is refused. Idempotent for the same project. Writes only Chadex's own plan store.",
+            "Enter Chadex Plan Mode for one project. Use when the user asks to plan first / not change code yet / 'Chadex Plan Mode' / @plan. Omit project to use the project open in the Chadex app; ask the user only if this returns project_required. Then, in the same reply: read, plan_save, plan_wait_approval; after approval implement it yourself. From this call until the user approves or exits in the Chadex app, the Chadex backend makes this connection read-only: only reviewed read tools (files, search, Git history, Memory, Skills) work and every write, shell, job, Git write, Computer Use, Plugin, MCP gateway or agent call is refused. Idempotent for the same project. Writes only Chadex's own plan store.",
             plan_start_input_schema,
         )
-        .with_gpt_action_description("Enter backend-enforced read-only Plan Mode for a project before planning work."),
+        .with_gpt_action_description("Enter read-only Plan Mode (project defaults to the one open in the Chadex app), then plan_save and plan_wait_approval in the same reply."),
         61,
     ),
     adaptive_runtime_direct(
@@ -135,7 +135,7 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
                     ToolIdempotency::Keyed,
                     PROJECT_WRITE,
                 ),
-                "Chadex Goal Mode: work until objective acceptance checks pass. Send a goal with project, title, objective and acceptance (argv commands; exit 0 = done). You cannot start it: the user starts it in the Chadex app (Plan & Goal) and picks the mode: Codex (Chadex runs Codex CLI in the background, uses their Codex tokens, ChatGPT can be closed) or ChatGPT (you edit the Goal's workspace project here and call goal_check until achieved). Calling with plan_id returns the run once started. Use when the user gives a goal / 'Chadex Goal Mode' / @goal. Not for implementing an approved Plan Mode plan (use plan_wait_approval). The result is a branch for the user to review; nothing is merged, pushed or deployed. ChatGPT is not notified when a Codex-mode Goal ends: Chadex notifies the user on the Mac.",
+                "Chadex Goal Mode: work until objective acceptance checks pass. Send a goal with title, objective and acceptance (omit project to use the one open in the Chadex app) (argv commands; exit 0 = done). You cannot start it: the user starts it in the Chadex app (Plan & Goal) and picks the mode: Codex (Chadex runs Codex CLI in the background, uses their Codex tokens, ChatGPT can be closed) or ChatGPT (you edit the Goal's workspace project here and call goal_check until achieved). Calling with plan_id returns the run once started. Use when the user gives a goal / 'Chadex Goal Mode' / @goal. Not for implementing an approved Plan Mode plan (use plan_wait_approval). The result is a branch for the user to review; nothing is merged, pushed or deployed. ChatGPT is not notified when a Codex-mode Goal ends: Chadex notifies the user on the Mac.",
                 goal_run_start_input_schema,
             )
             .with_gpt_action_description("Send a direct Goal request (the user starts it in the Chadex app) or find a started Goal."),

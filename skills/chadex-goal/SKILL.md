@@ -14,8 +14,8 @@ A Goal succeeds only when every acceptance check passes, judged by Chadex in an 
 
 A goal written only in the chat is not a Chadex Goal: send it with `goal_run_start`. If `goal_run_start` (or any tool below) is not in your tool list, the connector's tool list in ChatGPT is out of date: call it through `call_runtime_tool` with `{"tool": "goal_run_start", "arguments": {...}}`. Never tell the user Chadex has no goal tool before trying `call_runtime_tool`.
 
-1. Identify the project (`list_projects` if unclear). Look at the repository just enough to choose real acceptance checks (`project_overview`, `read_files`, `git_status`).
-2. Call `goal_run_start` with `project`, a short `title`, the `objective` (what must be true when done, constraints, what must not change) and `acceptance`: each check is literal argv (no shell), run in the project root (or `cwd`), exit 0 = pass. Prefer the repository's real test/build/lint commands. Never use a check that always passes. Add `budget` only if the defaults (5 iterations, 120 minutes) do not fit.
+1. Leave `project` out unless the user named one: Chadex then uses the project open in the Chadex app. Only if `goal_run_start` answers that the project is ambiguous, ask the user to pick from the candidates it lists. Look at the repository just enough to choose real acceptance checks (`project_overview`, `read_files`, `git_status`).
+2. Call `goal_run_start` with a short `title`, the `objective` (what must be true when done, constraints, what must not change) and `acceptance`: each check is literal argv (no shell), run in the project root (or `cwd`), exit 0 = pass. Prefer the repository's real test/build/lint commands. Never use a check that always passes. Add `budget` only if the defaults (5 iterations, 120 minutes) do not fit.
 3. Tell the user to open the Chadex app (Plan & Goal) and choose **Run with Codex in the background** (uses Codex tokens) or **Run in this ChatGPT conversation** (no Codex tokens). Chadex also shows a Mac notification. You cannot start it yourself.
 4. Once they say it started, find the run with `goal_run_list` (its `plan_id` matches). Its `mode` tells you what to do next.
 

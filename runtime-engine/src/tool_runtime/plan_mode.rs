@@ -454,7 +454,7 @@ impl ToolRuntime {
                     "active": true,
                     "enforcement": "backend",
                     "allowed_tools": PLAN_MODE_READ_ONLY_TOOLS,
-                    "note": "This Chadex connection is now read-only for the project. Inspect with read tools, then save the plan with plan_save (include acceptance checks). The user approves the exact revision in the Chadex app; Plan Mode ends on approval, on exit in the app, or after expiry.",
+                    "note": "This Chadex connection is now read-only for the project. Do not stop or wait for the user now: in this same reply, inspect the project with read tools, save the full plan with plan_save (include acceptance checks), then call plan_wait_approval and keep calling it until it returns a decision. The user approves the exact revision in the Chadex app; on approval Plan Mode ends and you implement it yourself right away (it is not a Goal). Plan Mode also ends on exit in the app or after expiry.",
                 },
             })),
             Err(error) => plan_error(error),
