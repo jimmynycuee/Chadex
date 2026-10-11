@@ -23,10 +23,10 @@ fn object(properties: Value, required: &[&str]) -> Value {
 pub fn plan_start_input_schema() -> Value {
     object(
         json!({
-            "project": {"type": "string", "minLength": 1, "description": "Configured project id to plan for."},
+            "project": {"type": "string", "minLength": 1, "description": "Configured project id to plan for. Omit to use the project open in the Chadex app."},
             "title": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Short title of the work being planned."}
         }),
-        &["project", "title"],
+        &["title"],
     )
 }
 
@@ -97,7 +97,7 @@ pub fn goal_run_start_input_schema() -> Value {
     object(
         json!({
             "plan_id": {"type": "string", "pattern": PLAN_ID_PATTERN, "description": "Plan id of a Goal request the user already started in the Chadex app: returns that run. Omit to send a new direct Goal."},
-            "project": {"type": "string", "minLength": 1, "description": "Direct Goal: configured project id to work in."},
+            "project": {"type": "string", "minLength": 1, "description": "Direct Goal: configured project id to work in. Omit to use the project open in the Chadex app."},
             "title": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Direct Goal: short title."},
             "objective": {"type": "string", "minLength": 1, "maxLength": 65536, "description": "Direct Goal: what must be true when done, constraints, and anything the agent must not change."},
             "acceptance": acceptance_schema(),

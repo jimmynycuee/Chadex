@@ -1000,3 +1000,269 @@ async fn goal_check_is_owner_only_chatgpt_mode_only_and_blocked_in_plan_mode() {
     assert!(!ok);
     assert_eq!(error_kind(&output), "plan_mode_read_only");
 }
+
+/// Two primary projects and one Goal worktree of `demo` on one Runner, with an
+/// optional Chadex app state file naming `app_project` (an agent project id).
+struct AppFixture {
+    _tmp: tempfile::TempDir,
+    _roots: Vec<tempfile::TempDir>,
+    _state_dir: tempfile::TempDir,
+    runtime: ToolRuntime,
+    demo: String,
+    other: String,
+    worktree: String,
+}
+
+async fn app_fixture(app_project: Option<&str>, with_other: bool) -> AppFixture {
+    let (tmp, db) = crate::test_support::test_db();
+    let state_dir = tempfile::tempdir().unwrap();
+    let state_file = state_dir.path().join("desktop-state.json");
+    if let Some(project) = app_project {
+        std::fs::write(
+            &state_file,
+            json!({"project": {"path": "/unused", "runtime_project_id": project}}).to_string(),
+        )
+        .unwrap();
+    }
+    let runtime = ToolRuntime::new_for_tests()
+        .with_communication_database(db)
+        .with_app_active_project_file(Some(state_file));
+    let roots: Vec<_> = (0..3).map(|_| tempfile::tempdir().unwrap()).collect();
+    let path = |index: usize| roots[index].path().to_string_lossy().to_string();
+    let mut worktree = registered_project("demo-wt", &path(2));
+    worktree.lineage = Some(crate::runner_protocol::RunnerProjectLineage::ManagedWorktreeSource {
+        source_project_id: "demo".to_string(),
+        source_root_fingerprint: format!("wc_projroot_{}", "f".repeat(64)),
+        base_sha: "a".repeat(40),
+    });
+    let mut projects = vec![registered_project("demo", &path(0)), worktree];
+    if with_other {
+        projects.push(registered_project("other", &path(1)));
+    }
+    register_agent_with_projects(
+        &runtime,
+        "client-a",
+        Some("alice"),
+        RunnerCapabilities {
+            shell: true,
+            structured_process_argv: true,
+            ..Default::default()
+        },
+        projects,
+    )
+    .await;
+    AppFixture {
+        _tmp: tmp,
+        _roots: roots,
+        _state_dir: state_dir,
+        runtime,
+        demo: crate::tool_runtime::runner_project_runtime_id("client-a", "demo"),
+        other: crate::tool_runtime::runner_project_runtime_id("client-a", "other"),
+        worktree: crate::tool_runtime::runner_project_runtime_id("client-a", "demo-wt"),
+    }
+}
+
+#[tokio::test]
+async fn plan_start_without_project_uses_the_project_open_in_the_chadex_app() {
+    let other = crate::tool_runtime::runner_project_runtime_id("client-a", "other");
+    let fx = app_fixture(Some(&other), true).await;
+    let alice = chatgpt("alice");
+    let (ok, output) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_start",
+        json!({"title": "Finish G1"}),
+    )
+    .await;
+    assert!(ok, "{output}");
+    assert_eq!(output["plan"]["project_id"], json!(fx.other));
+    assert_eq!(
+        output["project_resolution"],
+        json!({"project": fx.other, "source": "chadex_app"})
+    );
+    // Plan Mode is locked to that project exactly as with an explicit id.
+    assert!(fx
+        .runtime
+        .plan_mode_denial(Some(&alice), "read_files", Some(&fx.demo))
+        .is_some());
+    assert!(fx
+        .runtime
+        .plan_mode_denial(Some(&alice), "read_files", Some(&fx.other))
+        .is_none());
+    // Repeating it is the same idempotent start; an explicit project still wins.
+    let (ok, again) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_start",
+        json!({"title": "Finish G1", "project": fx.other}),
+    )
+    .await;
+    assert!(ok, "{again}");
+    assert_eq!(again["created"], json!(false));
+    assert_eq!(again["project_resolution"], Value::Null);
+}
+
+#[tokio::test]
+async fn plan_start_without_project_and_no_app_project_lists_candidates_instead_of_guessing() {
+    let fx = app_fixture(None, true).await;
+    let alice = chatgpt("alice");
+    let (ok, output) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_start",
+        json!({"title": "Finish G1"}),
+    )
+    .await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "project_required");
+    assert_eq!(output["state_changed"], json!(false));
+    let ids: Vec<&str> = output["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|candidate| candidate["id"].as_str().unwrap())
+        .collect();
+    // Goal worktrees are not offered as candidates.
+    assert_eq!(ids, vec![fx.demo.as_str(), fx.other.as_str()]);
+    // No lock was taken.
+    assert!(fx
+        .runtime
+        .plan_mode_denial(Some(&alice), "run_process", Some(&fx.demo))
+        .is_none());
+}
+
+#[tokio::test]
+async fn plan_start_without_project_uses_the_only_primary_project_when_no_app_project_is_set() {
+    let fx = app_fixture(None, false).await;
+    let (ok, output) = call(
+        &fx.runtime,
+        &chatgpt("alice"),
+        ToolTransport::Mcp,
+        "plan_start",
+        json!({"title": "Finish G1"}),
+    )
+    .await;
+    assert!(ok, "{output}");
+    assert_eq!(output["plan"]["project_id"], json!(fx.demo));
+    assert_eq!(output["project_resolution"]["source"], json!("only_project"));
+}
+
+#[tokio::test]
+async fn app_project_the_caller_cannot_use_is_an_error_not_a_fallback_or_a_grant() {
+    // The app names a project on another user's Runner: alice's connection may
+    // not use it, and must not silently fall back to one of her own projects.
+    let fx = app_fixture(Some("agent:client-b:secret"), false).await;
+    register_agent_with_projects(
+        &fx.runtime,
+        "client-b",
+        Some("carol"),
+        RunnerCapabilities::default(),
+        vec![registered_project("secret", &fx._roots[1].path().to_string_lossy())],
+    )
+    .await;
+    let alice = chatgpt("alice");
+    let (ok, output) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_start",
+        json!({"title": "Finish G1"}),
+    )
+    .await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "project_required");
+    assert_eq!(output["app_active_project"], json!("agent:client-b:secret"));
+    assert!(output["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|candidate| candidate["id"] != json!("agent:client-b:secret")));
+    // list_projects neither shows nor reports it to alice.
+    let listed = fx.runtime.list_projects(Some(&alice)).await;
+    assert!(listed.success);
+    assert_eq!(listed.output["active_project"], Value::Null);
+}
+
+#[tokio::test]
+async fn direct_goal_request_without_project_uses_the_project_open_in_the_chadex_app() {
+    let demo = crate::tool_runtime::runner_project_runtime_id("client-a", "demo");
+    let fx = app_fixture(Some(&demo), true).await;
+    let (ok, created) = call(
+        &fx.runtime,
+        &chatgpt_via_tunnel(),
+        ToolTransport::Mcp,
+        "goal_run_start",
+        json!({
+            "title": "Fix add",
+            "objective": "add() must add",
+            "acceptance": [{"name": "unit", "argv": ["python3", "-m", "unittest"]}],
+        }),
+    )
+    .await;
+    assert!(ok, "{created}");
+    assert_eq!(created["plan"]["project_id"], json!(fx.demo));
+    assert_eq!(created["project_resolution"]["source"], json!("chadex_app"));
+
+    // Without an app project and with two candidates it refuses.
+    let fx = app_fixture(None, true).await;
+    let (ok, output) = call(
+        &fx.runtime,
+        &chatgpt_via_tunnel(),
+        ToolTransport::Mcp,
+        "goal_run_start",
+        json!({
+            "title": "Fix add",
+            "objective": "add() must add",
+            "acceptance": [{"name": "unit", "argv": ["python3", "-m", "unittest"]}],
+        }),
+    )
+    .await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "project_required");
+}
+
+#[tokio::test]
+async fn list_projects_marks_the_app_project_and_goal_worktrees() {
+    let demo = crate::tool_runtime::runner_project_runtime_id("client-a", "demo");
+    let fx = app_fixture(Some(&demo), true).await;
+    let alice = chatgpt("alice");
+    let listed = fx.runtime.list_projects(Some(&alice)).await;
+    assert!(listed.success, "{:?}", listed.error);
+    assert_eq!(listed.output["active_project"]["id"], json!(fx.demo));
+    let by_id = |id: &str| {
+        listed.output["projects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|project| project["id"] == json!(id))
+            .cloned()
+            .unwrap()
+    };
+    assert_eq!(by_id(&fx.demo)["active"], json!(true));
+    assert_eq!(by_id(&fx.other)["active"], json!(false));
+    assert_eq!(by_id(&fx.demo)["managed_worktree"], json!(false));
+    assert_eq!(by_id(&fx.worktree)["managed_worktree"], json!(true));
+    assert_eq!(by_id(&fx.worktree)["source_project"], json!(fx.demo));
+    // Nothing is hidden.
+    assert_eq!(listed.output["count"], json!(3));
+
+    // A filtered page that leaves the app project out still reports it.
+    let filtered = fx
+        .runtime
+        .list_projects_with_options(
+            Some(&alice),
+            crate::tool_runtime::projects::ListProjectsOptions {
+                project: Some(fx.other.clone()),
+                summary_only: true,
+                ..Default::default()
+            },
+        )
+        .await;
+    assert!(filtered.success);
+    assert_eq!(filtered.output["count"], json!(1));
+    assert_eq!(filtered.output["projects"][0]["active"], json!(false));
+    assert_eq!(filtered.output["active_project"]["id"], json!(fx.demo));
+}

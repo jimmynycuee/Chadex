@@ -1665,3 +1665,18 @@ fn admin_token_file_is_carried_only_while_it_stays_beside_the_server_env_file() 
     );
     assert_eq!(carried_admin_token_file(&config, None), None);
 }
+
+#[test]
+fn local_server_learns_the_desktop_state_file_from_its_process_environment() {
+    let command = with_desktop_state_file(
+        std::process::Command::new("webcodex-server"),
+        Path::new("/data/desktop-state.json"),
+    );
+    let values: Vec<_> = command
+        .get_envs()
+        .filter(|(name, _)| name.to_str() == Some(DESKTOP_STATE_FILE_ENV))
+        .filter_map(|(_, value)| value.and_then(|value| value.to_str()))
+        .collect();
+    assert_eq!(DESKTOP_STATE_FILE_ENV, "CHADEX_DESKTOP_STATE_FILE");
+    assert_eq!(values, vec!["/data/desktop-state.json"]);
+}

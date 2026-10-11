@@ -4,6 +4,7 @@
 //! No HTTP framework types here — pure Rust input/output.
 
 pub mod activity;
+mod active_project;
 mod agent_task;
 mod agent_wait;
 mod cargo;
@@ -67,6 +68,7 @@ pub(crate) mod permissions;
 mod process;
 pub(crate) mod project_instructions;
 mod project_resolution;
+pub(crate) use active_project::app_active_project_file_from_env;
 pub(crate) use project_resolution::ResolvedProject;
 mod project_tools;
 mod projects;

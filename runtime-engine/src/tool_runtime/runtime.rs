@@ -191,6 +191,10 @@ pub struct ToolRuntime {
     pub(crate) plan_guard: Arc<super::plan_mode::PlanGuard>,
     /// Set once the in-process Goal supervisor runs; wakes it after changes.
     pub(crate) goal_supervisor_wake: Option<Arc<tokio::sync::Notify>>,
+    /// Chadex app state file naming the project open in the app. Set only by
+    /// the operator side (the helper's process environment); see
+    /// `active_project`.
+    pub(crate) app_active_project_file: Option<PathBuf>,
 }
 
 impl ToolRuntime {
@@ -243,6 +247,7 @@ impl ToolRuntime {
             agent_continuations: None,
             plan_guard: Arc::new(super::plan_mode::PlanGuard::default()),
             goal_supervisor_wake: None,
+            app_active_project_file: None,
         }
     }
 
@@ -274,6 +279,12 @@ impl ToolRuntime {
         ));
         self.plan_guard = Arc::new(super::plan_mode::PlanGuard::with_database(db.clone()));
         self.communication_db = Some(db);
+        self
+    }
+
+    /// Read the Chadex app's active project from this operator-owned file.
+    pub(crate) fn with_app_active_project_file(mut self, path: Option<PathBuf>) -> Self {
+        self.app_active_project_file = path;
         self
     }
 

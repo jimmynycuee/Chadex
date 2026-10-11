@@ -75,7 +75,8 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
                 WorkflowManage,
                 ToolIdempotency::Keyed,
                 PROJECT_READ,
-                true,
+                // project is optional: it defaults to the project open in the Chadex app.
+                false,
             ),
             "Enter Chadex Plan Mode for one project. Use when the user asks to plan first / not change code yet / 'Chadex Plan Mode' / @plan. From this call until the user approves or exits in the Chadex app, the Chadex backend makes this connection read-only: only reviewed read tools (files, search, Git history, Memory, Skills) work and every write, shell, job, Git write, Computer Use, Plugin, MCP gateway or agent call is refused. Idempotent for the same project. Writes only Chadex's own plan store.",
             plan_start_input_schema,

@@ -1763,7 +1763,10 @@ impl RuntimeCoordinator {
                     "Check the local Service diagnostics and retry.",
                 ));
             }
-            let command = self.adapter.local_server_command(&env_file)?;
+            let command = with_desktop_state_file(
+                self.adapter.local_server_command(&env_file)?,
+                &self.config_path,
+            );
             self.spawn_owned(ProcessKind::LocalServer, command, false, cancellation)
                 .await?;
             true

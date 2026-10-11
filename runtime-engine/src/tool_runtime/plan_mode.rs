@@ -398,14 +398,34 @@ impl ToolRuntime {
         }
     }
 
+    /// An explicit project as given, or the operator-side default (the project
+    /// open in the Chadex app) with where it came from.
+    async fn project_or_default(
+        &self,
+        project: Option<String>,
+        auth: Option<&AuthContext>,
+    ) -> Result<(String, Option<super::active_project::DefaultProject>), ToolResult> {
+        match project {
+            Some(project) => Ok((project, None)),
+            None => {
+                let default = self.default_project_for_auth(auth).await?;
+                Ok((default.project.clone(), Some(default)))
+            }
+        }
+    }
+
     pub(crate) async fn plan_start(
         &self,
         auth: Option<&AuthContext>,
-        project: String,
+        project: Option<String>,
         title: String,
     ) -> ToolResult {
         let db = match self.plan_db() {
             Ok(db) => db.clone(),
+            Err(result) => return result,
+        };
+        let (project, defaulted) = match self.project_or_default(project, auth).await {
+            Ok(value) => value,
             Err(result) => return result,
         };
         let (project_id, _) = match self.plan_project_environment(&project, auth).await {
@@ -422,6 +442,7 @@ impl ToolRuntime {
         };
         match outcome {
             Ok(outcome) => ToolResult::ok(json!({
+                "project_resolution": defaulted.as_ref().map(|default| default.projection()),
                 "git_readiness": git_readiness,
                 "pending_change_request": db
                     .plan_read(PlanReader::Owner(&owner), &outcome.plan.plan_id, None, now_unix_ms())
@@ -583,8 +604,12 @@ impl ToolRuntime {
             Ok(db) => db.clone(),
             Err(result) => return result,
         };
-        let (Some(project), Some(title)) = (project, title) else {
-            return invalid_action("A direct Goal needs project, title, objective and acceptance");
+        let Some(title) = title else {
+            return invalid_action("A direct Goal needs title, objective and acceptance (project defaults to the project open in the Chadex app)");
+        };
+        let (project, defaulted) = match self.project_or_default(project, auth).await {
+            Ok(value) => value,
+            Err(result) => return result,
         };
         let (project_id, _, dispatch) = match self.goal_dispatch_for_project(&project, auth).await {
             Ok(value) => value,
@@ -602,6 +627,7 @@ impl ToolRuntime {
         };
         match created {
             Ok(outcome) => ToolResult::ok(json!({
+                "project_resolution": defaulted.as_ref().map(|default| default.projection()),
                 "git_readiness": git_readiness,
                 "plan": outcome.plan,
                 "revision": outcome.revision,
