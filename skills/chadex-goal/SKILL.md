@@ -1,6 +1,6 @@
 ---
 name: chadex-goal
-description: Give Chadex a goal that is finished only when objective acceptance checks pass. Use when the user says "Chadex Goal Mode", "@goal", "keep working until …", or asks for status of a Chadex Goal. You send the goal; the user picks the mode in the Chadex app — Codex (background, uses their Codex token quota, ChatGPT can be closed) or ChatGPT (you do the edits here and call goal_check until achieved). Independent of Plan Mode.
+description: Give Chadex a goal that is finished only when objective acceptance checks pass. Use when the user says "Chadex Goal Mode", "Chadex goal", "@goal", "目標", "keep working until …", or asks for status of a Chadex Goal. You send the goal; the user picks the mode in the Chadex app — Codex (background, uses their Codex token quota, ChatGPT can be closed) or ChatGPT (you do the edits here and call goal_check until achieved). Independent of Plan Mode.
 ---
 
 # Chadex Goal Mode
@@ -11,6 +11,8 @@ A Goal succeeds only when every acceptance check passes, judged by Chadex in an 
 - **ChatGPT mode**: you do the edits in this conversation; no Codex quota is used, but the conversation must stay open.
 
 ## Start a direct Goal (no plan needed)
+
+A goal written only in the chat is not a Chadex Goal: send it with `goal_run_start`. If `goal_run_start` (or any tool below) is not in your tool list, the connector's tool list in ChatGPT is out of date: call it through `call_runtime_tool` with `{"tool": "goal_run_start", "arguments": {...}}`. Never tell the user Chadex has no goal tool before trying `call_runtime_tool`.
 
 1. Identify the project (`list_projects` if unclear). Look at the repository just enough to choose real acceptance checks (`project_overview`, `read_files`, `git_status`).
 2. Call `goal_run_start` with `project`, a short `title`, the `objective` (what must be true when done, constraints, what must not change) and `acceptance`: each check is literal argv (no shell), run in the project root (or `cwd`), exit 0 = pass. Prefer the repository's real test/build/lint commands. Never use a check that always passes. Add `budget` only if the defaults (5 iterations, 120 minutes) do not fit.

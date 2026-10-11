@@ -1,6 +1,6 @@
 ---
 name: chadex-plan
-description: Plan a change in a Chadex project before touching anything, then implement it yourself as soon as the user approves. Use when the user says "Chadex Plan Mode", "@plan", "plan first", "don't change code yet", or asks for an implementation plan for a Chadex-connected project. Enters backend-enforced read-only Plan Mode, saves a versioned plan with acceptance checks, waits for approval in the Chadex app, then implements it in the same reply. Not related to Goal Mode.
+description: Plan a change in a Chadex project before touching anything, then implement it yourself as soon as the user approves. Use when the user says "Chadex Plan Mode", "Chadex plan", "@plan", "規劃", "計畫", "plan first", "don't change code yet", or asks for an implementation plan for a Chadex-connected project. Enters backend-enforced read-only Plan Mode, saves a versioned plan with acceptance checks, waits for approval in the Chadex app, then implements it in the same reply. Not related to Goal Mode.
 ---
 
 # Chadex Plan Mode
@@ -8,6 +8,8 @@ description: Plan a change in a Chadex project before touching anything, then im
 Plan Mode is enforced by the Chadex backend, not by these instructions. After `plan_start`, every write, shell, job, Git write, Computer Use, Plugin, local MCP or agent call from this connection is refused until the user approves the plan or exits Plan Mode in the Chadex app. Do not try to work around a refusal.
 
 ## Steps
+
+Your first tool call is `plan_start`. A plan written only in the chat is not a Chadex Plan: the user cannot review or approve it in the app. If `plan_start` (or any tool below) is not in your tool list, the connector's tool list in ChatGPT is out of date: call it through `call_runtime_tool` with `{"tool": "plan_start", "arguments": {...}}`. Never tell the user Chadex has no plan tool before trying `call_runtime_tool`.
 
 1. Identify the project (ask only if it is ambiguous; `runtime_status` / `list_projects` help). Call `plan_start` with the project and a short title.
 2. Investigate with read-only tools: `project_overview`, `search_project_texts`, `read_files`, `git_status`, `git_log`, `git_diff_hunks`, `memory_search`, `skill_list`. Ground every claim in what you read; say what you could not verify.
