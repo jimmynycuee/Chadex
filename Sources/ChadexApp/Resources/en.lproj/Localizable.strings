@@ -794,6 +794,7 @@
 "planGoal.consumedBy" = "Goal run: %@";
 "planGoal.notLatest" = "This is not the latest revision, so it cannot be approved or sent back.";
 "planGoal.approve" = "Approve revision %d";
+"planGoal.approved" = "Revision %d approved";
 "planGoal.approve.confirmTitle" = "Approve revision %d?";
 "planGoal.approve.confirmMessage" = "Plan: %@\nRevision %d, hash %@. Only this exact revision is approved, and a Goal run may then execute it.";
 "planGoal.reject" = "Request changes";

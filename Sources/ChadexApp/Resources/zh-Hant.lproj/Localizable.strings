@@ -794,6 +794,7 @@
 "planGoal.consumedBy" = "Goal 執行：%@";
 "planGoal.notLatest" = "這不是最新版本，無法核准或要求修改。";
 "planGoal.approve" = "核准第 %d 版";
+"planGoal.approved" = "第 %d 版已核准";
 "planGoal.approve.confirmTitle" = "要核准第 %d 版嗎？";
 "planGoal.approve.confirmMessage" = "計畫：%@\n第 %d 版，雜湊 %@。只會核准這個版本，之後 Goal 可據此自動執行。";
 "planGoal.reject" = "要求修改";

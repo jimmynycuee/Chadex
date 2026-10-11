@@ -543,6 +543,9 @@ struct PlanGoalView: View {
         let plan = detail.plan
         if plan.state != "closed", let revision = detail.revision {
             let isLatest = revision.revision == plan.latestRevision
+            let alreadyApproved = (detail.decisions ?? []).contains {
+                $0.isActive && $0.revision == revision.revision && $0.contentSha256 == revision.contentSha256
+            }
             VStack(alignment: .leading, spacing: layout.spacing(10)) {
                 if !isLatest {
                     Label(L10n.string("planGoal.notLatest"), systemImage: "info.circle")
@@ -556,10 +559,15 @@ struct PlanGoalView: View {
                             revision: revision.revision, contentSha256: revision.contentSha256
                         )
                     } label: {
-                        Label(L10n.string("planGoal.approve", revision.revision), systemImage: "checkmark.seal")
+                        Label(
+                            alreadyApproved
+                                ? L10n.string("planGoal.approved", revision.revision)
+                                : L10n.string("planGoal.approve", revision.revision),
+                            systemImage: alreadyApproved ? "checkmark.seal.fill" : "checkmark.seal"
+                        )
                     }
                     .buttonStyle(ChadexButtonStyle(kind: .primary))
-                    .disabled(panel.actionInFlight || !isLatest)
+                    .disabled(panel.actionInFlight || !isLatest || alreadyApproved)
 
                     Button {
                         confirmation = .closePlan(planId: plan.planId, title: plan.title)
