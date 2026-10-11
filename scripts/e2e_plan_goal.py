@@ -352,9 +352,40 @@ sleep {AGENT_SLEEP}
         subprocess.run(["git", "clone", "-q", "-b", gr2["result_branch"], str(project), str(check2)], check=True)
         r2 = subprocess.run(["python3", "-m", "unittest", "-q"], cwd=check2, capture_output=True, text=True)
         step("direct_goal_branch_check", exit_code=r2.returncode, calc=(check2 / "calc.py").read_text())
+    # ---------------- Git readiness: a project without any commit ----------------
+    fresh = root / "fresh"
+    fresh.mkdir()
+    (fresh / "notes.py").write_text("print('hi')\n")
+    subprocess.run(["git", "-C", str(fresh), "init", "-q", "-b", "main"], check=True)
+    helper.request("activateProject", {"path": str(fresh)})
+    helper.request("configureLocalSetup")
+    fresh_id = None
+    for _ in range(20):
+        ok, projects = chatgpt.call("list_projects", {})
+        for p in (projects.get("projects") or []):
+            if p.get("path") == str(fresh) or str(p.get("root", "")) == str(fresh):
+                fresh_id = p.get("id") or p.get("project")
+        if fresh_id:
+            break
+        time.sleep(1)
+    ok, freq = chatgpt.call("goal_run_start", {
+        "project": fresh_id, "title": "Anything", "objective": "x",
+        "acceptance": [{"name": "t", "argv": ["true"]}]})
+    fplan = (freq.get("plan") or {}).get("plan_id")
+    ok_i, finspect = operator(helper, fresh, "plan_review", {"action": "inspect", "plan_id": fplan})
+    readiness = (finspect or {}).get("git_readiness") or {}
+    ok_s, fstart = operator(helper, fresh, "plan_review", {
+        "action": "approve_and_start", "plan_id": fplan, "revision": 1,
+        "content_sha256": (freq.get("revision") or {}).get("content_sha256")})
+    step("git_readiness_no_commit", project=fresh_id, request_ok=ok,
+         request_readiness_blocks=((freq.get("git_readiness") or {}).get("blocks_goal_start")),
+         inspect_blocks=readiness.get("blocks_goal_start"), has_commit=readiness.get("has_commit"),
+         how_to_commit=readiness.get("how_to_commit"), start_ok=ok_s,
+         start_error=(fstart or {}).get("error_kind") if isinstance(fstart, dict) else fstart)
     # Emergency stop round trip.
-    ok, es = operator(helper, project, "goal_operator", {"action": "emergency_stop", "reason": "e2e"})
-    ok2, rel = operator(helper, project, "goal_operator", {"action": "release_emergency_stop"})
+    # The helper's active project is now `fresh`; operator calls go through it.
+    ok, es = operator(helper, fresh, "goal_operator", {"action": "emergency_stop", "reason": "e2e"})
+    ok2, rel = operator(helper, fresh, "goal_operator", {"action": "release_emergency_stop"})
     step("emergency_stop_roundtrip", engaged=es.get("emergency_stop_engaged"), released=rel.get("emergency_stop_engaged") is False)
     helper.close()
     OUT.write_text(json.dumps(report, indent=2, ensure_ascii=False))

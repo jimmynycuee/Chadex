@@ -806,7 +806,7 @@ impl ToolRuntime {
                     .operator_approve(&db, auth, &plan_id, revision, &content_sha256, &approver, ttl_minutes, now)
                     .await
                 {
-                    Ok(decision) => ToolResult::ok(json!({"decision": decision.record})),
+                    Ok(decision) => ToolResult::ok(json!({"decision": decision})),
                     Err(result) => result,
                 }
             }
@@ -1035,12 +1035,12 @@ impl ToolRuntime {
         let started = self.start_goal_run(db, &context.owner_key, plan_id, &owner_config, &dispatch, now);
         if started.success {
             return ToolResult::ok(json!({
-                "decision": decision.record,
+                "decision": decision,
                 "goal_run": started.output.get("goal_run"),
                 "created": started.output.get("created"),
             }));
         }
-        let withdrawn = db.plan_revoke_approval(&decision.record.approval_id, now).is_ok();
+        let withdrawn = db.plan_revoke_approval(&decision.approval_id, now).is_ok();
         let mut failed = started;
         if let Some(output) = failed.output.as_object_mut() {
             output.insert("approval_withdrawn".into(), json!(withdrawn));
@@ -1061,7 +1061,7 @@ impl ToolRuntime {
         approver: &str,
         ttl_minutes: Option<i64>,
         now: i64,
-    ) -> Result<OperatorApproval, ToolResult> {
+    ) -> Result<crate::db::PlanDecisionRecord, ToolResult> {
         let plan = db
             .plan_read(PlanReader::Operator, plan_id, None, now)
             .map_err(plan_error)?
@@ -1069,7 +1069,7 @@ impl ToolRuntime {
         let (project_id, config) = self.plan_project_environment(&plan.project_id, auth).await?;
         let base_commit = self.operator_head_commit(auth, &project_id).await?;
         let binding = PlanApprovalBinding {
-            project_id: project_id.clone(),
+            project_id,
             runner_client_id: config.client_id,
             project_root: config.path,
             base_commit,
@@ -1077,13 +1077,8 @@ impl ToolRuntime {
         let ttl_ms = ttl_minutes
             .map(|minutes| minutes.saturating_mul(60_000))
             .unwrap_or(DEFAULT_PLAN_APPROVAL_TTL_MS);
-        let record = db
-            .plan_approve(plan_id, revision, content_sha256, binding, approver, ttl_ms, now)
-            .map_err(plan_error)?;
-        Ok(OperatorApproval {
-            record,
-            plan_project: project_id,
-        })
+        db.plan_approve(plan_id, revision, content_sha256, binding, approver, ttl_ms, now)
+            .map_err(plan_error)
     }
 
     /// Resolve the commit the reviewer is approving against.
@@ -1214,11 +1209,6 @@ impl ToolRuntime {
         let outcome = call.await;
         outcome.result.filter(|result| result.success).map(|result| result.output)
     }
-}
-
-struct OperatorApproval {
-    record: crate::db::PlanDecisionRecord,
-    plan_project: String,
 }
 
 const GOAL_STATUS_MAX_WAIT_SECS: u64 = 45;
