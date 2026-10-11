@@ -582,3 +582,127 @@ fn start_context_reports_the_owner_planning_another_plan() {
     let context = db.plan_start_context(&request.plan.plan_id, T0 + 3).unwrap();
     assert_eq!(context.owner_locked_plan, Some(other));
 }
+
+#[test]
+fn a_succeeded_goal_closes_its_plan_but_a_failed_one_keeps_it_open() {
+    let (_tmp, db) = db();
+    let (plan_id, v1) = started_plan(&db);
+    approve(&db, &plan_id, &v1, T0 + 2);
+    let run = start_run(&db, &plan_id, T0 + 3).unwrap().run;
+    let (_, lease) = db.goal_run_claim("sup", T0 + 4, 30_000, 2).unwrap().remove(0);
+    db.goal_run_transition(&run.goal_run_id, &lease, GoalRunState::Failed, "budget", T0 + 5)
+        .unwrap();
+    let plan = db.plan_read(PlanReader::Operator, &plan_id, None, T0 + 6).unwrap().plan;
+    assert_ne!(plan.state, PlanState::Closed);
+
+    // Revise, approve again and succeed: the plan is done.
+    let v2 = db
+        .plan_save_revision(OWNER, &plan_id, 1, "plan v2", spec(), T0 + 7)
+        .unwrap();
+    approve(&db, &plan_id, &v2, T0 + 8);
+    let run = start_run(&db, &plan_id, T0 + 9).unwrap().run;
+    let (_, lease) = db.goal_run_claim("sup", T0 + 10, 30_000, 2).unwrap().remove(0);
+    db.goal_run_transition(&run.goal_run_id, &lease, GoalRunState::Succeeded, "acceptance_passed", T0 + 11)
+        .unwrap();
+    let plan = db.plan_read(PlanReader::Operator, &plan_id, None, T0 + 12).unwrap().plan;
+    assert_eq!(plan.state, PlanState::Closed);
+    assert!(!plan.plan_mode_active);
+    let open = db.plan_list(PlanReader::Operator, false, 50, T0 + 12).unwrap();
+    assert!(open.iter().all(|summary| summary.plan_id != plan_id));
+}
+
+#[test]
+fn only_a_finished_goal_run_can_be_removed_from_the_lists() {
+    let (_tmp, db) = db();
+    let (plan_id, v1) = started_plan(&db);
+    approve(&db, &plan_id, &v1, T0 + 2);
+    let run = start_run(&db, &plan_id, T0 + 3).unwrap().run;
+    let refused = db.goal_run_dismiss(&run.goal_run_id, T0 + 4).unwrap_err();
+    assert_eq!(refused.code(), "goal_run_not_finished");
+    let (_, lease) = db.goal_run_claim("sup", T0 + 5, 30_000, 2).unwrap().remove(0);
+    db.goal_run_transition(&run.goal_run_id, &lease, GoalRunState::Failed, "budget", T0 + 6)
+        .unwrap();
+    db.goal_run_dismiss(&run.goal_run_id, T0 + 7).unwrap();
+    assert!(db.goal_run_list(PlanReader::Operator, 30).unwrap().is_empty());
+    assert!(db.goal_run_list(PlanReader::Owner(OWNER), 30).unwrap().is_empty());
+    // Still readable by id, with the removal audited.
+    let detail = db.goal_run_read(PlanReader::Operator, &run.goal_run_id).unwrap();
+    assert_eq!(detail.run.state, GoalRunState::Failed);
+    let missing = db.goal_run_dismiss("wc_grun_missing", T0 + 8).unwrap_err();
+    assert_eq!(missing.code(), "goal_run_not_found");
+}
+
+#[test]
+fn each_project_keeps_only_its_newest_plan_and_run() {
+    let (_tmp, db) = db();
+    let (old_plan, v1) = started_plan(&db);
+    let old_approval = approve(&db, &old_plan, &v1, T0 + 2);
+    let run = start_run(&db, &old_plan, T0 + 3).unwrap().run;
+    let (_, lease) = db.goal_run_claim("sup", T0 + 4, 30_000, 2).unwrap().remove(0);
+    db.goal_run_transition(&run.goal_run_id, &lease, GoalRunState::Failed, "budget", T0 + 5)
+        .unwrap();
+
+    // Another principal's plan on the project is not touched by A's.
+    let foreign = db.plan_start("owner-b", PROJECT, "foreign", T0 + 6).unwrap();
+    assert_ne!(
+        db.plan_read(PlanReader::Operator, &old_plan, None, T0 + 6).unwrap().plan.state,
+        PlanState::Closed
+    );
+    db.plan_close(&foreign.plan.plan_id, "test", T0 + 6).unwrap();
+    // The same principal's new plan replaces its old one.
+    let newer = db.plan_start(OWNER, PROJECT, "newer", T0 + 6).unwrap();
+    assert!(newer.created);
+    let open: Vec<_> = db
+        .plan_list(PlanReader::Operator, false, 50, T0 + 7)
+        .unwrap()
+        .into_iter()
+        .map(|plan| plan.plan_id)
+        .collect();
+    assert_eq!(open, vec![newer.plan.plan_id.clone()]);
+    let old = db.plan_read(PlanReader::Operator, &old_plan, None, T0 + 7).unwrap();
+    assert_eq!(old.plan.state, PlanState::Closed);
+    assert!(old
+        .decisions
+        .iter()
+        .all(|decision| decision.approval_id != old_approval.approval_id
+            || decision.state != PlanDecisionState::Active));
+
+    // Another project is untouched.
+    let other = db.plan_start("owner-c", "agent:client-1:other", "other", T0 + 8).unwrap();
+    assert_eq!(db.plan_list(PlanReader::Operator, false, 50, T0 + 9).unwrap().len(), 2);
+
+    // Starting a new run hides the project's earlier finished runs.
+    let saved = db
+        .plan_save_revision(OWNER, &newer.plan.plan_id, 0, "plan", spec(), T0 + 10)
+        .unwrap();
+    approve(&db, &newer.plan.plan_id, &saved, T0 + 11);
+    let started = db
+        .goal_run_start(OWNER, &newer.plan.plan_id, &env(), &json!({}), "codex", T0 + 12)
+        .unwrap()
+        .run;
+    let runs: Vec<_> = db
+        .goal_run_list(PlanReader::Operator, 30)
+        .unwrap()
+        .into_iter()
+        .map(|run| run.goal_run_id)
+        .collect();
+    assert_eq!(runs, vec![started.goal_run_id.clone()]);
+
+    // Clearing the board for the project closes its plan, keeps the
+    // unfinished run, and leaves the other project alone.
+    let (plans, dismissed) = db.plan_goal_clear_board(Some(PROJECT), T0 + 13).unwrap();
+    assert_eq!((plans, dismissed), (1, 0));
+    let open: Vec<_> = db
+        .plan_list(PlanReader::Operator, false, 50, T0 + 14)
+        .unwrap()
+        .into_iter()
+        .map(|plan| plan.plan_id)
+        .collect();
+    assert_eq!(open, vec![other.plan.plan_id.clone()]);
+    assert_eq!(db.goal_run_list(PlanReader::Operator, 30).unwrap().len(), 1);
+    assert!(db.plan_active_locks(T0 + 14).unwrap().iter().all(|lock| lock.project_id != PROJECT));
+
+    // Clearing everything closes the rest.
+    db.plan_goal_clear_board(None, T0 + 15).unwrap();
+    assert!(db.plan_list(PlanReader::Operator, false, 50, T0 + 16).unwrap().is_empty());
+}

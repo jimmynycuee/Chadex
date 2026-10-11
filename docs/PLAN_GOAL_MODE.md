@@ -12,7 +12,7 @@
 | 想做的事 | 在 ChatGPT 輸入 | 實際入口 |
 | --- | --- | --- |
 | 直接給目標 | 「`@chadex-goal` 修好 ○○，驗收用 `python3 -m unittest`」 | `goal_run_start`（project、title、objective、acceptance）→ 狀態 `awaiting_start` |
-| 開始直接 Goal | **不在 ChatGPT**：App「計畫與目標」（⌘6）→「開始 Goal」；Mac 會跳通知 | `plan_review` `approve_and_start`（只限 App） |
+| 開始直接 Goal | **不在 ChatGPT**：App「Plan & Goal」（⌘6）→「開始 Goal」；Mac 會跳通知 | `plan_review` `approve_and_start`（只限 App） |
 | 規劃、不動程式 | 「使用 Chadex Plan Mode 規劃 ○○，先不要改程式」或 `@chadex-plan` | `plan_start` → 唯讀調查 → `plan_save` |
 | 核准計畫 | **不在 ChatGPT**：App →「核准第 N 版並開始 Goal」或「只核准」 | `plan_review` `approve_and_start`／`approve`（只限 App） |
 | 執行已核准（只核准時） | 「使用 Chadex Goal Mode 執行已核准計畫」 | `goal_run_start`（plan_id） |
@@ -101,6 +101,14 @@ Chadex App ──bridge planGoalOperator──► helper ──REST /api/tools/c
 | 關閉 Chadex App | helper、server、Runner 一起停止；run 持久保存。重開後約 60 秒（lease 到期）接手；被中斷的 agent 判定 `unknown` → `needs_attention` → App 審查後 resume 繼續（E2E 實測，fake 與真 codex 皆通過） |
 | Mac 睡眠 | 程序暫停；醒來後同一程序繼續持有 run（不重複 claim）。**未實機測試** |
 | Mac 關機 | 不支援執行（設計範圍外）；開機並開啟 Chadex 後依上一列恢復 |
+
+### 清單只留最新的（App「Plan & Goal」）
+
+- 同一個身分在同一專案開新的 Plan 或直接 Goal 請求時，舊的未結案計畫會自動結案（撤回尚未使用的核准、解除 Plan Mode）。
+- 開始新的 Goal 時，同專案已結束的 Goal 會從清單移除；Goal 成功時，對應計畫自動結案（期間若存了新版本則不結案）。
+- **清空**：App 每次啟動（runtime 就緒後一次），以及 ChatGPT 從「已連線」變成斷線（同一專案；切換專案不算）時，呼叫 `goal_operator clear_board`：所有未結案的 Plan 與 Goal 請求結案，已結束的 Goal 從清單移除。**執行中的 Goal 繼續跑完**，完成後照常通知。
+- 手動：Plan 可「刪除計畫」，已結束的 Goal 可「刪除」（執行中的要先取消）。
+- 以上都只是結案或從清單移除，資料庫紀錄與結果分支 `chadex/goal/<run_id>` 都保留，不會真的刪除。
 
 ## 測試證據
 

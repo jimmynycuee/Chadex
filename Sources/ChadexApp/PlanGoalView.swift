@@ -200,12 +200,29 @@ struct PlanGoalView: View {
         }
         .buttonStyle(.plain)
         .background(panel.selection == .plan(plan.planId) ? Color.accentColor.opacity(0.08) : Color.clear)
+        .contextMenu {
+            Button(L10n.string("planGoal.deletePlan"), systemImage: "trash", role: .destructive) {
+                confirmation = .deletePlan(planId: plan.planId, title: plan.title)
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
     }
 
     private var runs: [GoalRun] {
         (panel.overview?.goalRuns ?? []).sorted { ($0.updatedAtUnixMs ?? 0) > ($1.updatedAtUnixMs ?? 0) }
+    }
+
+    /// Per project: runs still going plus the newest finished one. Older
+    /// finished runs normally leave the lists in the backend already.
+    private var shownRuns: [GoalRun] {
+        var seenFinished = Set<String>()
+        return runs.filter { run in
+            guard run.isFinished else { return true }
+            let project: String
+            if case .string(let id) = run.project { project = id } else { project = "" }
+            return seenFinished.insert(project).inserted
+        }
     }
 
     private var runsSection: some View {
@@ -221,13 +238,13 @@ struct PlanGoalView: View {
                     )
                 }
             }
-            if runs.isEmpty {
+            if shownRuns.isEmpty {
                 emptyLabel(panel.overview == nil ? "planGoal.loading" : "planGoal.runs.none", "target")
             } else {
                 VStack(spacing: 0) {
-                    ForEach(runs) { run in
+                    ForEach(shownRuns) { run in
                         runRow(run)
-                        if run.id != runs.last?.id {
+                        if run.id != shownRuns.last?.id {
                             Divider().padding(.leading, layout.spacing(12))
                         }
                     }
@@ -683,10 +700,20 @@ struct PlanGoalView: View {
                         .disabled(panel.actionInFlight || !isLatest || alreadyApproved || gitBlocked)
                     }
 
-                    Button {
-                        confirmation = .closePlan(planId: plan.planId, title: plan.title)
+                    if plan.isPlanModeActive {
+                        Button {
+                            confirmation = .closePlan(planId: plan.planId, title: plan.title)
+                        } label: {
+                            Label(L10n.string("planGoal.closePlan"), systemImage: "xmark.circle")
+                        }
+                        .buttonStyle(ChadexButtonStyle(kind: .secondary))
+                        .disabled(panel.actionInFlight)
+                    }
+
+                    Button(role: .destructive) {
+                        confirmation = .deletePlan(planId: plan.planId, title: plan.title)
                     } label: {
-                        Label(L10n.string("planGoal.closePlan"), systemImage: "xmark.circle")
+                        Label(L10n.string("planGoal.deletePlan"), systemImage: "trash")
                     }
                     .buttonStyle(ChadexButtonStyle(kind: .secondary))
                     .disabled(panel.actionInFlight)
@@ -779,6 +806,15 @@ struct PlanGoalView: View {
                 }
                 .buttonStyle(ChadexButtonStyle(kind: .secondary))
                 .disabled(panel.actionInFlight || !run.canCancel)
+
+                Button(role: .destructive) {
+                    confirmation = .deleteRun(goalRunId: run.goalRunId)
+                } label: {
+                    Label(L10n.string("planGoal.deleteRun"), systemImage: "trash")
+                }
+                .buttonStyle(ChadexButtonStyle(kind: .secondary))
+                .disabled(panel.actionInFlight || !run.isFinished)
+                .help(run.isFinished ? "" : L10n.string("planGoal.deleteRun.unfinished"))
             }
 
             detailBlock(title: "planGoal.events") {
@@ -920,6 +956,10 @@ struct PlanGoalView: View {
             Task { await panel.revoke(approvalId: approvalId) }
         case .cancelRun(let goalRunId):
             Task { await panel.cancel(goalRunId: goalRunId) }
+        case .deletePlan(let planId, _):
+            Task { await panel.deletePlan(planId: planId) }
+        case .deleteRun(let goalRunId):
+            Task { await panel.deleteRun(goalRunId: goalRunId) }
         case .emergencyStop:
             Task { await panel.emergencyStop(reason: nil) }
         }
@@ -934,6 +974,8 @@ enum PlanGoalConfirmation: Identifiable {
     case closePlan(planId: String, title: String)
     case revoke(approvalId: String, revision: Int)
     case cancelRun(goalRunId: String)
+    case deletePlan(planId: String, title: String)
+    case deleteRun(goalRunId: String)
     case emergencyStop
 
     var id: String {
@@ -943,6 +985,8 @@ enum PlanGoalConfirmation: Identifiable {
         case .closePlan(let planId, _): return "close:\(planId)"
         case .revoke(let approvalId, _): return "revoke:\(approvalId)"
         case .cancelRun(let id): return "cancel:\(id)"
+        case .deletePlan(let planId, _): return "deletePlan:\(planId)"
+        case .deleteRun(let id): return "deleteRun:\(id)"
         case .emergencyStop: return "emergency"
         }
     }
@@ -957,6 +1001,8 @@ enum PlanGoalConfirmation: Identifiable {
         case .closePlan: return L10n.string("planGoal.closePlan.confirmTitle")
         case .revoke: return L10n.string("planGoal.revoke.confirmTitle")
         case .cancelRun: return L10n.string("planGoal.cancel.confirmTitle")
+        case .deletePlan: return L10n.string("planGoal.deletePlan.confirmTitle")
+        case .deleteRun: return L10n.string("planGoal.deleteRun.confirmTitle")
         case .emergencyStop: return L10n.string("planGoal.emergency.confirmTitle")
         }
     }
@@ -970,6 +1016,8 @@ enum PlanGoalConfirmation: Identifiable {
         case .closePlan(_, let title): return L10n.string("planGoal.closePlan.confirmMessage", title)
         case .revoke(_, let revision): return L10n.string("planGoal.revoke.confirmMessage", revision)
         case .cancelRun: return L10n.string("planGoal.cancel.confirmMessage")
+        case .deletePlan(_, let title): return L10n.string("planGoal.deletePlan.confirmMessage", title)
+        case .deleteRun: return L10n.string("planGoal.deleteRun.confirmMessage")
         case .emergencyStop: return L10n.string("planGoal.emergency.confirmMessage")
         }
     }
@@ -984,6 +1032,8 @@ enum PlanGoalConfirmation: Identifiable {
         case .closePlan: return L10n.string("planGoal.closePlan")
         case .revoke: return L10n.string("planGoal.revoke")
         case .cancelRun: return L10n.string("planGoal.cancel")
+        case .deletePlan: return L10n.string("planGoal.deletePlan")
+        case .deleteRun: return L10n.string("planGoal.deleteRun")
         case .emergencyStop: return L10n.string("planGoal.emergency.stop")
         }
     }

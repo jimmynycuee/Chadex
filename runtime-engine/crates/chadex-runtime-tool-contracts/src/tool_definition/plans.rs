@@ -202,7 +202,7 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
             ToolIdempotency::NonIdempotent,
             RUNTIME_READ,
         ),
-        "Operator-only (Chadex app over local operator REST): Goal overview, status, pause/resume/cancel any run, and the persistent emergency stop.",
+        "Operator-only (Chadex app over local operator REST): Goal overview, status, pause/resume/cancel any run, dismiss a finished run from the lists, clear the board (close open plans, hide finished runs; running Goals continue), and the persistent emergency stop.",
         goal_operator_input_schema,
     ),
 ];

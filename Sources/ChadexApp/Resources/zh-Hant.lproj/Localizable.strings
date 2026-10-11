@@ -727,8 +727,8 @@
 "activity.level.error" = "錯誤";
 
 /* Plan & Goal operator panel */
-"sidebar.planGoal" = "計畫與目標";
-"planGoal.title" = "計畫與目標";
+"sidebar.planGoal" = "Plan & Goal";
+"planGoal.title" = "Plan & Goal";
 "planGoal.subtitle" = "審閱計畫、核准指定版本，並監督 Goal 執行。";
 "planGoal.refresh" = "重新整理";
 "planGoal.loading" = "載入中…";
@@ -746,6 +746,13 @@
 "planGoal.plans.none" = "目前沒有草擬中或已核准的計畫。";
 "planGoal.runs.title" = "Goal 執行";
 "planGoal.runs.none" = "尚無 Goal 執行紀錄。";
+"planGoal.deletePlan" = "刪除計畫";
+"planGoal.deletePlan.confirmTitle" = "要刪除這個計畫嗎？";
+"planGoal.deletePlan.confirmMessage" = "計畫「%@」會從清單移除，Plan Mode 也會結束。紀錄仍保留在本機。";
+"planGoal.deleteRun" = "刪除";
+"planGoal.deleteRun.confirmTitle" = "要刪除這筆 Goal 執行嗎？";
+"planGoal.deleteRun.confirmMessage" = "這筆執行會從清單移除。結果分支和紀錄仍保留在本機。";
+"planGoal.deleteRun.unfinished" = "執行中的 Goal 不能刪除，請先取消。";
 "planGoal.supervisor.running" = "監督程序執行中";
 "planGoal.supervisor.stopped" = "監督程序未執行";
 "planGoal.planModeActive" = "Plan Mode 進行中";
@@ -804,7 +811,7 @@
 "planGoal.goalRequest.confirmTitle" = "要開始這個 Goal 嗎？";
 "planGoal.notify.runTitle" = "Goal %@";
 "planGoal.notify.requestTitle" = "有 Goal 等待開始";
-"planGoal.notify.requestBody" = "%@：請到 Chadex 的「計畫與目標」檢查並開始。";
+"planGoal.notify.requestBody" = "%@：請到 Chadex 的「Plan & Goal」檢查並開始。";
 "planGoal.git.notRepo" = "這個專案還不是 Git repository。";
 "planGoal.git.noCommit" = "這個專案還沒有 Git commit，Goal 必須從一個 commit 開始。";
 "planGoal.git.blockedExplain" = "Goal 一律從某個 commit 開始，並在它的副本上工作，所以你的檔案不會被動到。請先做第一次 commit，再重新檢查。";

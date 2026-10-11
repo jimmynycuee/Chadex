@@ -183,7 +183,23 @@ final class PlanGoalPanelModel: ObservableObject {
         await act(tool: "plan_review", PlanGoalArguments(action: "close", planId: planId, reason: reason))
     }
 
+    /// Removes the plan from the lists (it is closed; its record is kept).
+    @discardableResult
+    func deletePlan(planId: String) async -> Bool {
+        let deleted = await closePlan(planId: planId, reason: "deleted in Chadex app")
+        if deleted, selection == .plan(planId) { await select(nil) }
+        return deleted
+    }
+
     // MARK: - Goal actions
+
+    /// Removes a finished run from the lists; its record and branch are kept.
+    @discardableResult
+    func deleteRun(goalRunId: String) async -> Bool {
+        let deleted = await act(tool: "goal_operator", PlanGoalArguments(action: "dismiss", goalRunId: goalRunId))
+        if deleted, selection == .run(goalRunId) { await select(nil) }
+        return deleted
+    }
 
     @discardableResult
     func pause(goalRunId: String) async -> Bool {

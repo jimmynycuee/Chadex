@@ -286,6 +286,15 @@ impl Database {
             );
             ",
         )?;
+        // Added later: a finished run the operator removed from the lists.
+        let dismissed_exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('wc_goal_runs') WHERE name = 'dismissed_at_unix_ms')",
+            [],
+            |row| row.get(0),
+        )?;
+        if !dismissed_exists {
+            conn.execute_batch("ALTER TABLE wc_goal_runs ADD COLUMN dismissed_at_unix_ms INTEGER")?;
+        }
         Ok(())
     }
 
@@ -396,6 +405,9 @@ impl Database {
                 "Approval was consumed concurrently",
             ));
         }
+        // Each project shows only its newest run: earlier finished runs leave
+        // the lists (records and result branches are kept).
+        dismiss_finished_runs(&tx, Some(&plan.project_id), now)?;
         let deadline = now + i64::from(revision.spec.budget.max_minutes) * 60_000;
         tx.execute(
             "INSERT INTO wc_goal_runs (
@@ -627,6 +639,22 @@ impl Database {
             &serde_json::json!({"state": state.as_str(), "reason": reason}),
         )?;
         let run = load_run(&tx, run_id)?;
+        if state == GoalRunState::Succeeded {
+            // The plan is done: close it so the app lists only open work. A
+            // newer revision saved meanwhile is new work and stays open.
+            tx.execute(
+                "UPDATE wc_plans SET state = 'closed', closed_reason = ?3, lock_active = 0,
+                     lock_expires_at_unix_ms = NULL, updated_at_unix_ms = ?4
+                 WHERE plan_id = ?1 AND latest_revision = ?2 AND state != 'closed'",
+                params![
+                    run.plan_id,
+                    run.revision,
+                    format!("Goal {run_id} succeeded"),
+                    now
+                ],
+            )
+            .map_err(plan_store_error)?;
+        }
         tx.commit().map_err(plan_store_error)?;
         Ok(run)
     }
@@ -1045,6 +1073,50 @@ impl Database {
         })
     }
 
+    /// Operator clears the Plan & Goal board (one project, or all) when the
+    /// ChatGPT connection ends or the app starts again: open plans and Goal
+    /// requests are closed and finished runs leave the lists. Runs that have
+    /// not finished keep going. Nothing is deleted.
+    pub fn plan_goal_clear_board(
+        &self,
+        project_id: Option<&str>,
+        now: i64,
+    ) -> Result<(usize, usize), PlanStoreError> {
+        let mut conn = self.lock_connection(crate::StoreDomain::Goal);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(plan_store_error)?;
+        let plans = super::plan::close_open_plans(&tx, project_id, None, "cleared: connection ended", now)?;
+        let runs = dismiss_finished_runs(&tx, project_id, now)?;
+        tx.commit().map_err(plan_store_error)?;
+        Ok((plans, runs))
+    }
+
+    /// Operator removes a finished run from the run lists. The run, its
+    /// events and its result branch are kept; only listing hides it.
+    pub fn goal_run_dismiss(&self, run_id: &str, now: i64) -> Result<GoalRunRecord, PlanStoreError> {
+        let mut conn = self.lock_connection(crate::StoreDomain::Goal);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(plan_store_error)?;
+        let run = load_run(&tx, run_id)?;
+        if !run.state.terminal() {
+            return Err(PlanStoreError::new(
+                "goal_run_not_finished",
+                "Only a finished Goal run can be removed; cancel it first",
+            ));
+        }
+        tx.execute(
+            "UPDATE wc_goal_runs SET dismissed_at_unix_ms = COALESCE(dismissed_at_unix_ms, ?2)
+             WHERE goal_run_id = ?1",
+            params![run_id, now],
+        )
+        .map_err(plan_store_error)?;
+        append_event(&tx, run_id, now, "dismissed", &serde_json::json!({}))?;
+        tx.commit().map_err(plan_store_error)?;
+        Ok(run)
+    }
+
     pub fn goal_run_list(
         &self,
         reader: PlanReader<'_>,
@@ -1060,7 +1132,7 @@ impl Database {
             let mut statement = conn
                 .prepare(
                     "SELECT goal_run_id FROM wc_goal_runs
-                     WHERE (?1 IS NULL OR owner_key = ?1)
+                     WHERE (?1 IS NULL OR owner_key = ?1) AND dismissed_at_unix_ms IS NULL
                      ORDER BY updated_at_unix_ms DESC, goal_run_id LIMIT ?2",
                 )
                 .map_err(plan_store_error)?;
@@ -1164,6 +1236,21 @@ fn load_visible_run(
         }
     }
     Ok(run)
+}
+
+fn dismiss_finished_runs(
+    conn: &Connection,
+    project_id: Option<&str>,
+    now: i64,
+) -> Result<usize, PlanStoreError> {
+    conn.execute(
+        "UPDATE wc_goal_runs SET dismissed_at_unix_ms = ?2
+         WHERE dismissed_at_unix_ms IS NULL
+           AND state IN ('succeeded', 'failed', 'cancelled', 'stopped')
+           AND (?1 IS NULL OR project_id = ?1)",
+        params![project_id, now],
+    )
+    .map_err(plan_store_error)
 }
 
 pub(crate) fn load_run(conn: &Connection, run_id: &str) -> Result<GoalRunRecord, PlanStoreError> {

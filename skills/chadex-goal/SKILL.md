@@ -11,7 +11,7 @@ A Goal runs inside Chadex on the user's Mac, not in this conversation. Once star
 
 1. Identify the project (`list_projects` if unclear). Look at the repository just enough to choose real acceptance checks (`project_overview`, `read_files`, `git_status`).
 2. Call `goal_run_start` with `project`, a short `title`, the `objective` (what must be true when done, constraints, what must not change) and `acceptance`: each check is literal argv (no shell), run in the project root (or `cwd`), exit 0 = pass. Prefer the repository's real test/build/lint commands. Never use a check that always passes. Add `budget` only if the defaults (5 iterations, 120 minutes) do not fit.
-3. Tell the user to press **Start Goal** in the Chadex app (計畫與目標 / Plan & Goal). Chadex also shows a Mac notification. You cannot start it yourself, and it does not run until they do.
+3. Tell the user to press **Start Goal** in the Chadex app (Plan & Goal). Chadex also shows a Mac notification. You cannot start it yourself, and it does not run until they do.
 4. Once they say it started, find the run with `goal_run_list` (its `plan_id` matches) and follow it with `goal_run_status`.
 
 ## Start an approved plan

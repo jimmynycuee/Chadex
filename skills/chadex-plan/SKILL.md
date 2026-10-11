@@ -15,7 +15,7 @@ Plan Mode is enforced by the Chadex backend, not by these instructions. After `p
 4. Choose acceptance checks the Goal will be judged by. Each is literal argv (no shell), run in the project root (or `cwd`), exit 0 = pass. Prefer the repository's real test/build/lint commands, scoped to the change when the full suite is slow. Never use a check that always passes.
 5. Set a budget if the defaults (5 iterations, 120 minutes, 1800 s per agent turn) do not fit.
 6. Save with `plan_save` (through `call_runtime_tool` if it is not listed directly) using `parent_revision` = current latest revision (0 for the first save). Revising creates a new immutable revision; an approval of an older revision no longer counts.
-7. Tell the user: plan id, revision, the first 12 characters of `content_sha256`, the acceptance checks, and that they must review **that revision** in the Chadex app (計畫與目標): **Approve and start Goal** runs it right away, **Approve only** lets them start it later through you (`goal_run_start`). You cannot approve, and nothing will be executed until they do.
+7. Tell the user: plan id, revision, the first 12 characters of `content_sha256`, the acceptance checks, and that they must review **that revision** in the Chadex app (Plan & Goal): **Approve and start Goal** runs it right away, **Approve only** lets them start it later through you (`goal_run_start`). You cannot approve, and nothing will be executed until they do.
 
 ## Rules
 

@@ -526,13 +526,7 @@ impl Database {
                 format!("Plan Mode is active for plan {locked}; finish or exit it first"),
             ));
         }
-        tx.execute(
-            "UPDATE wc_plans SET state = 'closed', closed_reason = 'replaced by a newer Goal request',
-                 updated_at_unix_ms = ?3
-             WHERE owner_key = ?1 AND project_id = ?2 AND origin = 'goal' AND state = 'drafting'",
-            params![owner_key, project_id, now],
-        )
-        .map_err(plan_store_error)?;
+        close_open_plans(&tx, Some(project_id), Some(owner_key), "replaced by a newer Goal request", now)?;
         let plan_id = allocate_identity(
             &tx,
             PLAN_ID_PREFIX,
@@ -683,6 +677,7 @@ impl Database {
                 created: false,
             });
         }
+        close_open_plans(&tx, Some(project_id), Some(owner_key), "replaced by a newer plan", now)?;
         let plan_id = allocate_identity(
             &tx,
             PLAN_ID_PREFIX,
@@ -1189,6 +1184,37 @@ fn check_reviewable_revision(
         ));
     }
     Ok(record)
+}
+
+/// Close every open plan (of one project and/or owner, or all), withdrawing
+/// unused approvals and Plan Mode locks. A principal's new plan or Goal
+/// request replaces its earlier ones on the project; only the operator clears
+/// other principals' plans. Records stay for audit; Goal runs are unaffected.
+pub(crate) fn close_open_plans(
+    conn: &Connection,
+    project_id: Option<&str>,
+    owner_key: Option<&str>,
+    reason: &str,
+    now: i64,
+) -> Result<usize, PlanStoreError> {
+    let scope = "state != 'closed' AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR owner_key = ?2)";
+    conn.execute(
+        &format!(
+            "UPDATE wc_plan_decisions SET state = 'revoked', decided_at_unix_ms = ?3
+             WHERE state = 'active' AND plan_id IN (SELECT plan_id FROM wc_plans WHERE {scope})"
+        ),
+        params![project_id, owner_key, now],
+    )
+    .map_err(plan_store_error)?;
+    conn.execute(
+        &format!(
+            "UPDATE wc_plans SET state = 'closed', closed_reason = ?4, lock_active = 0,
+                 lock_expires_at_unix_ms = NULL, updated_at_unix_ms = ?3
+             WHERE {scope}"
+        ),
+        params![project_id, owner_key, now, reason],
+    )
+    .map_err(plan_store_error)
 }
 
 pub(crate) fn release_expired_locks(conn: &Connection, now: i64) -> Result<(), PlanStoreError> {

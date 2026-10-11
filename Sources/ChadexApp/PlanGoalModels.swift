@@ -216,6 +216,7 @@ struct GoalRun: Decodable, Equatable, Identifiable {
     var canCancel: Bool {
         !["succeeded", "failed", "cancelled", "stopped"].contains(state)
     }
+    var isFinished: Bool { !canCancel }
 }
 
 struct GoalOperation: Decodable, Equatable, Identifiable {

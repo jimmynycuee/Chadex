@@ -911,6 +911,26 @@ impl ToolRuntime {
                     Err(error) => plan_error(error),
                 }
             }
+            "clear_board" => {
+                let cleared = db.plan_goal_clear_board(None, now);
+                self.plan_guard.reload();
+                match cleared {
+                    Ok((plans, runs)) => ToolResult::ok(json!({
+                        "closed_plans": plans,
+                        "dismissed_runs": runs,
+                    })),
+                    Err(error) => plan_error(error),
+                }
+            }
+            "dismiss" => {
+                let Some(run_id) = goal_run_id else {
+                    return invalid_action("dismiss requires goal_run_id");
+                };
+                match db.goal_run_dismiss(&run_id, now) {
+                    Ok(run) => ToolResult::ok(json!({"dismissed": true, "goal_run": goal_run_projection(&run)})),
+                    Err(error) => plan_error(error),
+                }
+            }
             "pause" | "resume" | "cancel" => {
                 let Some(run_id) = goal_run_id else {
                     return invalid_action("goal_run_id is required");
@@ -936,7 +956,7 @@ impl ToolRuntime {
                 }
             }
             _ => invalid_action(
-                "action must be one of: overview, status, pause, resume, cancel, emergency_stop, release_emergency_stop",
+                "action must be one of: overview, status, pause, resume, cancel, dismiss, clear_board, emergency_stop, release_emergency_stop",
             ),
         };
         if let Some(wake) = self.goal_supervisor_wake.as_ref() {

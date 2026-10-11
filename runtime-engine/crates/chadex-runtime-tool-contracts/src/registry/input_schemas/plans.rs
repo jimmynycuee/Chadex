@@ -149,7 +149,7 @@ pub fn plan_review_input_schema() -> Value {
 pub fn goal_operator_input_schema() -> Value {
     object(
         json!({
-            "action": {"type": "string", "enum": ["overview", "status", "pause", "resume", "cancel", "emergency_stop", "release_emergency_stop"]},
+            "action": {"type": "string", "enum": ["overview", "status", "pause", "resume", "cancel", "dismiss", "clear_board", "emergency_stop", "release_emergency_stop"]},
             "goal_run_id": goal_run_id(),
             "reason": {"type": "string", "maxLength": 2048}
         }),

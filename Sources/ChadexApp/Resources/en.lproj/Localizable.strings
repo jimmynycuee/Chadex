@@ -746,6 +746,13 @@
 "planGoal.plans.none" = "No plans in Plan Mode or approved.";
 "planGoal.runs.title" = "Goal runs";
 "planGoal.runs.none" = "No Goal runs yet.";
+"planGoal.deletePlan" = "Delete plan";
+"planGoal.deletePlan.confirmTitle" = "Delete this plan?";
+"planGoal.deletePlan.confirmMessage" = "The plan \"%@\" is removed from the list and Plan Mode ends. Its record stays on this Mac.";
+"planGoal.deleteRun" = "Delete";
+"planGoal.deleteRun.confirmTitle" = "Delete this Goal run?";
+"planGoal.deleteRun.confirmMessage" = "The run is removed from the list. Its result branch and record stay on this Mac.";
+"planGoal.deleteRun.unfinished" = "A Goal that is still running cannot be deleted; cancel it first.";
 "planGoal.supervisor.running" = "Supervisor running";
 "planGoal.supervisor.stopped" = "Supervisor not running";
 "planGoal.planModeActive" = "Plan Mode active";

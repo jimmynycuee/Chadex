@@ -38,6 +38,12 @@ final class GoalNotifier {
         task = nil
     }
 
+    /// One poll now, outside the timer (before the board is cleared).
+    func pollNow() async {
+        guard task != nil else { return }
+        await poll()
+    }
+
     private func poll() async {
         guard let app, app.selectedProject != nil else { return }
         let result = await app.planGoalOperator(
