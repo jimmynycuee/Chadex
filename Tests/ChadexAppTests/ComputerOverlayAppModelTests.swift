@@ -103,14 +103,14 @@ final class ComputerOverlayAppModelTests: XCTestCase {
         XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents")[0].contains("\"enabled\":true"))
     }
 
-    func testSavedOffChoiceIsSentToANewHelper() async throws {
+    func testEventsStayOnForTheActivityNoticeWhenTheCursorIsOff() async throws {
         let fixture = try makeFixture(overlayPreference: false)
         XCTAssertFalse(fixture.model.computerCursorOverlayEnabled)
         await fixture.model.refreshComputerSafety()
         let synced = await waitUntil { !logged(fixture, method: "setComputerOverlayEvents").isEmpty }
         await fixture.model.shutdown()
         XCTAssertTrue(synced)
-        XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents")[0].contains("\"enabled\":false"))
+        XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents")[0].contains("\"enabled\":true"))
     }
 
     private func startHelperAndWaitForInitialSync(_ fixture: Fixture) async -> Bool {
@@ -128,7 +128,7 @@ final class ComputerOverlayAppModelTests: XCTestCase {
         XCTAssertEqual(fixture.store.load().computerCursorOverlay, false, "the choice is saved")
         XCTAssertGreaterThan(fixture.presenter.hiddenImmediately, 0, "switching off hides at once")
         let sentOff = logged(fixture, method: "setComputerOverlayEvents").last
-        XCTAssertTrue(sentOff?.contains("\"enabled\":false") == true, sentOff ?? "nothing sent")
+        XCTAssertTrue(sentOff?.contains("\"enabled\":true") == true, "events stay on for the activity notice: \(sentOff ?? "nothing sent")")
 
         await fixture.model.setComputerCursorOverlay(true)
         XCTAssertEqual(fixture.store.load().computerCursorOverlay, true)
@@ -149,7 +149,7 @@ final class ComputerOverlayAppModelTests: XCTestCase {
 
         XCTAssertEqual(fixture.model.computerCursorOverlayEnabled, false)
         let sent = logged(fixture, method: "setComputerOverlayEvents")
-        XCTAssertTrue(sent.last?.contains("\"enabled\":false") == true, "last request must carry the final preference: \(sent)")
+        XCTAssertTrue(sent.allSatisfy { $0.contains("\"enabled\":true") }, "events stay on for the activity notice: \(sent)")
         XCTAssertLessThanOrEqual(sent.count, 1 + flips.count)
         await fixture.model.shutdown()
     }
@@ -168,7 +168,7 @@ final class ComputerOverlayAppModelTests: XCTestCase {
         await fixture.model.refreshComputerSafety()
         let synced = await waitUntil { !logged(fixture, method: "setComputerOverlayEvents").isEmpty }
         XCTAssertTrue(synced)
-        XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents")[0].contains("\"enabled\":false"))
+        XCTAssertTrue(logged(fixture, method: "setComputerOverlayEvents")[0].contains("\"enabled\":true"))
         await fixture.model.shutdown()
     }
 
@@ -189,7 +189,13 @@ final class ComputerOverlayAppModelTests: XCTestCase {
         let fixture = try makeFixture(eventLine: line)
         await fixture.model.refreshComputerSafety()
         let presented = await waitUntil { fixture.presenter.presented > 0 }
+        let active = await waitUntil {
+            if case .active = fixture.model.computerActivity { return true }
+            return false
+        }
+        XCTAssertTrue(active, "every action marks ChatGPT as operating the Mac, screen or not")
         await fixture.model.shutdown()
+        XCTAssertEqual(fixture.model.computerActivity, .idle, "shutdown ends the notice")
         // Headless CI can have no display; then the controller correctly drops the
         // event instead of guessing. Either way nothing may crash or fail a request.
         if NSScreen.screens.isEmpty {

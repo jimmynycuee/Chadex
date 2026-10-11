@@ -80,6 +80,12 @@ final class AppModel: ObservableObject {
     /// Agent cursor overlay (Computer Use). Best effort: the panel is created on the
     /// first event, and nothing here can fail an action or a request.
     private let overlayController: ComputerOverlayController
+    /// Whether ChatGPT is operating the Mac (menu bar and corner notice).
+    @Published private(set) var computerActivity: ComputerActivityState = .idle
+    private let activityTracker = ComputerActivityTracker.live()
+    /// Only in a real app bundle (not `swift test`).
+    private let activityNotice: ComputerActivityNotice? =
+        Bundle.main.bundleURL.pathExtension == "app" ? ComputerActivityNotice() : nil
     private var overlaySystemObservers: ComputerOverlaySystemObservers?
     private var overlaySyncTask: Task<Void, Never>?
     private var overlaySyncGeneration = 0
@@ -350,6 +356,7 @@ final class AppModel: ObservableObject {
         // asking it to quit: the poll loop and any in-flight launch warm-up.
         isShuttingDown = true
         overlayController.hideImmediately()
+        activityTracker.reset()
         pollingTask?.cancel()
         goalNotifier.stop()
         runtimePrewarmTask?.cancel()
@@ -657,11 +664,18 @@ final class AppModel: ObservableObject {
     // MARK: - Agent cursor overlay
 
     private func installOverlayHooks() {
+        activityTracker.onChange = { [weak self] state in
+            self?.computerActivity = state
+            self?.activityNotice?.update(state)
+        }
         // Events arrive on a background thread. DispatchQueue.main.async keeps the
         // helper's order (separate `Task { @MainActor }` hops would not).
         helper.onEvent = { [weak self] event in
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { self?.overlayController.handle(event) }
+                MainActor.assumeIsolated {
+                    self?.overlayController.handle(event)
+                    self?.activityTracker.handle(event)
+                }
             }
         }
         helper.onLifecycle = { [weak self] event in
@@ -671,7 +685,10 @@ final class AppModel: ObservableObject {
                 Task { @MainActor [weak self] in await self?.syncOverlayEvents() }
             case .terminated:
                 DispatchQueue.main.async {
-                    MainActor.assumeIsolated { self?.overlayController.hideImmediately() }
+                    MainActor.assumeIsolated {
+                        self?.overlayController.hideImmediately()
+                        self?.activityTracker.reset()
+                    }
                 }
             }
         }
@@ -698,7 +715,7 @@ final class AppModel: ObservableObject {
         await syncOverlayEvents()
     }
 
-    /// Tell the helper whether to forward overlay events. Failures are logged only:
+    /// Tell the helper to forward overlay events (always on; see the loop). Failures are logged only:
     /// the overlay is cosmetic, so it never shows an error.
     ///
     /// Requests are serialized (the helper handles them concurrently, so two in
@@ -725,7 +742,9 @@ final class AppModel: ObservableObject {
         defer { overlaySyncTask = nil }
         while !isShuttingDown && helper.isRunning {
             let generation = overlaySyncGeneration
-            let enabled = preferences.computerCursorOverlayEnabled
+            // Always on: the activity notice needs every action even when the
+            // cursor is switched off (the controller then draws nothing).
+            let enabled = true
             do {
                 let _: JSONValue = try await helper.request(
                     method: "setComputerOverlayEvents",
@@ -860,6 +879,7 @@ final class AppModel: ObservableObject {
     func stopComputerControl() async {
         // Stop means stop: hide the agent cursor now, before the helper answers.
         overlayController.hideImmediately()
+        activityTracker.reset()
         guard !computerSafetyMutationInFlight else { return }
         computerSafetyMutationInFlight = true
         defer { computerSafetyMutationInFlight = false }

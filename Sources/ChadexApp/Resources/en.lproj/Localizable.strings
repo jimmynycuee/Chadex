@@ -85,6 +85,11 @@
 "computer.alwaysAllowHelp" = "Allow this request and persist Always allow as the Computer Use default for future sessions.";
 "computer.deny" = "Deny";
 "computer.moreApprovals" = "%lld more control requests are waiting.";
+"computer.activity.activeTitle" = "ChatGPT is using your Mac";
+"computer.activity.activeDetail" = "Last action %lld s ago. To stop it, use the Chadex icon in the menu bar.";
+"computer.activity.quietTitle" = "ChatGPT has paused";
+"computer.activity.quietDetail" = "No new action for %lld s, so you can use your Mac. This lights up again if it acts.";
+"computer.activity.menuActive" = "ChatGPT is using your Mac";
 "computer.stop" = "Stop Computer Use";
 "computer.stopHelp" = "Immediately block new Computer Use actions and invalidate pending approvals.";
 "computer.resume" = "Resume Computer Use";

@@ -85,6 +85,11 @@
 "computer.alwaysAllowHelp" = "允許目前請求，並把「永遠允許」儲存為之後工作階段的 Computer Use 預設。";
 "computer.deny" = "拒絕";
 "computer.moreApprovals" = "另有 %lld 個控制請求等待處理。";
+"computer.activity.activeTitle" = "ChatGPT 正在操作你的 Mac";
+"computer.activity.activeDetail" = "上個動作在 %lld 秒前。要停止請按選單列的 Chadex 圖示。";
+"computer.activity.quietTitle" = "ChatGPT 已暫停操作";
+"computer.activity.quietDetail" = "已經 %lld 秒沒有新動作，你可以用電腦了。它若再動作，這裡會再亮起。";
+"computer.activity.menuActive" = "ChatGPT 正在操作你的 Mac";
 "computer.stop" = "停止 Computer Use";
 "computer.stopHelp" = "立即阻擋新的 Computer Use 操作，並使所有待批准請求失效。";
 "computer.resume" = "恢復 Computer Use";

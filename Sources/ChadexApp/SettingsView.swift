@@ -784,6 +784,9 @@ struct MenuBarContent: View {
             Text(project.name)
                 .foregroundStyle(.secondary)
         }
+        if case .active = model.computerActivity {
+            Text(L10n.string("computer.activity.menuActive"))
+        }
         Divider()
         Button(L10n.string("menubar.open")) { MainWindowPresenter.show(using: openWindow) }
         if model.snapshot.phase == .unconfigured {
