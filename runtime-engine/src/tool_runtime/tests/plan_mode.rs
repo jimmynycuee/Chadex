@@ -1081,6 +1081,12 @@ async fn plan_start_without_project_uses_the_project_open_in_the_chadex_app() {
         output["project_resolution"],
         json!({"project": fx.other, "source": "chadex_app"})
     );
+    // The model is told to tell the user which project (name and path) it uses.
+    let note = output["plan_mode"]["note"].as_str().unwrap();
+    assert!(note.starts_with("This Chadex connection is now read-only"), "{note}");
+    assert!(note.contains("the project open in the Chadex app: other ("), "{note}");
+    assert!(note.contains(&fx._roots[1].path().file_name().unwrap().to_string_lossy().to_string()), "{note}");
+    assert!(note.contains("Tell the user which project you are working in."), "{note}");
     // Plan Mode is locked to that project exactly as with an explicit id.
     assert!(fx
         .runtime
@@ -1102,6 +1108,79 @@ async fn plan_start_without_project_uses_the_project_open_in_the_chadex_app() {
     assert!(ok, "{again}");
     assert_eq!(again["created"], json!(false));
     assert_eq!(again["project_resolution"], Value::Null);
+    assert!(!again["plan_mode"]["note"]
+        .as_str()
+        .unwrap()
+        .contains("Tell the user which project"));
+}
+
+#[tokio::test]
+async fn resent_plan_start_without_project_keeps_the_locked_project_after_the_app_switches() {
+    let other = crate::tool_runtime::runner_project_runtime_id("client-a", "other");
+    let fx = app_fixture(Some(&other), true).await;
+    let alice = chatgpt("alice");
+    let (ok, first) = call(&fx.runtime, &alice, ToolTransport::Mcp, "plan_start", json!({"title": "Finish G1"})).await;
+    assert!(ok, "{first}");
+    // The user now opens `demo` in the app.
+    let state_file = fx.runtime.app_active_project_file.clone().unwrap();
+    std::fs::write(
+        &state_file,
+        json!({"project": {"runtime_project_id": fx.demo}}).to_string(),
+    )
+    .unwrap();
+    let (ok, again) = call(&fx.runtime, &alice, ToolTransport::Mcp, "plan_start", json!({"title": "Finish G1"})).await;
+    assert!(ok, "{again}");
+    assert_eq!(again["created"], json!(false));
+    assert_eq!(again["plan"]["plan_id"], first["plan"]["plan_id"]);
+    assert_eq!(
+        again["project_resolution"],
+        json!({"project": fx.other, "source": "active_plan"})
+    );
+    // Another principal without a lock follows the app.
+    let (ok, other_user) = call(&fx.runtime, &chatgpt_via_tunnel(), ToolTransport::Mcp, "plan_start", json!({"title": "x"})).await;
+    assert!(ok, "{other_user}");
+    assert_eq!(other_user["plan"]["project_id"], json!(fx.demo));
+}
+
+#[tokio::test]
+async fn only_the_runner_owner_or_local_operator_inherits_the_app_project() {
+    let demo = crate::tool_runtime::runner_project_runtime_id("client-a", "demo");
+    let fx = app_fixture(Some(&demo), true).await;
+    // An admin of another user can see alice's Runner but must not inherit
+    // alice's app selection.
+    let mut admin = chatgpt("bob");
+    admin.scopes.push(crate::auth::SCOPE_ADMIN.to_string());
+    let listed = fx.runtime.list_projects(Some(&admin)).await;
+    assert!(listed.success);
+    assert_eq!(listed.output["count"], json!(3), "{}", listed.output);
+    assert_eq!(listed.output["active_project"], Value::Null);
+    assert!(listed.output["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|project| project["active"] == json!(false)));
+    let (ok, output) = call(&fx.runtime, &admin, ToolTransport::Mcp, "plan_start", json!({"title": "x"})).await;
+    assert!(!ok);
+    assert_eq!(error_kind(&output), "project_required");
+    assert_eq!(output["app_project_set"], json!(true));
+    // The owner and the local tunnel (bootstrap) principal do.
+    for auth in [chatgpt("alice"), chatgpt_via_tunnel()] {
+        let listed = fx.runtime.list_projects(Some(&auth)).await;
+        assert_eq!(listed.output["active_project"]["id"], json!(fx.demo));
+    }
+}
+
+#[tokio::test]
+async fn list_projects_marks_the_app_project_given_by_its_short_id() {
+    // The resolver accepts the same short forms an explicit project does, so
+    // marking and defaulting agree.
+    let fx = app_fixture(Some("demo"), true).await;
+    let alice = chatgpt("alice");
+    let listed = fx.runtime.list_projects(Some(&alice)).await;
+    assert_eq!(listed.output["active_project"]["id"], json!(fx.demo), "{}", listed.output);
+    let (ok, output) = call(&fx.runtime, &alice, ToolTransport::Mcp, "plan_start", json!({"title": "x"})).await;
+    assert!(ok, "{output}");
+    assert_eq!(output["plan"]["project_id"], json!(fx.demo));
 }
 
 #[tokio::test]
@@ -1174,7 +1253,9 @@ async fn app_project_the_caller_cannot_use_is_an_error_not_a_fallback_or_a_grant
     .await;
     assert!(!ok);
     assert_eq!(error_kind(&output), "project_required");
-    assert_eq!(output["app_active_project"], json!("agent:client-b:secret"));
+    // The app's project id is never echoed to a caller that may not use it.
+    assert_eq!(output["app_project_set"], json!(true));
+    assert!(!output.to_string().contains("secret"), "{output}");
     assert!(output["candidates"]
         .as_array()
         .unwrap()
@@ -1205,6 +1286,9 @@ async fn direct_goal_request_without_project_uses_the_project_open_in_the_chadex
     assert!(ok, "{created}");
     assert_eq!(created["plan"]["project_id"], json!(fx.demo));
     assert_eq!(created["project_resolution"]["source"], json!("chadex_app"));
+    let next = created["next"].as_str().unwrap();
+    assert!(next.starts_with("Tell the user to press Start Goal"), "{next}");
+    assert!(next.contains("Chadex used the project open in the Chadex app: demo ("), "{next}");
 
     // Without an app project and with two candidates it refuses.
     let fx = app_fixture(None, true).await;

@@ -398,20 +398,51 @@ impl ToolRuntime {
         }
     }
 
-    /// An explicit project as given, or the operator-side default (the project
-    /// open in the Chadex app) with where it came from.
+    /// An explicit project as given, or a default with where it came from:
+    /// this principal's active Plan Mode lock first (so a resent plan_start
+    /// stays idempotent after the user switches projects in the app), then the
+    /// operator-side default (the project open in the Chadex app).
     async fn project_or_default(
         &self,
         project: Option<String>,
         auth: Option<&AuthContext>,
     ) -> Result<(String, Option<super::active_project::DefaultProject>), ToolResult> {
-        match project {
-            Some(project) => Ok((project, None)),
-            None => {
-                let default = self.default_project_for_auth(auth).await?;
-                Ok((default.project.clone(), Some(default)))
-            }
+        if let Some(project) = project {
+            return Ok((project, None));
         }
+        let default = match self.plan_guard.lookup(&plan_principal_key(auth)) {
+            Ok(Some(lock)) => super::active_project::DefaultProject {
+                project: lock.project_id,
+                source: super::active_project::SOURCE_ACTIVE_PLAN,
+            },
+            _ => self.default_project_for_auth(auth).await?,
+        };
+        Ok((default.project.clone(), Some(default)))
+    }
+
+    /// The sentence telling the model to tell the user which defaulted
+    /// project it is using (name and path when this principal can see them).
+    async fn defaulted_project_notice(
+        &self,
+        auth: Option<&AuthContext>,
+        default: &super::active_project::DefaultProject,
+        project_id: &str,
+        path: &str,
+    ) -> String {
+        let listed = self
+            .list_projects_with_options(
+                auth,
+                super::projects::ListProjectsOptions {
+                    project: Some(project_id.to_string()),
+                    limit: Some(1),
+                    summary_only: true,
+                    ..Default::default()
+                },
+            )
+            .await;
+        let name = listed.output["projects"][0]["name"].as_str().map(str::to_string);
+        let path = (!path.is_empty()).then_some(path);
+        default.tell_user(name.as_deref(), path)
     }
 
     pub(crate) async fn plan_start(
@@ -428,7 +459,7 @@ impl ToolRuntime {
             Ok(value) => value,
             Err(result) => return result,
         };
-        let (project_id, _) = match self.plan_project_environment(&project, auth).await {
+        let (project_id, config) = match self.plan_project_environment(&project, auth).await {
             Ok(value) => value,
             Err(result) => return result,
         };
@@ -440,6 +471,11 @@ impl ToolRuntime {
             Ok(_) => self.plan_git_readiness(auth, &project_id).await,
             Err(_) => None,
         };
+        let mut note = "This Chadex connection is now read-only for the project. Do not stop or wait for the user now: in this same reply, inspect the project with read tools, save the full plan with plan_save (include acceptance checks), then call plan_wait_approval and keep calling it until it returns a decision. The user approves the exact revision in the Chadex app; on approval Plan Mode ends and you implement it yourself right away (it is not a Goal). Plan Mode also ends on exit in the app or after expiry.".to_string();
+        if let (Ok(_), Some(default)) = (&outcome, defaulted.as_ref()) {
+            note.push(' ');
+            note.push_str(&self.defaulted_project_notice(auth, default, &project_id, &config.path).await);
+        }
         match outcome {
             Ok(outcome) => ToolResult::ok(json!({
                 "project_resolution": defaulted.as_ref().map(|default| default.projection()),
@@ -454,7 +490,7 @@ impl ToolRuntime {
                     "active": true,
                     "enforcement": "backend",
                     "allowed_tools": PLAN_MODE_READ_ONLY_TOOLS,
-                    "note": "This Chadex connection is now read-only for the project. Do not stop or wait for the user now: in this same reply, inspect the project with read tools, save the full plan with plan_save (include acceptance checks), then call plan_wait_approval and keep calling it until it returns a decision. The user approves the exact revision in the Chadex app; on approval Plan Mode ends and you implement it yourself right away (it is not a Goal). Plan Mode also ends on exit in the app or after expiry.",
+                    "note": note,
                 },
             })),
             Err(error) => plan_error(error),
@@ -611,7 +647,7 @@ impl ToolRuntime {
             Ok(value) => value,
             Err(result) => return result,
         };
-        let (project_id, _, dispatch) = match self.goal_dispatch_for_project(&project, auth).await {
+        let (project_id, config, dispatch) = match self.goal_dispatch_for_project(&project, auth).await {
             Ok(value) => value,
             Err(result) => return result,
         };
@@ -625,6 +661,11 @@ impl ToolRuntime {
             Ok(_) => self.plan_git_readiness(auth, &project_id).await,
             Err(_) => None,
         };
+        let mut next = "Tell the user to press Start Goal in the Chadex app (Plan & Goal); the model cannot start it. Afterwards find the run with goal_run_list (match this plan_id) and follow it with goal_run_status. Chadex notifies the user on the Mac when the Goal finishes; ChatGPT is not notified.".to_string();
+        if let (Ok(_), Some(default)) = (&created, defaulted.as_ref()) {
+            next.push(' ');
+            next.push_str(&self.defaulted_project_notice(auth, default, &project_id, &config.path).await);
+        }
         match created {
             Ok(outcome) => ToolResult::ok(json!({
                 "project_resolution": defaulted.as_ref().map(|default| default.projection()),
@@ -632,7 +673,7 @@ impl ToolRuntime {
                 "plan": outcome.plan,
                 "revision": outcome.revision,
                 "state": "awaiting_start",
-                "next": "Tell the user to press Start Goal in the Chadex app (Plan & Goal); the model cannot start it. Afterwards find the run with goal_run_list (match this plan_id) and follow it with goal_run_status. Chadex notifies the user on the Mac when the Goal finishes; ChatGPT is not notified.",
+                "next": next,
             })),
             Err(error) => plan_error(error),
         }

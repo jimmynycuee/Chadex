@@ -324,9 +324,13 @@ impl ToolRuntime {
             .runner_registry
             .count_active_jobs_for_projects(access.as_ref(), &project_ids)
             .await;
-        // Marked, never hidden: the app's project id is operator-written and
-        // only labels an entry this caller can already see.
-        let app_active_project = self.app_active_project_id();
+        // Marked, never hidden: the app's project is operator-written and,
+        // resolved exactly as plan_start's default, only labels an entry this
+        // caller can already see and would default to.
+        let app_active_project = match self.app_active_project_for_auth(auth).await {
+            Some(Ok(id)) => Some(id),
+            _ => None,
+        };
         let mut active_project = None;
 
         let mut list = Vec::with_capacity(candidates.len());
