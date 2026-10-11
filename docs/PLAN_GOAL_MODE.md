@@ -13,9 +13,9 @@
 
 | 想做的事 | 在 ChatGPT 輸入 | 實際入口 |
 | --- | --- | --- |
-| 規劃、不動程式 | 「`@chadex-plan` 規劃 ○○，先不要改程式」 | `plan_start` → 唯讀調查 → `plan_save` → `plan_wait_approval`（每次最多等 45 秒，同一則回覆內重複呼叫） |
+| 規劃、不動程式 | 「`@chadex-plan` 規劃 ○○，先不要改程式」 | `plan_start`（project 省略時用 App 目前開著的專案）→ 唯讀調查 → `plan_save` → `plan_wait_approval`（每次最多等 45 秒，同一則回覆內重複呼叫） |
 | 核准計畫並開工 | **不在 ChatGPT**：App「Plan & Goal」（⌘6）→「核准第 N 版，讓 ChatGPT 開工」 | `plan_review` `approve`（只限 App）；ChatGPT 的 `plan_wait_approval` 回 `approved` 後直接實作。若 ChatGPT 的回覆已結束，回去說「開始」 |
-| 直接給目標 | 「`@chadex-goal` 修好 ○○，驗收用 `python3 -m unittest`」 | `goal_run_start`（project、title、objective、acceptance）→ 狀態 `awaiting_start` |
+| 直接給目標 | 「`@chadex-goal` 修好 ○○，驗收用 `python3 -m unittest`」 | `goal_run_start`（title、objective、acceptance；project 省略時用 App 目前開著的專案）→ 狀態 `awaiting_start` |
 | 開始 Goal | **不在 ChatGPT**：App →「用 Codex 在背景執行」（消耗 Codex token）或「在 ChatGPT 對話中執行」 | `plan_review` `approve_and_start` + `mode`（`codex`／`chatgpt`，只限 App） |
 | ChatGPT 模式的每一輪 | ChatGPT 自己改 `workspace_project`，再呼叫 `goal_check` | `goal_check`：commit + sandbox 驗收；`achieved` 為 true 才算完成。30 分鐘沒呼叫會暫停（`chatgpt_idle`），下一次 `goal_check` 恢復 |
 | 查進度／暫停／取消 | 「查 Chadex Goal 進度」 | `goal_run_status`（`wait_secs` 最多等 45 秒）、`goal_run_list`、`goal_run_control` |

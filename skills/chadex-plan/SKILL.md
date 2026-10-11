@@ -13,7 +13,7 @@ Your first tool call is `plan_start`. A plan written only in the chat is not a C
 
 Do every step below in one reply, without stopping for the user, until `plan_wait_approval` returns a decision. Do not report after `plan_start` and wait.
 
-1. Call `plan_start` with a short title. Leave `project` out unless the user named one: Chadex then uses the project open in the Chadex app. Only if `plan_start` answers that the project is ambiguous, ask the user to pick from the candidates it lists. Never pick a project yourself from `list_projects`.
+1. Call `plan_start` with a short title. Leave `project` out unless the user named one or this conversation is clearly about a specific project: Chadex then uses the project open in the Chadex app. Tell the user which project the plan is for. Only if `plan_start` answers that the project is ambiguous, ask the user to pick from the candidates it lists. Never pick a project yourself from `list_projects`.
 2. Investigate with read-only tools: `project_overview`, `search_project_texts`, `read_files`, `git_status`, `git_log`, `git_diff_hunks`, `memory_search`, `skill_list`. Ground every claim in what you read; say what you could not verify.
 3. Write the plan in Markdown: goal, current state with evidence (paths, functions), approach, ordered steps, risks and rollback, what is out of scope.
 4. Choose acceptance checks that prove the work is done. Each is literal argv (no shell), run in the project root (or `cwd`), exit 0 = pass. Prefer the repository's real test/build/lint commands, scoped to the change when the full suite is slow. Never use a check that always passes.
