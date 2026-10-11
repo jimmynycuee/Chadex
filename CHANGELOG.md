@@ -2,9 +2,11 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
-## Unreleased
+## 0.7.0
 
-- Plan Mode / Goal Mode (feature branch `feature/plan-goal-mode`, not released): backend-enforced read-only planning with immutable, hash-approved plan revisions; approval only from the Chadex app; an in-process Goal supervisor that iterates `codex exec` in an isolated worktree and succeeds only on the approved acceptance checks (run sandboxed), with durable recovery, budgets, pause/cancel and emergency stop. See `docs/PLAN_GOAL_MODE.md`. Direct Goals start without a plan (objective + acceptance from ChatGPT, one Start click in the app), plans can be approved and started in one step, `goal_run_status` can wait for completion, and the app posts a macOS notification when a Goal finishes or a request is waiting.
+- Plan Mode: backend-enforced read-only planning with immutable, hashed revisions that only the Chadex app can approve. An approved plan goes straight back to ChatGPT, which implements it and runs its checks.
+- Goal Mode: ChatGPT sends an objective with acceptance commands and the user starts it in the app, choosing Codex mode (background Codex CLI, uses Codex tokens) or ChatGPT mode (ChatGPT edits, Chadex checks each round). Work runs in an isolated worktree and ends on a `chadex/goal/<id>` branch; sandboxed acceptance, budgets, pause/cancel, emergency stop, restart recovery and macOS notifications. See `docs/PLAN_GOAL_MODE.md`.
+- Computer Use shows a notice and a menu bar icon while ChatGPT operates the Mac, and says when it has paused.
 
 ## 0.6.5
 

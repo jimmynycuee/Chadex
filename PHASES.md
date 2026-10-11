@@ -12,7 +12,7 @@ tracks:
   LS: 啟動速度
   D: 介面設計
   PG: Plan Mode 與 Goal Mode
-current_phase: PG1
+current_phase: V070
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -432,6 +432,17 @@ phases:
         result: "250 executed, 1 skipped, 0 failures (2026-10-11)"
       - cmd: "scripts/e2e_plan_goal.py (isolated helper+server+runner) fake / codex / --restart"
         result: "Plan Mode writes all refused, project hash unchanged; real codex goal succeeded on independently re-verified branch; restart -> outcome_unknown -> app resume -> succeeded"
+    closed_commit: null
+  - id: V070
+    name: v0.7.0 Plan Mode, Goal Mode (Codex / ChatGPT) and Computer Use activity notice
+    branch: feature/plan-goal-mode
+    status: in_progress
+    owner: claude
+    depends_on: [PG1]
+    # 使用者 2026-10-11 指示直接發佈（未先做 CI 預覽版目視驗收與 ChatGPT 網頁實機）。PR #31 合併後推 tag v0.7.0。
+    gate:
+      - cmd: "cargo test engine --lib / store / contracts / tool-runtime-contracts; swift test; scripts/e2e_plan_goal.py fake"
+        result: "2790 / 187 / 141 / 96 passed; 261 executed 0 failures; all E2E steps pass incl. ChatGPT-mode goal (2026-10-11)"
     closed_commit: null
 ---
 

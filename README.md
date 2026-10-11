@@ -8,7 +8,7 @@
 
 `macOS 14+` · `Apple Silicon` · `Free & Open Source`
 
-**Latest stable release: v0.6.5** — Computer Use no longer leaves Chromium browsers slow: web accessibility is switched back off after 120 s idle, and ChatGPT is told when to use Computer Use. 0.6.4 made macOS buttons follow the interface size in a Liquid Glass style. 0.6.3 moved releases to the macOS 26 SDK so the design v2 Liquid Glass appears in the released app. Patch releases 0.6.1–0.6.3 fix off-centre macOS button labels at larger interface sizes and give all buttons the capsule shape of the status pills. v0.6.0 brought design v2 to macOS and Windows, a Computer Use permission card, an agent cursor overlay and Chromium web accessibility on macOS, Tunnel ID validation before saving, and a stricter local runtime (no shared-key login, loopback-only CORS and Host checks), while keeping public distribution macOS-only.
+**Latest stable release: v0.7.0** — Plan Mode (read-only planning approved in the app, then ChatGPT implements it) and Goal Mode (work until acceptance checks pass, in Codex or ChatGPT mode, on an isolated branch), plus a notice while ChatGPT operates the Mac. 0.6.5: Computer Use no longer leaves Chromium browsers slow: web accessibility is switched back off after 120 s idle, and ChatGPT is told when to use Computer Use. 0.6.4 made macOS buttons follow the interface size in a Liquid Glass style. 0.6.3 moved releases to the macOS 26 SDK so the design v2 Liquid Glass appears in the released app. Patch releases 0.6.1–0.6.3 fix off-centre macOS button labels at larger interface sizes and give all buttons the capsule shape of the status pills. v0.6.0 brought design v2 to macOS and Windows, a Computer Use permission card, an agent cursor overlay and Chromium web accessibility on macOS, Tunnel ID validation before saving, and a stricter local runtime (no shared-key login, loopback-only CORS and Host checks), while keeping public distribution macOS-only.
 
 > On the Releases page, expand **Assets** and download the latest `Chadex-...-macos-arm64.dmg`.
 
@@ -118,6 +118,7 @@ Release profile、簽署、DMG、GitHub Actions 與 distribution boundary 的完
 - [`docs/BRIDGE_PROTOCOL.md`](docs/BRIDGE_PROTOCOL.md) — Swift ↔ Rust bridge protocol
 - [`docs/PLAN_GOAL_MODE.md`](docs/PLAN_GOAL_MODE.md) — Plan Mode／Goal Mode 使用方式、安全邊界、恢復語意與實測證據
 - [`docs/RELEASE.md`](docs/RELEASE.md) — release gate、簽署、DMG 與 GitHub 發佈流程
+- [`docs/releases/0.7.0.md`](docs/releases/0.7.0.md) — Plan 模式、Goal 模式（Codex／ChatGPT 兩種模式）、Computer Use 操作中提示
 - [`docs/releases/0.6.5.md`](docs/releases/0.6.5.md) — Computer Use 閒置後關回 Chromium 網頁輔助功能、提示 ChatGPT 何時使用
 - [`docs/releases/0.6.4.md`](docs/releases/0.6.4.md) — 按鈕跟著介面大小縮放的 Liquid Glass 樣式
 - [`docs/releases/0.6.3.md`](docs/releases/0.6.3.md) — 改用 macOS 26 SDK 建置正式版
