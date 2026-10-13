@@ -702,7 +702,7 @@ async fn refused_url() -> String {
     format!("http://{}/mcp", listener.local_addr().unwrap())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn refused_requests_preserve_ids_return_immediately_and_recover_once() {
     let hook = Arc::new(CountingRecovery { calls: 0.into(), release: tokio::sync::Notify::new() });
     let mut state = state(refused_url().await);
