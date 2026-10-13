@@ -2472,9 +2472,10 @@ impl ToolRuntime {
             ToolCall::GoalOperator {
                 action,
                 goal_run_id,
+                project,
                 reason,
             } => {
-                self.goal_operator(auth, transport, action, goal_run_id, reason)
+                self.goal_operator(auth, transport, action, goal_run_id, reason, project)
                     .await
             }
 

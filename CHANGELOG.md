@@ -2,6 +2,13 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.7.1
+
+- Fixed Plan and Goal follow-up routing, manifest-first Skill tool discovery, approval persistence across reconnects, and project-scoped cleanup.
+- Added bounded single-flight backend recovery and transport diagnostics; requests with an unknown dispatch outcome are not replayed.
+- Updated the Windows CI candidate metadata and historical-upgrade baseline. Windows remains an unsigned CI artifact, not a public distribution.
+- See docs/releases/0.7.1.md for validation evidence and remaining boundaries.
+
 ## 0.7.0
 
 - Plan Mode: backend-enforced read-only planning with immutable, hashed revisions that only the Chadex app can approve. An approved plan goes straight back to ChatGPT, which implements it and runs its checks.

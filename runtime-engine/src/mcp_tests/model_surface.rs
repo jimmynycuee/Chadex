@@ -19,6 +19,139 @@ fn tool_names(value: &Value) -> Vec<&str> {
         .collect()
 }
 
+#[test]
+fn plan_mode_wait_suggestion_schema_and_gateway_projection_match_the_runtime_contract() {
+    let plan_id = "wc_plan_abcdefghijkl";
+    let canonical = webcodex_tool_contracts::output_schema_for_tool("plan_save");
+    let suggested_schema = &canonical["properties"]["output"]["properties"]["suggested_call"];
+    let targets = suggested_schema["anyOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|schema| webcodex_tool_contracts::suggested_tool_call_schema_target(schema).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(targets, ["plan_wait_approval", "goal_run_list"]);
+    let plan_wait_schema = &suggested_schema["anyOf"][0];
+    let arguments_schema = &plan_wait_schema["properties"]["arguments"];
+    assert_eq!(arguments_schema["required"], json!(["plan_id", "wait_secs"]));
+    assert_eq!(arguments_schema["properties"]["plan_id"]["pattern"], "^wc_plan_[A-Za-z0-9_-]{12,32}$");
+    assert_eq!(arguments_schema["properties"]["wait_secs"]["const"], 45);
+
+    let waiting = webcodex_tool_contracts::output_schema_for_tool("plan_wait_approval");
+    assert_eq!(
+        waiting["properties"]["output"]["allOf"][0]["then"]["required"],
+        json!(["suggested_call"])
+    );
+    let mut result = crate::tool_runtime::ToolResult::ok(json!({
+        "suggested_call": {
+            "tool": "plan_wait_approval",
+            "arguments": {"plan_id": plan_id, "wait_secs": 45}
+        }
+    }));
+    crate::model_surface::project_tool_result_suggested_calls(
+        "plan_save",
+        &mut result,
+        &|target| crate::model_surface::suggested_tool_call_route(target, false),
+    );
+    assert_eq!(
+        result.output["suggested_call"],
+        json!({
+            "tool": "call_runtime_tool",
+            "arguments": {
+                "tool": "plan_wait_approval",
+                "arguments": {"plan_id": plan_id, "wait_secs": 45}
+            }
+        })
+    );
+
+    let mut goal_result = crate::tool_runtime::ToolResult::ok(json!({
+        "plan": {"origin": "goal"},
+        "suggested_call": {"tool": "goal_run_list", "arguments": {}}
+    }));
+    crate::model_surface::project_tool_result_suggested_calls(
+        "plan_save",
+        &mut goal_result,
+        &|target| crate::model_surface::suggested_tool_call_route(target, false),
+    );
+    assert_eq!(
+        goal_result.output["suggested_call"],
+        json!({
+            "tool": "call_runtime_tool",
+            "arguments": {"tool": "goal_run_list", "arguments": {}}
+        })
+    );
+
+    let mut goal_origin_wait = crate::tool_runtime::ToolResult::err_with_output(
+        "Goal-origin requests do not use Plan approval polling".to_string(),
+        json!({
+            "error_kind": "not_a_plan",
+            "suggested_call": {"tool": "goal_run_list", "arguments": {}}
+        }),
+    );
+    crate::model_surface::project_tool_result_suggested_calls(
+        "plan_wait_approval",
+        &mut goal_origin_wait,
+        &|target| crate::model_surface::suggested_tool_call_route(target, false),
+    );
+    assert_eq!(
+        goal_origin_wait.output["suggested_call"],
+        json!({
+            "tool": "call_runtime_tool",
+            "arguments": {"tool": "goal_run_list", "arguments": {}}
+        })
+    );
+}
+
+#[tokio::test]
+async fn adaptive_mcp_plan_save_projects_complete_gateway_wait_arguments() {
+    let (_tmp, db) = crate::test_support::test_db();
+    let mut auth = adaptive_direct_auth();
+    auth.scopes.extend([
+        crate::auth::SCOPE_RUNTIME_READ.to_string(),
+        crate::auth::SCOPE_PROJECT_READ.to_string(),
+        crate::auth::SCOPE_PROJECT_WRITE.to_string(),
+    ]);
+    let owner = crate::tool_runtime::plan_mode::plan_principal_key(Some(&auth));
+    let now = crate::tool_runtime::plan_mode::now_unix_ms();
+    let plan = db
+        .plan_start(&owner, "agent:client-a:demo", "Gateway projection", now)
+        .unwrap()
+        .plan;
+    let runtime = ToolRuntime::new_for_tests().with_communication_database(db);
+
+    let outcome = handle_mcp_request(
+        &runtime,
+        rpc(
+            "tools/call",
+            Some(json!(617)),
+            mcp_2026_params(json!({
+                "name": "call_runtime_tool",
+                "arguments": {
+                    "tool": "plan_save",
+                    "arguments": {
+                        "plan_id": plan.plan_id.clone(),
+                        "parent_revision": 0,
+                        "content": "Save and wait",
+                        "acceptance": [{"name": "unit", "argv": ["true"]}]
+                    }
+                }
+            })),
+        ),
+        Some(&auth),
+    )
+    .await;
+    let McpOutcome::Ok(value) = outcome else {
+        panic!("gateway plan_save must produce an MCP result: {outcome:?}");
+    };
+    let projected = &value["result"]["structuredContent"]["output"]["suggested_call"];
+    assert_eq!(projected["tool"], "call_runtime_tool");
+    assert_eq!(projected["arguments"]["tool"], "plan_wait_approval");
+    assert_eq!(
+        projected["arguments"]["arguments"],
+        json!({"plan_id": plan.plan_id, "wait_secs": 45})
+    );
+}
+
 // `handle_mcp_request` pins the compact default, so no env guard is needed.
 #[tokio::test]
 async fn adaptive_tools_list_exposes_ranked_direct_tools_and_gateway() {
@@ -105,6 +238,27 @@ async fn adaptive_tools_list_exposes_ranked_direct_tools_and_gateway() {
         assert!(
             !crate::tool_runtime::tool_definition::is_adaptive_runtime_direct_tool(demoted),
             "{demoted} should not be effectively direct"
+        );
+    }
+    for plan_goal_gateway_tool in [
+        "plan_save",
+        "plan_get",
+        "plan_list",
+        "plan_wait_approval",
+        "goal_run_status",
+        "goal_run_list",
+        "goal_run_control",
+        "goal_check",
+    ] {
+        assert!(
+            !names.contains(&plan_goal_gateway_tool),
+            "Plan/Goal long-tail tool {plan_goal_gateway_tool} must stay off initial tools/list"
+        );
+    }
+    for entry_tool in ["plan_start", "goal_run_start"] {
+        assert!(
+            names.contains(&entry_tool),
+            "Plan/Goal entry tool {entry_tool} must be present on initial tools/list"
         );
     }
     // 30 + the two Plan/Goal Mode entry points (plan_start, goal_run_start).
@@ -232,6 +386,7 @@ async fn long_tail_manifest_routes_through_call_runtime_tool() {
     for (id, tool_name) in [
         (61, "apply_patch"),
         (612, "cargo_check"),
+        (615, "plan_wait_approval"),
     ] {
         let outcome = handle_mcp_request(
             &runtime,
@@ -283,6 +438,32 @@ async fn long_tail_manifest_routes_through_call_runtime_tool() {
             "{tool_name}"
         );
     }
+
+    let save = handle_mcp_request(
+        &runtime,
+        rpc(
+            "tools/call",
+            Some(json!(616)),
+            mcp_2026_params(json!({
+                "name": "tool_manifest",
+                "arguments": {"tool_name": "plan_save"}
+            })),
+        ),
+        None,
+    )
+    .await;
+    let McpOutcome::Ok(value) = save else {
+        panic!("tool_manifest must succeed for plan_save");
+    };
+    assert_eq!(
+        value["result"]["structuredContent"]["output"]["route"]["mode"],
+        "gateway",
+        "plan_save remains reachable through the gateway when omitted from the compact initial list"
+    );
+    assert_eq!(
+        value["result"]["structuredContent"]["output"]["route"]["via"],
+        "call_runtime_tool"
+    );
 }
 
 #[tokio::test]
@@ -333,6 +514,11 @@ async fn long_tail_and_direct_targets_are_both_admitted_through_gateway() {
             64,
             "read_files",
             json!({"project": "missing-project", "items": [{"path": "x"}]}),
+        ),
+        (
+            65,
+            "plan_wait_approval",
+            json!({"plan_id": "wc_plan_abcdefghijkl", "wait_secs": 0}),
         ),
     ] {
         let outcome = handle_mcp_request(

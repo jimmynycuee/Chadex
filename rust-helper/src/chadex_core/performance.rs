@@ -3,6 +3,10 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+mod transport_diagnostics;
+pub use transport_diagnostics::{BackendFailureKind, TransportDiagnostic, RecoveryOutcome};
+use transport_diagnostics::TransportJournal;
+
 const PERFORMANCE_TRACE_LIMIT: usize = 100;
 const LIFECYCLE_TRACE_LIMIT: usize = 100;
 
@@ -43,6 +47,7 @@ pub struct LifecyclePerformanceTrace {
 #[derive(Default)]
 pub struct PerformanceTraceStore {
     inner: Mutex<PerformanceTraceState>,
+    transport: Mutex<TransportJournal>,
 }
 
 #[derive(Default)]
@@ -54,6 +59,18 @@ struct PerformanceTraceState {
 }
 
 impl PerformanceTraceStore {
+    pub fn with_diagnostics(path: std::path::PathBuf) -> Self {
+        Self { inner: Mutex::default(), transport: Mutex::new(TransportJournal::open(path)) }
+    }
+
+    pub fn record_transport(&self, diagnostic: TransportDiagnostic) {
+        self.transport.lock().unwrap_or_else(|p| p.into_inner()).push(diagnostic);
+    }
+
+    pub fn transport_snapshot(&self, limit: usize) -> Vec<TransportDiagnostic> {
+        self.transport.lock().unwrap_or_else(|p| p.into_inner()).snapshot(limit)
+    }
+
     pub fn push(&self, mut trace: McpPerformanceTrace) -> u64 {
         let mut inner = self
             .inner

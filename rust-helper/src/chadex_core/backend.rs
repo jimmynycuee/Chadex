@@ -2,6 +2,7 @@ use super::activity::RuntimeActivityEntry;
 use super::adapters::runtime_backend::RuntimeBackendAdapter;
 use super::runtime::{RuntimeMascotJob, RuntimeProject, RuntimeProxyMode, RuntimeSnapshot};
 use super::tunnel::RuntimeTunnelTarget;
+use super::runtime_compat::operation::CancellationSignal;
 use super::ChadexResult;
 use serde_json::Value;
 use std::path::PathBuf;
@@ -53,6 +54,14 @@ impl RuntimeBackendApi {
 
     pub(crate) async fn resume_saved_runtime_background(&self) -> ChadexResult<RuntimeSnapshot> {
         self.adapter.resume_saved_runtime_background().await
+    }
+
+    pub(crate) async fn recover_saved_runtime_background(
+        &self,
+        project_path: &str,
+        cancellation: &CancellationSignal,
+    ) -> ChadexResult<RuntimeSnapshot> {
+        self.adapter.recover_saved_runtime_background(project_path, cancellation).await
     }
 
     pub(crate) async fn cancel_background_operation(&self) {

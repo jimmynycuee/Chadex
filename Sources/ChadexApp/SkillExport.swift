@@ -33,7 +33,7 @@ enum SkillExport {
           tools:
             - type: "mcp"
               value: "chadex"
-              description: "Chadex: the user's Mac (projects, Plan Mode, Goal Mode) through the Chadex MCP tunnel"
+              description: "Chadex v0.7.1: the user's Mac (projects, Plan Mode, Goal Mode); omitted project defaults to the one open in the Chadex app. Older versions may require project explicitly"
               transport: "streamable_http"
               url: "\(tunnelURL(tunnelID: tunnelID))"
 

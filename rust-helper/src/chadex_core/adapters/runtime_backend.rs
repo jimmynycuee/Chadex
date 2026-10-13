@@ -192,6 +192,21 @@ impl RuntimeBackendAdapter {
             .map_err(map_desktop_error)
     }
 
+    /// Restore through admission rather than the runtime observation fast path.
+    pub(crate) async fn recover_saved_runtime_background(
+        &self,
+        project_path: &str,
+        cancellation: &CancellationSignal,
+    ) -> ChadexResult<RuntimeSnapshot> {
+        // Recovery always owns an operation admission, including when a stale
+        // published snapshot still says ready. Do not take the observation fast path.
+        self.app
+            .recover_saved_runtime_background(project_path, cancellation)
+            .await
+            .map(map_snapshot)
+            .map_err(map_desktop_error)
+    }
+
     /// Cancels an in-flight background warm-up and waits for it to unwind.
     pub(crate) async fn cancel_background_operation(&self) {
         self.app.cancel_background_operation().await;
@@ -775,7 +790,7 @@ impl RuntimeBackendAdapter {
         &self,
         project_path: &str,
         tool: &str,
-        arguments: Value,
+        mut arguments: Value,
     ) -> ChadexResult<Value> {
         if !matches!(tool, "plan_review" | "goal_operator") || !arguments.is_object() {
             return Err(ChadexError::new(
@@ -792,6 +807,7 @@ impl RuntimeBackendAdapter {
             )
         };
         let target = self.exact_runtime_probe_target(project_path).await?;
+        scope_plan_goal_operator_arguments(tool, &mut arguments, &target.runtime_project_id);
         let token = read_probe_token(&target.user_token_file)
             .await
             .ok_or_else(unavailable)?;
@@ -1246,6 +1262,14 @@ impl RuntimeBackendAdapter {
             .await
             .ok()
             .map(map_snapshot)
+    }
+}
+
+fn scope_plan_goal_operator_arguments(tool: &str, arguments: &mut Value, project: &str) {
+    if tool == "goal_operator" && arguments.get("action").and_then(Value::as_str) == Some("clear_board") {
+        // The exact runtime identity is helper authority. Caller paths/IDs must
+        // never turn an App cleanup into a global or cross-project operation.
+        arguments["project"] = Value::String(project.to_string());
     }
 }
 
@@ -2318,6 +2342,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn clear_board_scope_overwrites_omitted_global_and_caller_project_with_full_helper_id() {
+        for mut arguments in [json!({"action": "clear_board"}),
+            json!({"action": "clear_board", "project": "*"}),
+            json!({"action": "clear_board", "project": "agent:other:evil"}),
+            json!({"action": "clear_board", "project": "/arbitrary/path"})]
+        {
+            scope_plan_goal_operator_arguments("goal_operator", &mut arguments, "agent:runner-a:repo");
+            assert_eq!(arguments["project"], "agent:runner-a:repo");
+        }
+        for tool in ["plan_review", "goal_operator"] {
+            for action in ["approve", "revoke", "close", "list"] {
+                let original = json!({"action": action, "project": "unchanged", "plan_id": "p1"});
+                let mut arguments = original.clone();
+                scope_plan_goal_operator_arguments(tool, &mut arguments, "agent:runner-a:repo");
+                assert_eq!(arguments, original);
+            }
+        }
+    }
+
+    #[test]
     fn extension_tool_requests_use_stateless_mcp_metadata() {
         let legacy = local_runtime_tool_request_body("list_runners", json!({}), &[], McpEra::Legacy);
         assert!(legacy["params"].get("_meta").is_none());
@@ -3116,6 +3160,31 @@ mod tests {
                 adapter,
                 project: project_path,
             }
+        }
+
+        #[tokio::test]
+        async fn plan_goal_clear_board_dispatch_uses_resolved_full_project_id() {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let router = axum::Router::new().route("/api/tools/call", axum::routing::post(
+                |headers: HeaderMap, AxumJson(body): AxumJson<Value>| async move {
+                    assert_eq!(bearer(&headers), USER_TOKEN);
+                    AxumJson(body)
+                }
+            ));
+            let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap(); });
+            let fx = fixture(&url, false);
+            for arguments in [json!({"action": "clear_board"}), json!({"action": "clear_board", "project": "*"}),
+                json!({"action": "clear_board", "project": "agent:other:evil"})]
+            {
+                let result = fx.adapter.plan_goal_operator(&fx.project, "goal_operator", arguments).await.unwrap();
+                assert_eq!(result["params"]["project"], "agent:runner-a:repo");
+                assert_ne!(result["params"]["project"], fx.project);
+            }
+            let arguments = json!({"action": "approve", "project": "kept", "plan_id": "p1"});
+            let result = fx.adapter.plan_goal_operator(&fx.project, "plan_review", arguments.clone()).await.unwrap();
+            assert_eq!(result["params"], arguments);
+            server.abort();
         }
 
         #[tokio::test]

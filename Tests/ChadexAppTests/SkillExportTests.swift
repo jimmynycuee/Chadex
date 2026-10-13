@@ -16,7 +16,7 @@ final class SkillExportTests: XCTestCase {
           tools:
             - type: "mcp"
               value: "chadex"
-              description: "Chadex: the user's Mac (projects, Plan Mode, Goal Mode) through the Chadex MCP tunnel"
+              description: "Chadex v0.7.1: the user's Mac (projects, Plan Mode, Goal Mode); omitted project defaults to the one open in the Chadex app. Older versions may require project explicitly"
               transport: "streamable_http"
               url: "https://api.openai.com/v1/tunnel/tunnel_6aa2855405988191b439e7c0860a51c7"
 
@@ -55,6 +55,12 @@ final class SkillExportTests: XCTestCase {
             )
             let yaml = try run("/usr/bin/unzip", ["-p", zip, "\(name)/agents/openai.yaml"])
             XCTAssertTrue(yaml.contains(tunnelID))
+            XCTAssertTrue(yaml.contains("Chadex v0.7.1"))
+            XCTAssertTrue(yaml.contains("Older versions may require project explicitly"))
+            let skill = try run("/usr/bin/unzip", ["-p", zip, "\(name)/SKILL.md"])
+            XCTAssertTrue(skill.contains("Chadex v0.7.1"))
+            XCTAssertTrue(skill.contains("project open in the Chadex app"))
+            XCTAssertFalse(skill.contains("codex-plan"))
         }
     }
 

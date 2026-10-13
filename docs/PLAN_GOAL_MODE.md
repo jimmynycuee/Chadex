@@ -1,5 +1,7 @@
 # Plan Mode 與 Goal Mode
 
+本文件及匯出的 `chadex-plan`／`chadex-goal` Skills 對應 Chadex v0.7.1。此版本的兩種入口省略 `project` 時都使用 Chadex App 目前開啟的專案；舊版若仍要求明確 `project`，此預設不適用，必須傳入專案。匯出依賴仍是 `chadex` MCP connector，並由使用者的 Tunnel ID 產生連線 URL。
+
 兩個獨立的功能：
 
 - **Plan Mode**：以**後端強制唯讀**的 Plan Mode 規劃 → 使用者在 App 核准**確切版本**（「核准，讓 ChatGPT 開工」）→ ChatGPT 在同一則回覆裡（`plan_wait_approval` 拿到 `approved`）直接在專案中實作並跑驗收。不建立 Goal、不使用 Codex。
@@ -22,7 +24,9 @@
 | 得知完成 | Goal 結束（成功、失敗、需要處理、取消）時 App 跳 macOS 通知。ChatGPT 不會被通知，要問它才會查 | App 每 10 秒讀 `goal_operator` overview |
 | 緊急停止 | Chadex App「緊急停止所有 Goal」 | `goal_operator`（只限 App） |
 
-- `plan_start` 與 `goal_run_start` 在 ChatGPT 的直接工具清單中；其餘工具經 `call_runtime_tool` gateway，每個結果都會指出下一步。因此**即使沒有 Skill，一般文字指令也能完整使用**。
+- 初始 `tools/list` 只直接列出 Plan/Goal 的入口 `plan_start`、`goal_run_start`；其他工具依 `tool_manifest` 回報的 route 呼叫。`gateway` 走 `call_runtime_tool`，`direct` 工具若未載入也可用 gateway fallback。找不到工具時先查 manifest，不推定 connector 快取過期。因此**即使沒有 Skill，一般文字指令也能完整使用**。
+- `plan_save` 會回傳帶有確切 `plan_id` 和 `wait_secs` 的 `plan_wait_approval` `suggested_call`；`waiting` 會再提供同一 Plan 的觀察呼叫。`approved` 才開始實作 Plan；`closed`、`approval_withdrawn` 不得實作；Goal-origin 請求改用 `goal_run_list`／`goal_run_status`，不呼叫 `plan_wait_approval`。
+- 觀察呼叫只有 server 同時明確回報 `execution_state: not_started`、`recovery_kind: retry`、`retry_after_secs` 才可重試；以 5 秒為間隔，遵守更長的 server delay，總計最多 60 秒，保持同一 identity 與參數。Auth/security 拒絕及 `user_action` 不重試。寫入或 `outcome_unknown` 先用 Plan／Goal 的讀取工具對帳，不盲目重送。
 - Skills：`skills/chadex-plan/SKILL.md`、`skills/chadex-goal/SKILL.md`。OpenAI 官方文件說明 ChatGPT 可用 `@` 呼叫 Skill，所以上傳後可用 `@chadex-plan`／`@chadex-goal`。它們也能以 ZIP 上傳到 Chadex Skills Center（managed skill），由 ChatGPT 透過 `skill_load` 讀取。**`@plan`／`@goal` 這種短名稱未驗證**：需把 Skill 改名為 `plan`／`goal`，且可能與其他 Skill 衝突；ChatGPT 個人方案的 Skill 上傳位置本次也未實測。
 - **匯出 Skill（必做）**：Skill 要在 `agents/openai.yaml` 宣告 Chadex MCP 連線，ChatGPT 才拿得到 Chadex 工具，而網址含你個人的 Tunnel ID。因此請用 App「Plan & Goal」頁底的「匯出 ChatGPT Skills…」選資料夾，產生 `chadex-plan.zip`、`chadex-goal.zip`，再到 ChatGPT「設定 → Skills」上傳並取代舊的。zip 含個人通道位址，請勿分享。需先在設定填好有效的 Tunnel ID。
 - Skill 只是程序說明，不是權限；所有限制都在後端。

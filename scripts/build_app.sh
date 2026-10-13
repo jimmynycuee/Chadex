@@ -13,8 +13,9 @@ APP_DISPLAY_NAME=${CHADEX_APP_DISPLAY_NAME:-Chadex}
 APP_BUNDLE_ID=${CHADEX_APP_BUNDLE_ID:-app.chadex.Chadex}
 APP_DATA_DIR=${CHADEX_APP_DATA_DIR:-}
 APP_PREFERENCES_DIR=${CHADEX_APP_PREFERENCES_DIR:-}
+APP_KEYCHAIN_SERVICE=${CHADEX_APP_KEYCHAIN_SERVICE:-}
 APP_AUTOSTART_MODEL=${CHADEX_APP_AUTOSTART_MODEL:-}
-APP_VERSION=${CHADEX_APP_VERSION:-0.7.0}
+APP_VERSION=${CHADEX_APP_VERSION:-0.7.1}
 APP_BUILD_NUMBER=${CHADEX_APP_BUILD_NUMBER:-1}
 RUNTIME_PROFILE=${CHADEX_RUNTIME_PROFILE:-release}
 CODESIGN_MODE=${CHADEX_CODESIGN_MODE:-auto}
@@ -202,7 +203,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 </plist>
 PLIST
 
-if [ -n "$APP_DATA_DIR" ] || [ -n "$APP_PREFERENCES_DIR" ] || [ -n "$APP_AUTOSTART_MODEL" ]; then
+if [ -n "$APP_DATA_DIR" ] || [ -n "$APP_PREFERENCES_DIR" ] || [ -n "$APP_AUTOSTART_MODEL" ] || [ -n "$APP_KEYCHAIN_SERVICE" ]; then
   /usr/libexec/PlistBuddy -c "Add :LSEnvironment dict" "$CONTENTS/Info.plist"
   if [ -n "$APP_DATA_DIR" ]; then
     /usr/libexec/PlistBuddy -c "Add :LSEnvironment:CHADEX_DATA_DIR string $APP_DATA_DIR" "$CONTENTS/Info.plist"
@@ -212,6 +213,9 @@ if [ -n "$APP_DATA_DIR" ] || [ -n "$APP_PREFERENCES_DIR" ] || [ -n "$APP_AUTOSTA
   fi
   if [ -n "$APP_AUTOSTART_MODEL" ]; then
     /usr/libexec/PlistBuddy -c "Add :LSEnvironment:CHADEX_AUTOSTART_MODEL string $APP_AUTOSTART_MODEL" "$CONTENTS/Info.plist"
+  fi
+  if [ -n "$APP_KEYCHAIN_SERVICE" ]; then
+    /usr/libexec/PlistBuddy -c "Add :LSEnvironment:CHADEX_KEYCHAIN_SERVICE string $APP_KEYCHAIN_SERVICE" "$CONTENTS/Info.plist"
   fi
 fi
 

@@ -670,6 +670,22 @@ fn each_project_keeps_only_its_newest_plan_and_run() {
 
     // Another project is untouched.
     let other = db.plan_start("owner-c", "agent:client-1:other", "other", T0 + 8).unwrap();
+    let other_saved = db
+        .plan_save_revision("owner-c", &other.plan.plan_id, 0, "other project plan", spec(), T0 + 9)
+        .unwrap();
+    let mut other_binding = binding();
+    other_binding.project_id = other.plan.project_id.clone();
+    let other_approval = db
+        .plan_approve(
+            &other.plan.plan_id,
+            other_saved.revision.revision,
+            &other_saved.revision.content_sha256,
+            other_binding,
+            "operator",
+            DEFAULT_PLAN_APPROVAL_TTL_MS,
+            T0 + 10,
+        )
+        .unwrap();
     assert_eq!(db.plan_list(PlanReader::Operator, false, 50, T0 + 9).unwrap().len(), 2);
 
     // Starting a new run hides the project's earlier finished runs.
@@ -702,8 +718,195 @@ fn each_project_keeps_only_its_newest_plan_and_run() {
     assert_eq!(open, vec![other.plan.plan_id.clone()]);
     assert_eq!(db.goal_run_list(PlanReader::Operator, 30).unwrap().len(), 1);
     assert!(db.plan_active_locks(T0 + 14).unwrap().iter().all(|lock| lock.project_id != PROJECT));
+    let other_detail = db
+        .plan_read(PlanReader::Operator, &other.plan.plan_id, None, T0 + 14)
+        .unwrap();
+    assert!(other_detail.decisions.iter().any(|decision| {
+        decision.approval_id == other_approval.approval_id
+            && decision.state == PlanDecisionState::Active
+    }));
+    assert!(db
+        .goal_run_start("owner-c", &other.plan.plan_id, &env(), &json!({}), "codex", T0 + 14)
+        .unwrap()
+        .created);
 
     // Clearing everything closes the rest.
     db.plan_goal_clear_board(None, T0 + 15).unwrap();
     assert!(db.plan_list(PlanReader::Operator, false, 50, T0 + 16).unwrap().is_empty());
+}
+
+#[test]
+fn database_reopen_preserves_plan_mode_guard_and_exact_active_approval() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("plans.db");
+    let db = Database::open(&path).unwrap();
+    let (plan_id, saved) = started_plan(&db);
+
+    drop(db);
+    let db = Database::open(&path).unwrap();
+    let locks = db.plan_active_locks(T0 + 2).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].owner_key, OWNER);
+    assert_eq!(locks[0].project_id, PROJECT);
+    assert_eq!(locks[0].plan_id, plan_id);
+
+    let approval = approve(&db, &plan_id, &saved, T0 + 3);
+    drop(db);
+
+    let db = Database::open(&path).unwrap();
+    let detail = db.plan_read(PlanReader::Operator, &plan_id, None, T0 + 4).unwrap();
+    let persisted = detail
+        .decisions
+        .iter()
+        .find(|decision| decision.approval_id == approval.approval_id)
+        .unwrap();
+    assert_eq!(persisted.revision, saved.revision.revision);
+    assert_eq!(persisted.content_sha256, saved.revision.content_sha256);
+    assert_eq!(persisted.binding, Some(binding()));
+    assert_eq!(persisted.state, PlanDecisionState::Active);
+    assert!(db.plan_active_locks(T0 + 4).unwrap().is_empty());
+    assert!(db
+        .goal_run_start(OWNER, &plan_id, &env(), &json!({}), "codex", T0 + 5)
+        .unwrap()
+        .created);
+}
+
+#[test]
+fn reopened_revoked_expired_superseded_and_wrong_owner_approvals_fail_closed() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("plans.db");
+    let db = Database::open(&path).unwrap();
+
+    let revoked_start = db.plan_start("owner-revoked", PROJECT, "revoked", T0).unwrap();
+    let revoked_saved = db
+        .plan_save_revision("owner-revoked", &revoked_start.plan.plan_id, 0, "revoked", spec(), T0 + 1)
+        .unwrap();
+    let revoked = db
+        .plan_approve(
+            &revoked_start.plan.plan_id,
+            1,
+            &revoked_saved.revision.content_sha256,
+            binding(),
+            "operator",
+            DEFAULT_PLAN_APPROVAL_TTL_MS,
+            T0 + 2,
+        )
+        .unwrap();
+    db.plan_revoke_approval(&revoked.approval_id, T0 + 3).unwrap();
+
+    let expired_start = db.plan_start("owner-expired", PROJECT, "expired", T0 + 4).unwrap();
+    let expired_saved = db
+        .plan_save_revision("owner-expired", &expired_start.plan.plan_id, 0, "expired", spec(), T0 + 5)
+        .unwrap();
+    let expired = db
+        .plan_approve(
+            &expired_start.plan.plan_id,
+            1,
+            &expired_saved.revision.content_sha256,
+            binding(),
+            "operator",
+            60_000,
+            T0 + 6,
+        )
+        .unwrap();
+
+    let superseded_start = db.plan_start("owner-superseded", PROJECT, "superseded", T0 + 7).unwrap();
+    let superseded_saved = db
+        .plan_save_revision("owner-superseded", &superseded_start.plan.plan_id, 0, "v1", spec(), T0 + 8)
+        .unwrap();
+    let superseded = db
+        .plan_approve(
+            &superseded_start.plan.plan_id,
+            1,
+            &superseded_saved.revision.content_sha256,
+            binding(),
+            "operator",
+            DEFAULT_PLAN_APPROVAL_TTL_MS,
+            T0 + 9,
+        )
+        .unwrap();
+    db.plan_save_revision(
+        "owner-superseded",
+        &superseded_start.plan.plan_id,
+        1,
+        "v2",
+        spec(),
+        T0 + 10,
+    )
+    .unwrap();
+
+    let owner_start = db.plan_start("owner-approved", PROJECT, "owner-bound", T0 + 11).unwrap();
+    let owner_saved = db
+        .plan_save_revision("owner-approved", &owner_start.plan.plan_id, 0, "owner bound", spec(), T0 + 12)
+        .unwrap();
+    let owner_approval = db
+        .plan_approve(
+            &owner_start.plan.plan_id,
+            1,
+            &owner_saved.revision.content_sha256,
+            binding(),
+            "operator",
+            DEFAULT_PLAN_APPROVAL_TTL_MS,
+            T0 + 13,
+        )
+        .unwrap();
+    drop(db);
+
+    let db = Database::open(&path).unwrap();
+    assert_eq!(
+        db.goal_run_start("owner-revoked", &revoked_start.plan.plan_id, &env(), &json!({}), "codex", T0 + 14)
+            .unwrap_err()
+            .code(),
+        "plan_not_approved"
+    );
+
+    let after_expiry = expired.expires_at_unix_ms.unwrap() + 1;
+    let expired_detail = db
+        .plan_read(PlanReader::Operator, &expired_start.plan.plan_id, None, after_expiry)
+        .unwrap();
+    assert!(expired_detail.decisions.iter().any(|decision| {
+        decision.approval_id == expired.approval_id && decision.state == PlanDecisionState::Expired
+    }));
+    assert_eq!(
+        db.goal_run_start("owner-expired", &expired_start.plan.plan_id, &env(), &json!({}), "codex", after_expiry)
+            .unwrap_err()
+            .code(),
+        "plan_not_approved"
+    );
+
+    let superseded_detail = db
+        .plan_read(PlanReader::Operator, &superseded_start.plan.plan_id, None, T0 + 14)
+        .unwrap();
+    assert!(superseded_detail.decisions.iter().any(|decision| {
+        decision.approval_id == superseded.approval_id
+            && decision.state == PlanDecisionState::Superseded
+    }));
+    assert_eq!(
+        db.goal_run_start("owner-superseded", &superseded_start.plan.plan_id, &env(), &json!({}), "codex", T0 + 14)
+            .unwrap_err()
+            .code(),
+        "plan_not_approved"
+    );
+
+    assert_eq!(
+        db.plan_read(PlanReader::Owner("other-owner"), &owner_start.plan.plan_id, None, T0 + 14)
+            .unwrap_err()
+            .code(),
+        "plan_not_found"
+    );
+    assert_eq!(
+        db.goal_run_start("other-owner", &owner_start.plan.plan_id, &env(), &json!({}), "codex", T0 + 14)
+            .unwrap_err()
+            .code(),
+        "plan_not_found"
+    );
+    assert!(db
+        .plan_read(PlanReader::Operator, &owner_start.plan.plan_id, None, T0 + 14)
+        .unwrap()
+        .decisions
+        .iter()
+        .any(|decision| {
+            decision.approval_id == owner_approval.approval_id
+                && decision.state == PlanDecisionState::Active
+        }));
 }

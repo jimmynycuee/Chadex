@@ -1046,6 +1046,100 @@ async fn native_local_full_dogfood_reuses_enrollment_and_stops_owned_runtime() {
     let first_runner_config = first_runtime.runner_config.clone().unwrap();
     let first_runner_bytes = std::fs::read(&first_runner_config).unwrap();
 
+    let runner_before_server_interruption = core
+        .process_snapshot(ProcessKind::LocalRunner)
+        .await
+        .expect("Desktop owns local Runner before server-only interruption");
+    assert!(runner_before_server_interruption.owned_by_desktop);
+    assert_eq!(runner_before_server_interruption.phase, ProcessPhase::Running);
+    let runner_client_id_before_interruption =
+        stored_runner_client_id(&core.config).expect("stored Runner client identity");
+
+    // Simulate only the local Server dying. The Desktop-owned Runner remains
+    // alive and must re-register after local setup resumes the same identity.
+    core.stop_process(ProcessKind::LocalServer).await;
+    assert!(core
+        .process_snapshot(ProcessKind::LocalServer)
+        .await
+        .is_none());
+    let runner_during_server_interruption = core
+        .process_snapshot(ProcessKind::LocalRunner)
+        .await
+        .expect("Desktop-owned Runner survives the Server interruption");
+    assert_eq!(
+        runner_during_server_interruption.pid,
+        runner_before_server_interruption.pid,
+        "server-only interruption must preserve the owned Runner PID"
+    );
+    assert!(runner_during_server_interruption.owned_by_desktop);
+    assert_eq!(runner_during_server_interruption.phase, ProcessPhase::Running);
+
+    let resumed_after_server_interruption = match core
+        .configure_local_setup(Some(&project), &cancellation)
+        .await
+    {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            let readiness = core.snapshot.readiness.clone();
+            core.supervisor.lock().await.stop_all().await;
+            let _ = std::fs::remove_dir_all(&data_dir);
+            panic!("server-only interruption resume failed: {error:?}; readiness={readiness:?}");
+        }
+    };
+    assert_eq!(
+        resumed_after_server_interruption.readiness.server,
+        ServerReadiness::Ready
+    );
+    assert_eq!(
+        resumed_after_server_interruption.readiness.runner,
+        RunnerReadiness::Ready
+    );
+    assert_eq!(
+        resumed_after_server_interruption.readiness.project,
+        ProjectReadiness::Ready
+    );
+    let runner_after_server_resume = core
+        .process_snapshot(ProcessKind::LocalRunner)
+        .await
+        .expect("Desktop still owns the re-registered Runner after resume");
+    assert_eq!(
+        runner_after_server_resume.pid,
+        runner_before_server_interruption.pid,
+        "resuming after a Server interruption must reuse the active Runner"
+    );
+    assert!(runner_after_server_resume.owned_by_desktop);
+    assert_eq!(runner_after_server_resume.phase, ProcessPhase::Running);
+    assert_eq!(
+        stored_runner_client_id(&core.config).as_deref(),
+        Some(runner_client_id_before_interruption.as_str()),
+        "server-only resume must preserve the enrolled Runner identity"
+    );
+    let resumed_runtime = core
+        .config
+        .runtime
+        .as_ref()
+        .expect("server-only resume keeps the saved runtime identity");
+    assert_eq!(
+        resumed_runtime.user_token_file.as_ref(),
+        Some(&first_user_token_file),
+        "server-only resume must preserve the managed enrollment path"
+    );
+    let resumed_user_token = std::fs::read(&first_user_token_file)
+        .expect("read managed user token after server-only resume");
+    assert!(
+        first_user_token == resumed_user_token,
+        "server-only resume must reuse enrollment instead of rotating the managed user token"
+    );
+    assert_eq!(
+        resumed_runtime.runner_config.as_ref(),
+        Some(&first_runner_config),
+        "server-only resume must keep the enrolled Runner config path"
+    );
+    assert!(
+        std::fs::read(&first_runner_config).unwrap() == first_runner_bytes,
+        "server-only resume must preserve the enrolled Runner config bytes"
+    );
+
     let stopped = core
         .stop_local_runtime(&cancellation)
         .await

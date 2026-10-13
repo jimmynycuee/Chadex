@@ -19,6 +19,12 @@ struct KeychainStore: Sendable {
     let service: String
     let account: String
 
+    static func defaultService(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        let override = environment["CHADEX_KEYCHAIN_SERVICE"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let override, !override.isEmpty { return override }
+        return "app.chadex.credentials"
+    }
+
     init(
         service: String = "app.chadex.credentials",
         account: String = "openai-tunnel-api-key"

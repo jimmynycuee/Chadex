@@ -281,6 +281,67 @@ async fn operator_review_is_unreachable_from_mcp_and_from_the_chatgpt_principal(
 }
 
 #[tokio::test]
+async fn goal_operator_clear_board_passes_optional_project_scope_through_the_kernel() {
+    let demo = crate::tool_runtime::runner_project_runtime_id("client-a", "demo");
+    let fx = app_fixture(Some(&demo), true).await;
+    let db = fx.runtime.communication_db.clone().unwrap();
+    let now = crate::tool_runtime::plan_mode::now_unix_ms();
+    let scoped = db
+        .plan_start("seeded-scoped-owner", &fx.demo, "Scoped board", now)
+        .unwrap()
+        .plan;
+    let other = db
+        .plan_start("seeded-other-owner", &fx.other, "Other board", now)
+        .unwrap()
+        .plan;
+
+    let (ok, cleared) = call(
+        &fx.runtime,
+        &operator("alice"),
+        ToolTransport::Api,
+        "goal_operator",
+        json!({"action": "clear_board", "project": fx.demo.clone()}),
+    )
+    .await;
+    assert!(ok, "{cleared}");
+    assert_eq!(cleared["closed_plans"], json!(1));
+    assert_eq!(
+        db.plan_read(PlanReader::Operator, &scoped.plan_id, None, now)
+            .unwrap()
+            .plan
+            .state,
+        crate::db::PlanState::Closed
+    );
+    assert_eq!(
+        db.plan_read(PlanReader::Operator, &other.plan_id, None, now)
+            .unwrap()
+            .plan
+            .state,
+        crate::db::PlanState::Drafting,
+        "a project-scoped clear must leave another project's open Plan untouched"
+    );
+
+    let (ok, all_cleared) = call(
+        &fx.runtime,
+        &operator("alice"),
+        ToolTransport::Api,
+        "goal_operator",
+        json!({"action": "clear_board"}),
+    )
+    .await;
+    assert!(ok, "{all_cleared}");
+    assert_eq!(all_cleared["closed_plans"], json!(1));
+    assert_eq!(
+        db.plan_read(PlanReader::Operator, &other.plan_id, None, now)
+            .unwrap()
+            .plan
+            .state,
+        crate::db::PlanState::Closed,
+        "omitting project keeps the all-project cleanup behavior"
+    );
+}
+
+#[tokio::test]
 async fn plan_revision_approval_and_goal_admission_through_the_kernel() {
     let fx = fixture().await;
     let alice = chatgpt("alice");
@@ -351,10 +412,12 @@ async fn plan_revision_approval_and_goal_admission_through_the_kernel() {
     let (ok, _) = call(&fx.runtime, &read_only, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
     assert!(!ok);
 
-    // Even with an approval, the model cannot start a Goal itself.
+    // Even with an approval, the model cannot start a Goal itself; a Plan
+    // Mode plan is pointed back at plan_wait_approval, not at Start Goal.
     let (ok, output) = call(&fx.runtime, &alice, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
     assert!(!ok);
-    assert_eq!(error_kind(&output), "goal_not_started");
+    assert_eq!(error_kind(&output), "not_a_goal");
+    assert_eq!(output["next_tool"], json!("plan_wait_approval"));
     let started = operator_start(&fx, &plan_id, "codex").unwrap();
     assert_eq!(started.revision, 2);
     let run_id = started.goal_run_id.clone();
@@ -893,10 +956,24 @@ async fn plan_wait_approval_hands_the_approved_plan_straight_to_the_model() {
     )
     .await;
     assert!(ok, "{saved}");
+    assert_eq!(
+        saved["suggested_call"],
+        json!({
+            "tool": "plan_wait_approval",
+            "arguments": {"plan_id": plan_id, "wait_secs": 45}
+        })
+    );
     // Callable while Plan Mode is active; nothing decided yet.
     let (ok, waiting) = call(&fx.runtime, &alice, ToolTransport::Mcp, "plan_wait_approval", json!({"plan_id": plan_id, "wait_secs": 0})).await;
     assert!(ok, "{waiting}");
     assert_eq!(waiting["status"], json!("waiting"));
+    assert_eq!(
+        waiting["suggested_call"],
+        json!({
+            "tool": "plan_wait_approval",
+            "arguments": {"plan_id": plan_id, "wait_secs": 45}
+        })
+    );
     // Another principal cannot watch Alice's plan.
     let (ok, _) = call(&fx.runtime, &chatgpt("bob"), ToolTransport::Mcp, "plan_wait_approval", json!({"plan_id": plan_id, "wait_secs": 0})).await;
     assert!(!ok);
@@ -935,14 +1012,131 @@ async fn plan_wait_approval_hands_the_approved_plan_straight_to_the_model() {
     );
     assert!(ok, "{approved}");
     assert_eq!(approved["status"], json!("approved"));
-    assert!(approved["next"].as_str().unwrap().contains("not a Goal"));
+    assert!(approved.get("next").is_none());
+    assert!(approved.get("suggested_call").is_none());
+    assert!(!approved.to_string().contains("implement"));
+    assert!(!approved.to_string().contains("plan_wait_approval"));
     assert!(fx.runtime.plan_mode_denial(Some(&alice), "write_project_file", Some(&fx.project)).is_none());
     // The model cannot turn this approval into a Goal, and even the app
     // cannot start one from an approval without a commit.
     let (ok, output) = call(&fx.runtime, &alice, ToolTransport::Mcp, "goal_run_start", json!({"plan_id": plan_id})).await;
     assert!(!ok);
-    assert_eq!(error_kind(&output), "goal_not_started");
+    assert_eq!(error_kind(&output), "not_a_goal");
     assert_eq!(operator_start(&fx, &plan_id, "codex").unwrap_err().code(), "plan_base_commit_unavailable");
+}
+
+#[tokio::test]
+async fn plan_wait_approval_rejects_goal_origin_without_suggesting_plan_or_implementation() {
+    let demo = crate::tool_runtime::runner_project_runtime_id("client-a", "demo");
+    let fx = app_fixture(Some(&demo), true).await;
+    let auth = chatgpt_via_tunnel();
+    let (ok, created) = call(
+        &fx.runtime,
+        &auth,
+        ToolTransport::Mcp,
+        "goal_run_start",
+        json!({
+            "title": "Goal origin guard",
+            "objective": "Keep this as a Goal request",
+            "acceptance": [{"name": "unit", "argv": ["true"]}],
+        }),
+    )
+    .await;
+    assert!(ok, "{created}");
+    let plan_id = created["plan"]["plan_id"].as_str().unwrap();
+
+    let (ok, rejected) = call(
+        &fx.runtime,
+        &auth,
+        ToolTransport::Mcp,
+        "plan_wait_approval",
+        json!({"plan_id": plan_id, "wait_secs": 0}),
+    )
+    .await;
+    assert!(!ok, "a Goal-origin request must not enter Plan approval polling");
+    assert_eq!(error_kind(&rejected), "not_a_plan");
+    assert_eq!(
+        rejected["suggested_call"],
+        json!({"tool": "goal_run_list", "arguments": {}})
+    );
+    assert!(!rejected.to_string().contains("implement"));
+    assert!(!rejected.to_string().contains("plan_wait_approval"));
+}
+
+#[tokio::test]
+async fn terminal_plan_wait_results_do_not_suggest_waiting_or_implementation() {
+    let fx = fixture().await;
+    let alice = chatgpt("alice");
+    let closed_id = start_plan(&fx, &alice).await;
+    let db = fx.runtime.communication_db.clone().unwrap();
+    db.plan_close(&closed_id, "closed in test", crate::tool_runtime::plan_mode::now_unix_ms())
+        .unwrap();
+    let (ok, closed) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_wait_approval",
+        json!({"plan_id": closed_id, "wait_secs": 0}),
+    )
+    .await;
+    assert!(ok, "{closed}");
+    assert_eq!(closed["status"], json!("closed"));
+    assert!(closed.get("suggested_call").is_none());
+    assert!(!closed.to_string().contains("plan_wait_approval"));
+    assert!(!closed.to_string().contains("implement"));
+
+    let withdrawn_id = start_plan(&fx, &alice).await;
+    let (ok, saved) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_save",
+        json!({
+            "plan_id": withdrawn_id,
+            "parent_revision": 0,
+            "content": "Plan to withdraw",
+            "acceptance": [{"name": "unit", "argv": ["true"]}]
+        }),
+    )
+    .await;
+    assert!(ok, "{saved}");
+    let decision = db
+        .plan_approve(
+            &withdrawn_id,
+            1,
+            saved["revision"]["content_sha256"].as_str().unwrap(),
+            PlanApprovalBinding {
+                project_id: fx.project.clone(),
+                runner_client_id: "client-a".to_string(),
+                project_root: fx.root.clone(),
+                base_commit: crate::db::UNBORN_BASE_COMMIT.to_string(),
+            },
+            "operator:alice",
+            DEFAULT_PLAN_APPROVAL_TTL_MS,
+            crate::tool_runtime::plan_mode::now_unix_ms(),
+        )
+        .unwrap();
+    db.plan_revoke_approval(
+        &decision.approval_id,
+        crate::tool_runtime::plan_mode::now_unix_ms(),
+    )
+    .unwrap();
+    let (ok, withdrawn) = call(
+        &fx.runtime,
+        &alice,
+        ToolTransport::Mcp,
+        "plan_wait_approval",
+        json!({"plan_id": withdrawn_id, "wait_secs": 0}),
+    )
+    .await;
+    assert!(ok, "{withdrawn}");
+    assert_eq!(withdrawn["status"], json!("approval_withdrawn"));
+    assert!(withdrawn.get("suggested_call").is_none());
+    assert!(!withdrawn.to_string().contains("plan_wait_approval"));
+    assert_eq!(
+        withdrawn["next"],
+        json!("The approval was withdrawn or expired. Do not implement; ask the user what they want.")
+    );
 }
 
 #[tokio::test]

@@ -1821,6 +1821,8 @@ pub enum ToolCall {
         #[serde(default)]
         goal_run_id: Option<String>,
         #[serde(default)]
+        project: Option<String>,
+        #[serde(default)]
         reason: Option<String>,
     },
 

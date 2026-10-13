@@ -20,6 +20,8 @@ pub(super) struct ResponseEvidence {
     event: Vec<u8>,
     disabled: bool,
     tool_failed: Option<bool>,
+    completed_ids: Vec<Value>,
+    verification_enabled: bool,
 }
 
 impl ResponseEvidence {
@@ -83,10 +85,23 @@ impl ResponseEvidence {
             event: Vec::new(),
             disabled: false,
             tool_failed: None,
+            completed_ids: Vec::new(),
+            verification_enabled: true,
         })
     }
 
     pub(super) fn tool_failed(&self) -> Option<bool> { self.tool_failed }
+
+    pub(super) fn set_verification_enabled(&mut self, enabled: bool) { self.verification_enabled = enabled; }
+
+    pub(super) fn unanswered(&self, identity: &Value) -> Value {
+        let answered = |item: &Value| item.get("id").is_some_and(|id| self.completed_ids.contains(id));
+        match identity {
+            Value::Array(items) => Value::Array(items.iter().filter(|item| !answered(item)).cloned().collect()),
+            item if answered(item) => Value::Array(Vec::new()),
+            item => item.clone(),
+        }
+    }
 
     fn disable(&mut self) {
         self.disabled = true;
@@ -158,6 +173,12 @@ impl ResponseEvidence {
             let matching_tool = self.requests.iter().any(|request|
                 request.method == "tools/call" && item.get("id") == Some(&request.id));
             if item.get("error").is_some() {
+                if item.get("error").is_some_and(|error| error.get("code").and_then(Value::as_i64).is_some()
+                    && error.get("message").and_then(Value::as_str).is_some()) {
+                    if let Some(id) = item.get("id").filter(|id| self.requests.iter().any(|request| &request.id == *id)) {
+                        if !self.completed_ids.contains(id) { self.completed_ids.push(id.clone()); }
+                    }
+                }
                 if matching_tool { self.tool_failed = Some(true); }
                 continue;
             }
@@ -175,6 +196,7 @@ impl ResponseEvidence {
             {
                 continue;
             }
+            if !self.completed_ids.contains(&request.id) { self.completed_ids.push(request.id.clone()); }
             if matching_tool && (result.get("isError") == Some(&Value::Bool(true))
                 || result.pointer("/structuredContent/success") == Some(&Value::Bool(false))) {
                 self.tool_failed = Some(true);
@@ -189,8 +211,8 @@ impl ResponseEvidence {
             {
                 continue;
             }
-            self.tracker
-                .observe_request(self.epoch, std::slice::from_ref(&request.method));
+            if !self.verification_enabled { continue; }
+            self.tracker.observe_request(self.epoch, std::slice::from_ref(&request.method));
             if request.tool_name.as_deref() == Some("read_files") {
                 let structured = result.get("structuredContent");
                 let output = structured.and_then(|value| value.get("output"));

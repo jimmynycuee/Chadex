@@ -10,13 +10,14 @@ use crate::chadex_core::runtime::{
     ChadexRuntimeCore, RuntimeMascotJob, RuntimeProject, RuntimeProxyMode, RuntimeSnapshot,
 };
 use crate::chadex_core::tunnel::{RuntimeTunnelTarget, TunnelManager, TunnelSnapshot, TunnelState};
-use crate::chadex_core::verification::VerificationTracker;
+use crate::chadex_core::verification::{BackendRecovery, VerificationTracker};
+use crate::chadex_core::runtime_compat::operation::CancellationSignal;
 use crate::chadex_core::ChadexError;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex as StdMutex, RwLock};
+use std::sync::{Arc, Mutex as StdMutex, RwLock, Weak};
 use std::time::Instant;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, watch, Mutex};
@@ -43,6 +44,9 @@ const PREWARM_CANCEL_RETRY: std::time::Duration = std::time::Duration::from_mill
 // coordinator (never dropped, so its operation slot is always released).
 const PROJECT_SWITCH_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 const PROJECT_ACTIVATION_DEADLINE: std::time::Duration = std::time::Duration::from_secs(25);
+const BACKEND_RECOVERY_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(3);
+const BACKEND_RECOVERY_ATTEMPTS: u8 = 3;
+const OPERATION_CANCEL_REFRESH_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[derive(Debug, Deserialize)]
 struct Request {
@@ -697,7 +701,234 @@ impl PrewarmTracker {
     }
 }
 
+/// Shared across ingress replacements. Only explicit Connect and a successful
+/// backend response start a new failure budget; a rebind never does.
+#[derive(Default)]
+struct RecoveryState {
+    generation: u64,
+    attempts: u8,
+    last_finished: Option<Instant>,
+    active: Option<(u64, CancellationSignal)>,
+    operation_cancel_refresh: Option<CancellationSignal>,
+}
+
+#[derive(Default)]
+struct RecoveryController(StdMutex<RecoveryState>);
+
+impl RecoveryController {
+    fn generation(&self) -> u64 {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).generation
+    }
+
+    fn invalidate(&self, reset_budget: bool) -> bool {
+        let mut state = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        Self::invalidate_state(&mut state, reset_budget)
+    }
+
+    fn invalidate_state(state: &mut RecoveryState, reset_budget: bool) -> bool {
+        if let Some(refresh) = state.operation_cancel_refresh.take() {
+            refresh.cancel();
+        }
+        state.generation = state.generation.wrapping_add(1);
+        if reset_budget {
+            state.attempts = 0;
+            state.last_finished = None;
+        }
+        if let Some((_, cancellation)) = &state.active {
+            cancellation.cancel();
+            if !reset_budget {
+                state.last_finished = Some(Instant::now());
+            }
+            true
+        } else { false }
+    }
+
+    fn invalidate_for_operation_cancel(&self) -> (bool, u64, CancellationSignal) {
+        let mut state = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        let active = Self::invalidate_state(&mut state, false);
+        let cancellation = CancellationSignal::new();
+        state.operation_cancel_refresh = Some(cancellation.clone());
+        (active, state.generation, cancellation)
+    }
+
+    fn backend_succeeded(&self, generation: u64) {
+        let mut state = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if state.generation == generation {
+            state.attempts = 0;
+            state.last_finished = None;
+        }
+    }
+
+    fn begin(self: &Arc<Self>, generation: u64) -> Option<RecoveryLease> {
+        let mut state = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if state.generation != generation || state.active.is_some()
+            || state.attempts >= BACKEND_RECOVERY_ATTEMPTS
+            || state.last_finished.is_some_and(|finished| finished.elapsed() < BACKEND_RECOVERY_COOLDOWN)
+        { return None; }
+        let cancellation = CancellationSignal::new();
+        state.attempts += 1;
+        state.active = Some((generation, cancellation.clone()));
+        Some(RecoveryLease { controller: Arc::clone(self), generation, cancellation })
+    }
+}
+
+struct RecoveryLease {
+    controller: Arc<RecoveryController>,
+    generation: u64,
+    cancellation: CancellationSignal,
+}
+
+impl Drop for RecoveryLease {
+    fn drop(&mut self) {
+        let mut state = self.controller.0.lock().unwrap_or_else(|p| p.into_inner());
+        if state.active.as_ref().is_some_and(|(generation, _)| *generation == self.generation) {
+            state.active = None;
+            if state.generation == self.generation { state.last_finished = Some(Instant::now()); }
+        }
+    }
+}
+
+// The ingress's 45s deadline may drop the waiter, but must not drop the runtime
+// coordinator that owns its mutation slot. Signal cancellation to its worker.
+struct RecoveryWait(CancellationSignal);
+impl Drop for RecoveryWait {
+    fn drop(&mut self) { self.0.cancel(); }
+}
+
+struct BridgeRecovery {
+    bridge: Weak<Bridge>,
+    generation: u64,
+    project_path: String,
+}
+
+impl BackendRecovery for BridgeRecovery {
+    fn recover(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+        Box::pin(async move {
+            let Some(bridge) = self.bridge.upgrade() else { return false; };
+            if !bridge.recovery_permitted(self.generation, &self.project_path) { return false; }
+            let Some(lease) = bridge.recovery.begin(self.generation) else { return false; };
+            let wait = RecoveryWait(lease.cancellation.clone());
+            let generation = self.generation;
+            let project_path = self.project_path.clone();
+            let worker = tokio::spawn(async move {
+                let _switch = tokio::select! {
+                    guard = bridge.project_switch_lifecycle.lock() => guard,
+                    _ = lease.cancellation.cancelled() => return false,
+                };
+                let port = BridgeRecoveryPort {
+                    bridge: &bridge, generation, project_path: &project_path,
+                    tunnel_epoch: bridge.tunnel.snapshot().epoch,
+                };
+                let started_at_ms = now_ms();
+                let started = Instant::now();
+                let ready = run_backend_recovery(&port, &lease.cancellation).await;
+                // A deadline may cancel the resume while preserving connection
+                // intent. Restore only that unchanged ingress after cleanup so
+                // a later observation can use the remaining failure budget.
+                // Stop/switch cancellation advances generation and fails this fence.
+                if !ready && port.permitted() && bridge.tunnel.snapshot().epoch == port.tunnel_epoch {
+                    bridge.tunnel.resume_ingress().await;
+                }
+                bridge.push_lifecycle("backend_recovery", "total", started_at_ms, started,
+                    if ready { "completed" } else if lease.cancellation.is_cancelled() { "cancelled" } else { "failed" });
+                drop(lease);
+                ready
+            });
+            let ready = worker.await.unwrap_or(false);
+            drop(wait);
+            ready
+        })
+    }
+
+    fn generation(&self) -> u64 { self.generation }
+
+    fn backend_succeeded(&self) {
+        if let Some(bridge) = self.bridge.upgrade() {
+            bridge.recovery.backend_succeeded(self.generation);
+        }
+    }
+}
+
+trait RecoveryPort {
+    fn permitted(&self) -> bool;
+    async fn pause(&self) -> bool;
+    async fn resume(&self, cancellation: &CancellationSignal) -> bool;
+    async fn target(&self) -> Option<RuntimeTunnelTarget>;
+    async fn rebind(&self, target: RuntimeTunnelTarget, cancellation: &CancellationSignal) -> bool;
+}
+
+/// No request or request permit enters this orchestration; it only restores
+/// runtime state and observes a fresh target. It never replays MCP payloads.
+async fn run_backend_recovery<P: RecoveryPort>(port: &P, cancellation: &CancellationSignal) -> bool {
+    if cancellation.is_cancelled() || !port.permitted() || !port.pause().await { return false; }
+    if cancellation.is_cancelled() || !port.permitted() || !port.resume(cancellation).await { return false; }
+    if cancellation.is_cancelled() || !port.permitted() { return false; }
+    let Some(target) = port.target().await else { return false; };
+    if cancellation.is_cancelled() || !port.permitted() { return false; }
+    port.rebind(target, cancellation).await && !cancellation.is_cancelled() && port.permitted()
+}
+
+struct BridgeRecoveryPort<'a> {
+    bridge: &'a Bridge,
+    generation: u64,
+    project_path: &'a str,
+    tunnel_epoch: u64,
+}
+
+impl RecoveryPort for BridgeRecoveryPort<'_> {
+    fn permitted(&self) -> bool {
+        self.bridge.recovery_permitted(self.generation, self.project_path)
+    }
+    async fn pause(&self) -> bool { self.bridge.tunnel.pause_ingress().await.unwrap_or(false) }
+    async fn resume(&self, cancellation: &CancellationSignal) -> bool {
+        self.bridge.runtime.recover_saved_runtime_background(self.project_path, cancellation)
+            .await.is_ok_and(|snapshot| snapshot.readiness.runtime_ready
+                && snapshot.project.as_ref().is_some_and(|project| project.path == self.project_path))
+    }
+    async fn target(&self) -> Option<RuntimeTunnelTarget> { self.bridge.runtime.tunnel_target().await.ok() }
+    async fn rebind(&self, target: RuntimeTunnelTarget, cancellation: &CancellationSignal) -> bool {
+        let proxy = self.bridge.runtime.snapshot().tunnel_proxy_effective_url;
+        self.bridge.reset_verification_for_target();
+        self.bridge.tunnel.rebind_after_recovery(self.tunnel_epoch, target, proxy.as_deref(), cancellation)
+            .await.unwrap_or(false)
+    }
+}
+
+fn recovery_invalidating_method(method: &str) -> bool {
+    matches!(method, "stopLocalService" | "stopTunnel" | "disconnectAI" | "switchLocalProject"
+        | "connectChatGPT" | "startTunnel" | "provideCredential" | "clearCredential"
+        | "shutdown")
+}
+
+fn recovery_serialized_method(method: &str) -> bool {
+    recovery_invalidating_method(method) || matches!(method, "activateProject" | "realignLocalProject"
+        | "configureLocalSetup" | "resumeService" | "updateProxySettings")
+}
+
+async fn wait_operation_cancel_cleanup(
+    operation_id: &str,
+    cancellation: &CancellationSignal,
+    current_id: impl Fn() -> Option<String>,
+) -> bool {
+    loop {
+        if cancellation.is_cancelled() { return false; }
+        if current_id().as_deref() != Some(operation_id) { return true; }
+        tokio::select! {
+            _ = cancellation.cancelled() => return false,
+            _ = tokio::time::sleep(PREWARM_CANCEL_RETRY) => {},
+        }
+    }
+}
+
+fn recovery_scope_allowed(runtime: &RuntimeSnapshot, selected: Option<&str>, failed_project: &str) -> bool {
+    runtime.runtime_configured && runtime.runtime_autostart && runtime.current_operation.is_none()
+        && runtime.project.as_ref().is_some_and(|project| project.path == failed_project)
+        && selected == Some(failed_project)
+}
+
 struct Bridge {
+    self_weak: Weak<Bridge>,
+    recovery: Arc<RecoveryController>,
     runtime: ChadexRuntimeCore,
     graphify: GraphifyStatus,
     tunnel: Arc<TunnelManager>,
@@ -716,13 +947,13 @@ struct Bridge {
 }
 
 impl Bridge {
-    fn new() -> Result<Self, ErrorPayload> {
+    fn new() -> Result<Arc<Self>, ErrorPayload> {
         let data_dir = chadex_data_dir()?;
         let resource_dir = chadex_resource_dir()?;
         Self::with_dirs(data_dir, resource_dir)
     }
 
-    fn with_dirs(data_dir: PathBuf, resource_dir: PathBuf) -> Result<Self, ErrorPayload> {
+    fn with_dirs(data_dir: PathBuf, resource_dir: PathBuf) -> Result<Arc<Self>, ErrorPayload> {
         fs::create_dir_all(&data_dir).map_err(|error| {
             ErrorPayload::new(
                 "data_directory_unavailable",
@@ -736,7 +967,7 @@ impl Bridge {
             ChadexRuntimeCore::new(data_dir.clone(), resource_dir).map_err(ErrorPayload::from)?;
         let graphify = GraphifyStatus::detect();
         let verification = Arc::new(VerificationTracker::default());
-        let performance = Arc::new(PerformanceTraceStore::default());
+        let performance = Arc::new(PerformanceTraceStore::with_diagnostics(data_dir.join("transport-diagnostics.jsonl")));
         let (overlay, overlay_events) = ComputerOverlayHub::new();
         let tunnel = Arc::new(
             TunnelManager::new(
@@ -746,7 +977,9 @@ impl Bridge {
             )
             .with_computer_overlay(Arc::clone(&overlay)),
         );
-        Ok(Self {
+        Ok(Arc::new_cyclic(|weak| Self {
+            self_weak: weak.clone(),
+            recovery: Arc::new(RecoveryController::default()),
             runtime,
             graphify,
             tunnel,
@@ -761,7 +994,68 @@ impl Bridge {
             mascot_jobs_refresh: Mutex::new(()),
             prewarm: PrewarmTracker::new(),
             started_at: Instant::now(),
-        })
+        }))
+    }
+
+    fn recovery_permitted(&self, generation: u64, project_path: &str) -> bool {
+        let current = self.runtime.snapshot();
+        recovery_scope_allowed(&current, self.target_project().as_ref().map(|project| project.path.as_str()), project_path)
+            && self.recovery.generation() == generation
+            && self.tunnel.snapshot().state == TunnelState::Ready
+    }
+
+    fn invalidate_recovery(&self, reset_budget: bool) -> bool {
+        let active = self.recovery.invalidate(reset_budget);
+        if active { self.tunnel.cancel_recovery_start(); }
+        active
+    }
+
+    fn complete_operation_cancel(
+        &self,
+        operation_id: &str,
+        result: Result<RuntimeSnapshot, ChadexError>,
+    ) -> Result<RuntimeSnapshot, ChadexError> {
+        // Only an accepted cancellation changes intent. Stale IDs and invalid
+        // parameters must leave both the installed hook and its budget usable.
+        let snapshot = result?;
+        let epoch = self.tunnel.snapshot().epoch;
+        let project = self.target_project();
+        let (active, generation, cancellation) = self.recovery.invalidate_for_operation_cancel();
+        if active { self.tunnel.cancel_recovery_start(); }
+        if let (Some(bridge), Some(project)) = (self.self_weak.upgrade(), project) {
+            let operation_id = operation_id.to_string();
+            tokio::spawn(async move {
+                let cleaned = tokio::time::timeout(OPERATION_CANCEL_REFRESH_WAIT,
+                    wait_operation_cancel_cleanup(&operation_id, &cancellation, || {
+                        bridge.runtime.snapshot().current_operation.map(|operation| operation.id)
+                    })).await.unwrap_or(false);
+                let _switch = tokio::select! {
+                    guard = lock_project_operation(&bridge.project_switch_lifecycle, OPERATION_CANCEL_REFRESH_WAIT) => guard.ok(),
+                    _ = cancellation.cancelled() => return,
+                };
+                if cancellation.is_cancelled() || bridge.recovery.generation() != generation
+                    || bridge.tunnel.snapshot().epoch != epoch
+                    || bridge.target_project().as_ref().is_none_or(|selected| selected.path != project.path)
+                { return; }
+                if !cleaned || _switch.is_none() {
+                    // Fail closed rather than admitting requests with a stale hook.
+                    let _ = bridge.tunnel.stop().await;
+                    return;
+                }
+                if !bridge.recovery_permitted(generation, &project.path) { return; }
+                let target = bridge.runtime.tunnel_target().await.ok();
+                let proxy = bridge.runtime.snapshot().tunnel_proxy_effective_url;
+                if cancellation.is_cancelled() { return; }
+                bridge.reset_verification_for_target();
+                let hook = Arc::new(BridgeRecovery {
+                    bridge: bridge.self_weak.clone(), generation, project_path: project.path,
+                });
+                let _ = bridge.tunnel.refresh_after_operation_cancel(
+                    epoch, target, proxy.as_deref(), hook, &cancellation,
+                ).await;
+            });
+        }
+        Ok(snapshot)
     }
 
     /// The stdout event writer owns the receiving end; it can be taken once.
@@ -784,6 +1078,9 @@ impl Bridge {
         // selection. Ordinary completed/stale latest.json state should not leak
         // into a newly selected project. Switching projects always clears it.
         let current = self.target_project();
+        if current.as_ref().is_some_and(|current| current.path != project.path) {
+            self.invalidate_recovery(false);
+        }
         let should_clear_progress = match current.as_ref() {
             Some(current) => current.path != project.path,
             None => !self.task_progress_recovery_matches_path(&project.path),
@@ -1202,6 +1499,7 @@ impl Bridge {
         if ingress_paused
             && current_tunnel.state == TunnelState::Ready
             && previous_tunnel_target == Some(&current_target)
+            && self.tunnel.recovery_generation() == Some(self.recovery.generation())
             && self.tunnel.resume_ingress().await
         {
             return Ok(());
@@ -1527,6 +1825,11 @@ impl Bridge {
             .await
             .map_err(ErrorPayload::from)?;
         let proxy = self.runtime.snapshot().tunnel_proxy_effective_url;
+        if let Some(project) = self.target_project() {
+            self.tunnel.set_backend_recovery(Arc::new(BridgeRecovery {
+                bridge: self.self_weak.clone(), generation: self.recovery.generation(), project_path: project.path,
+            }));
+        }
         self.reset_verification_for_target();
         self.tunnel
             .start(target, proxy.as_deref())
@@ -1874,7 +2177,7 @@ async fn read_bounded_ndjson_line<R: AsyncBufRead + Unpin>(
 }
 
 async fn run_async() -> Result<(), String> {
-    let bridge = Arc::new(Bridge::new().map_err(|error| error.message)?);
+    let bridge = Bridge::new().map_err(|error| error.message)?;
     // Runners spawned from here on get the overlay channel (macOS); the hub
     // stays silent until the App calls `setComputerOverlayEvents`.
     computer_overlay::install_shared_hub(Arc::clone(&bridge.overlay));
@@ -1958,6 +2261,8 @@ async fn run_async() -> Result<(), String> {
     if let Some(writer) = &overlay_writer {
         writer.abort();
     }
+    bridge.invalidate_recovery(false);
+    bridge.runtime.cancel_background_operation().await;
     bridge.tunnel.shutdown().await;
     bridge.runtime.shutdown().await;
     Ok(())
@@ -2009,6 +2314,16 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
     }
 
     let request_id = request.request_id.clone();
+    let selection_changes = request.method == "activateProject"
+        && request.params.get("path").and_then(Value::as_str)
+            .is_some_and(|path| bridge.target_project().as_ref().is_some_and(|project| project.path != path));
+    if recovery_invalidating_method(&request.method) || selection_changes {
+        // Fence queued recovery before any lifecycle wait. This prevents a
+        // delayed resume/rebind from undoing Stop, Disconnect or a switch.
+        if bridge.invalidate_recovery(matches!(request.method.as_str(), "connectChatGPT" | "startTunnel")) {
+            bridge.runtime.cancel_background_operation().await;
+        }
+    }
     match prewarm_interaction(&request.method) {
         PrewarmInteraction::Join => {
             if let Some((started_at_ms, started)) = bridge.join_prewarm().await {
@@ -2020,6 +2335,14 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
         PrewarmInteraction::Cancel => bridge.cancel_prewarm().await,
         PrewarmInteraction::Ignore => {}
     }
+    let _recovery_serial = if recovery_serialized_method(&request.method)
+        && !matches!(request.method.as_str(), "switchLocalProject" | "realignLocalProject" | "cancelOperation" | "shutdown")
+    {
+        match lock_project_operation(&bridge.project_switch_lifecycle, PROJECT_SWITCH_LOCK_WAIT).await {
+            Ok(guard) => Some(guard),
+            Err(error) => return error_response(request_id, error),
+        }
+    } else { None };
     let result: Result<ResponseResult, ErrorPayload> = match request.method.as_str() {
         "getStatus" => Ok(ResponseResult::Snapshot(bridge.refreshed_snapshot(
             requested_mascot_jobs(&request.params),
@@ -2423,6 +2746,15 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
             }
             Ok(ResponseResult::Activities(entries))
         }
+        "getTransportDiagnostics" => {
+            let limit = request.params.get("limit").and_then(Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+                .unwrap_or(PERFORMANCE_QUERY_MAX).clamp(1, PERFORMANCE_QUERY_MAX);
+            serde_json::to_value(bridge.performance.transport_snapshot(limit))
+                .map(ResponseResult::Json)
+                .map_err(|_| ErrorPayload::new("transport_diagnostics_unavailable",
+                    "Chadex could not encode transport diagnostics", "Restart Chadex and retry."))
+        }
         "queryPerformanceTraces" => {
             let limit = request
                 .params
@@ -2460,8 +2792,7 @@ async fn handle_request(bridge: Arc<Bridge>, mut request: Request) -> Response {
         }
         "cancelOperation" => match param_str(&request.params, "operation_id") {
             Ok(operation_id) => bridge
-                .runtime
-                .cancel_operation(operation_id)
+                .complete_operation_cancel(operation_id, bridge.runtime.cancel_operation(operation_id))
                 .map_err(ErrorPayload::from)
                 .map(|snapshot| ResponseResult::Snapshot(bridge.snapshot_from(snapshot))),
             Err(error) => Err(error),
@@ -2917,6 +3248,288 @@ mod tests {
             readable: true,
             writable: true,
         }
+    }
+
+    fn allow_next_recovery(controller: &RecoveryController) {
+        controller.0.lock().unwrap().last_finished = Some(Instant::now() - BACKEND_RECOVERY_COOLDOWN);
+    }
+
+    #[test]
+    fn backend_recovery_budget_survives_rebinds_and_only_current_success_or_connect_resets_it() {
+        let shared = Arc::new(RecoveryController::default());
+        let generation = shared.generation();
+        for _ in 0..3 {
+            let lease = shared.begin(generation).expect("same budget is shared by replacement ingress hooks");
+            assert!(shared.begin(generation).is_none(), "a new ingress must not recurse into active recovery");
+            drop(lease);
+            assert!(shared.begin(generation).is_none(), "cooldown also survives rebind");
+            allow_next_recovery(&shared);
+        }
+        assert!(shared.begin(generation).is_none());
+        shared.invalidate(false);
+        assert!(shared.begin(shared.generation()).is_none(), "a switch does not reset the failure budget");
+        shared.backend_succeeded(generation);
+        assert!(shared.begin(shared.generation()).is_none(), "old responses cannot reset the current budget");
+        shared.backend_succeeded(shared.generation());
+        drop(shared.begin(shared.generation()).unwrap());
+        shared.invalidate(true);
+        assert!(shared.begin(generation).is_none());
+        assert!(shared.begin(shared.generation()).is_some(), "explicit Connect resets budget and cooldown");
+    }
+
+    #[test]
+    fn backend_recovery_stop_disconnect_switch_and_cancel_fence_queued_and_running_attempts() {
+        assert!(!recovery_invalidating_method("cancelOperation"), "validate the operation ID first");
+        for method in ["stopLocalService", "stopTunnel", "disconnectAI", "switchLocalProject", "shutdown"] {
+            assert!(recovery_invalidating_method(method));
+            let shared = Arc::new(RecoveryController::default());
+            let old = shared.generation();
+            let lease = shared.begin(old).unwrap();
+            assert!(shared.invalidate(false));
+            assert!(lease.cancellation.is_cancelled(), "{method} must cancel active recovery");
+            assert!(shared.begin(old).is_none(), "{method} must reject queued old recovery");
+            assert!(shared.begin(shared.generation()).is_none(), "wait for old admission cleanup");
+            drop(lease);
+            assert!(shared.begin(shared.generation()).is_none(), "cancellation keeps the cooldown");
+            allow_next_recovery(&shared);
+            assert!(shared.begin(shared.generation()).is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_invalid_cancel_id_and_params_preserve_generation_hook_and_active_attempt() {
+        let (bridge, root) = temp_bridge("invalid-cancel");
+        let generation = bridge.recovery.generation();
+        let hook = Arc::new(BridgeRecovery {
+            bridge: bridge.self_weak.clone(), generation, project_path: "/project".into(),
+        });
+        bridge.tunnel.set_backend_recovery(hook);
+        let lease = bridge.recovery.begin(generation).unwrap();
+        for params in [json!({"operation_id": "stale-operation"}), json!({}), json!({"operation_id": 7})] {
+            let response = handle_request(Arc::clone(&bridge), Request {
+                protocol_version: PROTOCOL_VERSION, request_id: "invalid-cancel".into(),
+                method: "cancelOperation".into(), params,
+            }).await;
+            assert!(response.error.is_some());
+            assert_eq!(bridge.recovery.generation(), generation);
+            assert_eq!(bridge.tunnel.recovery_generation(), Some(generation));
+            assert!(!lease.cancellation.is_cancelled());
+            assert_eq!(bridge.recovery.0.lock().unwrap().attempts, 1);
+        }
+        drop(lease);
+        drop(bridge);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_valid_operation_cancel_fences_attempt_and_preserves_remaining_budget() {
+        use crate::chadex_core::runtime_compat::operation::OperationController;
+        use crate::chadex_core::runtime_compat::activity::ActivityLog;
+        use crate::chadex_core::runtime_compat::models::DesktopOperationKind;
+        let (bridge, root) = temp_bridge("valid-cancel");
+        let operations = OperationController::new(ActivityLog::default());
+        let operation = operations.admit(DesktopOperationKind::RuntimeResume, true).unwrap();
+        let old = bridge.recovery.generation();
+        let lease = bridge.recovery.begin(old).unwrap();
+        operations.cancel(&operation.id).unwrap();
+        bridge.complete_operation_cancel(&operation.id, Ok(bridge.runtime.snapshot())).unwrap();
+        assert!(operation.cancellation.is_cancelled());
+        assert!(lease.cancellation.is_cancelled());
+        let generation = bridge.recovery.generation();
+        assert_ne!(generation, old);
+        assert!(bridge.recovery.begin(old).is_none());
+        let refresh = bridge.recovery.0.lock().unwrap().operation_cancel_refresh.clone().unwrap();
+        drop(lease);
+        assert!(bridge.recovery.begin(generation).is_none(), "valid cancel preserves cooldown");
+        allow_next_recovery(&bridge.recovery);
+        for _ in 0..2 {
+            drop(bridge.recovery.begin(generation).expect("only the two remaining attempts are available"));
+            allow_next_recovery(&bridge.recovery);
+        }
+        assert!(bridge.recovery.begin(generation).is_none(), "refresh must not reset the failure budget");
+        bridge.invalidate_recovery(false);
+        assert!(refresh.is_cancelled(), "a later Stop/switch cancels the pending refresh too");
+        drop(operation);
+        drop(bridge);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_operation_cancel_refresh_waits_for_cleanup_and_obeys_new_intent() {
+        use crate::chadex_core::runtime_compat::operation::OperationController;
+        use crate::chadex_core::runtime_compat::activity::ActivityLog;
+        use crate::chadex_core::runtime_compat::models::DesktopOperationKind;
+        let operations = Arc::new(OperationController::new(ActivityLog::default()));
+        for superseded in [false, true] {
+            let operation = operations.admit(DesktopOperationKind::RuntimeResume, true).unwrap();
+            operations.cancel(&operation.id).unwrap();
+            let controller = RecoveryController::default();
+            let (_, _, cancellation) = controller.invalidate_for_operation_cancel();
+            let mut waiter = {
+                let operations = Arc::clone(&operations);
+                let id = operation.id.clone();
+                tokio::spawn(async move {
+                    wait_operation_cancel_cleanup(&id, &cancellation, || operations.current().map(|operation| operation.id)).await
+                })
+            };
+            assert!(tokio::time::timeout(std::time::Duration::from_millis(50), &mut waiter).await.is_err(),
+                "the Cancelling phase is not completed cleanup");
+            if superseded { controller.invalidate(false); } else { drop(operation); }
+            assert_eq!(tokio::time::timeout(std::time::Duration::from_secs(1), waiter).await.unwrap().unwrap(), !superseded);
+        }
+    }
+
+    #[test]
+    fn backend_recovery_requires_same_configured_autostart_project_without_user_operation() {
+        let mut runtime = prewarm_runtime_snapshot();
+        assert!(recovery_scope_allowed(&runtime, Some("/project"), "/project"));
+        assert!(!recovery_scope_allowed(&runtime, Some("/other"), "/project"));
+        assert!(!recovery_scope_allowed(&runtime, None, "/project"));
+        runtime.runtime_autostart = false;
+        assert!(!recovery_scope_allowed(&runtime, Some("/project"), "/project"));
+        runtime.runtime_autostart = true;
+        runtime.runtime_configured = false;
+        assert!(!recovery_scope_allowed(&runtime, Some("/project"), "/project"));
+        runtime.runtime_configured = true;
+        runtime.current_operation = Some(runtime_operation(false));
+        assert!(!recovery_scope_allowed(&runtime, Some("/project"), "/project"));
+    }
+
+    struct FakeRecoveryPort {
+        controller: Arc<RecoveryController>,
+        generation: u64,
+        target: StdMutex<RuntimeTunnelTarget>,
+        events: StdMutex<Vec<&'static str>>,
+        rebound: StdMutex<Option<RuntimeTunnelTarget>>,
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+    }
+
+    impl FakeRecoveryPort {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                controller: Arc::new(RecoveryController::default()), generation: 0,
+                target: StdMutex::new(RuntimeTunnelTarget {
+                    server_url: "http://127.0.0.1:1111".into(),
+                    server_env_file: PathBuf::from("old.env"), bootstrap_token_env: "TOKEN".into(),
+                }),
+                events: StdMutex::new(vec![]), rebound: StdMutex::new(None),
+                entered: tokio::sync::Notify::new(), release: tokio::sync::Notify::new(),
+            })
+        }
+    }
+
+    impl RecoveryPort for FakeRecoveryPort {
+        fn permitted(&self) -> bool { self.controller.generation() == self.generation }
+        async fn pause(&self) -> bool { self.events.lock().unwrap().push("drain"); true }
+        async fn resume(&self, cancellation: &CancellationSignal) -> bool {
+            self.events.lock().unwrap().push("resume");
+            self.entered.notify_one();
+            tokio::select! {
+                _ = self.release.notified() => { self.events.lock().unwrap().push("resume_finished"); true }
+                _ = cancellation.cancelled() => { self.events.lock().unwrap().push("resume_cancelled"); false }
+            }
+        }
+        async fn target(&self) -> Option<RuntimeTunnelTarget> {
+            self.events.lock().unwrap().push("fresh_target");
+            Some(self.target.lock().unwrap().clone())
+        }
+        async fn rebind(&self, target: RuntimeTunnelTarget, _: &CancellationSignal) -> bool {
+            self.events.lock().unwrap().push("rebind");
+            *self.rebound.lock().unwrap() = Some(target);
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_refreshes_target_after_resume_without_replaying_the_request() {
+        let port = FakeRecoveryPort::new();
+        let cancellation = CancellationSignal::new();
+        let worker = {
+            let port = Arc::clone(&port);
+            tokio::spawn(async move { run_backend_recovery(port.as_ref(), &cancellation).await })
+        };
+        port.entered.notified().await;
+        let fresh = RuntimeTunnelTarget {
+            server_url: "http://127.0.0.1:2222".into(), server_env_file: PathBuf::from("new.env"),
+            bootstrap_token_env: "NEW_TOKEN".into(),
+        };
+        *port.target.lock().unwrap() = fresh.clone();
+        port.release.notify_one();
+        assert!(worker.await.unwrap());
+        assert_eq!(*port.rebound.lock().unwrap(), Some(fresh));
+        assert_eq!(*port.events.lock().unwrap(), ["drain", "resume", "resume_finished", "fresh_target", "rebind"]);
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_deadline_drop_cancels_worker_and_never_rebinds_later() {
+        let port = FakeRecoveryPort::new();
+        let lease = port.controller.begin(0).unwrap();
+        let wait = RecoveryWait(lease.cancellation.clone());
+        let worker = {
+            let port = Arc::clone(&port);
+            tokio::spawn(async move {
+                let ready = run_backend_recovery(port.as_ref(), &lease.cancellation).await;
+                drop(lease);
+                ready
+            })
+        };
+        port.entered.notified().await;
+        drop(wait); // Exactly what ingress timeout does to the recover future.
+        assert!(!tokio::time::timeout(std::time::Duration::from_secs(1), worker).await.unwrap().unwrap());
+        assert!(port.rebound.lock().unwrap().is_none());
+        assert_eq!(*port.events.lock().unwrap(), ["drain", "resume", "resume_cancelled"]);
+        assert!(port.controller.0.lock().unwrap().active.is_none());
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_generation_change_after_resume_rejects_stale_target_and_hook_is_weak() {
+        let port = FakeRecoveryPort::new();
+        let worker = {
+            let port = Arc::clone(&port);
+            tokio::spawn(async move { run_backend_recovery(port.as_ref(), &CancellationSignal::new()).await })
+        };
+        port.entered.notified().await;
+        port.controller.invalidate(false);
+        port.release.notify_one();
+        assert!(!worker.await.unwrap());
+        assert!(port.rebound.lock().unwrap().is_none());
+        assert_eq!(*port.events.lock().unwrap(), ["drain", "resume", "resume_finished"]);
+
+        let (bridge, root) = temp_bridge("recovery-weak");
+        let weak = Arc::downgrade(&bridge);
+        let hook = Arc::new(BridgeRecovery { bridge: weak.clone(), generation: 42, project_path: "/project".into() });
+        bridge.tunnel.set_backend_recovery(hook.clone());
+        assert_eq!(hook.generation(), 42);
+        drop(bridge);
+        assert!(weak.upgrade().is_none(), "TunnelManager's hook must not form an Arc cycle");
+        assert!(!hook.recover().await);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_transport_diagnostics_query_loads_previous_helper_journal_read_only() {
+        use crate::chadex_core::performance::{BackendFailureKind, RecoveryOutcome, TransportDiagnostic};
+        let directory = tempfile::tempdir().unwrap();
+        let data = directory.path().join("data");
+        fs::create_dir_all(&data).unwrap();
+        let diagnostic = TransportDiagnostic {
+            at_ms: 12, trace_sequence: 34, request_id_hashes: vec!["safe-hash".into()],
+            error_kind: BackendFailureKind::ConnectionRefused, os_error_code: Some(61), elapsed_us: 56,
+            generation: 78, recovery: RecoveryOutcome::Failed,
+        };
+        fs::write(data.join("transport-diagnostics.jsonl"), format!("{}\n", serde_json::to_string(&diagnostic).unwrap())).unwrap();
+        let bridge = Bridge::with_dirs(data, directory.path().join("resources")).unwrap();
+        let before = bridge.snapshot();
+        let response = handle_request(Arc::clone(&bridge), Request {
+            protocol_version: PROTOCOL_VERSION, request_id: "diagnostics".into(),
+            method: "getTransportDiagnostics".into(), params: json!({"limit": 100}),
+        }).await;
+        let value = serde_json::to_value(response).unwrap();
+        assert_eq!(value["result"], serde_json::to_value(vec![diagnostic]).unwrap());
+        assert_eq!(bridge.snapshot().state_revision, before.state_revision);
+        assert_eq!(bridge.recovery.generation(), 0);
+        assert!(bridge.runtime.snapshot().current_operation.is_none());
     }
 
     #[test]
@@ -3410,7 +4023,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    fn temp_bridge(tag: &str) -> (Bridge, PathBuf) {
+    fn temp_bridge(tag: &str) -> (Arc<Bridge>, PathBuf) {
         let root = std::env::temp_dir().join(format!(
             "chadex-bridge-{tag}-{}-{}",
             std::process::id(),
@@ -3825,7 +4438,7 @@ mod computer_overlay_bridge_tests {
             now_ms()
         ));
         let bridge = Bridge::with_dirs(root.join("data"), root.join("resources")).unwrap();
-        (Arc::new(bridge), root)
+        (bridge, root)
     }
 
     async fn call(bridge: &Arc<Bridge>, method: &str, params: Value) -> Value {

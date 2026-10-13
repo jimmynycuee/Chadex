@@ -7,7 +7,9 @@ fn state(backend_url: String) -> IngressState {
     tracker.reset(Some("/tmp/project".into()));
     IngressState {
         backend_url,
+        recovery: None,
         client: Client::builder()
+            .retry(reqwest::retry::never())
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .build()
@@ -677,5 +679,263 @@ async fn bodies_the_ingress_cannot_parse_are_not_forwarded() {
             .unwrap();
         let response = proxy_inner(state.clone(), request).await.unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+}
+
+struct CountingRecovery {
+    calls: std::sync::atomic::AtomicUsize,
+    release: tokio::sync::Notify,
+}
+impl BackendRecovery for CountingRecovery {
+    fn recover(&self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
+        Box::pin(async move {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.release.notified().await;
+            false
+        })
+    }
+    fn generation(&self) -> u64 { 17 }
+}
+
+async fn refused_url() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    format!("http://{}/mcp", listener.local_addr().unwrap())
+}
+
+#[tokio::test]
+async fn refused_requests_preserve_ids_return_immediately_and_recover_once() {
+    let hook = Arc::new(CountingRecovery { calls: 0.into(), release: tokio::sync::Notify::new() });
+    let mut state = state(refused_url().await);
+    state.recovery = Some(BackendRecoveryGate::new(hook.clone()));
+    let start = Instant::now();
+    let mut requests = tokio::task::JoinSet::new();
+    for id in 0..20 {
+        let state = state.clone();
+        requests.spawn(async move {
+            let req = Request::builder().method("POST").body(Body::from(json!({
+                "jsonrpc":"2.0", "id":format!("req-{id}"), "method":"tools/call",
+                "params":{"name":"write_file","arguments":{"token":"MUST_NOT_BE_RETAINED"}}
+            }).to_string())).unwrap();
+            let response = proxy_inner(state, req).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = response_json(response).await;
+            assert_eq!(body["id"], format!("req-{id}"));
+            assert_eq!(body["result"]["structuredContent"]["output"]["execution_state"], "not_started");
+            assert_eq!(body["result"]["structuredContent"]["output"]["retry_after_secs"], 5);
+        });
+    }
+    while let Some(result) = requests.join_next().await { result.unwrap(); }
+    assert!(start.elapsed() < Duration::from_secs(2));
+    assert_eq!(hook.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(state.admission.available_permits(), MAX_IN_FLIGHT);
+    let journal = serde_json::to_string(&state.performance.transport_snapshot(100)).unwrap();
+    assert!(!journal.contains("MUST_NOT_BE_RETAINED"));
+    assert!(!journal.contains("req-"));
+    assert!(journal.contains("17"));
+    // This acquires every permit while recovery is still waiting: no drain deadlock.
+    let ingress_permits = state.admission.acquire_many(MAX_IN_FLIGHT as u32).await.unwrap();
+    drop(ingress_permits);
+    hook.release.notify_one();
+}
+
+#[tokio::test]
+async fn recovery_budget_stops_at_three_and_only_backend_success_resets_it() {
+    struct FailedRecovery(std::sync::atomic::AtomicUsize);
+    impl BackendRecovery for FailedRecovery {
+        fn recover(&self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
+            Box::pin(async move { self.0.fetch_add(1, Ordering::SeqCst); false })
+        }
+    }
+    let hook = Arc::new(FailedRecovery(0.into()));
+    let mut state = state(refused_url().await);
+    let gate = BackendRecoveryGate::new(hook.clone());
+    state.recovery = Some(gate.clone());
+    for _ in 0..3 {
+        proxy_inner(state.clone(), request()).await.unwrap();
+        while gate.state.lock().unwrap().in_flight { tokio::task::yield_now().await; }
+        gate.state.lock().unwrap().last = Some(Instant::now() - Duration::from_secs(4));
+    }
+    let body = response_json(proxy_inner(state.clone(), request()).await.unwrap()).await;
+    assert_eq!(hook.0.load(Ordering::SeqCst), 3);
+    assert!(body["result"]["structuredContent"]["output"].get("retry_after_secs").is_none());
+    gate.backend_succeeded();
+    proxy_inner(state, request()).await.unwrap();
+    while gate.state.lock().unwrap().in_flight { tokio::task::yield_now().await; }
+    assert_eq!(hook.0.load(Ordering::SeqCst), 4);
+}
+
+async fn raw_interrupted_backend(stream: bool, sse: bool, counter: Arc<std::sync::atomic::AtomicUsize>) -> (String, JoinHandle<()>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/mcp", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut bytes = [0u8; 8192];
+        socket.read(&mut bytes).await.unwrap();
+        counter.fetch_add(1, Ordering::SeqCst);
+        if stream {
+            let ty = if sse { "text/event-stream" } else { "application/json" };
+            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: {ty}\r\nContent-Length: 4096\r\n\r\n").as_bytes()).await.unwrap();
+            socket.write_all(if sse { b"event: message\ndata: {\"partial\":true}\n\n" } else { b"{\"jsonrpc\":\"2.0\"," }).await.unwrap();
+            socket.flush().await.unwrap();
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    });
+    (url, task)
+}
+
+#[tokio::test]
+async fn unknown_write_before_headers_is_never_replayed_or_recovered() {
+    let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (url, server) = raw_interrupted_backend(false, false, counter.clone()).await;
+    let hook = Arc::new(CountingRecovery { calls: 0.into(), release: tokio::sync::Notify::new() });
+    let mut state = state(url);
+    state.recovery = Some(BackendRecoveryGate::new(hook.clone()));
+    let body = response_json(proxy_inner(state.clone(), Request::builder().method("POST").body(Body::from(
+        r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"write_file","arguments":{"path":"fixture.txt","content":"once"}}}"#
+    )).unwrap()).await.unwrap()).await;
+    assert_eq!(body["id"], 1);
+    let output = &body["result"]["structuredContent"]["output"];
+    assert_eq!(output["error_kind"], "backend_headers_interrupted");
+    assert_eq!(output["execution_state"], "outcome_unknown");
+    assert_eq!(output["dispatch_certainty"], "unknown");
+    assert!(output.get("retry_after_secs").is_none());
+    server.await.unwrap();
+    assert_eq!(counter.load(Ordering::SeqCst), 1);
+    assert_eq!(hook.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn interrupted_json_stream_returns_atomic_unknown_error_without_replay() {
+    let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (url, server) = raw_interrupted_backend(true, false, counter.clone()).await;
+    let state = state(url);
+    let body = response_json(proxy_inner(state.clone(), request()).await.unwrap()).await;
+    assert_eq!(body["id"], 1);
+    assert_eq!(body["result"]["structuredContent"]["output"]["error_kind"], "backend_stream_interrupted");
+    assert_eq!(body["result"]["structuredContent"]["output"]["execution_state"], "outcome_unknown");
+    assert_eq!(state.performance.transport_snapshot(1)[0].error_kind, BackendFailureKind::StreamInterrupted);
+    assert_eq!(state.admission.available_permits(), MAX_IN_FLIGHT);
+    server.await.unwrap();
+    assert_eq!(counter.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn interrupted_sse_stream_emits_correlated_unknown_error_event() {
+    let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (url, server) = raw_interrupted_backend(true, true, counter.clone()).await;
+    let state = state(url);
+    let bytes = to_bytes(proxy_inner(state, request()).await.unwrap().into_body(), MAX_REQUEST_BYTES).await.unwrap();
+    let text = String::from_utf8(bytes.to_vec()).unwrap();
+    let last = text.lines().filter_map(|line| line.strip_prefix("data: ")).last().unwrap();
+    let value: Value = serde_json::from_str(last).unwrap();
+    assert_eq!(value["id"], 1);
+    assert_eq!(value["result"]["structuredContent"]["output"]["execution_state"], "outcome_unknown");
+    server.await.unwrap();
+    assert_eq!(counter.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn errors_for_batches_and_non_tool_methods_keep_original_request_ids() {
+    let identity = request_identity(br#"[{"id":"a","method":"tools/call"},{"id":72,"method":"tools/list"},{"method":"notifications/initialized"}]"#);
+    let result = backend_failure_value(&identity, BackendFailureKind::ConnectTimeout, false);
+    assert_eq!(result[0]["id"], "a");
+    assert_eq!(result[0]["result"]["isError"], true);
+    assert_eq!(result[1]["id"], 72);
+    assert_eq!(result[1]["error"]["data"]["execution_state"], "outcome_unknown");
+    assert_eq!(result.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn normal_forty_five_second_wait_is_not_a_connect_timeout() {
+    let (url, server) = backend(Router::new().route("/mcp", any(|| async {
+        tokio::time::sleep(Duration::from_secs(45)).await;
+        ([(header::CONTENT_TYPE, "application/json")], r#"{"jsonrpc":"2.0","id":1,"result":{"isError":false}}"#)
+    }))).await;
+    let state = state(url);
+    let response = proxy_inner(state.clone(), request()).await.unwrap();
+    assert_eq!(response_json(response).await["result"]["isError"], false);
+    assert!(state.performance.transport_snapshot(100).is_empty());
+    server.abort();
+}
+
+#[tokio::test]
+async fn connect_establishment_timeout_stays_unknown_and_does_not_recover() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("https://{}/mcp", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        let (_socket, _) = listener.accept().await.unwrap();
+        std::future::pending::<()>().await;
+    });
+    let hook = Arc::new(CountingRecovery { calls: 0.into(), release: tokio::sync::Notify::new() });
+    let mut state = state(url);
+    state.client = Client::builder().no_proxy().connect_timeout(Duration::from_millis(50)).build().unwrap();
+    state.recovery = Some(BackendRecoveryGate::new(hook.clone()));
+    let body = response_json(proxy_inner(state, request()).await.unwrap()).await;
+    let output = &body["result"]["structuredContent"]["output"];
+    assert_eq!(output["error_kind"], "backend_connect_timeout");
+    assert_eq!(output["execution_state"], "outcome_unknown");
+    assert!(output.get("retry_after_secs").is_none());
+    assert_eq!(hook.calls.load(Ordering::SeqCst), 0);
+    server.abort();
+}
+
+#[tokio::test]
+async fn recovery_deadline_cancels_hook_and_releases_single_flight_slot() {
+    let hook = Arc::new(CountingRecovery { calls: 0.into(), release: tokio::sync::Notify::new() });
+    let gate = BackendRecoveryGate::new(hook.clone());
+    let store = Arc::new(PerformanceTraceStore::default());
+    let diagnostic = TransportDiagnostic {
+        at_ms: 0, trace_sequence: 1, request_id_hashes: vec![],
+        error_kind: BackendFailureKind::ConnectionRefused, os_error_code: None,
+        elapsed_us: 0, generation: 17, recovery: RecoveryOutcome::Started,
+    };
+    assert_eq!(gate.trigger_with_deadline(store.clone(), diagnostic, Duration::from_millis(20)), RecoveryOutcome::Started);
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while gate.state.lock().unwrap().in_flight { tokio::task::yield_now().await; }
+    }).await.unwrap();
+    assert_eq!(store.transport_snapshot(1)[0].recovery, RecoveryOutcome::TimedOut);
+    assert_eq!(gate.state.lock().unwrap().attempts, 1);
+    assert_eq!(hook.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(BACKEND_RECOVERY_WAIT, Duration::from_secs(45));
+}
+
+#[tokio::test]
+async fn upstream_business_error_is_preserved_without_recovery() {
+    let payload = r#"{"jsonrpc":"2.0","id":1,"result":{"isError":true,"structuredContent":{"success":false,"output":{"error_kind":"permission_denied"}}}}"#;
+    let (url, server) = backend(Router::new().route("/mcp", any(move || async move {
+        ([(header::CONTENT_TYPE, "application/json")], payload)
+    }))).await;
+    let state = state(url);
+    let response = proxy_inner(state.clone(), request()).await.unwrap();
+    let bytes = to_bytes(response.into_body(), MAX_REQUEST_BYTES).await.unwrap();
+    assert_eq!(bytes, payload);
+    assert!(state.performance.transport_snapshot(100).is_empty());
+    server.abort();
+}
+
+#[tokio::test]
+async fn completed_sse_business_error_is_not_overwritten_by_stream_interruption() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let payload = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[],\"isError\":true,\"structuredContent\":{\"success\":false,\"output\":{\"error_kind\":\"permission_denied\"}}}}\n\n";
+    for armed in [false, true] {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/mcp", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut bytes = [0u8; 8192];
+            socket.read(&mut bytes).await.unwrap();
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 4096\r\n\r\n").await.unwrap();
+            socket.write_all(payload.as_bytes()).await.unwrap();
+            socket.flush().await.unwrap();
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        });
+        let state = state(url);
+        state.armed.store(armed, Ordering::SeqCst);
+        let response = proxy_inner(state.clone(), request()).await.unwrap();
+        let bytes = to_bytes(response.into_body(), MAX_REQUEST_BYTES).await.unwrap();
+        assert_eq!(bytes, payload);
+        assert!(!state.tracker.snapshot().chatgpt_connected);
+        server.await.unwrap();
     }
 }

@@ -1,5 +1,106 @@
-use super::common::{schema_type, wrapped_output_schema};
+use super::common::{schema_type, suggested_tool_call_schema, wrapped_output_schema};
 use serde_json::{json, Value};
+
+fn plan_wait_suggested_call_schema() -> Value {
+    let mut arguments = crate::registry::input_schemas::plan_wait_approval_input_schema();
+    let wait_secs = arguments["properties"]["wait_secs"]["maximum"].clone();
+    arguments["properties"]["wait_secs"] = json!({"type": "integer", "const": wait_secs});
+    arguments["required"] = json!(["plan_id", "wait_secs"]);
+    suggested_tool_call_schema(
+        "plan_wait_approval",
+        arguments,
+        "Continue observing this exact Plan revision. The plan_id is copied from the saved plan; wait_secs is the bounded maximum.",
+    )
+}
+
+fn goal_run_list_suggested_call_schema() -> Value {
+    suggested_tool_call_schema(
+        "goal_run_list",
+        crate::registry::input_schemas::goal_run_list_input_schema(),
+        "Find the Goal request and then follow its exact run with goal_run_status. Do not implement it before the user starts it in the Chadex app.",
+    )
+}
+
+fn plan_mode_output_schema(name: &str) -> Option<Value> {
+    let wait_call = plan_wait_suggested_call_schema();
+    let goal_list_call = goal_run_list_suggested_call_schema();
+    match name {
+        "plan_save" => {
+            let mut schema = wrapped_output_schema(vec![(
+                "suggested_call",
+                json!({"anyOf": [wait_call.clone(), goal_list_call.clone()]}),
+            )]);
+            schema["properties"]["output"]["allOf"] = json!([
+                {
+                    "if": {
+                        "properties": {"plan": {"properties": {"origin": {"const": "goal"}}}},
+                        "required": ["plan"]
+                    },
+                    "then": {
+                        "properties": {"suggested_call": goal_list_call},
+                        "required": ["suggested_call"]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {"plan": {"properties": {"origin": {"const": "plan"}}}},
+                        "required": ["plan"]
+                    },
+                    "then": {
+                        "properties": {"suggested_call": wait_call},
+                        "required": ["suggested_call"]
+                    }
+                }
+            ]);
+            Some(schema)
+        }
+        "plan_wait_approval" => {
+            let mut schema = wrapped_output_schema(vec![
+                (
+                    "status",
+                    json!({
+                        "type": "string",
+                        "enum": ["approved", "changes_requested", "closed", "goal_started", "approval_withdrawn", "waiting"]
+                    }),
+                ),
+                (
+                    "error_kind",
+                    json!({"type": "string"}),
+                ),
+                (
+                    "suggested_call",
+                    json!({"anyOf": [wait_call.clone(), goal_list_call.clone()]}),
+                ),
+            ]);
+            schema["properties"]["output"]["allOf"] = json!([
+                {
+                    "if": {"properties": {"status": {"const": "waiting"}}, "required": ["status"]},
+                    "then": {
+                        "properties": {"suggested_call": wait_call},
+                        "required": ["suggested_call"]
+                    }
+                },
+                {
+                    "if": {"properties": {"error_kind": {"const": "not_a_plan"}}, "required": ["error_kind"]},
+                    "then": {
+                        "properties": {"suggested_call": goal_list_call},
+                        "required": ["suggested_call"]
+                    }
+                },
+                {
+                    "if": {"properties": {"status": {"enum": ["approved", "changes_requested", "closed", "goal_started", "approval_withdrawn"]}}, "required": ["status"]},
+                    "then": {"not": {"required": ["suggested_call"]}}
+                },
+                {
+                    "if": {"properties": {"status": {"const": "approved"}}, "required": ["status"]},
+                    "then": {"not": {"required": ["next"]}}
+                }
+            ]);
+            Some(schema)
+        }
+        _ => None,
+    }
+}
 
 fn nullable_integer(description: &str) -> Value {
     json!({
@@ -146,6 +247,9 @@ fn goal_mutation_schema() -> Value {
 }
 
 pub fn output_schema_for_tool(name: &str) -> Option<Value> {
+    if let Some(schema) = plan_mode_output_schema(name) {
+        return Some(schema);
+    }
     let schema = match name {
         "create_goal"
         | "update_goal"

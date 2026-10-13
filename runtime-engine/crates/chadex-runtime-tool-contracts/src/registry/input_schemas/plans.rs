@@ -172,6 +172,7 @@ pub fn goal_operator_input_schema() -> Value {
         json!({
             "action": {"type": "string", "enum": ["overview", "status", "pause", "resume", "cancel", "dismiss", "clear_board", "emergency_stop", "release_emergency_stop"]},
             "goal_run_id": goal_run_id(),
+            "project": {"type": "string", "minLength": 1, "description": "Optional full configured project id; clear_board is scoped to this project when supplied and clears all projects when omitted."},
             "reason": {"type": "string", "maxLength": 2048}
         }),
         &["action"],

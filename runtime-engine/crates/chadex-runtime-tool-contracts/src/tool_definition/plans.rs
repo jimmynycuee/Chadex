@@ -94,7 +94,7 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
                 ToolIdempotency::Keyed,
                 PROJECT_READ,
             ),
-            "Save a new immutable plan revision (Markdown) with objective acceptance checks (literal argv run in the project, exit 0 = pass) and an optional Goal budget. parent_revision must equal the current latest revision (0 for the first save). Every save creates revision N+1 with a content_sha256; earlier revisions and any approval of them are kept but no longer approvable. Ground the plan in what you actually read. Then ask the user to review and approve that exact revision in the Chadex app.",
+            "Save a new immutable plan revision (Markdown) with objective acceptance checks (literal argv run in the project, exit 0 = pass) and an optional Goal budget. parent_revision must equal the current latest revision (0 for the first save). Every save creates revision N+1 with a content_sha256; earlier revisions and any approval of them are kept but no longer approvable. Ground the plan in what you actually read. A Plan-origin result includes a suggested_call to plan_wait_approval carrying this exact plan_id and the bounded wait_secs; follow it in the same reply until a decision is returned. A Goal-origin result must use Goal tools instead.",
             plan_save_input_schema,
         )
         .with_gpt_action_description("Save the next immutable plan revision with acceptance checks and budget."),
@@ -168,7 +168,7 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
             ToolIdempotency::PureRead,
             PROJECT_READ,
         ),
-        "After plan_save, keep calling this in the same reply while the user reviews the plan in the Chadex app. Returns approved (Plan Mode has ended: implement the approved revision right away in the project with your normal tools, then run its acceptance checks and report), changes_requested (revise with plan_save, then wait again), closed or approval_withdrawn (stop and tell the user), goal_started (the user started a Goal instead: do not edit; follow it with goal_run_status), or waiting (call again). Do not end your reply while it says waiting unless the user asked you to stop.",
+        "After plan_save, keep calling this in the same reply while the user reviews the plan in the Chadex app. Returns approved (Plan Mode has ended: implement the approved revision right away in the project with your normal tools, then run its acceptance checks and report), changes_requested (revise with plan_save, then wait again), closed or approval_withdrawn (stop and tell the user), goal_started (the user started a Goal instead: do not edit; follow it with goal_run_status), or waiting (the result includes a suggested_call with this exact plan_id and the bounded wait_secs; follow it to continue observing). Only an approved Plan is implemented; an origin=goal request must be followed with Goal tools, never plan_wait_approval.",
         plan_wait_approval_input_schema,
     ),
     require_all_scopes(
@@ -232,7 +232,7 @@ pub(super) const DEFINITIONS: &[ToolDefinition] = &[
             ToolIdempotency::NonIdempotent,
             RUNTIME_READ,
         ),
-        "Operator-only (Chadex app over local operator REST): Goal overview, status, pause/resume/cancel any run, dismiss a finished run from the lists, clear the board (close open plans, hide finished runs; running Goals continue), and the persistent emergency stop.",
+        "Operator-only (Chadex app over local operator REST): Goal overview, status, pause/resume/cancel any run, dismiss a finished run from the lists, clear the board (close open plans, hide finished runs; running Goals continue), and the persistent emergency stop. For clear_board, optional project is the exact full configured project id to scope the cleanup; omit it only to clear all projects.",
         goal_operator_input_schema,
     ),
 ];

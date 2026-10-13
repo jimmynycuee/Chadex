@@ -4029,8 +4029,15 @@ impl ToolCall {
             Self::GoalOperator {
                 action,
                 goal_run_id,
+                project,
                 ..
-            } => serde_json::json!({"action": action, "goal_run_id": goal_run_id}),
+            } => {
+                let mut arguments = serde_json::json!({"action": action, "goal_run_id": goal_run_id});
+                if let Some(project) = project {
+                    arguments["project"] = serde_json::json!(project);
+                }
+                arguments
+            }
             Self::CreateGoal {
                 title,
                 objective,

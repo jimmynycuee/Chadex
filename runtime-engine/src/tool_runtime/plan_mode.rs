@@ -561,6 +561,23 @@ impl ToolRuntime {
                     .as_ref()
                     .and_then(|previous| plan_line_diff(&previous.content, content.trim()))
                     .map(|lines| bounded_diff(lines, 200));
+                let goal_origin = outcome.plan.origin == "goal";
+                let suggested_call = if goal_origin {
+                    json!({"tool": "goal_run_list", "arguments": {}})
+                } else {
+                    json!({
+                        "tool": "plan_wait_approval",
+                        "arguments": {
+                            "plan_id": plan_id.clone(),
+                            "wait_secs": GOAL_STATUS_MAX_WAIT_SECS,
+                        },
+                    })
+                };
+                let next = if goal_origin {
+                    "This is a Goal request, not a Plan. Follow it with goal_run_list and goal_run_status; do not implement it until the user starts it in the Chadex app."
+                } else {
+                    "Tell the user the plan id, revision and acceptance checks, and that they approve this exact revision in the Chadex app (Plan & Goal). Then call plan_wait_approval and keep calling it in this same reply; when it returns approved, start implementing right away. Never claim the plan is approved before plan_wait_approval says so."
+                };
                 ToolResult::ok(json!({
                     "plan": outcome.plan,
                     "revision": outcome.revision,
@@ -568,7 +585,8 @@ impl ToolRuntime {
                     "addressed_change_request": change_request,
                     "git_readiness": self.plan_git_readiness(auth, &outcome.plan.project_id).await,
                     "diff_from_previous": diff,
-                    "next": "Tell the user the plan id, revision and acceptance checks, and that they approve this exact revision in the Chadex app (Plan & Goal). Then call plan_wait_approval and keep calling it in this same reply; when it returns approved, start implementing right away. Never claim the plan is approved before plan_wait_approval says so.",
+                    "suggested_call": suggested_call,
+                    "next": next,
                 }))
             }
             Err(error) => with_change_request(plan_error(error), change_request),
@@ -616,11 +634,23 @@ impl ToolRuntime {
                 "goal_run": goal_run_projection(&run),
                 "created": false,
             })),
-            Ok(None) => ToolResult::err_with_output(
+            Ok(None) => {
+                // A Plan Mode plan is not a Goal: once approved, the model
+                // implements it itself. Point it there instead of at Start Goal.
+                if let Ok(detail) = db.plan_read(PlanReader::Owner(&owner), &plan_id, None, now_unix_ms()) {
+                    if detail.plan.origin != "goal" {
+                        return ToolResult::err_with_output(
+                            "This is a Plan Mode plan, not a Goal, and has no Start Goal step. Call plan_wait_approval with this plan_id: when it returns approved, implement the plan yourself right away in this reply and run its acceptance checks. Do not ask the user to start a Goal.",
+                            json!({"error_kind": "not_a_goal", "plan_id": plan_id, "next_tool": "plan_wait_approval", "state_changed": false}),
+                        );
+                    }
+                }
+                ToolResult::err_with_output(
                 "This Goal has not been started. Only the user can start it, in the Chadex app (Plan & Goal), where they also choose Codex or ChatGPT mode.",
                 json!({"error_kind": "goal_not_started", "state_changed": false}),
             )
-            .with_recovery(RecoveryKind::UserAction),
+            .with_recovery(RecoveryKind::UserAction)
+            }
             Err(error) => plan_error(error),
         }
     }
@@ -756,7 +786,15 @@ impl ToolRuntime {
             };
             let latest = detail.plan.latest_revision;
             if detail.plan.origin == "goal" {
-                return invalid_action("This is a Goal request, not a plan; follow it with goal_run_list and goal_run_status");
+                return ToolResult::err_with_output(
+                    "This is a Goal request, not a Plan. Follow it with goal_run_list and goal_run_status; do not implement it until the user starts it in the Chadex app.".to_string(),
+                    json!({
+                        "error_kind": "not_a_plan",
+                        "plan_id": plan_id.clone(),
+                        "suggested_call": {"tool": "goal_run_list", "arguments": {}},
+                        "state_changed": false,
+                    }),
+                );
             }
             let decision = detail.decisions.first().filter(|decision| decision.revision == latest);
             match decision.map(|decision| decision.state) {
@@ -786,10 +824,6 @@ impl ToolRuntime {
                     "status": "approved",
                     "plan": detail.plan,
                     "revision": detail.revision,
-                    "next": format!(
-                        "The user approved revision {latest} in the Chadex app and Plan Mode has ended. Implement exactly this plan now, in this same reply, directly in project {} with your normal tools. Then run each acceptance check (literal argv) with run_process in the project, report the results, and fix and re-run until they pass or you need the user. This is not a Goal: do not call goal_run_start.",
-                        detail.plan.project_id
-                    ),
                 }));
             }
             if let Some(request) = pending_change_request(&detail) {
@@ -811,6 +845,13 @@ impl ToolRuntime {
                 return ToolResult::ok(json!({
                     "status": "waiting",
                     "plan": detail.plan,
+                    "suggested_call": {
+                        "tool": "plan_wait_approval",
+                        "arguments": {
+                            "plan_id": plan_id.clone(),
+                            "wait_secs": GOAL_STATUS_MAX_WAIT_SECS,
+                        },
+                    },
                     "next": "Still waiting for the user's decision in the Chadex app (Plan & Goal). Call plan_wait_approval again now.",
                 }));
             }
@@ -1086,6 +1127,7 @@ impl ToolRuntime {
         action: String,
         goal_run_id: Option<String>,
         reason: Option<String>,
+        project: Option<String>,
     ) -> ToolResult {
         if let Some(denied) = operator_denial(auth, transport) {
             return denied;
@@ -1121,7 +1163,7 @@ impl ToolRuntime {
                 }
             }
             "clear_board" => {
-                let cleared = db.plan_goal_clear_board(None, now);
+                let cleared = db.plan_goal_clear_board(project.as_deref(), now);
                 self.plan_guard.reload();
                 match cleared {
                     Ok((plans, runs)) => ToolResult::ok(json!({
@@ -1325,7 +1367,8 @@ impl ToolRuntime {
         let ttl_ms = ttl_minutes
             .map(|minutes| minutes.saturating_mul(60_000))
             .unwrap_or(DEFAULT_PLAN_APPROVAL_TTL_MS);
-        db.plan_approve(plan_id, revision, content_sha256, binding, approver, ttl_ms, now)
+        // Only a Goal run needs an acceptance check; plain approval does not.
+        db.plan_approve_with(plan_id, revision, content_sha256, binding, approver, ttl_ms, require_commit, now)
             .map_err(plan_error)
     }
 
