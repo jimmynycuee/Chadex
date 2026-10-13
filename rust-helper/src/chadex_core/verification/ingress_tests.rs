@@ -707,7 +707,6 @@ async fn refused_requests_preserve_ids_return_immediately_and_recover_once() {
     let hook = Arc::new(CountingRecovery { calls: 0.into(), release: tokio::sync::Notify::new() });
     let mut state = state(refused_url().await);
     state.recovery = Some(BackendRecoveryGate::new(hook.clone()));
-    let start = Instant::now();
     let mut requests = tokio::task::JoinSet::new();
     for id in 0..20 {
         let state = state.clone();
@@ -716,7 +715,10 @@ async fn refused_requests_preserve_ids_return_immediately_and_recover_once() {
                 "jsonrpc":"2.0", "id":format!("req-{id}"), "method":"tools/call",
                 "params":{"name":"write_file","arguments":{"token":"MUST_NOT_BE_RETAINED"}}
             }).to_string())).unwrap();
-            let response = proxy_inner(state, req).await.unwrap();
+            let response = tokio::time::timeout(Duration::from_secs(2), proxy_inner(state, req))
+                .await
+                .expect("each refused request must return within two seconds")
+                .unwrap();
             assert_eq!(response.status(), StatusCode::OK);
             let body = response_json(response).await;
             assert_eq!(body["id"], format!("req-{id}"));
@@ -725,7 +727,6 @@ async fn refused_requests_preserve_ids_return_immediately_and_recover_once() {
         });
     }
     while let Some(result) = requests.join_next().await { result.unwrap(); }
-    assert!(start.elapsed() < Duration::from_secs(2));
     assert_eq!(hook.calls.load(Ordering::SeqCst), 1);
     assert_eq!(state.admission.available_permits(), MAX_IN_FLIGHT);
     let journal = serde_json::to_string(&state.performance.transport_snapshot(100)).unwrap();
