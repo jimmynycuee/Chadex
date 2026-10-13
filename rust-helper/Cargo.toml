@@ -38,3 +38,8 @@ windows-sys = { version = "0.61", features = [
 
 [dev-dependencies]
 tempfile = "3"
+
+[patch.crates-io]
+# Keep Windows loopback connection failures responsive without changing the
+# real reqwest error classification or retrying requests.
+hyper-util = { path = "vendor/hyper-util" }
