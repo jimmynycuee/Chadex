@@ -20,6 +20,7 @@ fn state(backend_url: String) -> IngressState {
         computer_safety: Arc::new(ComputerSafetyController::default()),
         armed: Arc::new(AtomicBool::new(true)),
         accepting: Arc::new(AtomicBool::new(true)),
+        test_backend_failure: None,
     }
 }
 fn request() -> Request<Body> {
@@ -684,12 +685,14 @@ async fn bodies_the_ingress_cannot_parse_are_not_forwarded() {
 
 struct CountingRecovery {
     calls: std::sync::atomic::AtomicUsize,
+    started: tokio::sync::Notify,
     release: tokio::sync::Notify,
 }
 impl BackendRecovery for CountingRecovery {
     fn recover(&self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
         Box::pin(async move {
             self.calls.fetch_add(1, Ordering::SeqCst);
+            self.started.notify_one();
             self.release.notified().await;
             false
         })
@@ -704,9 +707,14 @@ async fn refused_url() -> String {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn refused_requests_preserve_ids_return_immediately_and_recover_once() {
-    let hook = Arc::new(CountingRecovery { calls: 0.into(), release: tokio::sync::Notify::new() });
-    let mut state = state(refused_url().await);
+    let hook = Arc::new(CountingRecovery {
+        calls: 0.into(),
+        started: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+    });
+    let mut state = state("http://127.0.0.1:1/mcp".into());
     state.recovery = Some(BackendRecoveryGate::new(hook.clone()));
+    state.test_backend_failure = Some(BackendFailureKind::ConnectionRefused);
     let mut requests = tokio::task::JoinSet::new();
     for id in 0..20 {
         let state = state.clone();
@@ -727,6 +735,9 @@ async fn refused_requests_preserve_ids_return_immediately_and_recover_once() {
         });
     }
     while let Some(result) = requests.join_next().await { result.unwrap(); }
+    tokio::time::timeout(Duration::from_secs(2), hook.started.notified())
+        .await
+        .expect("single-flight recovery must start while requests are being answered");
     assert_eq!(hook.calls.load(Ordering::SeqCst), 1);
     assert_eq!(state.admission.available_permits(), MAX_IN_FLIGHT);
     let journal = serde_json::to_string(&state.performance.transport_snapshot(100)).unwrap();
@@ -737,6 +748,22 @@ async fn refused_requests_preserve_ids_return_immediately_and_recover_once() {
     let ingress_permits = state.admission.acquire_many(MAX_IN_FLIGHT as u32).await.unwrap();
     drop(ingress_permits);
     hook.release.notify_one();
+}
+
+#[tokio::test]
+async fn real_refused_backend_connection_is_classified_before_dispatch() {
+    let state = state(refused_url().await);
+    let response = tokio::time::timeout(Duration::from_secs(2), proxy_inner(state, request()))
+        .await
+        .expect("a single refused loopback connection must return within two seconds")
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    let output = &body["result"]["structuredContent"]["output"];
+    assert_eq!(output["error_kind"], "backend_connection_refused");
+    assert_eq!(output["execution_state"], "not_started");
+    assert_eq!(output["recovery_kind"], "user_action");
+    assert!(output.get("retry_after_secs").is_none());
 }
 
 #[tokio::test]

@@ -1,5 +1,5 @@
 use super::computer_safety::{ComputerAuthorization, ComputerSafetyController};
-use super::performance::{duration_us, now_ms, McpPerformanceTrace, PerformanceTraceStore, BackendFailureKind, TransportDiagnostic, RecoveryOutcome};
+use super::performance::{duration_us, now_ms, McpPerformanceTrace, PendingMcpTrace, PerformanceTraceStore, BackendFailureKind, TransportDiagnostic, RecoveryOutcome};
 use super::{ChadexError, ChadexResult};
 use axum::body::{to_bytes, Body, Bytes};
 use axum::extract::State;
@@ -209,6 +209,8 @@ struct IngressState {
     computer_safety: Arc<ComputerSafetyController>,
     armed: Arc<AtomicBool>,
     accepting: Arc<AtomicBool>,
+    #[cfg(test)]
+    test_backend_failure: Option<BackendFailureKind>,
 }
 
 pub struct McpIngress {
@@ -285,6 +287,8 @@ impl McpIngress {
             computer_safety: Arc::clone(&computer_safety),
             armed: Arc::clone(&armed),
             accepting: Arc::clone(&accepting),
+            #[cfg(test)]
+            test_backend_failure: None,
         };
         let app = Router::new()
             .route("/mcp", any(proxy))
@@ -503,6 +507,22 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
     });
     let trace_sequence = pending.sequence();
     let backend_started = Instant::now();
+    #[cfg(test)]
+    if let Some(kind) = state.test_backend_failure {
+        return Ok(backend_failure_for_ingress(
+            &state,
+            &body,
+            metadata,
+            pending,
+            trace_sequence,
+            started_at_ms,
+            ingress_pre_backend_us,
+            started,
+            backend_started,
+            kind,
+            None,
+        ));
+    }
     let upstream_result = if let Some(permit) = computer_dispatch_permit.as_ref() {
         let send = builder.send();
         tokio::pin!(send);
@@ -526,39 +546,19 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
         Ok(upstream) => upstream,
         Err(error) => {
             let (kind, os_code) = classify_backend_error(&error);
-            let mut diagnostic = TransportDiagnostic {
-                at_ms: now_ms(), trace_sequence, request_id_hashes: metadata.request_id_hashes.clone(),
-                error_kind: kind, os_error_code: os_code, elapsed_us: duration_us(backend_started.elapsed()),
-                generation: state.recovery.as_ref().map_or(0, |gate| gate.hook.generation()),
-                recovery: RecoveryOutcome::Unavailable,
-            };
-            if kind.not_started() {
-                if let Some(gate) = &state.recovery {
-                    diagnostic.recovery = gate.trigger(Arc::clone(&state.performance), diagnostic.clone());
-                }
-            }
-            let retryable = matches!(diagnostic.recovery, RecoveryOutcome::Started | RecoveryOutcome::InFlight | RecoveryOutcome::Cooldown);
-            state.performance.record_transport(diagnostic);
-            state.performance.push(McpPerformanceTrace {
-                sequence: trace_sequence,
+            return Ok(backend_failure_for_ingress(
+                &state,
+                &body,
+                metadata,
+                pending,
+                trace_sequence,
                 started_at_ms,
-                finished_at_ms: Some(now_ms()),
-                request_id_hashes: metadata.request_id_hashes,
-                server_trace_id: None,
-                methods: metadata.methods,
-                tool_names: metadata.tool_names,
-                tool_failed: None,
-                request_bytes: body.len().try_into().unwrap_or(u64::MAX),
-                response_bytes: 0,
-                status_code: None,
                 ingress_pre_backend_us,
-                backend_headers_us: duration_us(backend_started.elapsed()),
-                response_stream_us: 0,
-                total_us: duration_us(started.elapsed()),
-                completion: kind.as_str().to_string(),
-            });
-            pending.hand_off();
-            return Ok(backend_failure_response(&body, kind, retryable));
+                started,
+                backend_started,
+                kind,
+                os_code,
+            ));
         }
     };
     if let Some(permit) = computer_dispatch_permit.as_ref() {
@@ -622,6 +622,54 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
     response
         .body(Body::from_stream(stream))
         .map_err(|_| proxy_error())
+}
+
+fn backend_failure_for_ingress(
+    state: &IngressState,
+    body: &[u8],
+    metadata: McpMetadata,
+    mut pending: PendingMcpTrace,
+    trace_sequence: u64,
+    started_at_ms: u64,
+    ingress_pre_backend_us: u64,
+    started: Instant,
+    backend_started: Instant,
+    kind: BackendFailureKind,
+    os_code: Option<i32>,
+) -> Response<Body> {
+    let mut diagnostic = TransportDiagnostic {
+        at_ms: now_ms(), trace_sequence, request_id_hashes: metadata.request_id_hashes.clone(),
+        error_kind: kind, os_error_code: os_code, elapsed_us: duration_us(backend_started.elapsed()),
+        generation: state.recovery.as_ref().map_or(0, |gate| gate.hook.generation()),
+        recovery: RecoveryOutcome::Unavailable,
+    };
+    if kind.not_started() {
+        if let Some(gate) = &state.recovery {
+            diagnostic.recovery = gate.trigger(Arc::clone(&state.performance), diagnostic.clone());
+        }
+    }
+    let retryable = matches!(diagnostic.recovery, RecoveryOutcome::Started | RecoveryOutcome::InFlight | RecoveryOutcome::Cooldown);
+    state.performance.record_transport(diagnostic);
+    state.performance.push(McpPerformanceTrace {
+        sequence: trace_sequence,
+        started_at_ms,
+        finished_at_ms: Some(now_ms()),
+        request_id_hashes: metadata.request_id_hashes,
+        server_trace_id: None,
+        methods: metadata.methods,
+        tool_names: metadata.tool_names,
+        tool_failed: None,
+        request_bytes: body.len().try_into().unwrap_or(u64::MAX),
+        response_bytes: 0,
+        status_code: None,
+        ingress_pre_backend_us,
+        backend_headers_us: duration_us(backend_started.elapsed()),
+        response_stream_us: 0,
+        total_us: duration_us(started.elapsed()),
+        completion: kind.as_str().to_string(),
+    });
+    pending.hand_off();
+    backend_failure_response(body, kind, retryable)
 }
 
 fn ingress_rejection(status: StatusCode) -> Response<Body> {

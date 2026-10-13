@@ -104,8 +104,7 @@ try {
 
     Write-Host "== Compile and test the desktop helper on Windows =="
     Invoke-NativeChecked -FilePath "cargo" -Arguments @(
-        "test", "--locked", "--manifest-path", "rust-helper/Cargo.toml",
-        "--", "--test-threads=1"
+        "test", "--locked", "--manifest-path", "rust-helper/Cargo.toml"
     )
 
     Write-Host "== Run Windows helper EOF and blocked-stdin process cleanup tests =="
