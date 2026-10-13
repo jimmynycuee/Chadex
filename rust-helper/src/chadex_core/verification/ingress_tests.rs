@@ -816,7 +816,7 @@ async fn raw_interrupted_backend(stream: bool, sse: bool, counter: Arc<std::sync
 async fn unknown_write_before_headers_is_never_replayed_or_recovered() {
     let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let (url, server) = raw_interrupted_backend(false, false, counter.clone()).await;
-    let hook = Arc::new(CountingRecovery { calls: 0.into(), release: tokio::sync::Notify::new() });
+    let hook = Arc::new(CountingRecovery { calls: 0.into(), started: tokio::sync::Notify::new(), release: tokio::sync::Notify::new() });
     let mut state = state(url);
     state.recovery = Some(BackendRecoveryGate::new(hook.clone()));
     let body = response_json(proxy_inner(state.clone(), Request::builder().method("POST").body(Body::from(
@@ -895,7 +895,7 @@ async fn connect_establishment_timeout_stays_unknown_and_does_not_recover() {
         let (_socket, _) = listener.accept().await.unwrap();
         std::future::pending::<()>().await;
     });
-    let hook = Arc::new(CountingRecovery { calls: 0.into(), release: tokio::sync::Notify::new() });
+    let hook = Arc::new(CountingRecovery { calls: 0.into(), started: tokio::sync::Notify::new(), release: tokio::sync::Notify::new() });
     let mut state = state(url);
     state.client = Client::builder().no_proxy().connect_timeout(Duration::from_millis(50)).build().unwrap();
     state.recovery = Some(BackendRecoveryGate::new(hook.clone()));
@@ -910,7 +910,7 @@ async fn connect_establishment_timeout_stays_unknown_and_does_not_recover() {
 
 #[tokio::test]
 async fn recovery_deadline_cancels_hook_and_releases_single_flight_slot() {
-    let hook = Arc::new(CountingRecovery { calls: 0.into(), release: tokio::sync::Notify::new() });
+    let hook = Arc::new(CountingRecovery { calls: 0.into(), started: tokio::sync::Notify::new(), release: tokio::sync::Notify::new() });
     let gate = BackendRecoveryGate::new(hook.clone());
     let store = Arc::new(PerformanceTraceStore::default());
     let diagnostic = TransportDiagnostic {
