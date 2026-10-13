@@ -20,7 +20,9 @@ use super::tool_result::{RecoveryKind, ToolResult};
 use super::{runner_project_runtime_id, ToolRuntime};
 use crate::auth::{AuthContext, SCOPE_PROJECT_READ};
 use crate::runner_http::{RunnerFeature, RunnerSemanticView};
-use crate::runner_protocol::{RunnerProjectSummary, RUNNER_CAPABILITY_PROJECT_PATH_REGISTRATION};
+use crate::runner_protocol::{
+    RunnerProjectLineage, RunnerProjectSummary, RUNNER_CAPABILITY_PROJECT_PATH_REGISTRATION,
+};
 
 /// Maximum time the runtime waits for a Runner project-op response. Project
 /// operations are fast (write a small TOML, maybe create a directory + git
@@ -322,6 +324,14 @@ impl ToolRuntime {
             .runner_registry
             .count_active_jobs_for_projects(access.as_ref(), &project_ids)
             .await;
+        // Marked, never hidden: the app's project is operator-written and,
+        // resolved exactly as plan_start's default, only labels an entry this
+        // caller can already see and would default to.
+        let app_active_project = match self.app_active_project_for_auth(auth).await {
+            Some(Ok(id)) => Some(id),
+            _ => None,
+        };
+        let mut active_project = None;
 
         let mut list = Vec::with_capacity(candidates.len());
         for ProjectCandidate {
@@ -367,6 +377,17 @@ impl ToolRuntime {
                 .get(&runtime_id)
                 .copied()
                 .unwrap_or(0);
+            let active = app_active_project.as_deref() == Some(runtime_id.as_str());
+            if active {
+                active_project = Some(json!({"id": runtime_id, "name": project.name}));
+            }
+            // Explicit persisted lineage only (Goal/managed worktrees), never
+            // inferred from paths or names.
+            let source_project = project.lineage.as_ref().map(|lineage| match lineage {
+                RunnerProjectLineage::ManagedWorktreeSource {
+                    source_project_id, ..
+                } => runner_project_runtime_id(&client_id, source_project_id),
+            });
             let value = if options.summary_only {
                 json!({
                     "id": runtime_id,
@@ -377,6 +398,9 @@ impl ToolRuntime {
                     "client_id": client_id,
                     "enabled": !project.disabled,
                     "active_jobs": active_jobs,
+                    "active": active,
+                    "managed_worktree": source_project.is_some(),
+                    "source_project": source_project,
                     "source": project_source(&project),
                     // Runtime Console and CLI ops consume this established list_projects key.
                     "agent_status": runner_status,
@@ -402,6 +426,9 @@ impl ToolRuntime {
                     "disabled": project.disabled,
                     "revision": project.revision,
                     "active_jobs": active_jobs,
+                    "active": active,
+                    "managed_worktree": source_project.is_some(),
+                    "source_project": source_project,
                     "source": project_source(&project),
                     // Runtime Console and CLI ops consume this established list_projects key.
                     "agent_status": runner_status,
@@ -414,6 +441,19 @@ impl ToolRuntime {
                 })
             };
             list.push(value);
+        }
+        if active_project.is_none() {
+            // A query/limit may leave the app's project out of this page; it is
+            // still reported when this caller can see it.
+            if let Some(id) = app_active_project.as_deref() {
+                active_project = clients.iter().find_map(|client| {
+                    client.view.projects.iter().find_map(|project| {
+                        (!project.disabled
+                            && runner_project_runtime_id(&client.view.client_id, &project.id) == id)
+                            .then(|| json!({"id": id, "name": project.name}))
+                    })
+                });
+            }
         }
         let recommended_for_smoke: Vec<Value> = list
             .iter()
@@ -428,6 +468,9 @@ impl ToolRuntime {
             "count": list.len(),
             "matched_count": matched_count,
             "truncated": truncated,
+            // The project open in the Chadex app; plan_start and direct
+            // goal_run_start use it when project is omitted.
+            "active_project": active_project,
             "projects": list,
             "recommended_for_smoke": recommended_for_smoke,
         }))

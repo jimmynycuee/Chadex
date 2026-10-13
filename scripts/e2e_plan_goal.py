@@ -257,7 +257,8 @@ sleep {AGENT_SLEEP}
     ok_w, handed = chatgpt.call("plan_wait_approval", {"plan_id": plan_id, "wait_secs": 5})
     ok_x, model_goal = chatgpt.call("goal_run_start", {"plan_id": plan_id})
     step("plan_handed_to_chatgpt", ok=ok_w, status=handed.get("status"),
-         model_cannot_start_goal=(not ok_x and model_goal.get("error_kind") == "goal_not_started"))
+         model_cannot_start_goal=(not ok_x and model_goal.get("error_kind") in ("goal_not_started", "not_a_goal")),
+         model_start_error=model_goal.get("error_kind"))
 
     # ---------------- Goal Mode (Codex), started in the app ----------------
     ok, started = operator(helper, project, "plan_review", {"action": "approve_and_start", "plan_id": plan_id,

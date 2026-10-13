@@ -2417,7 +2417,7 @@ impl ToolRuntime {
                         .await
                 }
                 _ => ToolResult::err_with_output(
-                    "Pass either plan_id (to find a Goal the user started) or project + title + objective + acceptance (a direct Goal request), not both",
+                    "Pass either plan_id (to find a Goal the user started) or title + objective + acceptance with an optional project (a direct Goal request), not both",
                     serde_json::json!({"error_kind": "invalid_arguments", "state_changed": false}),
                 )
                 .with_recovery(super::RecoveryKind::FixInput),
@@ -2472,9 +2472,10 @@ impl ToolRuntime {
             ToolCall::GoalOperator {
                 action,
                 goal_run_id,
+                project,
                 reason,
             } => {
-                self.goal_operator(auth, transport, action, goal_run_id, reason)
+                self.goal_operator(auth, transport, action, goal_run_id, reason, project)
                     .await
             }
 

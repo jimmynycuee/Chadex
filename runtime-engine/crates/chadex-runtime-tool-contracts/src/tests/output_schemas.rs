@@ -99,6 +99,55 @@ fn suggested_tool_call_schema_recognizer_is_strict_and_structural() {
 }
 
 #[test]
+fn plan_mode_suggested_call_contracts_preserve_identity_and_origin_routes() {
+    let plan_save = output_schema_for_tool("plan_save");
+    let save_calls = &plan_save["properties"]["output"]["properties"]["suggested_call"]["anyOf"];
+    assert_eq!(save_calls[0]["properties"]["tool"]["const"], "plan_wait_approval");
+    assert_eq!(save_calls[1]["properties"]["tool"]["const"], "goal_run_list");
+    let wait_arguments = &save_calls[0]["properties"]["arguments"];
+    assert_eq!(
+        wait_arguments["required"],
+        json!(["plan_id", "wait_secs"])
+    );
+    assert_eq!(
+        wait_arguments["properties"]["plan_id"]["pattern"],
+        "^wc_plan_[A-Za-z0-9_-]{12,32}$"
+    );
+    assert_eq!(wait_arguments["properties"]["wait_secs"]["const"], 45);
+
+    let plan_wait = output_schema_for_tool("plan_wait_approval");
+    let wait_output = &plan_wait["properties"]["output"];
+    assert_eq!(
+        wait_output["allOf"][0]["if"]["properties"]["status"]["const"],
+        "waiting"
+    );
+    assert_eq!(
+        wait_output["allOf"][1]["if"]["properties"]["error_kind"]["const"],
+        "not_a_plan"
+    );
+    assert_eq!(
+        wait_output["allOf"][2]["then"]["not"]["required"],
+        json!(["suggested_call"])
+    );
+    assert_eq!(
+        wait_output["allOf"][3]["then"]["not"]["required"],
+        json!(["next"])
+    );
+
+    let goal_operator = lookup_tool_definition("goal_operator")
+        .expect("goal_operator tool definition");
+    assert_eq!(goal_operator.visibility, ToolVisibility::ModelHidden);
+    assert!(!registered_tool_specs().iter().any(|spec| spec.name == "goal_operator"));
+    let input_schema = (goal_operator.model_spec.expect("operator schema").input_schema)();
+    assert!(input_schema["properties"]["project"].is_object());
+    assert!(!input_schema["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field == "project"));
+}
+
+#[test]
 fn observation_schemas_do_not_repeat_static_continuation_semantics() {
     let specs = registered_tool_specs();
     for name in [

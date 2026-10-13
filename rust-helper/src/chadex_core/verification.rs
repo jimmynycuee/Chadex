@@ -1,7 +1,7 @@
 use super::computer_safety::{ComputerAuthorization, ComputerSafetyController};
-use super::performance::{duration_us, now_ms, McpPerformanceTrace, PerformanceTraceStore};
+use super::performance::{duration_us, now_ms, McpPerformanceTrace, PendingMcpTrace, PerformanceTraceStore, BackendFailureKind, TransportDiagnostic, RecoveryOutcome};
 use super::{ChadexError, ChadexResult};
-use axum::body::{to_bytes, Body};
+use axum::body::{to_bytes, Body, Bytes};
 use axum::extract::State;
 use axum::http::{header, HeaderMap, Method, Request, Response, StatusCode};
 use axum::routing::any;
@@ -11,11 +11,12 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex as StdMutex, RwLock};
 use std::task::{Context, Poll};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::net::TcpListener;
 use tokio::sync::{oneshot, OwnedSemaphorePermit, Semaphore};
 
@@ -28,6 +29,79 @@ const MAX_IN_FLIGHT: usize = 32;
 const REQUEST_BODY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const HELPER_INGRESS_STARTED_UNIX_NS_HEADER: &str = "x-chadex-helper-ingress-started-unix-ns";
 const HELPER_INGRESS_PRE_BACKEND_US_HEADER: &str = "x-chadex-helper-ingress-pre-backend-us";
+const BACKEND_RECOVERY_WAIT: Duration = Duration::from_secs(45);
+const BACKEND_RECOVERY_COOLDOWN: Duration = Duration::from_secs(3);
+const BACKEND_RESTARTING_RETRY_AFTER_SECONDS: u64 = 5;
+const MAX_BACKEND_RECOVERIES: u8 = 3;
+
+/// Recovery only restores the configured runtime; it never replays a request.
+pub trait BackendRecovery: Send + Sync + 'static {
+    fn recover(&self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>>;
+    fn generation(&self) -> u64 { 0 }
+    fn backend_succeeded(&self) {}
+}
+
+struct BackendRecoveryGate {
+    hook: Arc<dyn BackendRecovery>,
+    state: StdMutex<BackendRecoveryState>,
+}
+
+#[derive(Default)]
+struct BackendRecoveryState {
+    in_flight: bool,
+    last: Option<Instant>,
+    attempts: u8,
+}
+
+impl BackendRecoveryGate {
+    fn new(hook: Arc<dyn BackendRecovery>) -> Arc<Self> {
+        Arc::new(Self { hook, state: StdMutex::default() })
+    }
+
+    fn backend_succeeded(&self) {
+        self.state.lock().unwrap_or_else(|p| p.into_inner()).attempts = 0;
+        self.hook.backend_succeeded();
+    }
+
+    /// Returns immediately, releasing ingress admission before recovery can drain it.
+    fn trigger(self: &Arc<Self>, store: Arc<PerformanceTraceStore>, diagnostic: TransportDiagnostic) -> RecoveryOutcome {
+        self.trigger_with_deadline(store, diagnostic, BACKEND_RECOVERY_WAIT)
+    }
+
+    fn trigger_with_deadline(self: &Arc<Self>, store: Arc<PerformanceTraceStore>, mut diagnostic: TransportDiagnostic, deadline: Duration) -> RecoveryOutcome {
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        if state.in_flight { return RecoveryOutcome::InFlight; }
+        if state.last.is_some_and(|last| last.elapsed() < BACKEND_RECOVERY_COOLDOWN) { return RecoveryOutcome::Cooldown; }
+        if state.attempts >= MAX_BACKEND_RECOVERIES { return RecoveryOutcome::Exhausted; }
+        state.attempts += 1;
+        state.in_flight = true;
+        let gate = Arc::clone(self);
+        tokio::spawn(async move {
+            let started = Instant::now();
+            let hook = Arc::clone(&gate.hook);
+            let mut task = tokio::spawn(async move { hook.recover().await });
+            let outcome = match tokio::time::timeout(deadline, &mut task).await {
+                Ok(Ok(true)) => RecoveryOutcome::Ready,
+                Ok(_) => RecoveryOutcome::Failed,
+                Err(_) => {
+                    task.abort();
+                    let _ = task.await;
+                    RecoveryOutcome::TimedOut
+                }
+            };
+            {
+                let mut state = gate.state.lock().unwrap_or_else(|p| p.into_inner());
+                state.in_flight = false;
+                state.last = Some(Instant::now());
+            }
+            diagnostic.at_ms = now_ms();
+            diagnostic.elapsed_us = duration_us(started.elapsed());
+            diagnostic.recovery = outcome;
+            store.record_transport(diagnostic);
+        });
+        RecoveryOutcome::Started
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct VerificationSnapshot {
@@ -127,6 +201,7 @@ impl VerificationTracker {
 #[derive(Clone)]
 struct IngressState {
     backend_url: String,
+    recovery: Option<Arc<BackendRecoveryGate>>,
     client: Client,
     admission: Arc<Semaphore>,
     tracker: Arc<VerificationTracker>,
@@ -134,6 +209,8 @@ struct IngressState {
     computer_safety: Arc<ComputerSafetyController>,
     armed: Arc<AtomicBool>,
     accepting: Arc<AtomicBool>,
+    #[cfg(test)]
+    test_backend_failure: Option<BackendFailureKind>,
 }
 
 pub struct McpIngress {
@@ -166,6 +243,16 @@ impl McpIngress {
         performance: Arc<PerformanceTraceStore>,
         computer_safety: Arc<ComputerSafetyController>,
     ) -> ChadexResult<Self> {
+        Self::start_with_safety_and_recovery(backend_url, tracker, performance, computer_safety, None).await
+    }
+
+    pub async fn start_with_safety_and_recovery(
+        backend_url: String,
+        tracker: Arc<VerificationTracker>,
+        performance: Arc<PerformanceTraceStore>,
+        computer_safety: Arc<ComputerSafetyController>,
+        recovery: Option<Arc<dyn BackendRecovery>>,
+    ) -> ChadexResult<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|_| {
             ChadexError::new(
                 "ingress_unavailable",
@@ -182,6 +269,7 @@ impl McpIngress {
         })?;
         let client = Client::builder()
             .connect_timeout(std::time::Duration::from_secs(5))
+            .retry(reqwest::retry::never())
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .build()
@@ -191,6 +279,7 @@ impl McpIngress {
         let admission = Arc::new(Semaphore::new(MAX_IN_FLIGHT));
         let state = IngressState {
             backend_url,
+            recovery: recovery.map(BackendRecoveryGate::new),
             client,
             admission: Arc::clone(&admission),
             tracker,
@@ -198,6 +287,8 @@ impl McpIngress {
             computer_safety: Arc::clone(&computer_safety),
             armed: Arc::clone(&armed),
             accepting: Arc::clone(&accepting),
+            #[cfg(test)]
+            test_backend_failure: None,
         };
         let app = Router::new()
             .route("/mcp", any(proxy))
@@ -416,6 +507,22 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
     });
     let trace_sequence = pending.sequence();
     let backend_started = Instant::now();
+    #[cfg(test)]
+    if let Some(kind) = state.test_backend_failure {
+        return Ok(backend_failure_for_ingress(
+            &state,
+            &body,
+            metadata,
+            pending,
+            trace_sequence,
+            started_at_ms,
+            ingress_pre_backend_us,
+            started,
+            backend_started,
+            kind,
+            None,
+        ));
+    }
     let upstream_result = if let Some(permit) = computer_dispatch_permit.as_ref() {
         let send = builder.send();
         tokio::pin!(send);
@@ -437,26 +544,21 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
     };
     let upstream = match upstream_result {
         Ok(upstream) => upstream,
-        Err(_) => {
-            state.performance.push(McpPerformanceTrace {
-                sequence: trace_sequence,
+        Err(error) => {
+            let (kind, os_code) = classify_backend_error(&error);
+            return Ok(backend_failure_for_ingress(
+                &state,
+                &body,
+                metadata,
+                pending,
+                trace_sequence,
                 started_at_ms,
-                finished_at_ms: Some(now_ms()),
-                request_id_hashes: metadata.request_id_hashes,
-                server_trace_id: None,
-                methods: metadata.methods,
-                tool_names: metadata.tool_names,
-                tool_failed: None,
-                request_bytes: body.len().try_into().unwrap_or(u64::MAX),
-                response_bytes: 0,
-                status_code: None,
                 ingress_pre_backend_us,
-                backend_headers_us: duration_us(backend_started.elapsed()),
-                response_stream_us: 0,
-                total_us: duration_us(started.elapsed()),
-                completion: "backend_error".to_string(),
-            });
-            return Err(proxy_error());
+                started,
+                backend_started,
+                kind,
+                os_code,
+            ));
         }
     };
     if let Some(permit) = computer_dispatch_permit.as_ref() {
@@ -465,19 +567,20 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
     let backend_headers_us = duration_us(backend_started.elapsed());
     let status = upstream.status();
     let headers = upstream.headers().clone();
-    let evidence = if armed && status.is_success() {
+    let evidence = if status.is_success() {
         ResponseEvidence::new(
             &body,
             &headers,
             Arc::clone(&state.tracker),
             verification_epoch,
-        )
+        ).map(|mut evidence| { evidence.set_verification_enabled(armed); evidence })
     } else {
         None
     };
     pending.hand_off();
     let stream = TracedResponseStream::new(
-        upstream.bytes_stream(),
+        BackendResponseStream::new(upstream.bytes_stream(), headers.get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("application/json"))),
         Arc::clone(&state.performance),
         McpPerformanceTrace {
             sequence: trace_sequence,
@@ -500,6 +603,11 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
         started,
         evidence,
         permit,
+        StreamFailureContext {
+            request: request_identity(&body),
+            sse: headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("text/event-stream")),
+            recovery: state.recovery.clone(),
+        },
     );
     let mut response = Response::builder().status(status);
     for (name, value) in headers.iter() {
@@ -516,6 +624,54 @@ async fn proxy_inner(state: IngressState, request: Request<Body>) -> ChadexResul
         .map_err(|_| proxy_error())
 }
 
+fn backend_failure_for_ingress(
+    state: &IngressState,
+    body: &[u8],
+    metadata: McpMetadata,
+    mut pending: PendingMcpTrace,
+    trace_sequence: u64,
+    started_at_ms: u64,
+    ingress_pre_backend_us: u64,
+    started: Instant,
+    backend_started: Instant,
+    kind: BackendFailureKind,
+    os_code: Option<i32>,
+) -> Response<Body> {
+    let mut diagnostic = TransportDiagnostic {
+        at_ms: now_ms(), trace_sequence, request_id_hashes: metadata.request_id_hashes.clone(),
+        error_kind: kind, os_error_code: os_code, elapsed_us: duration_us(backend_started.elapsed()),
+        generation: state.recovery.as_ref().map_or(0, |gate| gate.hook.generation()),
+        recovery: RecoveryOutcome::Unavailable,
+    };
+    if kind.not_started() {
+        if let Some(gate) = &state.recovery {
+            diagnostic.recovery = gate.trigger(Arc::clone(&state.performance), diagnostic.clone());
+        }
+    }
+    let retryable = matches!(diagnostic.recovery, RecoveryOutcome::Started | RecoveryOutcome::InFlight | RecoveryOutcome::Cooldown);
+    state.performance.record_transport(diagnostic);
+    state.performance.push(McpPerformanceTrace {
+        sequence: trace_sequence,
+        started_at_ms,
+        finished_at_ms: Some(now_ms()),
+        request_id_hashes: metadata.request_id_hashes,
+        server_trace_id: None,
+        methods: metadata.methods,
+        tool_names: metadata.tool_names,
+        tool_failed: None,
+        request_bytes: body.len().try_into().unwrap_or(u64::MAX),
+        response_bytes: 0,
+        status_code: None,
+        ingress_pre_backend_us,
+        backend_headers_us: duration_us(backend_started.elapsed()),
+        response_stream_us: 0,
+        total_us: duration_us(started.elapsed()),
+        completion: kind.as_str().to_string(),
+    });
+    pending.hand_off();
+    backend_failure_response(body, kind, retryable)
+}
+
 fn ingress_rejection(status: StatusCode) -> Response<Body> {
     Response::builder()
         .status(status)
@@ -527,6 +683,85 @@ fn ingress_rejection(status: StatusCode) -> Response<Body> {
         .expect("static rejection response")
 }
 
+fn io_error_code(error: &(dyn std::error::Error + 'static)) -> (Option<std::io::ErrorKind>, Option<i32>) {
+    let mut source = Some(error);
+    let mut kind = None;
+    while let Some(error) = source {
+        if let Some(io) = error.downcast_ref::<std::io::Error>() {
+            kind = Some(io.kind());
+            if io.raw_os_error().is_some() { return (kind, io.raw_os_error()); }
+        }
+        source = error.source();
+    }
+    (kind, None)
+}
+
+fn classify_backend_error(error: &reqwest::Error) -> (BackendFailureKind, Option<i32>) {
+    let (io_kind, code) = io_error_code(error);
+    classify_backend_error_details(error.is_connect(), error.is_timeout(), io_kind, code)
+}
+
+fn classify_backend_error_details(
+    is_connect: bool,
+    is_timeout: bool,
+    io_kind: Option<std::io::ErrorKind>,
+    code: Option<i32>,
+) -> (BackendFailureKind, Option<i32>) {
+    let kind = if is_connect && io_kind == Some(std::io::ErrorKind::ConnectionRefused) {
+        BackendFailureKind::ConnectionRefused
+    } else if is_connect && is_timeout {
+        BackendFailureKind::ConnectTimeout
+    } else {
+        BackendFailureKind::HeadersInterrupted
+    };
+    (kind, code)
+}
+
+/// Keep only the in-memory identity necessary to answer; never retain arguments.
+fn request_identity(body: &[u8]) -> Value {
+    fn one(value: &Value) -> Value {
+        json!({"id": value.get("id").cloned().unwrap_or(Value::Null), "method": value.get("method")})
+    }
+    let value = serde_json::from_slice::<Value>(body).unwrap_or(Value::Null);
+    match value {
+        Value::Array(items) => Value::Array(items.iter().filter(|v| v.get("id").is_some()).map(one).collect()),
+        value => one(&value),
+    }
+}
+
+fn backend_failure_value(identity: &Value, kind: BackendFailureKind, retryable: bool) -> Value {
+    if let Value::Array(items) = identity {
+        return Value::Array(items.iter().map(|id| backend_failure_value(id, kind, retryable)).collect());
+    }
+    let message = if kind.not_started() {
+        "The local runtime refused the connection before dispatch. Nothing was executed. Recovery may be in progress; retry only a safe observation when retry_after_secs is present."
+    } else {
+        "The local runtime connection was interrupted. The operation may have executed. Reconcile the affected state before retrying; this request was not replayed."
+    };
+    let mut output = json!({
+        "error_kind": kind.as_str(), "failure_kind": kind.as_str(), "message": message,
+        "execution_state": if kind.not_started() { "not_started" } else { "outcome_unknown" },
+        "dispatch_certainty": if kind.not_started() { "not_started" } else { "unknown" },
+        "recovery_kind": if retryable { "retry" } else if kind.not_started() { "user_action" } else { "reobserve" },
+    });
+    if retryable { output["retry_after_secs"] = json!(BACKEND_RESTARTING_RETRY_AFTER_SECONDS); }
+    let id = identity.get("id").cloned().unwrap_or(Value::Null);
+    if identity.get("method").and_then(Value::as_str) == Some("tools/call") {
+        json!({"jsonrpc":"2.0", "id": id, "result": {
+            "content": [{"type":"text", "text":message}],
+            "structuredContent": {"success":false, "output":output}, "isError":true
+        }})
+    } else {
+        json!({"jsonrpc":"2.0", "id": id, "error": {"code":-32603, "message":message, "data":output}})
+    }
+}
+
+fn backend_failure_response(body: &[u8], kind: BackendFailureKind, retryable: bool) -> Response<Body> {
+    Response::builder().status(StatusCode::OK).header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(backend_failure_value(&request_identity(body), kind, retryable).to_string()))
+        .expect("static backend failure envelope")
+}
+
 struct TracedResponseStream<S> {
     inner: Pin<Box<S>>,
     store: Arc<PerformanceTraceStore>,
@@ -535,6 +770,9 @@ struct TracedResponseStream<S> {
     headers_at: Instant,
     evidence: Option<ResponseEvidence>,
     permit: Option<OwnedSemaphorePermit>,
+    failure: StreamFailureContext,
+    emitted: bool,
+    failed: bool,
 }
 
 impl<S> Unpin for TracedResponseStream<S> {}
@@ -547,6 +785,7 @@ impl<S> TracedResponseStream<S> {
         started: Instant,
         evidence: Option<ResponseEvidence>,
         permit: OwnedSemaphorePermit,
+        failure: StreamFailureContext,
     ) -> Self {
         Self {
             inner: Box::pin(stream),
@@ -556,6 +795,9 @@ impl<S> TracedResponseStream<S> {
             headers_at: Instant::now(),
             evidence,
             permit: Some(permit),
+            failure,
+            emitted: false,
+            failed: false,
         }
     }
 
@@ -573,35 +815,103 @@ impl<S> TracedResponseStream<S> {
     }
 }
 
-impl<S, T, E> Stream for TracedResponseStream<S>
-where
-    S: Stream<Item = Result<T, E>>,
-    T: AsRef<[u8]>,
-{
-    type Item = Result<T, E>;
+struct StreamFailureContext {
+    request: Value,
+    sse: bool,
+    recovery: Option<Arc<BackendRecoveryGate>>,
+}
 
+/// JSON must remain atomic: a truncated success document cannot be repaired
+/// after bytes have been sent. SSE stays streaming for long polling.
+struct BackendResponseStream<S> {
+    inner: Pin<Box<S>>,
+    json: bool,
+    buffer: Vec<u8>,
+    done: bool,
+}
+impl<S> Unpin for BackendResponseStream<S> {}
+impl<S> BackendResponseStream<S> {
+    fn new(inner: S, json: bool) -> Self { Self { inner: Box::pin(inner), json, buffer: Vec::new(), done: false } }
+}
+impl<S> Stream for BackendResponseStream<S>
+where S: Stream<Item = Result<Bytes, reqwest::Error>> {
+    type Item = Result<Bytes, std::io::Error>;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
+        if this.done { return Poll::Ready(None); }
+        loop {
+            match this.inner.as_mut().poll_next(cx) {
+                Poll::Ready(Some(Ok(chunk))) if this.json => {
+                    if this.buffer.len().saturating_add(chunk.len()) > MAX_REQUEST_BYTES {
+                        this.done = true;
+                        this.buffer.clear();
+                        return Poll::Ready(Some(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "backend_response_too_large"))));
+                    }
+                    this.buffer.extend_from_slice(&chunk);
+                }
+                Poll::Ready(Some(Ok(chunk))) => return Poll::Ready(Some(Ok(chunk))),
+                Poll::Ready(Some(Err(error))) => {
+                    this.done = true;
+                    this.buffer.clear();
+                    return Poll::Ready(Some(Err(std::io::Error::other(error))));
+                }
+                Poll::Ready(None) => {
+                    this.done = true;
+                    if this.json { return Poll::Ready(Some(Ok(Bytes::from(std::mem::take(&mut this.buffer))))); }
+                    return Poll::Ready(None);
+                }
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+    }
+}
+
+impl<S, E> Stream for TracedResponseStream<S>
+where S: Stream<Item = Result<Bytes, E>>, E: std::error::Error + 'static {
+    type Item = Result<Bytes, E>;
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        if this.failed { return Poll::Ready(None); }
         match this.inner.as_mut().poll_next(cx) {
             Poll::Ready(Some(Ok(chunk))) => {
-                if let Some(evidence) = this.evidence.as_mut() {
-                    evidence.push(chunk.as_ref());
-                }
+                this.emitted = true;
+                if let Some(evidence) = this.evidence.as_mut() { evidence.push(&chunk); }
                 if let Some(trace) = this.trace.as_mut() {
-                    trace.response_bytes = trace
-                        .response_bytes
-                        .saturating_add(chunk.as_ref().len().try_into().unwrap_or(u64::MAX));
+                    trace.response_bytes = trace.response_bytes.saturating_add(chunk.len() as u64);
                 }
                 Poll::Ready(Some(Ok(chunk)))
             }
             Poll::Ready(Some(Err(error))) => {
-                this.finish("stream_error");
-                Poll::Ready(Some(Err(error)))
+                this.failed = true;
+                let unanswered = this.evidence.as_ref().map_or_else(|| this.failure.request.clone(),
+                    |evidence| evidence.unanswered(&this.failure.request));
+                if let Some(trace) = this.trace.as_ref() {
+                    this.store.record_transport(TransportDiagnostic {
+                        at_ms: now_ms(), trace_sequence: trace.sequence,
+                        request_id_hashes: trace.request_id_hashes.clone(),
+                        error_kind: BackendFailureKind::StreamInterrupted,
+                        os_error_code: io_error_code(&error).1, elapsed_us: duration_us(this.started.elapsed()),
+                        generation: this.failure.recovery.as_ref().map_or(0, |gate| gate.hook.generation()),
+                        recovery: RecoveryOutcome::Unavailable,
+                    });
+                }
+                this.finish(BackendFailureKind::StreamInterrupted.as_str());
+                if unanswered.as_array().is_some_and(Vec::is_empty) {
+                    // A complete upstream answer already reached the client.
+                    // Do not overwrite it with a second answer for the same id.
+                    return Poll::Ready(None);
+                }
+                if this.failure.sse || !this.emitted {
+                    let value = backend_failure_value(&unanswered, BackendFailureKind::StreamInterrupted, false);
+                    let bytes = if this.failure.sse { format!("\n\nevent: message\ndata: {value}\n\n") } else { value.to_string() };
+                    Poll::Ready(Some(Ok(Bytes::from(bytes))))
+                } else {
+                    Poll::Ready(Some(Err(error)))
+                }
             }
             Poll::Ready(None) => {
-                if let Some(evidence) = this.evidence.as_mut() {
-                    evidence.finish();
-                }
+                if let Some(evidence) = this.evidence.as_mut() { evidence.finish(); }
+                if let Some(gate) = &this.failure.recovery { gate.backend_succeeded(); }
                 this.finish("completed");
                 Poll::Ready(None)
             }
@@ -926,6 +1236,23 @@ mod ingress_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backend_connect_errors_preserve_dispatch_certainty() {
+        assert_eq!(
+            classify_backend_error_details(
+                true,
+                false,
+                Some(std::io::ErrorKind::ConnectionRefused),
+                None,
+            ),
+            (BackendFailureKind::ConnectionRefused, None),
+        );
+        assert_eq!(
+            classify_backend_error_details(true, true, Some(std::io::ErrorKind::TimedOut), None),
+            (BackendFailureKind::ConnectTimeout, None),
+        );
+    }
 
     #[test]
     fn methods_are_detected_for_single_and_batch_json_rpc() {

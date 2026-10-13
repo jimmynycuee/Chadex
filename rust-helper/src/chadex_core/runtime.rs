@@ -1,6 +1,7 @@
 use super::activity::RuntimeActivityEntry;
 use super::backend::RuntimeBackendApi;
 use super::tunnel::RuntimeTunnelTarget;
+use super::runtime_compat::operation::CancellationSignal;
 use super::ChadexResult;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -127,6 +128,14 @@ impl ChadexRuntimeCore {
 
     pub async fn resume_saved_runtime_background(&self) -> ChadexResult<RuntimeSnapshot> {
         self.backend.resume_saved_runtime_background().await
+    }
+
+    pub(crate) async fn recover_saved_runtime_background(
+        &self,
+        project_path: &str,
+        cancellation: &CancellationSignal,
+    ) -> ChadexResult<RuntimeSnapshot> {
+        self.backend.recover_saved_runtime_background(project_path, cancellation).await
     }
 
     pub async fn cancel_background_operation(&self) {

@@ -899,6 +899,23 @@ impl Database {
         ttl_ms: i64,
         now: i64,
     ) -> Result<PlanDecisionRecord, PlanStoreError> {
+        self.plan_approve_with(plan_id, revision, content_sha256, binding, approver, ttl_ms, true, now)
+    }
+
+    /// As `plan_approve`, but a plan that ChatGPT implements itself needs no
+    /// acceptance check; only approval for Goal Mode does.
+    #[allow(clippy::too_many_arguments)]
+    pub fn plan_approve_with(
+        &self,
+        plan_id: &str,
+        revision: i64,
+        content_sha256: &str,
+        binding: PlanApprovalBinding,
+        approver: &str,
+        ttl_ms: i64,
+        require_acceptance: bool,
+        now: i64,
+    ) -> Result<PlanDecisionRecord, PlanStoreError> {
         validate_key(plan_id, "plan_id")?;
         validate_key(approver, "approver")?;
         for (value, field) in [
@@ -920,7 +937,7 @@ impl Database {
             return Err(PlanStoreError::new("plan_closed", "This plan is closed"));
         }
         let record = check_reviewable_revision(&tx, &plan, revision, content_sha256)?;
-        if record.spec.acceptance.is_empty() {
+        if require_acceptance && record.spec.acceptance.is_empty() {
             return Err(PlanStoreError::new(
                 "plan_missing_acceptance",
                 "A plan needs at least one acceptance check before it can be approved for Goal Mode",

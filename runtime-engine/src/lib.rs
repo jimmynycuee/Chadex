@@ -274,6 +274,7 @@ only for local/trusted-network demos."
             .with_window_activity_database(db.clone())
             .with_memory_database(db.clone())
             .with_communication_database(db.clone())
+            .with_app_active_project_file(tool_runtime::app_active_project_file_from_env())
             .with_session_ledger(config.session_ledger_path())
             .with_persistent_coding_agent_observation_state(&runtime_state_dir)
             .map_err(std::io::Error::other)?;

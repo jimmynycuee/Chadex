@@ -117,6 +117,21 @@ pub(super) fn ensure_desktop_server_defaults(path: &Path) -> DesktopResult<()> {
     Ok(())
 }
 
+/// Environment variable naming the Desktop state file for the local Server.
+/// The Server reads only `project.runtime_project_id` from it: the project open
+/// in the app becomes the default when ChatGPT omits `project` for Plan/Goal
+/// Mode. It is set on the process, never in the env file, so it always names
+/// this helper's own state file.
+pub(super) const DESKTOP_STATE_FILE_ENV: &str = "CHADEX_DESKTOP_STATE_FILE";
+
+pub(super) fn with_desktop_state_file(
+    mut command: std::process::Command,
+    state_file: &Path,
+) -> std::process::Command {
+    command.env(DESKTOP_STATE_FILE_ENV, state_file);
+    command
+}
+
 pub(super) fn machine_event_overflow_error(event: &Value) -> DesktopError {
     DesktopError::new(
         "machine_event_overflow",

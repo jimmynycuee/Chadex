@@ -34,6 +34,13 @@ final class PlanGoalPanelModel: ObservableObject {
 
     func attach(_ app: AppModel) {
         self.app = app
+        app.attachPlanGoalPanel(self)
+    }
+
+    /// Re-read the durable board after runtime readiness or a connection-state
+    /// transition. The stored plans and approvals remain authoritative.
+    func reloadExistingData() async {
+        await refresh()
     }
 
     /// Binds the panel to a project; switching projects drops all state so a
@@ -200,6 +207,15 @@ final class PlanGoalPanelModel: ObservableObject {
         let deleted = await act(tool: "goal_operator", PlanGoalArguments(action: "dismiss", goalRunId: goalRunId))
         if deleted, selection == .run(goalRunId) { await select(nil) }
         return deleted
+    }
+
+    /// Explicitly clears the board for the selected project. The helper resolves
+    /// the selected path to its exact full runtime project ID before dispatch.
+    @discardableResult
+    func clearBoard() async -> Bool {
+        guard let app, let projectID = app.selectedProject?.id,
+              boundProjectID == projectID else { return false }
+        return await act(tool: "goal_operator", PlanGoalArguments(action: "clear_board"))
     }
 
     @discardableResult

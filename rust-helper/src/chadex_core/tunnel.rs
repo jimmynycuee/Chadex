@@ -2,7 +2,8 @@ use super::computer_overlay::{ClearReason, ComputerOverlayHub};
 use super::computer_safety::{ComputerControlMode, ComputerSafetyController, ComputerSafetySnapshot};
 use super::credentials::CredentialStore;
 use super::performance::PerformanceTraceStore;
-use super::verification::{McpIngress, VerificationTracker};
+use super::verification::{BackendRecovery, McpIngress, VerificationTracker};
+use super::runtime_compat::operation::CancellationSignal;
 use super::{ChadexError, ChadexResult};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -125,6 +126,22 @@ struct TunnelInner {
     child: Option<Child>,
     session: Option<TunnelSession>,
     ingress: Option<Arc<McpIngress>>,
+    binding: Option<RuntimeTunnelBinding>,
+}
+
+// Include credential contents in the comparison without retaining plaintext
+// or exposing the fingerprint through snapshots/diagnostics.
+#[derive(Clone, PartialEq, Eq)]
+struct RuntimeTunnelBinding {
+    target: RuntimeTunnelTarget,
+    bootstrap_digest: [u8; 32],
+}
+
+impl RuntimeTunnelBinding {
+    fn read(target: &RuntimeTunnelTarget) -> ChadexResult<Self> {
+        let token = read_bootstrap_token(&target.server_env_file, &target.bootstrap_token_env)?;
+        Ok(Self { target: target.clone(), bootstrap_digest: Sha256::digest(token.as_bytes()).into() })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,6 +202,7 @@ pub struct TunnelManager {
     tunnel_client_override: Option<PathBuf>,
     verification: Arc<VerificationTracker>,
     performance: Arc<PerformanceTraceStore>,
+    recovery: RwLock<Option<Arc<dyn BackendRecovery>>>,
     computer_safety: Arc<ComputerSafetyController>,
     /// Cursor overlay hub; cleared whenever Computer control stops or a session changes.
     computer_overlay: Option<Arc<ComputerOverlayHub>>,
@@ -207,6 +225,7 @@ impl TunnelManager {
             tunnel_client_override: None,
             verification,
             performance,
+            recovery: RwLock::new(None),
             computer_safety: Arc::new(ComputerSafetyController::default()),
             computer_overlay: None,
             inner: Mutex::new(TunnelInner {
@@ -214,6 +233,7 @@ impl TunnelManager {
                 child: None,
                 session: None,
                 ingress: None,
+                binding: None,
             }),
             lifecycle: Mutex::new(()),
             published: RwLock::new(TunnelSnapshot::default()),
@@ -226,6 +246,19 @@ impl TunnelManager {
     pub(crate) fn with_computer_overlay(mut self, hub: Arc<ComputerOverlayHub>) -> Self {
         self.computer_overlay = Some(hub);
         self
+    }
+
+    pub(crate) fn set_backend_recovery(&self, recovery: Arc<dyn BackendRecovery>) {
+        *self.recovery.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(recovery);
+    }
+
+    pub(crate) fn recovery_generation(&self) -> Option<u64> {
+        self.recovery.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref().map(|hook| hook.generation())
+    }
+
+    pub(crate) fn cancel_recovery_start(&self) {
+        self.stop_requested.store(true, Ordering::SeqCst);
     }
 
     fn clear_computer_overlay(&self, reason: ClearReason) {
@@ -345,6 +378,22 @@ impl TunnelManager {
     ) -> ChadexResult<TunnelSnapshot> {
         let _lifecycle = self.lifecycle.lock().await;
         self.stop_requested.store(false, Ordering::SeqCst);
+        self.start_locked(target, proxy_url, None).await
+    }
+
+    async fn start_locked(
+        &self,
+        target: RuntimeTunnelTarget,
+        proxy_url: Option<&str>,
+        cancellation: Option<&CancellationSignal>,
+    ) -> ChadexResult<TunnelSnapshot> {
+        // A recovery start may first be polled by the cancellation cleanup
+        // branch. Never clear Stop or start a session in that scheduling order.
+        if self.stop_requested.load(Ordering::SeqCst)
+            || cancellation.is_some_and(CancellationSignal::is_cancelled)
+        {
+            return Err(cancelled_error());
+        }
         self.computer_safety.begin_session();
         self.clear_computer_overlay(ClearReason::SessionEnded);
         let (tunnel_id, api_key) = {
@@ -361,6 +410,10 @@ impl TunnelManager {
         validate_loopback_server_url(&target.server_url)?;
         let bootstrap_token =
             read_bootstrap_token(&target.server_env_file, &target.bootstrap_token_env)?;
+        let binding = RuntimeTunnelBinding {
+            target: target.clone(),
+            bootstrap_digest: Sha256::digest(bootstrap_token.as_bytes()).into(),
+        };
         let backend_mcp_url = format!("{}/mcp", target.server_url.trim_end_matches('/'));
         let epoch = self.next_epoch.fetch_add(1, Ordering::SeqCst);
         self.publish(TunnelSnapshot {
@@ -387,6 +440,7 @@ impl TunnelManager {
                 inner.child = Some(child);
                 inner.session = Some(session);
                 inner.ingress = Some(Arc::new(ingress));
+                inner.binding = Some(binding);
                 let snapshot = TunnelSnapshot {
                     state: TunnelState::Ready,
                     configured: true,
@@ -423,11 +477,13 @@ impl TunnelManager {
     ) -> ChadexResult<(Child, TunnelSession, McpIngress)> {
         let binary = self.resolve_tunnel_client_for_start().await?;
         let session = TunnelSession::create(&self.root, bootstrap_token.as_str())?;
-        let ingress = McpIngress::start_with_safety(
+        let recovery = self.recovery.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        let ingress = McpIngress::start_with_safety_and_recovery(
             backend_mcp_url.to_string(),
             Arc::clone(&self.verification),
             Arc::clone(&self.performance),
             Arc::clone(&self.computer_safety),
+            recovery,
         )
         .await?;
         let mcp_url = ingress.mcp_url().to_string();
@@ -573,6 +629,96 @@ impl TunnelManager {
         true
     }
 
+    /// Called only by background recovery after the failed request returned.
+    /// Keep the normal start path for both URL and bootstrap credential changes.
+    pub(crate) async fn rebind_after_recovery(
+        &self,
+        expected_epoch: u64,
+        target: RuntimeTunnelTarget,
+        proxy_url: Option<&str>,
+        cancellation: &CancellationSignal,
+    ) -> ChadexResult<bool> {
+        let _lifecycle = self.lifecycle.lock().await;
+        if cancellation.is_cancelled() || self.stop_requested.load(Ordering::SeqCst)
+            || self.snapshot().epoch != expected_epoch || self.snapshot().state != TunnelState::Ready
+        {
+            return Ok(false);
+        }
+        let binding = RuntimeTunnelBinding::read(&target)?;
+        let unchanged = self.inner.lock().await.binding.as_ref() == Some(&binding);
+        if unchanged {
+            return Ok(!cancellation.is_cancelled() && self.resume_ingress().await);
+        }
+        self.stop_locked().await?;
+        if cancellation.is_cancelled() || self.stop_requested.load(Ordering::SeqCst) {
+            return Ok(false);
+        }
+        self.start_recovery_locked(target, proxy_url, cancellation).await
+    }
+
+    async fn start_recovery_locked(
+        &self,
+        target: RuntimeTunnelTarget,
+        proxy_url: Option<&str>,
+        cancellation: &CancellationSignal,
+    ) -> ChadexResult<bool> {
+        let start = self.start_locked(target, proxy_url, Some(cancellation));
+        tokio::pin!(start);
+        let result = tokio::select! {
+            result = &mut start => result,
+            _ = cancellation.cancelled() => {
+                self.cancel_recovery_start();
+                start.await
+            }
+        };
+        if cancellation.is_cancelled() {
+            self.stop_locked().await?;
+            return Ok(false);
+        }
+        result.map(|_| true)
+    }
+
+    /// Refresh the immutable ingress hook only after cancelled runtime work has
+    /// unwound. The shared bridge budget belongs to the hook, not this ingress.
+    pub(crate) async fn refresh_after_operation_cancel(
+        &self,
+        expected_epoch: u64,
+        target: Option<RuntimeTunnelTarget>,
+        proxy_url: Option<&str>,
+        recovery: Arc<dyn BackendRecovery>,
+        cancellation: &CancellationSignal,
+    ) -> ChadexResult<bool> {
+        let _lifecycle = tokio::select! {
+            guard = self.lifecycle.lock() => guard,
+            _ = cancellation.cancelled() => return Ok(false),
+        };
+        if cancellation.is_cancelled() || self.snapshot().epoch != expected_epoch
+            || self.snapshot().state != TunnelState::Ready
+        {
+            return Ok(false);
+        }
+        let target = match target {
+            Some(target) => target,
+            None => match self.inner.lock().await.binding.as_ref() {
+                Some(binding) => binding.target.clone(),
+                None => return Ok(false),
+            },
+        };
+        if let Err(error) = self.pause_ingress().await {
+            // Do not leave a Ready ingress with the cancelled generation's hook.
+            self.stop_locked().await?;
+            return Err(error);
+        }
+        if cancellation.is_cancelled() { return Ok(false); }
+        self.stop_locked().await?;
+        if cancellation.is_cancelled() { return Ok(false); }
+        self.set_backend_recovery(recovery);
+        // Only this unchanged connection intent may clear the old attempt's
+        // stop flag. start_locked still checks the generation signal on poll.
+        self.stop_requested.store(false, Ordering::SeqCst);
+        self.start_recovery_locked(target, proxy_url, cancellation).await
+    }
+
 
     pub fn computer_safety_snapshot(&self) -> ComputerSafetySnapshot {
         self.computer_safety.snapshot()
@@ -623,6 +769,7 @@ impl TunnelManager {
         inner.child = None;
         inner.session = None;
         inner.ingress = None;
+        inner.binding = None;
         let configured = inner.credentials.configured();
         let snapshot = TunnelSnapshot {
             state: if configured {
@@ -1500,7 +1647,7 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[tokio::test]
-    async fn manager_owns_full_fake_tunnel_lifecycle() {
+    async fn manager_owns_full_fake_tunnel_lifecycle_with_backend_recovery() {
         use std::os::unix::fs::PermissionsExt;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -1589,12 +1736,35 @@ exit 3
         tracker.reset(Some("/tmp/chadex-test-project".to_string()));
         let performance = Arc::new(PerformanceTraceStore::default());
         let managed_root = fixture.path().join("managed");
-        let manager = TunnelManager::new_with_tunnel_client(
+        let manager = Arc::new(TunnelManager::new_with_tunnel_client(
             managed_root.clone(),
             tracker,
             performance,
             fake_client,
-        );
+        ));
+        struct DrainingRecovery {
+            manager: std::sync::Weak<TunnelManager>,
+            completed: tokio::sync::Notify,
+            calls: std::sync::atomic::AtomicUsize,
+            generation: u64,
+        }
+        impl BackendRecovery for DrainingRecovery {
+            fn recover(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+                Box::pin(async move {
+                    self.calls.fetch_add(1, Ordering::SeqCst);
+                    let drained = self.manager.upgrade().unwrap().pause_ingress().await.unwrap();
+                    self.completed.notify_one();
+                    drained
+                })
+            }
+            fn generation(&self) -> u64 { self.generation }
+        }
+        let recovery = Arc::new(DrainingRecovery {
+            manager: Arc::downgrade(&manager), completed: tokio::sync::Notify::new(),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            generation: 17,
+        });
+        manager.set_backend_recovery(recovery.clone());
         manager
             .provide_credentials(
                 "tunnel_00000000000000000000000000000000",
@@ -1603,11 +1773,14 @@ exit 3
             .await
             .unwrap();
 
+        let refused_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let refused_url = format!("http://{}", refused_listener.local_addr().unwrap());
+        drop(refused_listener);
         let ready = manager
             .start(
                 RuntimeTunnelTarget {
-                    server_url: "http://127.0.0.1:43123".to_string(),
-                    server_env_file: server_env,
+                    server_url: refused_url,
+                    server_env_file: server_env.clone(),
                     bootstrap_token_env: "CHADEX_TEST_BOOTSTRAP_TOKEN".to_string(),
                 },
                 None,
@@ -1616,6 +1789,18 @@ exit 3
             .unwrap();
         assert_eq!(ready.state, TunnelState::Ready);
         assert!(ready.configured);
+        let ingress_url = manager.inner.lock().await.ingress.as_ref().unwrap().mcp_url().to_string();
+        let response = tokio::time::timeout(Duration::from_secs(1), Client::new().post(ingress_url)
+            .header("content-type", "application/json")
+            .body(serde_json::json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "runtime_status", "arguments": {}}}).to_string())
+            .send()).await.expect("the failed request must return before background drain finishes").unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&response.text().await.unwrap()).unwrap();
+        assert_eq!(body["id"], 7);
+        tokio::time::timeout(Duration::from_secs(1), recovery.completed.notified()).await
+            .expect("constructor recovery hook must drain without retaining the failed request permit");
+        assert_eq!(recovery.calls.load(Ordering::SeqCst), 1);
+        assert!(manager.resume_ingress().await);
 
         manager.publish(TunnelSnapshot {
             state: TunnelState::Stopped,
@@ -1632,13 +1817,131 @@ exit 3
         let session_entries = fs::read_dir(&session_root).unwrap().count();
         assert_eq!(session_entries, 1);
 
+        // Exercise the production rebind path, including draining the failed
+        // request's permit before replacing its ingress and authorization file.
+        let old_ingress = manager.inner.lock().await.ingress.clone().unwrap();
+        let old_url = old_ingress.mcp_url().to_string();
+        let failed_request_permit = old_ingress.hold_admission_for_test().await;
+        let released_request = async {
+            tokio::task::yield_now().await;
+            drop(failed_request_permit);
+        };
+        let drain = manager.pause_ingress();
+        let (drained, ()) = tokio::time::timeout(Duration::from_secs(1), async { tokio::join!(drain, released_request) })
+            .await.expect("background recovery must drain after the original request releases its permit");
+        assert!(drained.unwrap());
+        let mut fresh_target = RuntimeTunnelTarget {
+            server_url: "http://127.0.0.1:43124".to_string(), server_env_file: server_env.clone(),
+            bootstrap_token_env: "CHADEX_TEST_BOOTSTRAP_TOKEN".to_string(),
+        };
+        let cancellation = CancellationSignal::new();
+        assert!(manager.rebind_after_recovery(ready.epoch, fresh_target.clone(), None, &cancellation).await.unwrap());
+        let rebound_epoch = manager.snapshot().epoch;
+        assert_ne!(rebound_epoch, ready.epoch);
+        assert_ne!(manager.inner.lock().await.ingress.as_ref().unwrap().mcp_url(), old_url);
+        assert_eq!(manager.inner.lock().await.binding.as_ref().unwrap().target, fresh_target);
+
+        manager.pause_ingress().await.unwrap();
+        assert!(manager.rebind_after_recovery(rebound_epoch, fresh_target.clone(), None, &cancellation).await.unwrap());
+        assert_eq!(manager.snapshot().epoch, rebound_epoch, "unchanged target keeps the tunnel");
+
+        fs::write(&server_env, "CHADEX_TEST_BOOTSTRAP_TOKEN=wc_changed_bootstrap\n").unwrap();
+        manager.pause_ingress().await.unwrap();
+        assert!(manager.rebind_after_recovery(rebound_epoch, fresh_target.clone(), None, &cancellation).await.unwrap());
+        assert_ne!(manager.snapshot().epoch, rebound_epoch, "credential rotation must rebind even at the same URL/path");
+        let authorization_file = manager.inner.lock().await.session.as_ref().unwrap().authorization_file.clone();
+        assert_eq!(fs::read_to_string(authorization_file).unwrap(), "Bearer wc_changed_bootstrap");
+        assert_eq!(fs::read_dir(&session_root).unwrap().count(), 1);
+
+        // An accepted operation cancellation replaces the immutable ingress
+        // hook even when the backend binding did not change.
+        let refreshed_hook = Arc::new(DrainingRecovery {
+            manager: Arc::downgrade(&manager), completed: tokio::sync::Notify::new(),
+            calls: std::sync::atomic::AtomicUsize::new(0), generation: 18,
+        });
+        let before_refresh = manager.snapshot().epoch;
+        assert!(manager.refresh_after_operation_cancel(before_refresh, None, None,
+            refreshed_hook.clone(), &CancellationSignal::new()).await.unwrap());
+        assert_eq!(manager.recovery_generation(), Some(18));
+        assert_ne!(manager.snapshot().epoch, before_refresh);
+        let refreshed_url = manager.inner.lock().await.ingress.as_ref().unwrap().mcp_url().to_string();
+        let response = tokio::time::timeout(Duration::from_secs(1), Client::new().post(refreshed_url)
+            .header("content-type", "application/json")
+            .body(serde_json::json!({"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "runtime_status", "arguments": {}}}).to_string())
+            .send()).await.unwrap().unwrap();
+        let _ = response.text().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(1), refreshed_hook.completed.notified()).await.unwrap();
+        assert_eq!(refreshed_hook.calls.load(Ordering::SeqCst), 1, "the replacement ingress uses the fresh hook");
+        assert_eq!(recovery.calls.load(Ordering::SeqCst), 1, "the old immutable hook is retired");
+        manager.resume_ingress().await;
+
+        fresh_target.server_url = "http://127.0.0.1:43125".into();
+        let current_epoch = manager.snapshot().epoch;
+        cancellation.cancel();
+        assert!(!manager.rebind_after_recovery(current_epoch, fresh_target.clone(), None, &cancellation).await.unwrap());
+        assert_eq!(manager.snapshot().epoch, current_epoch, "cancelled recovery cannot bind a newer target");
+
         let stopped = manager.stop().await.unwrap();
         assert_eq!(stopped.state, TunnelState::Stopped);
         assert!(stopped.configured);
         assert!(fs::read_dir(&session_root)
             .map(|mut entries| entries.next().is_none())
             .unwrap_or(true));
+        assert!(!manager.rebind_after_recovery(current_epoch, fresh_target, None, &CancellationSignal::new()).await.unwrap());
+        assert_eq!(manager.snapshot().state, TunnelState::Stopped, "Stop fences the old epoch");
 
         health_task.abort();
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_start_cancelled_before_first_poll_keeps_stop_and_never_starts_session() {
+        let fixture = tempfile::tempdir().unwrap();
+        let manager = TunnelManager::new(fixture.path().join("managed"),
+            Arc::new(VerificationTracker::default()), Arc::new(PerformanceTraceStore::default()));
+        let cancellation = CancellationSignal::new();
+        let target = RuntimeTunnelTarget {
+            server_url: "http://127.0.0.1:9".into(), server_env_file: fixture.path().join("missing.env"),
+            bootstrap_token_env: "CHADEX_TEST_BOOTSTRAP_TOKEN".into(),
+        };
+        // Construct the future, then force select's cancellation branch to win
+        // before its first poll. This is the original scheduling regression.
+        let start = manager.start_locked(target, None, Some(&cancellation));
+        tokio::pin!(start);
+        cancellation.cancel();
+        let error = tokio::time::timeout(Duration::from_millis(200), async {
+            tokio::select! {
+                biased;
+                _ = cancellation.cancelled() => {
+                    manager.cancel_recovery_start();
+                    start.await.unwrap_err()
+                }
+                _ = &mut start => panic!("cancellation must win before the first start poll"),
+            }
+        }).await.expect("cancellation cleanup must not enter the 90-second readiness wait");
+        assert_eq!(error.code, "tunnel_cancelled");
+        assert!(manager.stop_requested.load(Ordering::SeqCst));
+        assert_eq!(manager.snapshot().state, TunnelState::Unconfigured);
+        assert_eq!(manager.next_epoch.load(Ordering::SeqCst), 1);
+        assert!(manager.inner.lock().await.ingress.is_none());
+        assert!(!fixture.path().join("managed").exists());
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_start_honors_precancelled_signal_without_clearing_stop() {
+        let fixture = tempfile::tempdir().unwrap();
+        let manager = TunnelManager::new(fixture.path().join("managed"),
+            Arc::new(VerificationTracker::default()), Arc::new(PerformanceTraceStore::default()));
+        let cancellation = CancellationSignal::new();
+        cancellation.cancel();
+        manager.cancel_recovery_start();
+        let target = RuntimeTunnelTarget {
+            server_url: "http://127.0.0.1:9".into(), server_env_file: fixture.path().join("missing.env"),
+            bootstrap_token_env: "CHADEX_TEST_BOOTSTRAP_TOKEN".into(),
+        };
+        assert!(!tokio::time::timeout(Duration::from_millis(200),
+            manager.start_recovery_locked(target, None, &cancellation)).await.unwrap().unwrap());
+        assert!(manager.stop_requested.load(Ordering::SeqCst));
+        assert!(manager.inner.lock().await.ingress.is_none());
+        assert!(!fixture.path().join("managed").exists());
     }
 }

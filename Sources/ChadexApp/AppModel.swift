@@ -129,11 +129,7 @@ final class AppModel: ObservableObject {
     // the connection green. Users usually switch to ChatGPT at this point, so
     // keep a fast poll even in the background for a bounded window.
     private var awaitingChatGPTSinceUptime: TimeInterval?
-    /// Plan & Goal keeps no leftovers: the board is cleared once per launch
-    /// and whenever ChatGPT's connection to the same project ends.
-    private var planGoalBoardClearedThisLaunch = false
-    private var lastChatGPTConnection: (connected: Bool, projectPath: String?)?
-    private var planGoalBoardClearInFlight = false
+    private weak var planGoalPanelModel: PlanGoalPanelModel?
     private let awaitingChatGPTFastPollWindow: TimeInterval = 120
     private let skillsRefreshMaxAge: TimeInterval = 5
     private let projectMemoryRefreshMaxAge: TimeInterval = 5
@@ -142,7 +138,7 @@ final class AppModel: ObservableObject {
         helper: HelperClient = HelperClient(),
         // The explicit motion-review launch uses an isolated credential scope.
         keychain: KeychainStore = KeychainStore(service: FerretReviewMode.enabled
-            ? "app.chadex.ferret-review.credentials" : "app.chadex.credentials"),
+            ? "app.chadex.ferret-review.credentials" : KeychainStore.defaultService()),
         store: ProjectStore = ProjectStore(),
         overlayController: ComputerOverlayController? = nil,
         autostart: Bool = false
@@ -1337,37 +1333,13 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func attachPlanGoalPanel(_ panel: PlanGoalPanelModel) {
+        planGoalPanelModel = panel
+    }
+
     /// Calls the helper's `planGoalOperator` bridge for the selected project.
     /// Backend failures (`success == false`) and transport errors both come
     /// back as `.failure` with a message the panel can show inline.
-    /// Clears the Plan & Goal board on the first ready snapshot of a launch
-    /// and when ChatGPT disconnects from the same project. A project switch is
-    /// not a disconnect. Running Goals keep going; nothing is deleted.
-    private func clearPlanGoalBoardWhenStale(_ candidate: BackendSnapshot) {
-        let projectPath = selectedProject?.path
-        let previous = lastChatGPTConnection
-        lastChatGPTConnection = (candidate.chatGPTConnected, projectPath)
-        let disconnected = previous?.connected == true
-            && !candidate.chatGPTConnected
-            && previous?.projectPath == projectPath
-        let launch = !planGoalBoardClearedThisLaunch && candidate.runtimeReady == true
-        guard (launch || disconnected), projectPath != nil, !planGoalBoardClearInFlight else { return }
-        planGoalBoardClearInFlight = true
-        Task { [weak self] in
-            guard let self else { return }
-            defer { self.planGoalBoardClearInFlight = false }
-            // Let the notifier see runs that just finished before they leave
-            // the lists.
-            await self.goalNotifier.pollNow()
-            let result = await self.planGoalOperator(
-                tool: "goal_operator",
-                arguments: PlanGoalArguments(action: "clear_board"),
-                as: JSONValue.self
-            )
-            if case .success = result { self.planGoalBoardClearedThisLaunch = true }
-        }
-    }
-
     func planGoalOperator<Output: Decodable>(
         tool: String,
         arguments: PlanGoalArguments,
@@ -2467,10 +2439,14 @@ final class AppModel: ObservableObject {
         } else if candidate.stateRevision < snapshot.stateRevision {
             return false
         }
+        let reloadPlanGoalData = (candidate.runtimeReady == true && snapshot.runtimeReady != true)
+            || candidate.chatGPTConnected != snapshot.chatGPTConnected
         let previousPollInterval = pollInterval
         snapshot = candidate
         snapshotFreshnessGate.markApplied(at: ProcessInfo.processInfo.systemUptime)
-        clearPlanGoalBoardWhenStale(candidate)
+        if reloadPlanGoalData, let panel = planGoalPanelModel {
+            Task { await panel.reloadExistingData() }
+        }
         if candidate.tunnelReady && !candidate.chatGPTConnected {
             if awaitingChatGPTSinceUptime == nil {
                 awaitingChatGPTSinceUptime = ProcessInfo.processInfo.systemUptime

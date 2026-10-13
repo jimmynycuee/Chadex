@@ -4,6 +4,8 @@ W5 closes the **automatable Windows release-engineering track** on top of the W1
 
 The public macOS release workflow is unchanged. W5 does not authorize a GitHub Release, Windows asset publication, Authenticode signing policy, or updater rollout.
 
+For the v0.7.1 candidate, the Windows synthetic and historical upgrade baselines advance from v0.6.5 to v0.7.0. The CI historical-source job builds from the public v0.7.0 tag; Windows remains an unsigned CI validation artifact and is not part of the public release.
+
 ## Candidate contract
 
 `apps/windows/src-tauri/tauri.release.conf.json` builds a per-user NSIS installer with Traditional Chinese and English resources, downgrade blocking and the WebView2 downloaded bootstrapper. `scripts/build_windows_release.ps1` requires native Windows x64/MSVC, pinned source identity and a clean checkout, builds the helper plus all three runtime entrypoints in release mode, stages only verified production resources, and emits SHA-256/size metadata. The production desktop uses `custom-protocol` and explicitly excludes the `desktop-smoke` feature.

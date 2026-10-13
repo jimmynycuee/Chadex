@@ -1714,9 +1714,11 @@ pub enum ToolCall {
         session_id: Option<String>,
     },
 
-    /// Enter backend-enforced read-only Plan Mode for one project.
+    /// Enter backend-enforced read-only Plan Mode for one project. A missing
+    /// project resolves to the project open in the Chadex app (operator side).
     PlanStart {
-        project: String,
+        #[serde(default)]
+        project: Option<String>,
         title: String,
     },
 
@@ -1818,6 +1820,8 @@ pub enum ToolCall {
         action: String,
         #[serde(default)]
         goal_run_id: Option<String>,
+        #[serde(default)]
+        project: Option<String>,
         #[serde(default)]
         reason: Option<String>,
     },
@@ -3765,8 +3769,11 @@ impl ToolCall {
             Self::CodeModeExec { project, .. }
             | Self::CodeModeExecEffectful { project, .. }
             | Self::CodeModeExecMutating { project, .. } => Some(project.as_str()),
-            Self::PlanStart { project, .. } => Some(project.as_str()),
-            Self::GoalRunStart {
+            Self::PlanStart {
+                project: Some(project),
+                ..
+            }
+            | Self::GoalRunStart {
                 project: Some(project),
                 ..
             } => Some(project.as_str()),

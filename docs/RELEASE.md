@@ -51,7 +51,7 @@ CHADEX_UPDATE_UI_REVIEW=1 swift test --filter VisualReviewTests
 `scripts/build_app.sh` accepts release metadata through environment variables:
 
 ```sh
-CHADEX_APP_VERSION=0.7.0 \
+CHADEX_APP_VERSION=0.7.1 \
 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_IDENTITY="Developer ID Application: ..." \
 ./scripts/build_app.sh
@@ -68,13 +68,13 @@ Each `docs/releases/X.Y.Z.md` records the validation evidence and remaining exte
 For the free artifact path, explicitly select ad-hoc signing, then package the resulting bundle:
 
 ```sh
-CHADEX_APP_VERSION=0.7.0 CHADEX_APP_BUILD_NUMBER=1 \
+CHADEX_APP_VERSION=0.7.1 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_MODE=adhoc CHADEX_RUNTIME_PROFILE=release \
 ./scripts/build_app.sh
 ./scripts/package_free_macos_release.sh dist/Chadex.app
 ```
 
-The expected artifacts are `dist/Chadex-v0.7.0-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
+The expected artifacts are `dist/Chadex-v0.7.1-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
 
 ## Public Git history
 
@@ -123,7 +123,7 @@ The script submits a ZIP with `notarytool`, waits for acceptance, staples the ti
 
 ## GitHub CI and release workflow
 
-`.github/workflows/ci.yml` uses the supported ARM64 `macos-15` runner for source/package validation, `windows-latest` for the Windows core, W3 desktop and W5 installer/historical-upgrade gates, and Ubuntu jobs for the dedicated Gitleaks history scan, change classification and docs checks. Gitleaks is pinned to 8.29.1 and its archive checksum is pinned in workflow source.
+`.github/workflows/ci.yml` uses the supported ARM64 `macos-26` runner for source/package validation, `windows-latest` for the Windows core, W3 desktop and W5 installer/historical-upgrade gates, and Ubuntu jobs for the dedicated Gitleaks history scan, change classification and docs checks. Gitleaks is pinned to 8.29.1 and its archive checksum is pinned in workflow source.
 
 CI orchestration rules:
 

@@ -2,8 +2,8 @@
 schema_version: 1
 project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
-updated: 2026-10-11
-updated_by: claude           # codex | webcodex | chadex | claude | human
+updated: 2026-10-13
+updated_by: codex            # codex | webcodex | chadex | claude | human
 tracks:
   W: Windows 版
   AP: Agents.md與 Skills 功能
@@ -12,7 +12,7 @@ tracks:
   LS: 啟動速度
   D: 介面設計
   PG: Plan Mode 與 Goal Mode
-current_phase: V070
+current_phase: V071
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -443,6 +443,23 @@ phases:
     gate:
       - cmd: "cargo test engine --lib / store / contracts / tool-runtime-contracts; swift test; scripts/e2e_plan_goal.py fake"
         result: "2790 / 187 / 141 / 96 passed; 261 executed 0 failures; all E2E steps pass incl. ChatGPT-mode goal (2026-10-11)"
+    closed_commit: null
+  - id: V071
+    name: v0.7.1 Plan/Goal reliability fixes and release
+    branch: codex/v071-release
+    status: in_progress
+    owner: codex
+    depends_on: [V070]
+    # User approved formal release on 2026-10-13. GitHub PR/CI and tag release remain pending.
+    gate:
+      - cmd: "./scripts/release_check.sh @ e6e62ab"
+        result: "passed exit 0; Swift, Rust runtime/helper suites, and fresh production app build succeeded"
+      - cmd: "scripts/test_windows_installer_smoke.py; scripts/test_prepare_windows_release.py; node --test scripts/windows_installed_probe.test.mjs"
+        result: "passed: 22 + 14 + 10 tests"
+      - cmd: "graphify update .; scripts/sync_graphify_obsidian.py --check"
+        result: "passed: 31,330 nodes, 100,759 edges, 833 communities @ 70b5f72; Obsidian generated layer check: 68 outputs, changed=0, stale_generated=0"
+      - cmd: "GitHub PR CI and Free Release workflow"
+        result: "pending"
     closed_commit: null
 ---
 

@@ -117,6 +117,16 @@ final class PlanGoalModelTests: XCTestCase {
         XCTAssertNil(arguments["reason"])
     }
 
+    func testClearBoardArgumentsLeaveProjectResolutionToHelper() throws {
+        let data = try JSONEncoder.chadex.encode(
+            PlanGoalArguments(action: "clear_board")
+        )
+        let arguments = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(arguments["action"] as? String, "clear_board")
+        XCTAssertNil(arguments["project"])
+        XCTAssertNil(arguments["path"])
+    }
+
     func testGoalRunDecodesModeFieldsAndDefaultsToCodex() throws {
         let legacy = try XCTUnwrap(try decode(GoalRunOutput.self,
             #"{"success":true,"output":{"goal_run":{"goal_run_id":"r1","state":"running"}}}"#).output?.goalRun)

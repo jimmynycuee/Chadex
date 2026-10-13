@@ -497,6 +497,52 @@ impl RuntimeStateManager {
             .await
     }
 
+    /// Resume only the configured local runtime that owned the failed ingress.
+    /// The eligibility check runs inside the existing mutation admission.
+    pub(crate) async fn recover_saved_runtime_background(
+        &self,
+        project_path: &str,
+        external: &CancellationSignal,
+    ) -> DesktopResult<DesktopStateSnapshot> {
+        if external.is_cancelled() {
+            return Err(cancelled_error());
+        }
+        let (operation, cancellation, mut core, baseline) = self
+            .begin_operation_with(DesktopOperationKind::RuntimeResume, true, true)
+            .await?;
+        let allowed = core.config.runtime.is_some()
+            && runtime_autostart(&core.config)
+            && core.config.topology.as_ref().is_some_and(|topology| {
+                topology.experience == Experience::Full && matches!(topology.server, ServerTopology::Local)
+            })
+            && core.config.project.as_ref().is_some_and(|project| project.path == project_path);
+        let result = if external.is_cancelled() {
+            Err(cancelled_error())
+        } else if !allowed {
+            Err(DesktopError::new(
+                "backend_recovery_not_allowed",
+                "The failed backend is no longer the configured autostart project",
+                "Reconnect the selected project explicitly.",
+            ))
+        } else {
+            let resume = core.resume_saved_runtime(&cancellation);
+            tokio::pin!(resume);
+            tokio::select! {
+                result = &mut resume => result,
+                _ = external.cancelled() => {
+                    operation.cancellation.cancel();
+                    // Never drop the coordinator while it owns the slot. Let
+                    // the normal cancellation cleanup restore it first.
+                    resume.await
+                }
+            }
+        };
+        if external.is_cancelled() {
+            operation.cancellation.cancel();
+        }
+        self.finish_operation(operation, cancellation, core, baseline, result).await
+    }
+
     /// Cancels a background warm-up (if one is running) and waits, bounded,
     /// for it to release the mutation slot. Never touches user operations.
     pub async fn cancel_background_operation(&self) {
@@ -1763,7 +1809,10 @@ impl RuntimeCoordinator {
                     "Check the local Service diagnostics and retry.",
                 ));
             }
-            let command = self.adapter.local_server_command(&env_file)?;
+            let command = with_desktop_state_file(
+                self.adapter.local_server_command(&env_file)?,
+                &self.config_path,
+            );
             self.spawn_owned(ProcessKind::LocalServer, command, false, cancellation)
                 .await?;
             true
@@ -1857,7 +1906,13 @@ impl RuntimeCoordinator {
                     .unwrap_or(false)
             };
             cancellation.check()?;
-            let mut runner_started = if !runner_ready {
+            // A surviving owned Runner reconnects after its Server restarts.
+            // An initial offline observation is not evidence that its process
+            // needs to be spawned again. Wait for the same enrolled Runner;
+            // identity replacement above has already stopped the old process.
+            let owned_runner_active =
+                process_is_active(self.process_snapshot(ProcessKind::LocalRunner).await);
+            let mut runner_started = if !runner_ready && !owned_runner_active {
                 if runner_deadline.is_elapsed() {
                     return Err(readiness_timeout_error(
                         "runner_offline",
@@ -3127,3 +3182,75 @@ impl RuntimeCoordinator {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod backend_recovery_tests {
+    use super::*;
+
+    fn saved_config() -> StoredDesktopConfig {
+        StoredDesktopConfig {
+            topology: Some(RuntimeTopology {
+                experience: Experience::Full, server: ServerTopology::Local,
+                runner: RunnerTopology::Local, exposure: Exposure::None, enrollment: Enrollment::ManagedPairing,
+            }),
+            project: Some(ProjectSelection {
+                path: "/project-a".into(), allowed_root: "/".into(), is_git_repository: false,
+                runtime_project_id: Some("agent:runner-a:project-a".into()),
+            }),
+            runtime: Some(StoredRuntime {
+                server_url: "http://127.0.0.1:9".into(), server_env_file: None, runner_config: None,
+                user_token_file: None, admin_token_file: None, runner_client_id: Some("runner-a".into()),
+                project_id: Some("project-a".into()), runtime_project_id: Some("agent:runner-a:project-a".into()),
+            }),
+            runtime_autostart: Some(true), ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_rechecks_autostart_and_project_inside_admission_and_restores_core() {
+        let directory = tempfile::tempdir().unwrap();
+        let manager = RuntimeStateManager::new_for_chadex_backend(directory.path().join("data"), directory.path().join("resources")).unwrap();
+        for variant in 0..4 {
+            let mut config = saved_config();
+            match variant {
+                0 => config.runtime_autostart = Some(false),
+                1 => config.project.as_mut().unwrap().path = "/project-b".into(),
+                2 => config.runtime = None,
+                _ => config.topology.as_mut().unwrap().server = ServerTopology::Remote { url: "https://example.test".into() },
+            }
+            manager.core.lock().await.as_mut().unwrap().config = config;
+            let error = manager.recover_saved_runtime_background("/project-a", &CancellationSignal::new()).await.unwrap_err();
+            assert_eq!(error.code, "backend_recovery_not_allowed");
+            assert!(manager.operations.current().is_none());
+            assert!(manager.core.lock().await.is_some(), "rejected recovery must restore the coordinator");
+        }
+    }
+
+    #[tokio::test]
+    async fn backend_recovery_respects_existing_operation_slot_and_cancellation_during_admission() {
+        let directory = tempfile::tempdir().unwrap();
+        let manager = Arc::new(RuntimeStateManager::new_for_chadex_backend(directory.path().join("data"), directory.path().join("resources")).unwrap());
+        let owner = manager.operations.admit(DesktopOperationKind::LocalSetup, true).unwrap();
+        let error = manager.recover_saved_runtime_background("/project-a", &CancellationSignal::new()).await.unwrap_err();
+        assert_eq!(error.code, "desktop_operation_busy");
+        assert_eq!(manager.operations.current().unwrap().id, owner.id);
+        drop(owner);
+
+        let cancellation = CancellationSignal::new();
+        let baseline_lock = manager.supervisor.lock().await;
+        let worker = {
+            let manager = Arc::clone(&manager);
+            let cancellation = cancellation.clone();
+            tokio::spawn(async move { manager.recover_saved_runtime_background("/project-a", &cancellation).await })
+        };
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while manager.operations.current().is_none() { tokio::task::yield_now().await; }
+        }).await.unwrap();
+        assert!(manager.operations.current().unwrap().background);
+        cancellation.cancel();
+        drop(baseline_lock);
+        assert_eq!(worker.await.unwrap().unwrap_err().code, "desktop_operation_cancelled");
+        assert!(manager.operations.current().is_none());
+        assert!(manager.core.lock().await.is_some());
+    }
+}
