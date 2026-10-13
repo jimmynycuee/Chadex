@@ -702,7 +702,9 @@ impl BackendRecovery for CountingRecovery {
 
 async fn refused_url() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    format!("http://{}/mcp", listener.local_addr().unwrap())
+    let address = listener.local_addr().unwrap();
+    drop(listener);
+    format!("http://{address}/mcp")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -751,7 +753,9 @@ async fn refused_requests_preserve_ids_return_immediately_and_recover_once() {
 }
 
 #[tokio::test]
-async fn real_refused_backend_connection_is_classified_before_dispatch() {
+// Cargo's serial Windows core gate orders tests by name. Keep this strict
+// wall-clock refusal probe before the 45-second upstream wait test below.
+async fn backend_connection_refused_is_classified_before_dispatch() {
     let state = state(refused_url().await);
     let response = tokio::time::timeout(Duration::from_secs(2), proxy_inner(state, request()))
         .await

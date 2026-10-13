@@ -698,9 +698,18 @@ fn io_error_code(error: &(dyn std::error::Error + 'static)) -> (Option<std::io::
 
 fn classify_backend_error(error: &reqwest::Error) -> (BackendFailureKind, Option<i32>) {
     let (io_kind, code) = io_error_code(error);
-    let kind = if error.is_connect() && io_kind == Some(std::io::ErrorKind::ConnectionRefused) {
+    classify_backend_error_details(error.is_connect(), error.is_timeout(), io_kind, code)
+}
+
+fn classify_backend_error_details(
+    is_connect: bool,
+    is_timeout: bool,
+    io_kind: Option<std::io::ErrorKind>,
+    code: Option<i32>,
+) -> (BackendFailureKind, Option<i32>) {
+    let kind = if is_connect && io_kind == Some(std::io::ErrorKind::ConnectionRefused) {
         BackendFailureKind::ConnectionRefused
-    } else if error.is_connect() && error.is_timeout() {
+    } else if is_connect && is_timeout {
         BackendFailureKind::ConnectTimeout
     } else {
         BackendFailureKind::HeadersInterrupted
@@ -1227,6 +1236,23 @@ mod ingress_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backend_connect_errors_preserve_dispatch_certainty() {
+        assert_eq!(
+            classify_backend_error_details(
+                true,
+                false,
+                Some(std::io::ErrorKind::ConnectionRefused),
+                None,
+            ),
+            (BackendFailureKind::ConnectionRefused, None),
+        );
+        assert_eq!(
+            classify_backend_error_details(true, true, Some(std::io::ErrorKind::TimedOut), None),
+            (BackendFailureKind::ConnectTimeout, None),
+        );
+    }
 
     #[test]
     fn methods_are_detected_for_single_and_batch_json_rpc() {

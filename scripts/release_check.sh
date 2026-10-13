@@ -106,6 +106,7 @@ echo "==> Runtime engine: compile every target"
 "$CHADEX_CARGO" check --locked --manifest-path runtime-engine/Cargo.toml --workspace --all-targets
 
 echo "==> Runtime release-critical tests"
+"$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-store
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-process
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-tool-contracts
 "$CHADEX_CARGO" test --locked --manifest-path runtime-engine/Cargo.toml -p chadex-runtime-tool-runtime-contracts
