@@ -457,7 +457,7 @@ phases:
       - cmd: "scripts/test_windows_installer_smoke.py; scripts/test_prepare_windows_release.py; node --test scripts/windows_installed_probe.test.mjs"
         result: "passed: 22 + 14 + 10 tests"
       - cmd: "graphify update .; scripts/sync_graphify_obsidian.py --check"
-        result: "passed: 31,330 nodes, 100,759 edges; Obsidian generated layer check changed=0, stale_generated=0"
+        result: "passed: 31,330 nodes, 100,759 edges, 833 communities @ 70b5f72; Obsidian generated layer check: 68 outputs, changed=0, stale_generated=0"
       - cmd: "GitHub PR CI and Free Release workflow"
         result: "pending"
     closed_commit: null
