@@ -146,8 +146,12 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
         release_config = json.loads((root / "apps/windows/src-tauri/tauri.release.conf.json").read_text(encoding="utf-8"))
         self.assertIs(release_config["bundle"]["createUpdaterArtifacts"], False)
         release_script = (root / "scripts/build_windows_release.ps1").read_text(encoding="utf-8")
+        self.assertIn('"--features", "custom-protocol"', release_script)
         self.assertIn("signer sign $sourceUpdaterArchive --app-version $version", release_script)
         self.assertIn("Updater signature does not attest release version", release_script)
+
+        source_check = (root / "scripts/windows_release_source_check.ps1").read_text(encoding="utf-8")
+        self.assertIn("build --ci --features custom-protocol", source_check)
 
 
 if __name__ == "__main__":

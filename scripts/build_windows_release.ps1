@@ -122,8 +122,9 @@ try {
     try {
         Invoke-NativeChecked "npm.cmd" @("ci")
         Assert-ReleaseSource
-        # The explicit feature set excludes desktop-smoke. CLI supplies custom-protocol.
-        Invoke-NativeChecked "npm.cmd" @("run", "tauri", "--", "build", "--ci", "--bundles", "nsis", "--config", "src-tauri/tauri.release.conf.json", "--", "--locked")
+        # Keep the smoke-only feature disabled and explicitly enable custom-protocol,
+        # which registers the updater plugin required by updater:default capability.
+        Invoke-NativeChecked "npm.cmd" @("run", "tauri", "--", "build", "--ci", "--features", "custom-protocol", "--bundles", "nsis", "--config", "src-tauri/tauri.release.conf.json", "--", "--locked")
         Assert-ReleaseSource
         if ($EnableUpdater) {
             $env:TAURI_CONFIG = @{

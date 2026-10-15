@@ -48,7 +48,7 @@ try {
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        & npm.cmd run tauri -- build --ci --bundles nsis --config src-tauri/tauri.release.conf.json --runner $runner -- --locked *> $log
+        & npm.cmd run tauri -- build --ci --features custom-protocol --bundles nsis --config src-tauri/tauri.release.conf.json --runner $runner -- --locked *> $log
         $code = $LASTEXITCODE
     } finally { $ErrorActionPreference = $previous }
     Assert-SourceClean
