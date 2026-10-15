@@ -104,6 +104,16 @@ TRAY_DIAGNOSTIC_FIELDS = {
     "native_window_count": int,
     "native_icon_match_count": int,
     "native_rect_available": bool,
+    "native_rect_root_kind": int,
+    "native_cursor_matches_rect": bool,
+    "native_click_attempted": bool,
+    "native_click_down_input_count": int,
+    "native_click_up_input_count": int,
+    "menu_element_count": int,
+    "menu_app_process_count": int,
+    "menu_exact_owner_count": int,
+    "menu_exact_item_count": int,
+    "menu_owner_check_code": int,
 }
 PROBE_TIMEOUT_SECONDS = 300
 INSTALLER_TIMEOUT_SECONDS = 300

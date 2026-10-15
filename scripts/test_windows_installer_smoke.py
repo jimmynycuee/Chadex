@@ -312,6 +312,16 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "native_window_count": 1,
             "native_icon_match_count": 0,
             "native_rect_available": False,
+            "native_rect_root_kind": 0,
+            "native_cursor_matches_rect": False,
+            "native_click_attempted": False,
+            "native_click_down_input_count": 0,
+            "native_click_up_input_count": 0,
+            "menu_element_count": 0,
+            "menu_app_process_count": 0,
+            "menu_exact_owner_count": 0,
+            "menu_exact_item_count": 0,
+            "menu_owner_check_code": 0,
         }
         diagnostic_line = "tray_diagnostics=" + json.dumps(diagnostics, separators=(",", ":"))
         with patch.object(smoke, "_regular_file"), \
@@ -359,11 +369,16 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn('"tray_diagnostics="', script)
         self.assertIn("Wait-ChadexMenu", script)
         self.assertIn("MenuBelongsTo", script)
-        self.assertIn('ownerClass.ToString() == "tray_icon_app"', script)
+        self.assertIn("MenuOwnerCheckCode", script)
+        self.assertIn('ownerClass.ToString() != "tray_icon_app"', script)
         self.assertIn("Shell_NotifyIconGetRect", script)
+        self.assertIn("Shell_NotifyIconGetRect(ref identifier, out rect) == 0", script)
         self.assertIn("FindTrayIconWindows([uint32]$AppProcessId)", script)
-        self.assertIn("IsShellTrayPoint($x, $y, [uint32]$shellProcessId)", script)
+        self.assertIn("ShellTrayRootKind(", script)
         self.assertIn("native_icon_match_count", script)
+        self.assertIn("native_click_down_input_count", script)
+        self.assertIn("SendInput", script)
+        self.assertIn("menu_owner_check_code", script)
         self.assertIn("if (-not $script:TrayDiagnostics.same_session_as_shell)", script)
         self.assertIn('Invoke-Element $selection.Quit', script)
         self.assertNotIn("Stop-Process", script)

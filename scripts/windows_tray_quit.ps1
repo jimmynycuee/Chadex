@@ -20,6 +20,16 @@ $script:TrayDiagnostics = [ordered]@{
     native_window_count = 0
     native_icon_match_count = 0
     native_rect_available = $false
+    native_rect_root_kind = 0
+    native_cursor_matches_rect = $false
+    native_click_attempted = $false
+    native_click_down_input_count = 0
+    native_click_up_input_count = 0
+    menu_element_count = 0
+    menu_app_process_count = 0
+    menu_exact_owner_count = 0
+    menu_exact_item_count = 0
+    menu_owner_check_code = 0
 }
 
 function Write-TrayFailure([string] $Code) {
@@ -53,6 +63,17 @@ public static class ChadexTrayInput {
     private struct Point {
         public int x, y;
     }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput {
+        public int dx, dy;
+        public uint mouseData, flags, time;
+        public UIntPtr extraInfo;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeInput {
+        public uint type;
+        public MouseInput mouse;
+    }
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
@@ -63,6 +84,9 @@ public static class ChadexTrayInput {
     private static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")]
     private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out Point point);
     [DllImport("shell32.dll", PreserveSig = true)]
     private static extern int Shell_NotifyIconGetRect(
         ref NotifyIconIdentifier identifier, out TrayRect iconLocation);
@@ -80,8 +104,34 @@ public static class ChadexTrayInput {
     private static extern bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool SetCursorPos(int x, int y);
-    [DllImport("user32.dll")]
-    public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint inputCount, [In] NativeInput[] inputs, int inputSize);
+    public static uint SendMouseInput(uint flags) {
+        var input = new NativeInput {
+            type = 0, // INPUT_MOUSE
+            mouse = new MouseInput { flags = flags, extraInfo = UIntPtr.Zero }
+        };
+        return SendInput(1, new[] { input }, Marshal.SizeOf(typeof(NativeInput)));
+    }
+    public static bool CursorMatches(int x, int y) {
+        Point point;
+        return GetCursorPos(out point) && point.x == x && point.y == y;
+    }
+    public static int ShellTrayRootKind(int x, int y, uint expectedShellProcessId) {
+        var hwnd = WindowFromPoint(new Point { x = x, y = y });
+        if (WindowProcessId(hwnd) != expectedShellProcessId) return 0;
+        var root = GetAncestor(hwnd, 2); // GA_ROOT
+        if (root == IntPtr.Zero || WindowProcessId(root) != expectedShellProcessId) return 0;
+        var className = new StringBuilder(256);
+        if (GetClassName(root, className, className.Capacity) == 0) return 0;
+        // Sanitized diagnostics: 1=taskbar, 2=legacy overflow, 3=Win11 overflow.
+        switch (className.ToString()) {
+            case "Shell_TrayWnd": return 1;
+            case "NotifyIconOverflowWindow": return 2;
+            case "TopLevelWindowForOverflowXamlIsland": return 3;
+            default: return 0;
+        }
+    }
     public static uint WindowProcessId(IntPtr hwnd) {
         uint processId = 0;
         return hwnd != IntPtr.Zero && GetWindowThreadProcessId(hwnd, out processId) != 0 ? processId : 0;
@@ -106,29 +156,27 @@ public static class ChadexTrayInput {
         };
         return Shell_NotifyIconGetRect(ref identifier, out rect) == 0;
     }
-    public static bool IsShellTrayPoint(int x, int y, uint expectedShellProcessId) {
-        var hwnd = WindowFromPoint(new Point { x = x, y = y });
-        if (WindowProcessId(hwnd) != expectedShellProcessId) return false;
-        var root = GetAncestor(hwnd, 2); // GA_ROOT
-        if (root == IntPtr.Zero || WindowProcessId(root) != expectedShellProcessId) return false;
-        var className = new StringBuilder(256);
-        if (GetClassName(root, className, className.Capacity) == 0) return false;
-        var value = className.ToString();
-        return value == "Shell_TrayWnd" || value == "NotifyIconOverflowWindow" ||
-            value == "TopLevelWindowForOverflowXamlIsland";
-    }
-    public static bool MenuBelongsTo(int nativeHandle, uint processId) {
+    public static int MenuOwnerCheckCode(int nativeHandle, uint processId) {
         var hwnd = new IntPtr(unchecked((long)(uint)nativeHandle));
+        // Sanitized diagnostics: 1=missing hwnd/thread, 2=other process,
+        // 3=no active menu, 4=wrong owner PID, 5=wrong owner class, 6=exact app.
+        if (hwnd == IntPtr.Zero) return 1; // no native menu window
         uint menuProcessId;
         uint threadId = GetWindowThreadProcessId(hwnd, out menuProcessId);
-        if (hwnd == IntPtr.Zero || threadId == 0 || menuProcessId != processId) return false;
+        if (threadId == 0) return 1;
+        if (menuProcessId != processId) return 2; // menu belongs to another process
         var info = new GuiThreadInfo();
         info.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
-        if (!GetGUIThreadInfo(threadId, ref info) || (info.flags & 0x14) == 0 ||
-            WindowProcessId(info.hwndMenuOwner) != processId) return false;
+        if (!GetGUIThreadInfo(threadId, ref info) || (info.flags & 0x14) == 0)
+            return 3; // no active popup/menu state
+        if (WindowProcessId(info.hwndMenuOwner) != processId) return 4;
         var ownerClass = new StringBuilder(256);
-        return GetClassName(info.hwndMenuOwner, ownerClass, ownerClass.Capacity) != 0 &&
-            ownerClass.ToString() == "tray_icon_app";
+        if (GetClassName(info.hwndMenuOwner, ownerClass, ownerClass.Capacity) == 0 ||
+            ownerClass.ToString() != "tray_icon_app") return 5;
+        return 6; // exact Chadex tray window owns the active menu
+    }
+    public static bool MenuBelongsTo(int nativeHandle, uint processId) {
+        return MenuOwnerCheckCode(nativeHandle, processId) == 6;
     }
 }
 "@
@@ -298,9 +346,11 @@ public static class ChadexTrayInput {
     }
 
     function Test-MenuOwner($menu) {
-        return ((Test-AppIdentity) -and $menu.Current.ProcessId -eq $AppProcessId -and
-            -not $menu.Current.IsOffscreen -and
-            [ChadexTrayInput]::MenuBelongsTo($menu.Current.NativeWindowHandle, $AppProcessId))
+        if (-not (Test-AppIdentity) -or $menu.Current.ProcessId -ne $AppProcessId -or
+            $menu.Current.IsOffscreen) { return $false }
+        $script:TrayDiagnostics.menu_owner_check_code = [ChadexTrayInput]::MenuOwnerCheckCode(
+            $menu.Current.NativeWindowHandle, [uint32]$AppProcessId)
+        return $script:TrayDiagnostics.menu_owner_check_code -eq 6
     }
     function Find-ChadexMenu {
         $elements = $desktop.FindAll(
@@ -309,10 +359,20 @@ public static class ChadexTrayInput {
                 [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
                 [System.Windows.Automation.ControlType]::Menu)
         )
+        $script:TrayDiagnostics.menu_element_count = [Math]::Max(
+            $script:TrayDiagnostics.menu_element_count, $elements.Count)
         $menuCandidates = @()
         foreach ($element in $elements) {
             try {
-                if (-not (Test-MenuOwner $element)) { continue }
+                if (-not (Test-AppIdentity) -or $element.Current.IsOffscreen) { continue }
+                if ($element.Current.ProcessId -eq $AppProcessId) {
+                    $script:TrayDiagnostics.menu_app_process_count++
+                }
+                $ownerCode = [ChadexTrayInput]::MenuOwnerCheckCode(
+                    $element.Current.NativeWindowHandle, [uint32]$AppProcessId)
+                $script:TrayDiagnostics.menu_owner_check_code = $ownerCode
+                if ($ownerCode -ne 6) { continue }
+                $script:TrayDiagnostics.menu_exact_owner_count++
                 $items = $element.FindAll(
                     [System.Windows.Automation.TreeScope]::Children,
                     [System.Windows.Automation.PropertyCondition]::new(
@@ -321,6 +381,9 @@ public static class ChadexTrayInput {
                 )
                 $showItems = @($items | Where-Object { $_.Current.Name -ceq "Show Chadex" })
                 $quitItems = @($items | Where-Object { $_.Current.Name -ceq "Quit" })
+                if ($showItems.Count -eq 1 -and $quitItems.Count -eq 1) {
+                    $script:TrayDiagnostics.menu_exact_item_count++
+                }
                 if ($showItems.Count -eq 1 -and $quitItems.Count -eq 1 -and
                     $quitItems[0].Current.ProcessId -eq $AppProcessId -and
                     $quitItems[0].Current.IsEnabled -and -not $quitItems[0].Current.IsOffscreen) {
@@ -410,7 +473,9 @@ public static class ChadexTrayInput {
         }
         $x = [int]($bounds.left + ($width / 2))
         $y = [int]($bounds.top + ($height / 2))
-        if (-not [ChadexTrayInput]::IsShellTrayPoint($x, $y, [uint32]$shellProcessId)) {
+        $script:TrayDiagnostics.native_rect_root_kind = [ChadexTrayInput]::ShellTrayRootKind(
+            $x, $y, [uint32]$shellProcessId)
+        if ($script:TrayDiagnostics.native_rect_root_kind -eq 0) {
             Write-TrayFailure "tray_icon_unavailable"
             exit 2
         }
@@ -418,9 +483,12 @@ public static class ChadexTrayInput {
             Write-TrayFailure "tray_menu_unavailable"
             exit 3
         }
-        [ChadexTrayInput]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
+        $script:TrayDiagnostics.native_cursor_matches_rect =
+            [ChadexTrayInput]::CursorMatches($x, $y)
+        $script:TrayDiagnostics.native_click_attempted = $true
+        $script:TrayDiagnostics.native_click_down_input_count = [int][ChadexTrayInput]::SendMouseInput(0x0008)
         Start-Sleep -Milliseconds 50
-        [ChadexTrayInput]::mouse_event(0x0010, 0, 0, 0, [UIntPtr]::Zero)
+        $script:TrayDiagnostics.native_click_up_input_count = [int][ChadexTrayInput]::SendMouseInput(0x0010)
         $selection = Wait-ChadexMenu
         if ($null -eq $selection) {
             Write-TrayFailure "tray_menu_unavailable"
@@ -460,9 +528,14 @@ public static class ChadexTrayInput {
                 Write-TrayFailure "tray_menu_unavailable"
                 exit 3
             }
-            [ChadexTrayInput]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
+            $script:TrayDiagnostics.native_cursor_matches_rect =
+                [ChadexTrayInput]::CursorMatches($x, $y)
+            $script:TrayDiagnostics.native_click_attempted = $true
+            $script:TrayDiagnostics.native_click_down_input_count =
+                [int][ChadexTrayInput]::SendMouseInput(0x0008)
             Start-Sleep -Milliseconds 50
-            [ChadexTrayInput]::mouse_event(0x0010, 0, 0, 0, [UIntPtr]::Zero)
+            $script:TrayDiagnostics.native_click_up_input_count =
+                [int][ChadexTrayInput]::SendMouseInput(0x0010)
             $selection = Wait-ChadexMenu
             if ($null -eq $selection) {
                 Write-TrayFailure "tray_menu_unavailable"
@@ -475,7 +548,7 @@ public static class ChadexTrayInput {
         $selection.Quit.Current.ProcessId -ne $AppProcessId -or
         $selection.Quit.Current.Name -cne "Quit" -or
         -not $selection.Quit.Current.IsEnabled -or $selection.Quit.Current.IsOffscreen) {
-        [Console]::Out.WriteLine("tray_menu_unavailable")
+        Write-TrayFailure "tray_menu_unavailable"
         exit 3
     }
     Invoke-Element $selection.Quit
