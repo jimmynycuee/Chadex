@@ -119,6 +119,7 @@ Release profile、簽署、DMG、GitHub Actions 與 distribution boundary 的完
 - [`docs/PLAN_GOAL_MODE.md`](docs/PLAN_GOAL_MODE.md) — Plan Mode／Goal Mode 使用方式、安全邊界、恢復語意與實測證據
 - [`docs/RELEASE.md`](docs/RELEASE.md) — release gate、簽署、DMG 與 GitHub 發佈流程
 - [`docs/releases/0.7.1.md`](docs/releases/0.7.1.md) — Plan／Goal 路由、核准持久性、安全復原與驗收修正
+- [`docs/releases/0.7.2.md`](docs/releases/0.7.2.md) — v0.7.2 候選版：Goal 復原、Windows 系統匣生命週期與更新流程（尚未發佈）
 - [`docs/releases/0.7.0.md`](docs/releases/0.7.0.md) — Plan 模式、Goal 模式（Codex／ChatGPT 兩種模式）、Computer Use 操作中提示
 - [`docs/releases/0.6.5.md`](docs/releases/0.6.5.md) — Computer Use 閒置後關回 Chromium 網頁輔助功能、提示 ChatGPT 何時使用
 - [`docs/releases/0.6.4.md`](docs/releases/0.6.4.md) — 按鈕跟著介面大小縮放的 Liquid Glass 樣式

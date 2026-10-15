@@ -1,5 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
-const core = vi.hoisted(() => ({ invoke: vi.fn().mockResolvedValue(undefined), isTauri: vi.fn().mockReturnValue(true) }));
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+const core = vi.hoisted(() => {
+  const channels: Array<{ onmessage?: (event: unknown) => void }> = [];
+  const resources: Array<{ rid: number; close: ReturnType<typeof vi.fn> }> = [];
+  class ChannelMock {
+    onmessage?: (event: unknown) => void;
+    constructor() { channels.push(this); }
+  }
+  class ResourceMock {
+    close = vi.fn().mockResolvedValue(undefined);
+    constructor(public rid: number) { resources.push(this); }
+  }
+  return { invoke: vi.fn().mockResolvedValue(undefined), isTauri: vi.fn().mockReturnValue(true), channels, resources,
+    Channel: ChannelMock, Resource: ResourceMock };
+});
 vi.mock('@tauri-apps/api/core', () => core);
 import { desktopApi, skillArchiveError } from '../src/api';
 import { desktop } from './fixtures';
@@ -30,7 +43,8 @@ describe('Tauri 2 command contract', () => {
     await desktopApi.storeCredential('opaque'); expect(core.invoke).toHaveBeenLastCalledWith('store_credential', { credential: 'opaque' });
     await desktopApi.forgetCredential(); expect(core.invoke).toHaveBeenLastCalledWith('forget_credential', undefined);
     await desktopApi.restartHelper(); expect(core.invoke).toHaveBeenLastCalledWith('restart_helper', undefined);
-    await desktopApi.quitApp(); expect(core.invoke).toHaveBeenLastCalledWith('quit_app', undefined);
+    await desktopApi.hideWindow(); expect(core.invoke).toHaveBeenLastCalledWith('hide_main_window', undefined);
+    expect('quitApp' in desktopApi).toBe(false);
   });
   it('fails honestly outside Tauri instead of substituting a demo-ready state', async () => {
     core.isTauri.mockReturnValueOnce(false);
@@ -54,5 +68,57 @@ describe('Tauri 2 command contract', () => {
       expect((mapped as Error).message).not.toContain('skill_archive_');
     }
     expect(skillArchiveError(new Error('other'))).toEqual(new Error('other'));
+  });
+});
+
+describe('Windows updater API', () => {
+  beforeEach(() => {
+    core.invoke.mockClear(); core.isTauri.mockClear().mockReturnValue(true);
+    core.channels.length = 0; core.resources.length = 0;
+  });
+
+  it('checks only on request, maps the release metadata, and installs only after a separate call', async () => {
+    core.invoke.mockResolvedValueOnce({ rid: 41, version: '0.7.2', date: '2026-10-15', body: 'Windows update' });
+    await expect(desktopApi.checkForUpdate()).resolves.toEqual({ version: '0.7.2', date: '2026-10-15', body: 'Windows update' });
+    expect(core.invoke).toHaveBeenLastCalledWith('plugin:updater|check');
+
+    const onProgress = vi.fn();
+    const installing = desktopApi.installUpdate(onProgress);
+    const [, args] = core.invoke.mock.calls.at(-1)!;
+    expect(core.invoke).toHaveBeenLastCalledWith('plugin:updater|download_and_install', expect.objectContaining({ rid: 41, onEvent: expect.any(Object) }));
+    const channel = core.channels.at(-1)!;
+    channel.onmessage?.({ event: 'Started', data: { contentLength: 100 } });
+    channel.onmessage?.({ event: 'Progress', data: { chunkLength: 25 } });
+    channel.onmessage?.({ event: 'Progress', data: { chunkLength: 75 } });
+    channel.onmessage?.({ event: 'Finished' });
+    await installing;
+    expect(onProgress.mock.calls).toEqual([[0, 100], [25, 100], [100, 100], [100, 100]]);
+    expect(args).toEqual(expect.objectContaining({ rid: 41 }));
+    await expect(desktopApi.installUpdate()).rejects.toThrow('先檢查更新');
+  });
+
+  it('returns null when no update is available and does not start an installer', async () => {
+    core.invoke.mockResolvedValueOnce(null);
+    await expect(desktopApi.checkForUpdate()).resolves.toBeNull();
+    expect(core.invoke).toHaveBeenLastCalledWith('plugin:updater|check');
+    expect(core.invoke.mock.calls.some(([command]) => command === 'plugin:updater|download_and_install')).toBe(false);
+  });
+
+  it('fails safely outside Tauri and on malformed update metadata', async () => {
+    core.isTauri.mockReturnValueOnce(false);
+    await expect(desktopApi.checkForUpdate()).rejects.toThrow('桌面環境');
+    core.invoke.mockResolvedValueOnce({ rid: 42, version: '' });
+    await expect(desktopApi.checkForUpdate()).rejects.toThrow('無效的版本資訊');
+    expect(core.resources.at(-1)?.rid).toBe(42);
+    expect(core.resources.at(-1)?.close).toHaveBeenCalledOnce();
+  });
+
+  it('clears and releases an update resource after an installation error', async () => {
+    core.invoke.mockResolvedValueOnce({ rid: 43, version: '0.7.2' });
+    await desktopApi.checkForUpdate();
+    core.invoke.mockRejectedValueOnce(new Error('download failed'));
+    await expect(desktopApi.installUpdate()).rejects.toThrow('download failed');
+    expect(core.resources.at(-1)?.close).toHaveBeenCalledOnce();
+    await expect(desktopApi.installUpdate()).rejects.toThrow('先檢查更新');
   });
 });

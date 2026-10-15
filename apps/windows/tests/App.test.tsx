@@ -13,7 +13,7 @@ async function mount(state = desktop()) {
 }
 describe('desktop pages and IPC behavior', () => {
   it('renders the core pages and distinguishes local ready from verified connection', async () => {
-    await mount();
+    const { api } = await mount();
     expect(screen.getAllByText('本地服務可用').length).toBeGreaterThan(0);
     expect(screen.queryByText('專案已通過 ChatGPT 驗證')).toBeNull();
     for (const [button, heading] of [['專案', '專案'], ['連線', '連線'], ['活動紀錄', '活動紀錄'], ['設定', '設定'], ['診斷', '診斷']] as const) {
@@ -22,7 +22,82 @@ describe('desktop pages and IPC behavior', () => {
     }
     fireEvent.click(screen.getByRole('button', { name: /Windows Desktop/ }));
     expect(screen.getByRole('heading', { level: 1, name: '版本與更新' })).toBeTruthy();
-    expect(screen.getByText('尚未提供更新資訊')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '檢查更新' })).toBeTruthy();
+    expect(api.checkForUpdate).not.toHaveBeenCalled();
+    expect(screen.queryByText('目前已是最新版本。')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '檢查更新' }));
+    expect(await screen.findByText('目前已是最新版本。')).toBeTruthy();
+  });
+  it('shows an available version and waits for an explicit install click', async () => {
+    const state = desktop({ version: '0.7.2' });
+    const api = apiMock(state);
+    vi.mocked(api.checkForUpdate).mockResolvedValueOnce({ version: '0.7.3', date: '2026-10-20', body: 'Fixes and improvements' });
+    const store = new DesktopStore(api);
+    render(<App api={api} store={store} />);
+    await waitFor(() => expect(store.getSnapshot().freshness).toBe('fresh'));
+    fireEvent.click(screen.getByRole('button', { name: /Windows Desktop/ }));
+    expect(screen.queryByText('首次更新需要手動安裝')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '檢查更新' }));
+    expect(await screen.findByText('找到新版本 v0.7.3')).toBeTruthy();
+    expect(screen.getByText('Fixes and improvements')).toBeTruthy();
+    expect(api.installUpdate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '下載並安裝 v0.7.3' }));
+    expect(await screen.findByText('更新安裝已啟動，Chadex 將關閉以完成安裝。')).toBeTruthy();
+    expect(api.installUpdate).toHaveBeenCalledTimes(1);
+  });
+  it('bounds and displays download progress while preventing duplicate installation', async () => {
+    const api = apiMock(desktop({ version: '0.7.2' }));
+    const pending = deferred<void>();
+    vi.mocked(api.checkForUpdate).mockResolvedValueOnce({ version: '0.7.3' });
+    vi.mocked(api.installUpdate).mockImplementationOnce(async (onProgress) => {
+      onProgress?.(20, 100); onProgress?.(10, 100); onProgress?.(500, 100);
+      await pending.promise;
+    });
+    const store = new DesktopStore(api);
+    render(<App api={api} store={store} />);
+    await waitFor(() => expect(store.getSnapshot().freshness).toBe('fresh'));
+    fireEvent.click(screen.getByRole('button', { name: /Windows Desktop/ }));
+    fireEvent.click(screen.getByRole('button', { name: '檢查更新' }));
+    fireEvent.click(await screen.findByRole('button', { name: '下載並安裝 v0.7.3' }));
+    expect(await screen.findByText('已下載 100 B / 100 B（100%）')).toBeTruthy();
+    expect(screen.getByRole('progressbar', { name: '更新下載進度' })).toBeTruthy();
+    expect(api.installUpdate).toHaveBeenCalledTimes(1);
+    await act(async () => { pending.resolve(undefined); });
+    expect(await screen.findByText('更新安裝已啟動，Chadex 將關閉以完成安裝。')).toBeTruthy();
+  });
+  it('shows actionable updater errors and offers a retry', async () => {
+    const api = apiMock(desktop({ version: '0.7.1' }));
+    vi.mocked(api.checkForUpdate).mockRejectedValueOnce(new Error('network offline'));
+    const store = new DesktopStore(api);
+    render(<App api={api} store={store} />);
+    await waitFor(() => expect(store.getSnapshot().freshness).toBe('fresh'));
+    fireEvent.click(screen.getByRole('button', { name: /Windows Desktop/ }));
+    expect(screen.getByText(/v0\.7\.1 及更早版本不含 App 內更新元件/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '檢查更新' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText(/檢查更新失敗：network offline/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重新檢查更新' })).toBeTruthy();
+  });
+  it('reports installation failure and returns to an explicit update check', async () => {
+    const api = apiMock(desktop({ version: '0.7.2' }));
+    vi.mocked(api.checkForUpdate).mockResolvedValueOnce({ version: '0.7.3' });
+    vi.mocked(api.installUpdate).mockRejectedValueOnce(new Error('signature verification failed'));
+    const store = new DesktopStore(api);
+    render(<App api={api} store={store} />);
+    await waitFor(() => expect(store.getSnapshot().freshness).toBe('fresh'));
+    fireEvent.click(screen.getByRole('button', { name: /Windows Desktop/ }));
+    fireEvent.click(screen.getByRole('button', { name: '檢查更新' }));
+    fireEvent.click(await screen.findByRole('button', { name: '下載並安裝 v0.7.3' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText(/安裝未完成：signature verification failed/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重新檢查更新' })).toBeTruthy();
+  });
+  it('uses the system tray action instead of shutting down the helper from Settings', async () => {
+    const { api } = await mount();
+    fireEvent.click(screen.getByRole('button', { name: '設定' }));
+    fireEvent.click(screen.getByRole('button', { name: '隱藏到系統匣' }));
+    await waitFor(() => expect(api.hideWindow).toHaveBeenCalledTimes(1));
+    expect(api.runtimeAction).not.toHaveBeenCalled();
   });
   it('does not show fake connection success from an action result', async () => {
     const { api } = await mount();

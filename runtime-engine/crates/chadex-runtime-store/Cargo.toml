@@ -16,6 +16,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
+ring = "=0.17.14"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 

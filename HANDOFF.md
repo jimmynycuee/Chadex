@@ -1,10 +1,92 @@
 ---
-head_commit: 88912d6
-branch: chore/v0.6.0-prep
-phase: V060
-updated: 2026-10-09
-updated_by: claude
+head_commit: 3256161b5f7a7e077523922107cd2956bb9f3244
+branch: codex/v072-release-prep
+phase: V072
+updated: 2026-10-15
+updated_by: codex
 ---
+
+# Handoff · v0.7.2 release preparation
+
+The working candidate is based on public `main` at `3256161b5f7a7e077523922107cd2956bb9f3244`, on `codex/v072-release-prep`. Implementation and release notes are local; this state is not yet published. The separate dirty primary checkout remains untouched.
+
+User scope includes macOS and Windows v0.7.2 release, a Windows GitHub Release installer plus in-app updater, and Windows close-to-tray behavior. On Windows, the title-bar X and in-app close button hide to the tray and preserve the helper/Tunnel; only tray Quit stops the helper. User explicitly authorized push, merge, tag and publication on 2026-10-15 once required gates pass.
+
+The Goal environment/state repair and duplicate-start fix are included. Required sandboxing and formal human gates remain intact. G1 Goal `wc_grun_2FeZZCpzxbwrKtSH` was already cancelled and is not resumed or modified by this work.
+
+Updater signing is configured: the private key is stored as the GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY`; the matching public key is the repository variable `CHADEX_UPDATER_PUBLIC_KEY`. The local key files are outside the checkout with mode 600. Their contents are not recorded here.
+
+Local validation: Node 22.12.0 Windows tests passed 84/84 and the production frontend build passed. Goal environment (13), checkpoint staging (3), Windows desktop (17), installer (22), release preparation (14), and updater manifest (10) tests passed. Goal reliability A–J and Docker Worker/D1 integration evidence are recorded in `docs/GOAL_RELIABILITY_FIX_REPORT.md`. The complete `scripts/release_check.sh` now passes with exit 0, including Swift 307 tests (1 skipped), Rust helper 364 + 3 integration tests (4 ignored), runtime-engine 2,840 passed / 3 ignored, release-critical crates, Computer Use acceptance, release tooling, a fresh optimized macOS app package, Hardened Runtime, and deep/strict code-signature verification. The first run failed after its test cache disappeared; the full rerun succeeded with 30 GiB free. Rustfmt is unavailable in the pinned local toolchain.
+
+Remaining release gates: commit and push the candidate, pass full PR/main CI including Windows installed lifecycle and historical upgrade, then pass the tag-triggered public-history, clean source, Apple Silicon DMG, Windows signed updater and manifest jobs before publication. Graphify was regenerated and Obsidian sync/check passed (69 outputs, no stale generated notes). Live connected ChatGPT and Windows-host hardware/UI acceptance were not performed locally; hosted CI and the release workflow remain authoritative for Windows build/package gates. Do not densely poll GitHub workflows while waiting.
+
+## Prior Goal-reliability handoff
+
+`head_commit` identifies the latest validated implementation commit; a following documentation-only commit updates this pointer. Work remains local and unpushed.
+
+## Active follow-up — Goal environment/state repair (2026-10-15)
+
+The downloaded Goal issue report has been implemented and its automated A–J
+coverage completed in this PG2 worktree. No push/merge/deploy/install and no change
+to G1 financial policy, Sheets, schedules, website or formal Worker/D1 services.
+Primary dirty release and separate Windows worktrees remain preserved.
+
+Implemented: bound-Runner preflight before agent/checkpoint; bounded Python stdin
+transport (including long native preflight paths); private Linux Docker acceptance
+with exact identity/wait/owned cleanup and crash-recovery inventory; scoped inputs
+and full dependency tree+lock pins; immutable acceptance revisions; trusted scoped
+receipts and separate Ed25519 external authority; operator-only adoption/retry;
+queued ChatGPT Resume reclaim; actual-activity idle policy; mutation barriers;
+separate checkpoint/acceptance counters and native review/recovery controls.
+Literal Git staging excludes derived/private inputs; Python acceptance does not
+create/update checkpoint bytecode. Unknown outcomes still fail closed.
+
+Final executed evidence: Store 213; Supervisor 23; Plan 32; contracts 142 + 96;
+environment/transport/control 5; mutation gate 1; Swift 307 tests/1 skipped/0 failures;
+scoped input tests 13; actual Git regressions 3; native sandbox 33/33 controls
+and 23 unit tests. Native combined script exit 2 denotes Worker/D1 not validated
+on that native backend; supported Docker standalone passed 30/30 controls,
+14/14 child controls and true Worker/D1. Fresh reliability helper E2E passed 32/32;
+standard Plan/Goal helper E2E passed all 10 assertions; one bounded actual Codex
+Goal succeeded with exactly one agent dispatch and only its intended fixture file.
+The full local release gate passed: 307 Swift tests/1 skipped, 364 helper unit
+tests + 3 integrations/4 ignored, 2,840 runtime-engine tests/3 ignored, and the
+release packaging/signature checks. No fixture cleanup blockers were reported.
+Logs: ignored dist/goal-reliability-evidence.
+
+Original G1 Goal is cancelled, not needs_attention; this repair did not cancel it.
+Fresh read-only Git verification retained checkpoint
+6d6e81125265145338f30d2058497b8ef9b47738 with clean tracked files. Do not revive the
+cancelled ID. A new explicitly approved source/base/budget is needed; do not reset
+or switch the formal original project. No new G1 Goal or owner evidence was created.
+Other nonterminal parked runs may use verified adoption/revision/checkpoint retry
+within their original budget. Real owner/finance/restore gates still block SUCCESS.
+
+Remaining: human native UI/connected ChatGPT acceptance and hosted Windows/release
+workflow validation. The optimized candidate `.app` was built and locally signed
+by the release gate, but installed build35 is unchanged. PG2 remains
+in_progress with no closed_commit. See docs/GOAL_RELIABILITY_FIX_REPORT.md for
+A–J scopes, source anchors and limits. The separate macOS 28/Intel Node warning
+migration is not part of this repair.
+
+Subagents: Store and UI used Luna/max (execution metadata confirmed), completed;
+sandbox used Sol/xhigh (confirmed), interrupted by workspace credits. Main completed
+integration and verification without replacement delegation. Exact IDs and the
+assigned/confirmed table are in the repair report and prior work records.
+
+## Prior committed duplicate-start milestone — 2026-10-14
+
+The user reported that clicking either Goal execution option can create a second effective run. Work starts from the published v0.7.1 tag in an isolated worktree. The primary dirty release checkout and the separate Windows loopback-fix worktree remain untouched.
+
+Scope: immediately lock start options during dispatch, show the existing run after success, and prevent repeated or concurrent approval/start requests for the exact same revision/hash from creating another run. Preserve human approval, owner/Runner binding, failed-start recovery, and genuine new-revision starts. Do not cancel/delete the user's existing live runs or publish a new release as part of this fix.
+
+Implemented: immediate UI reservation of both execution modes, persistent existing-run presentation, unknown-outcome reconciliation, and transactional exact-revision run deduplication. Consumed approval replay preserves run identity/mode; direct Goal active approvals are reused only while valid. Ordinary Plan reapproval remains superseding.
+
+Validation: Swift full suite 279 executed / 1 skipped / 0 failed, focused start-state 12 passed; Store 194/194, Plan operator 31/31 and Goal 18/18 passed. Final isolated helper/operator E2E exit 0: the published build35 baseline created 3 runs, patched runtime retains 1 with created=false for same/cross-mode retries and unchanged approval IDs. Details: docs/GOAL_START_DEDUPLICATION_REPORT.md; ignored local logs/JSON: dist/goal-start-evidence.
+
+Remaining: review, candidate packaging, native button-click smoke and connected human ChatGPT acceptance, then merge/release when authorized. PG2 is in_progress, not closed. Installed /Applications/Chadex.app remains v0.7.1 build35; existing live runs are untouched. The separate Intel Node/dependency migration for the macOS 28 warning is not applied.
+
+## Historical handoff (v0.6.0 prep; preserved below)
 
 # Handoff · v0.6.0 prep (draft)
 

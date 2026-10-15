@@ -12,6 +12,7 @@ use super::Database;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeSet, HashMap};
 
 pub const PLAN_ID_PREFIX: &str = "wc_plan_";
 pub const PLAN_APPROVAL_ID_PREFIX: &str = "wc_papr_";
@@ -67,8 +68,70 @@ pub(crate) fn plan_store_error(error: rusqlite::Error) -> PlanStoreError {
     PlanStoreError::new("plan_store_unavailable", "Durable Plan store is unavailable")
 }
 
-/// One objective acceptance command. It is executed as literal argv (never a
-/// shell string) inside the Goal workspace; exit code 0 means pass.
+/// Sandbox capability required by one acceptance check.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AcceptanceLane {
+    #[default]
+    OfflineSandbox,
+    LoopbackIntegration,
+    ExternalAttestation,
+}
+
+fn is_offline_lane(value: &AcceptanceLane) -> bool {
+    *value == AcceptanceLane::OfflineSandbox
+}
+
+/// Whether a check is runnable code or an externally controlled gate.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AcceptanceKind {
+    #[default]
+    Test,
+    ExternalGate,
+}
+
+fn is_test_kind(value: &AcceptanceKind) -> bool {
+    *value == AcceptanceKind::Test
+}
+
+/// Human action and evidence required for an external gate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalGateManifest {
+    pub owner: String,
+    pub action: String,
+    pub evidence: String,
+    pub next_step: String,
+}
+
+/// A source artifact that may be prepared in a Goal workspace only with the
+/// declared digest and read-only permission. The store never copies it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceRequirement {
+    pub source_path: String,
+    pub source_sha256: String,
+    pub destination_path: String,
+    pub permission: WorkspaceRequirementPermission,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceRequirementPermission {
+    ReadOnly,
+}
+
+/// A declared dependency and the evidence describing where it came from.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceDependency {
+    pub path: String,
+    pub provenance: String,
+}
+
+/// One acceptance command, executed as literal argv (never a shell string).
+/// Legacy specs deserialize with the offline sandbox and ordinary-test defaults.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AcceptanceCheck {
@@ -78,6 +141,19 @@ pub struct AcceptanceCheck {
     pub cwd: Option<String>,
     #[serde(default = "default_check_timeout_secs")]
     pub timeout_secs: u32,
+    #[serde(default, skip_serializing_if = "is_offline_lane")]
+    pub lane: AcceptanceLane,
+    #[serde(default, skip_serializing_if = "is_test_kind")]
+    pub kind: AcceptanceKind,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub loopback_ports: Vec<u16>,
+    /// Immutable local Linux image approved with this acceptance revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container_image: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub depends_on: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_gate: Option<ExternalGateManifest>,
 }
 
 fn default_check_timeout_secs() -> u32 {
@@ -125,6 +201,10 @@ pub struct PlanSpec {
     pub acceptance: Vec<AcceptanceCheck>,
     #[serde(default)]
     pub budget: GoalBudget,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workspace_requirements: Vec<WorkspaceRequirement>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<WorkspaceDependency>,
 }
 
 impl PlanSpec {
@@ -184,6 +264,133 @@ impl PlanSpec {
                     format!("acceptance timeout_secs must be within 1..={MAX_PLAN_CHECK_TIMEOUT_SECS}"),
                 ));
             }
+            if check.container_image.as_ref().is_some_and(|image|
+                check.lane != AcceptanceLane::LoopbackIntegration ||
+                !image.strip_prefix("sha256:").is_some_and(is_sha256_hex)) {
+                return Err(PlanStoreError::new("invalid_plan_acceptance",
+                    "container_image requires loopback_integration and an exact sha256 image ID"));
+            }
+            if check.loopback_ports.len() > 8
+                || check.loopback_ports.iter().any(|port| *port < 49152)
+                || check.loopback_ports.iter().copied().collect::<BTreeSet<_>>().len() != check.loopback_ports.len()
+                || (check.lane != AcceptanceLane::LoopbackIntegration && !check.loopback_ports.is_empty())
+                || (check.lane == AcceptanceLane::LoopbackIntegration && check.container_image.is_none() && check.loopback_ports.is_empty()) {
+                return Err(PlanStoreError::new("invalid_plan_acceptance",
+                    "loopback needs a pinned private container or distinct approved ports within 49152..=65535"));
+            }
+            match (&check.kind, &check.lane, &check.external_gate) {
+                (AcceptanceKind::ExternalGate, AcceptanceLane::ExternalAttestation, Some(manifest)) => {
+                    for (value, field) in [
+                        (&manifest.owner, "owner"),
+                        (&manifest.action, "action"),
+                        (&manifest.evidence, "evidence"),
+                        (&manifest.next_step, "next_step"),
+                    ] {
+                        if value.trim().is_empty() || value.len() > 2048 {
+                            return Err(PlanStoreError::new(
+                                "invalid_plan_acceptance",
+                                format!("external gate {field} must contain 1..=2048 bytes"),
+                            ));
+                        }
+                    }
+                }
+                (AcceptanceKind::ExternalGate, _, _) => {
+                    return Err(PlanStoreError::new(
+                        "invalid_plan_acceptance",
+                        "external_gate checks require the external_attestation lane and a complete manifest",
+                    ));
+                }
+                (_, AcceptanceLane::ExternalAttestation, _) | (_, _, Some(_)) => {
+                    return Err(PlanStoreError::new(
+                        "invalid_plan_acceptance",
+                        "external_attestation lane and manifest are reserved for external_gate checks",
+                    ));
+                }
+                _ => {}
+            }
+            let mut dependencies = BTreeSet::new();
+            for dependency in &mut check.depends_on {
+                *dependency = dependency.trim().to_string();
+                if dependency.is_empty()
+                    || dependency.as_str() == check.name.as_str()
+                    || !dependencies.insert(dependency.clone())
+                {
+                    return Err(PlanStoreError::new(
+                        "invalid_plan_acceptance",
+                        "acceptance dependencies must be unique check names and cannot depend on themselves",
+                    ));
+                }
+            }
+        }
+        let check_names: BTreeSet<_> = self.acceptance.iter().map(|check| check.name.as_str()).collect();
+        let graph: HashMap<_, _> = self
+            .acceptance
+            .iter()
+            .map(|check| (check.name.as_str(), check.depends_on.iter().map(String::as_str).collect::<Vec<_>>()))
+            .collect();
+        for check in &self.acceptance {
+            if check.depends_on.iter().any(|name| !check_names.contains(name.as_str())) {
+                return Err(PlanStoreError::new(
+                    "invalid_plan_acceptance",
+                    format!("acceptance check {} depends on an unknown check name", check.name),
+                ));
+            }
+        }
+        fn visit<'a>(
+            name: &'a str,
+            graph: &HashMap<&'a str, Vec<&'a str>>,
+            visiting: &mut BTreeSet<&'a str>,
+            visited: &mut BTreeSet<&'a str>,
+        ) -> bool {
+            if visited.contains(name) {
+                return false;
+            }
+            if !visiting.insert(name) {
+                return true;
+            }
+            if graph
+                .get(name)
+                .is_some_and(|dependencies| dependencies.iter().any(|dependency| visit(dependency, graph, visiting, visited)))
+            {
+                return true;
+            }
+            visiting.remove(name);
+            visited.insert(name);
+            false
+        }
+        let mut visiting = BTreeSet::new();
+        let mut visited = BTreeSet::new();
+        if graph.keys().any(|name| visit(name, &graph, &mut visiting, &mut visited)) {
+            return Err(PlanStoreError::new(
+                "invalid_plan_acceptance",
+                "acceptance dependencies cannot contain a cycle",
+            ));
+        }
+        let mut workspace_destinations = BTreeSet::new();
+        for requirement in &mut self.workspace_requirements {
+            requirement.source_path = normalize_workspace_path(&requirement.source_path, "source_path")?;
+            requirement.destination_path = normalize_workspace_path(&requirement.destination_path, "destination_path")?;
+            requirement.source_sha256 = requirement.source_sha256.to_ascii_lowercase();
+            if !is_sha256_hex(&requirement.source_sha256) || !workspace_destinations.insert(requirement.destination_path.clone()) {
+                return Err(PlanStoreError::new(
+                    "invalid_workspace_requirement",
+                    "workspace requirements need a SHA-256 digest and unique destinations",
+                ));
+            }
+        }
+        let mut dependency_paths = BTreeSet::new();
+        for dependency in &mut self.dependencies {
+            dependency.path = normalize_workspace_path(&dependency.path, "dependency path")?;
+            dependency.provenance = dependency.provenance.trim().to_string();
+            if dependency.provenance.is_empty()
+                || dependency.provenance.len() > 2048
+                || !dependency_paths.insert(dependency.path.clone())
+            {
+                return Err(PlanStoreError::new(
+                    "invalid_workspace_dependency",
+                    "workspace dependencies need a unique relative path and non-empty provenance",
+                ));
+            }
         }
         let budget = &self.budget;
         if budget.max_iterations == 0 || budget.max_iterations > MAX_GOAL_ITERATIONS {
@@ -210,6 +417,33 @@ impl PlanSpec {
         }
         Ok(self)
     }
+}
+
+fn normalize_workspace_path(value: &str, field: &str) -> Result<String, PlanStoreError> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.contains('\0')
+        || value.contains('\\')
+        || value.starts_with('/')
+        || value.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err(PlanStoreError::new(
+            "invalid_workspace_requirement",
+            format!("{field} must be a normalized relative path without '.', '..', or platform separators"),
+        ));
+    }
+    Ok(value.to_string())
+}
+
+pub(super) fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// Validate the textual object ID emitted by Git. The repository object
+/// format determines whether this is 40 hex characters (SHA-1) or 64
+/// (SHA-256); this is deliberately separate from content SHA-256 validators.
+pub fn is_git_oid(value: &str) -> bool {
+    matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 pub fn plan_content_sha256(content: &str, spec: &PlanSpec) -> String {
@@ -948,6 +1182,84 @@ impl Database {
                 "plan_project_mismatch",
                 "Approval binding does not match the plan's project",
             ));
+        }
+        if require_acceptance {
+            // Goal approval is single-use per immutable revision, even when
+            // approve-and-start is retried after the run consumed its approval.
+            // Already-started revisions cannot receive a fresh approval.
+            let consumed_approval: Option<String> = tx
+                .query_row(
+                    "SELECT approval_id FROM wc_plan_decisions
+                     WHERE plan_id = ?1 AND revision = ?2 AND content_sha256 = ?3 AND state = 'consumed'
+                     ORDER BY decided_at_unix_ms, approval_id LIMIT 1",
+                    params![plan_id, revision, content_sha256],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(plan_store_error)?;
+            if let Some(approval_id) = consumed_approval {
+                let decision = load_decision(&tx, &approval_id)?;
+                let run_id = decision.consumed_by_goal_run_id.as_deref().ok_or_else(|| {
+                    PlanStoreError::new(
+                        "plan_store_corrupt",
+                        "Consumed Goal approval is missing its run binding",
+                    )
+                })?;
+                let run_binding_json: Option<String> = tx
+                    .query_row(
+                        "SELECT binding_json FROM wc_goal_runs
+                         WHERE goal_run_id = ?1 AND plan_id = ?2 AND revision = ?3 AND content_sha256 = ?4",
+                        params![run_id, plan_id, revision, content_sha256],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(plan_store_error)?;
+                let run_binding_json = run_binding_json.ok_or_else(|| {
+                    PlanStoreError::new(
+                        "plan_store_corrupt",
+                        "Consumed Goal approval points to a missing or different run",
+                    )
+                })?;
+                let run_binding: PlanApprovalBinding =
+                    serde_json::from_str(&run_binding_json).map_err(|_| {
+                        PlanStoreError::new(
+                            "plan_store_corrupt",
+                            "Consumed Goal run has an unreadable approval binding",
+                        )
+                    })?;
+                if decision.binding.as_ref() != Some(&binding) || run_binding != binding {
+                    return Err(PlanStoreError::new(
+                        "plan_approval_environment_changed",
+                        "This plan revision already started with a different Runner, root, or base commit",
+                    ));
+                }
+                tx.commit().map_err(plan_store_error)?;
+                return Ok(decision);
+            }
+
+            // Direct Goal requests share a still-valid active approval while
+            // concurrent starts race to consume it. Ordinary Plan reapproval
+            // retains its superseding semantics below.
+            if plan.origin == "goal" {
+                let active_approval: Option<String> = tx
+                    .query_row(
+                        "SELECT approval_id FROM wc_plan_decisions
+                         WHERE plan_id = ?1 AND revision = ?2 AND content_sha256 = ?3
+                           AND state = 'active' AND expires_at_unix_ms > ?4
+                         ORDER BY created_at_unix_ms, approval_id LIMIT 1",
+                        params![plan_id, revision, content_sha256, now],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(plan_store_error)?;
+                if let Some(approval_id) = active_approval {
+                    let decision = load_decision(&tx, &approval_id)?;
+                    if decision.binding.as_ref() == Some(&binding) {
+                        tx.commit().map_err(plan_store_error)?;
+                        return Ok(decision);
+                    }
+                }
+            }
         }
         tx.execute(
             "UPDATE wc_plan_decisions SET state = 'superseded', decided_at_unix_ms = ?2

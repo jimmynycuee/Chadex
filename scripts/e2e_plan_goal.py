@@ -135,6 +135,38 @@ def operator(helper, project, tool, arguments):
     return bool(value.get("success")), value.get("output", value)
 
 
+
+def check_duplicate_goal_start(helper, project, plan_id, revision, content_sha256, run_id, mode):
+    """Exercise the real app-operator route, not only model-side run replay."""
+    ok_before, before = operator(helper, project, "plan_review", {"action": "inspect", "plan_id": plan_id})
+    before_ids = {d["approval_id"] for d in before.get("decisions", [])}
+    attempts = []
+    for requested_mode in (mode, "codex" if mode == "chatgpt" else "chatgpt"):
+        ok, output = operator(helper, project, "plan_review", {
+            "action": "approve_and_start", "plan_id": plan_id, "revision": revision,
+            "content_sha256": content_sha256, "mode": requested_mode})
+        replayed = output.get("goal_run") or {}
+        attempts.append({"mode": requested_mode, "ok": ok,
+                         "run_id": replayed.get("goal_run_id"), "created": output.get("created"),
+                         "error_kind": output.get("error_kind"),
+                         "safe_reply": not ok or (replayed.get("goal_run_id") == run_id and output.get("created") is False)})
+    ok_overview, overview = operator(helper, project, "goal_operator", {"action": "overview"})
+    runs = [r for r in overview.get("goal_runs", []) if r.get("plan_id") == plan_id]
+    ok_after, after = operator(helper, project, "plan_review", {"action": "inspect", "plan_id": plan_id})
+    after_ids = {d["approval_id"] for d in after.get("decisions", [])}
+    single_run = len(runs) == 1 and runs[0].get("goal_run_id") == run_id
+    original_mode = single_run and runs[0].get("mode") == mode
+    unchanged_approvals = ok_before and ok_after and before_ids == after_ids
+    passed = ok_overview and single_run and original_mode and unchanged_approvals and all(a["safe_reply"] for a in attempts)
+    step("goal_start_button_deduplication", passed=passed, attempts=attempts,
+         run_count=len(runs), original_mode_preserved=original_mode,
+         approval_ids_unchanged=unchanged_approvals)
+    if not passed:
+        OUT.write_text(json.dumps(report, indent=2, ensure_ascii=False))
+        helper.close()
+        raise AssertionError("Repeated app Goal start created or changed a run/approval")
+
+
 def main():
     root = Path(tempfile.mkdtemp(prefix="chadex-e2e-pg-")).resolve()
     project, data = root / "calc", root / "data"
@@ -167,7 +199,6 @@ sleep {AGENT_SLEEP}
 """)
         agent.chmod(0o755)
         extra_env["CHADEX_GOAL_AGENT_ARGV"] = json.dumps([str(agent)])
-        extra_env["CHADEX_GOAL_CHECK_SANDBOX_ARGV"] = json.dumps(SANDBOX_PREFIX)
 
     helper = Helper(data, extra_env)
     helper.request("activateProject", {"path": str(project)})
@@ -373,6 +404,8 @@ sleep {AGENT_SLEEP}
                                                            "revision": 1, "mode": "chatgpt",
                                                            "content_sha256": (creq.get("revision") or {}).get("content_sha256")})
     crun = ((cstart or {}).get("goal_run") or {}).get("goal_run_id")
+    check_duplicate_goal_start(helper, project, cplan, 1,
+                               (creq.get("revision") or {}).get("content_sha256"), crun, "chatgpt")
     workspace = None
     t2 = time.time()
     while time.time() - t2 < 120:
@@ -440,8 +473,23 @@ sleep {AGENT_SLEEP}
     ok2, rel = operator(helper, fresh, "goal_operator", {"action": "release_emergency_stop"})
     step("emergency_stop_roundtrip", engaged=es.get("emergency_stop_engaged"), released=rel.get("emergency_stop_engaged") is False)
     helper.close()
+    by_name={item["step"]:item for item in report["steps"]}
+    checks={
+        "background_goal_succeeded":by_name.get("goal_final",{}).get("state")=="succeeded",
+        "direct_goal_succeeded":by_name.get("direct_goal_final",{}).get("state")=="succeeded",
+        "chatgpt_two_rounds":by_name.get("chatgpt_mode_goal",{}).get("round1_has_failures") is True and by_name.get("chatgpt_mode_goal",{}).get("round2_achieved") is True,
+        "independent_branch_check":by_name.get("independent_branch_check",{}).get("exit_code")==0,
+        "direct_branch_check":by_name.get("direct_goal_branch_check",{}).get("exit_code")==0,
+        "plan_readonly_preserved":by_name.get("plan_mode_project_unchanged",{}).get("identical") is True,
+        "repository_hooks_not_run":by_name.get("repository_hooks_not_run",{}).get("hook_ran") is False,
+        "start_is_singleflight":all(item.get("passed") for item in report["steps"] if item["step"]=="goal_start_button_deduplication"),
+        "uncommitted_project_blocked":by_name.get("git_readiness_no_commit",{}).get("start_ok") is False,
+        "emergency_stop_roundtrip":by_name.get("emergency_stop_roundtrip",{}).get("engaged") is True and by_name.get("emergency_stop_roundtrip",{}).get("released") is True,
+    }
+    report["assertions"]=checks;report["passed"]=all(checks.values())
     OUT.write_text(json.dumps(report, indent=2, ensure_ascii=False))
     print("ROOT", root)
+    if not report["passed"]:raise AssertionError("Plan/Goal E2E failures: "+str([name for name,passed in checks.items() if not passed]))
 
 
 if __name__ == "__main__":

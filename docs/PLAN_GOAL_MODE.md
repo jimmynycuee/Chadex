@@ -74,7 +74,8 @@ Chadex App ──bridge planGoalOperator──► helper ──REST /api/tools/c
 - 只有最新 revision 可審核；送出時須附顯示中的 revision 與 hash（`plan_revision_stale`、`plan_content_hash_mismatch`）。
 - 直接 Goal 是只有一版、`origin = goal` 的 plan：建立時**不上 Plan Mode 鎖**、不能修訂（`goal_request_immutable`，要改就重新呼叫 `goal_run_start`，舊的未開始請求自動關閉）、不能「要求修改」（避免把擁有者鎖成唯讀，改用捨棄）。建立時記下受限的 Goal dispatch principal；Plan Mode 中不能建立。
 - `approve_and_start`：核准前先檢查所有可能拒絕的條件，包括：擁有者是否正在 Plan Mode 規劃別的 plan（`goal_owner_in_plan_mode`）、有沒有為**最新版**記錄的 dispatch principal 且不超過 7 天（`goal_dispatch_unknown`）、緊急停止、以擁有者記錄的 principal 重新解析專案時，Runner／root 是否與操作者看到的相同。之後才核准（綁定 HEAD）、以 plan 擁有者身分 consume 核准並建立 run。若啟動仍失敗，剛建立的核准會被撤回（`approval_withdrawn`），不會留下可被啟動的核准。`plan_save` 每次都會為該版重新記錄（或在算不出來時清除）dispatch principal，所以一般計畫也能一步核准並開始，且不會沿用舊版或過期的權限。
-- 儲存新 revision 會 supersede 舊核准並重新上鎖；要求修改會撤銷 active 核准並重新上鎖；核准單次使用（App 的 `approve_and_start` 在同一交易內 consume；模型的 `goal_run_start(plan_id)` 只會找已開始的 run，永遠不會 consume），重複 start 回放同一個 run。
+- 儲存新 revision 會 supersede 舊核准並重新上鎖；要求修改會撤銷 active 核准並重新上鎖。App 啟動時，store 在同一交易內查詢既有 run、consume 核准與建立 run；模型的 `goal_run_start(plan_id)` 只會找已開始的 run，永遠不會 consume。同一個 plan/revision/hash 的重複啟動回放原 run（`created: false`），不新增核准或改變執行模式；需要新一次 Goal 時先提交新的 revision 或新的 Goal 請求。
+- macOS 在按下啟動選項時立即保留該版的單次啟動狀態，兩個模式都會鎖定；成功後顯示實際 run 的模式與狀態，以及「查看執行」。重新載入時依既有 run 或 consumed 核准恢復，不以「核准不再 active」判定可以再開始。
 - Goal 啟動時 Runner／root 必須與核准時相同（`plan_approval_environment_changed`）；核准需至少一個驗收指令。
 
 ### Goal 執行

@@ -15,7 +15,7 @@ use crate::tool_runtime::goal_supervisor::{
     ObserveResult, ProcessOutcome, ProcessSpec, StartResult, Workspace,
 };
 use crate::db::GoalRunRecord;
-use serde_json::json;
+use serde_json::{json,Value};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -39,6 +39,12 @@ struct FakeState {
     deny_agent: bool,
     lose_agent_job: bool,
     verify_calls: u32,
+    preflight_denied: bool,
+    active_work: bool,
+    workspace_prepares: u32,
+    verify_not_started: u32,
+    commit_starts: u32,
+    external_exit: Option<i64>,
     git_dir_override: Option<String>,
     /// When set, acceptance passes from this verify call on (ChatGPT mode,
     /// where no agent job runs).
@@ -93,8 +99,14 @@ fn done(code: i64, stdout: &str, stderr: &str) -> ProcessOutcome {
 }
 
 impl GoalExecutor for FakeExecutor {
+    fn preflight<'a>(&'a self,_run:&'a GoalRunRecord,_workspace:&'a Workspace,provider:&'a GoalProvider)->BoxFut<'a,Result<GoalProvider,ExecError>> {
+        Box::pin(async move {if self.state.lock().unwrap().preflight_denied {Err(ExecError::Denied("EXECUTABLE_MISSING: sandbox unavailable".into()))}else{Ok(provider.clone())}})
+    }
+    fn has_active_work<'a>(&'a self,_run:&'a GoalRunRecord,_workspace:&'a Workspace)->BoxFut<'a,bool>{Box::pin(async move {self.state.lock().unwrap().active_work})}
+
     fn prepare_workspace<'a>(&'a self, run: &'a GoalRunRecord) -> BoxFut<'a, Result<Workspace, ExecError>> {
         Box::pin(async move {
+            self.state.lock().unwrap().workspace_prepares += 1;
             Ok(Workspace {
                 project_id: format!("worktree:{}", run.goal_run_id),
                 path: format!("/tmp/worktrees/{}", run.goal_run_id),
@@ -125,6 +137,7 @@ impl GoalExecutor for FakeExecutor {
                 return Ok(StartResult::Started(job));
             }
             if spec.executable == "check" {
+                if state.verify_not_started>0 {state.verify_not_started-=1;return Err(ExecError::NotStarted("SPAWN_ENOENT: check executable unavailable; command not started".into()));}
                 state.verify_calls += 1;
                 let passed = match state.pass_from_verify {
                     Some(from) => state.verify_calls >= from,
@@ -140,6 +153,22 @@ impl GoalExecutor for FakeExecutor {
                 } else {
                     done(1, "test result: FAILED", &stderr)
                 }));
+            }
+            if spec.executable == "external-check" {return Ok(StartResult::Finished(done(state.external_exit.unwrap_or(2),"","owner authorization is required")));}
+            if let Some(payload)=spec.stdin.as_deref().and_then(|stdin|serde_json::from_str::<Value>(stdin).ok()).filter(|value|value["code"].as_str().is_some_and(|code|code.contains("git=[executable,'--literal-pathspecs'"))) {
+                assert_eq!(&spec.args[..3], &["-I", "-S", "-c"]);
+                let hardened:Vec<String>=serde_json::from_str(payload["args"][2].as_str().unwrap()).unwrap();
+                assert!(hardened.contains(&"core.hooksPath=/dev/null".to_string()));
+                assert!(hardened.iter().any(|arg|arg.starts_with("--git-dir=/repo/.git/worktrees/")));
+                assert!(payload["code"].as_str().unwrap().contains("--exclude-standard"));
+                return Ok(StartResult::Finished(done(0,"","")));
+            }
+            if spec.args.iter().any(|arg|arg=="commit") {state.commit_starts+=1;}
+            if spec.args.iter().any(|arg| arg == "--verify") {
+                return Ok(StartResult::Finished(done(0, "1111111111111111111111111111111111111111", "")));
+            }
+            if spec.args.iter().any(|arg| arg == "--format=%s") {
+                return Ok(StartResult::Finished(done(0, &format!("chadex goal {}: iteration 1", _run.goal_run_id), "")));
             }
             if spec.args.iter().any(|arg| arg == "rev-parse") {
                 let git_dir = state.git_dir_override.clone().unwrap_or_else(|| "/repo/.git/worktrees/repo-1".to_string());
@@ -208,6 +237,10 @@ fn approved_run(db: &Database, budget: GoalBudget) -> String {
 }
 
 fn approved_run_with(db: &Database, budget: GoalBudget, provider: &str) -> String {
+    approved_run_checks(db,budget,provider,vec![serde_json::from_value(json!({"name":"unit tests","argv":["check"],"timeout_secs":60})).unwrap()])
+}
+
+fn approved_run_checks(db:&Database,budget:GoalBudget,provider:&str,checks:Vec<AcceptanceCheck>)->String {
     let now = crate::tool_runtime::plan_mode::now_unix_ms();
     let owner = "owner-test";
     let plan = db.plan_start(owner, "agent:c:repo", "Fix the bug", now).unwrap();
@@ -218,13 +251,9 @@ fn approved_run_with(db: &Database, budget: GoalBudget, provider: &str) -> Strin
             0,
             "Fix the off-by-one in add()",
             PlanSpec {
-                acceptance: vec![AcceptanceCheck {
-                    name: "unit tests".to_string(),
-                    argv: vec!["check".to_string()],
-                    cwd: None,
-                    timeout_secs: 60,
-                }],
+                acceptance: checks,
                 budget,
+                ..Default::default()
             },
             now,
         )
@@ -663,6 +692,11 @@ async fn chatgpt_mode_runs_checks_only_after_each_reported_turn_and_never_starts
     assert_eq!(run.iteration, 0);
     assert_eq!(run.state, GoalRunState::Running);
     assert!(run.lease_owner.is_none(), "a waiting ChatGPT run holds no lease");
+    assert_eq!(crate::tool_runtime::plan_mode::goal_run_projection(&run)["waiting_for_chatgpt"],true);
+    let mut preparing=run.clone();preparing.state=GoalRunState::Queued;
+    assert_eq!(crate::tool_runtime::plan_mode::goal_run_projection(&preparing)["waiting_for_chatgpt"],false);
+    preparing.state=GoalRunState::Running;preparing.lease_owner=Some("preparation-lease".into());
+    assert_eq!(crate::tool_runtime::plan_mode::goal_run_projection(&preparing)["waiting_for_chatgpt"],false);
     // Nothing to do: it is not claimed again.
     assert_eq!(sup.tick_once().await, 0);
 
@@ -806,4 +840,123 @@ async fn controls_and_emergency_stop_apply_at_once_to_a_chatgpt_run_waiting_for_
     }
     let cancelled = db.goal_run_control(PlanReader::Operator, &other, GoalControlAction::Cancel, now()).unwrap();
     assert_eq!(cancelled.state, GoalRunState::Cancelled);
+}
+
+
+#[test]
+fn windows_goal_acceptance_capability_fails_closed() {
+    use crate::tool_runtime::goal_supervisor::windows_goal_acceptance_unavailable;
+    assert!(windows_goal_acceptance_unavailable("windows", true).unwrap().starts_with("WINDOWS_GOAL_SANDBOX_UNAVAILABLE:"));
+    assert_eq!(windows_goal_acceptance_unavailable("windows", false), None);
+    assert_eq!(windows_goal_acceptance_unavailable("macos", true), None);
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn windows_goal_is_parked_before_workspace_or_agent_work() {
+    let (_tmp, db) = crate::test_support::test_db();
+    let run_id = approved_run(&db, GoalBudget::default());
+    let fake = FakeExecutor::new(|_| {});
+    supervisor(&db, fake.clone()).tick_once().await;
+    let run = wait_for(&db, &run_id, &[GoalRunState::NeedsAttention]).await;
+    assert!(run.state_reason.as_deref().unwrap_or_default().starts_with("WINDOWS_GOAL_SANDBOX_UNAVAILABLE:"));
+    assert_eq!(run.committed_rounds, 0);
+    assert_eq!(run.checkpoint_sha, None);
+    assert_eq!(fake.agent_starts(), 0);
+    assert_eq!(fake.state.lock().unwrap().workspace_prepares, 0);
+}
+
+#[tokio::test]
+async fn repair_preflight_missing_tool_blocks_before_any_agent_or_checkpoint() {
+    let (_tmp,db)=crate::test_support::test_db();
+    let run_id=approved_run(&db,GoalBudget::default());
+    let fake=FakeExecutor::new(|state|state.preflight_denied=true);
+    supervisor(&db,fake.clone()).tick_once().await;
+    let run=wait_for(&db,&run_id,PARKED).await;
+    assert_eq!(run.state,GoalRunState::NeedsAttention);
+    assert_eq!(run.committed_rounds,0);
+    assert_eq!(fake.agent_starts(),0);
+    assert_eq!(fake.state.lock().unwrap().commit_starts,0);
+    assert!(run.state_reason.unwrap().contains("preflight"));
+}
+
+#[tokio::test]
+async fn repair_spawn_failure_retries_acceptance_at_same_checkpoint_without_agent_or_commit_replay() {
+    let (_tmp,db)=crate::test_support::test_db();
+    let run_id=approved_run(&db,GoalBudget::default());
+    let fake=FakeExecutor::new(|state|{state.verify_not_started=100;state.fix_after_agent_runs=1;});
+    let sup=supervisor(&db,fake.clone());
+    sup.tick_once().await;
+    let parked=wait_for(&db,&run_id,PARKED).await;
+    assert_eq!(parked.state,GoalRunState::NeedsAttention);
+    assert_eq!(parked.iteration,0);
+    assert_eq!(parked.committed_rounds,1);
+    assert_eq!(parked.completed_acceptance_rounds,0);
+    assert!(parked.checkpoint_sha.is_some());
+    assert_eq!(fake.state.lock().unwrap().commit_starts,1);
+    assert!(db.goal_run_control(PlanReader::Owner("owner-test"),&run_id,GoalControlAction::RetryAcceptance,crate::tool_runtime::plan_mode::now_unix_ms()).is_err());
+    fake.state.lock().unwrap().verify_not_started=0;
+    db.goal_run_control(PlanReader::Operator,&run_id,GoalControlAction::RetryAcceptance,crate::tool_runtime::plan_mode::now_unix_ms()).unwrap();
+    sup.tick_once().await;
+    let done=wait_for(&db,&run_id,&[GoalRunState::Succeeded]).await;
+    assert_eq!(done.checkpoint_sha,parked.checkpoint_sha);
+    assert_eq!(done.goal_run_id,run_id);
+    assert_eq!(done.iteration,1);
+    assert_eq!(fake.agent_starts(),1);
+    assert_eq!(fake.state.lock().unwrap().commit_starts,1);
+    assert_eq!(db.goal_acceptance_receipts(PlanReader::Operator,&run_id).unwrap().len(),1);
+}
+
+#[tokio::test]
+async fn repair_external_exit_two_never_succeeds_but_independent_local_check_still_runs() {
+    let (_tmp,db)=crate::test_support::test_db();
+    let checks=vec![serde_json::from_value(json!({"name":"required owner gate","argv":["external-check"],"kind":"external_gate","lane":"external_attestation","external_gate":{"owner":"human","action":"real signature","evidence":"signed evidence","next_step":"request real owner"}})).unwrap(),
+        serde_json::from_value(json!({"name":"independent local test","argv":["check"]})).unwrap()];
+    let run_id=approved_run_checks(&db,GoalBudget::default(),"custom",checks);
+    let fake=FakeExecutor::new(|state|state.fix_after_agent_runs=0);
+    supervisor(&db,fake.clone()).tick_once().await;
+    let run=wait_for(&db,&run_id,PARKED).await;
+    assert_eq!(run.state,GoalRunState::NeedsAttention);
+    assert!(run.state_reason.unwrap().contains("blocked_external"));
+    assert_eq!(fake.state.lock().unwrap().verify_calls,1);
+    let receipts=db.goal_acceptance_receipts(PlanReader::Operator,&run_id).unwrap();
+    assert_eq!(receipts.len(),2);
+    assert!(receipts.iter().any(|receipt|receipt.exit_code==Some(2)));
+    assert_eq!(run.same_failure_streak,0);
+}
+
+#[tokio::test]
+async fn repair_registered_activity_prevents_false_idle_pause_but_deadline_remains_enforced() {
+    let (_tmp,db)=crate::test_support::test_db();
+    let run_id=approved_run_with(&db,GoalBudget::default(),crate::db::CHATGPT_GOAL_PROVIDER);
+    let fake=FakeExecutor::new(|state|state.active_work=true);
+    let sup=supervisor(&db,fake.clone());
+    sup.tick_once().await;
+    for _ in 0..400 {if db.goal_run_read(PlanReader::Operator,&run_id).unwrap().run.workspace_path.is_some(){break}tokio::time::sleep(Duration::from_millis(5)).await;}
+    let old=crate::tool_runtime::plan_mode::now_unix_ms()-crate::db::CHATGPT_GOAL_IDLE_MS-10;
+    db.goal_run_override_chatgpt_seen(&run_id,old).unwrap();
+    sup.tick_once().await;
+    for _ in 0..400 {if db.goal_run_read(PlanReader::Operator,&run_id).unwrap().run.chatgpt_seen_at_unix_ms.is_some_and(|seen|seen>old){break}tokio::time::sleep(Duration::from_millis(5)).await;}
+    let run=db.goal_run_read(PlanReader::Operator,&run_id).unwrap().run;
+    assert_eq!(run.state,GoalRunState::Running);
+    assert!(run.chatgpt_seen_at_unix_ms.unwrap()>old);
+    db.goal_run_override_deadline(&run_id,1).unwrap();
+    sup.tick_once().await;
+    assert_eq!(wait_for(&db,&run_id,PARKED).await.state,GoalRunState::Failed);
+}
+
+#[tokio::test]
+async fn repair_external_exit_zero_cannot_self_attest_a_formal_gate() {
+    let (_tmp,db)=crate::test_support::test_db();
+    let checks=vec![serde_json::from_value(json!({"name":"external authority","argv":["external-check"],"kind":"external_gate","lane":"external_attestation","external_gate":{"owner":"real owner","action":"witness","evidence":"missing.json","next_step":"real authorization"}})).unwrap(),
+        serde_json::from_value(json!({"name":"independent test","argv":["check"]})).unwrap()];
+    let run_id=approved_run_checks(&db,GoalBudget::default(),"custom",checks);
+    let fake=FakeExecutor::new(|state|{state.external_exit=Some(0);state.fix_after_agent_runs=0});
+    supervisor(&db,fake.clone()).tick_once().await;
+    let run=wait_for(&db,&run_id,PARKED).await;
+    assert_eq!(run.state,GoalRunState::NeedsAttention);
+    assert!(run.state_reason.unwrap().contains("blocked_external"));
+    assert_eq!(fake.state.lock().unwrap().verify_calls,1);
+    let receipts=db.goal_acceptance_receipts(PlanReader::Operator,&run_id).unwrap();
+    assert!(receipts.iter().any(|receipt|receipt.exit_code==Some(0) && receipt.outcome==crate::db::GoalAcceptanceOutcome::BlockedExternal));
 }

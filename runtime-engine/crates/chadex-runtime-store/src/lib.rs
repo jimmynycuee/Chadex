@@ -21,6 +21,7 @@ mod communication;
 mod connection_observation;
 mod goal;
 mod goal_run;
+mod goal_attestation;
 mod job_receipts;
 mod memory;
 pub mod models;
@@ -73,16 +74,21 @@ pub use self::goal::{
     MAX_GOAL_TITLE_CHARS, WORKFLOW_SESSION_ID_PREFIX,
 };
 pub use self::goal_run::{
+    goal_acceptance_argv_sha256, goal_acceptance_sha256, goal_acceptance_spec_sha256,
+    GoalAcceptanceOutcome, GoalAcceptanceProposer, GoalAcceptanceReceiptObservation,
+    GoalAcceptanceReceiptRecord, GoalAcceptanceRevisionProposal, GoalAcceptanceRevisionRecord,
     GoalControlAction, GoalEventRecord, GoalLease, GoalOpRecord, GoalOpState, GoalRunDetail,
-    GoalRunRecord, GoalRunStartOutcome, GoalRunState, GoalStartEnvironment, CHATGPT_GOAL_IDLE_MS,
-    CHATGPT_GOAL_PROVIDER, GOAL_RUN_ID_PREFIX, UNBORN_BASE_COMMIT,
+    GoalRunRecord, GoalRunStartOutcome, GoalRunState, GoalStartEnvironment,
+    CHATGPT_GOAL_IDLE_MS, CHATGPT_GOAL_PROVIDER, GOAL_ACCEPTANCE_PROPOSAL_ID_PREFIX,
+    GOAL_ACCEPTANCE_RECEIPT_ID_PREFIX, GOAL_RUN_ID_PREFIX, UNBORN_BASE_COMMIT,
 };
 pub use self::plan::{
     plan_content_sha256, plan_line_diff, AcceptanceCheck, GoalBudget, PlanApprovalBinding,
-    PlanDecisionRecord, PlanDecisionState, PlanDetail, PlanLockRecord, PlanReader,
-    PlanRevisionOutcome, PlanRevisionRecord, PlanRevisionSummary, PlanSpec, PlanStartOutcome,
-    PlanState, PlanStoreError, PlanSummary, DEFAULT_PLAN_APPROVAL_TTL_MS,
-    DEFAULT_PLAN_LOCK_TTL_MS, PLAN_ID_PREFIX,
+    AcceptanceKind, AcceptanceLane, ExternalGateManifest, PlanDecisionRecord, PlanDecisionState,
+    PlanDetail, PlanLockRecord, PlanReader, PlanRevisionOutcome, PlanRevisionRecord,
+    PlanRevisionSummary, PlanSpec, PlanStartOutcome, PlanState, PlanStoreError, PlanSummary,
+    WorkspaceDependency, WorkspaceRequirement, WorkspaceRequirementPermission, is_git_oid,
+    DEFAULT_PLAN_APPROVAL_TTL_MS, DEFAULT_PLAN_LOCK_TTL_MS, PLAN_ID_PREFIX,
 };
 #[allow(unused_imports)]
 pub use self::memory::{

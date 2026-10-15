@@ -51,7 +51,7 @@ CHADEX_UPDATE_UI_REVIEW=1 swift test --filter VisualReviewTests
 `scripts/build_app.sh` accepts release metadata through environment variables:
 
 ```sh
-CHADEX_APP_VERSION=0.7.1 \
+CHADEX_APP_VERSION=0.7.2 \
 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_IDENTITY="Developer ID Application: ..." \
 ./scripts/build_app.sh
@@ -68,13 +68,21 @@ Each `docs/releases/X.Y.Z.md` records the validation evidence and remaining exte
 For the free artifact path, explicitly select ad-hoc signing, then package the resulting bundle:
 
 ```sh
-CHADEX_APP_VERSION=0.7.1 CHADEX_APP_BUILD_NUMBER=1 \
+CHADEX_APP_VERSION=0.7.2 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_MODE=adhoc CHADEX_RUNTIME_PROFILE=release \
 ./scripts/build_app.sh
 ./scripts/package_free_macos_release.sh dist/Chadex.app
 ```
 
-The expected artifacts are `dist/Chadex-v0.7.1-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
+The expected artifacts are `dist/Chadex-v0.7.2-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
+
+## Windows v0.7.2 installer and in-app updater
+
+The public Windows x64 installer is built on a native Windows x64/MSVC runner and attached to the matching GitHub Release. v0.7.2 also publishes the Tauri NSIS updater archive and its generated `latest.json` manifest. The workflow requires the Tauri updater private key in `TAURI_SIGNING_PRIVATE_KEY` and its matching public key in the repository variable `CHADEX_UPDATER_PUBLIC_KEY`; it must stop before packaging or publication if either value is missing. Never put the private key in source, build logs, or frontend variables.
+
+Updater configuration requires `requireSignedVersion`. The signing CLI must bind each updater artifact to the exact app version, and release preparation verifies that version in the signature's trusted comment before generating the manifest. Keep this check enabled: the manifest version and URL are fetched over TLS but are not themselves covered by the artifact signature.
+
+The Tauri updater signature verifies update authenticity. It does not provide Windows Authenticode signing or SmartScreen reputation; the installer remains unsigned unless a separate certificate is configured. v0.7.1 and earlier do not contain the updater plugin, so users must install v0.7.2 manually once before checking for later updates in the app. The ordinary W5 CI artifact remains unsigned and does not use updater signing keys.
 
 ## Public Git history
 

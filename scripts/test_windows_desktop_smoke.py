@@ -17,6 +17,24 @@ import windows_desktop_smoke as smoke
 
 
 class WindowsDesktopSmokeTests(unittest.TestCase):
+    def test_only_the_tray_exit_path_can_shutdown_the_production_app(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+        source = (root / "apps/windows/src-tauri/src/main.rs").read_text(encoding="utf-8")
+        production = source.split('#[cfg(not(feature = "desktop-smoke"))]', 1)[1].split("]);", 1)[0]
+        smoke_only = source.split('#[cfg(feature = "desktop-smoke")]\n    let builder = builder.invoke_handler', 1)[1].split("]);", 1)[0]
+        api = (root / "apps/windows/src/api.ts").read_text(encoding="utf-8")
+        self.assertNotIn("quit_app", production)
+        self.assertIn("quit_app", smoke_only)
+        self.assertNotIn("quitApp", api)
+        self.assertIn('"quit" => app.exit(0)', source)
+
+    def test_window_close_checkpoint_requires_hidden_window_evidence(self) -> None:
+        self.assertIsNone(smoke.validate_checkpoint(
+            {"window_hidden": True}, {"window_hidden": True}))
+        with self.assertRaises(smoke.w2.E2EFailure) as failure:
+            smoke.validate_checkpoint({"window_hidden": False}, {"window_hidden": True})
+        self.assertEqual(failure.exception.code, "checkpoint_expectation_failed")
+
     def test_checkpoint_pid_cannot_adopt_an_unowned_or_reused_helper(self) -> None:
         original = {"Name": "chadex-helper.exe", "ParentProcessId": 10,
                     "Created": "2026-10-03T00:00:01.0000000Z"}

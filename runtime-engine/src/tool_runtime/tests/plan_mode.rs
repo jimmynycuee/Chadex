@@ -5,7 +5,9 @@ use super::super::*;
 use super::support::*;
 use crate::auth::{AuthContext, AuthKind};
 use crate::db::{PlanApprovalBinding, PlanReader, DEFAULT_PLAN_APPROVAL_TTL_MS};
-use crate::runner_protocol::RunnerCapabilities;
+use crate::runner_protocol::{
+    RunnerCapabilities, RunnerResultPayload, RunnerResultRequest, ShellCommandExecutionState,
+};
 use crate::tool_runtime::kernel::{ToolCallContext, ToolCallRequest, ToolTransport};
 use crate::tool_runtime::plan_mode::{
     with_goal_run_dispatch, PLAN_CONTROL_TOOLS, PLAN_MODE_READ_ONLY_TOOLS, PLAN_OPERATOR_TOOLS,
@@ -109,6 +111,55 @@ async fn call(
     match outcome.result {
         Some(result) => (result.success, result.output),
         None => (false, json!({"error_status": format!("{:?}", outcome.error_status)})),
+    }
+}
+
+/// Service Git requests through the fake Runner while a Plan/Goal tool call
+/// re-enters the kernel for read-only repository checks.
+async fn call_with_fake_runner(
+    fx: &Fixture,
+    auth: &AuthContext,
+    transport: ToolTransport,
+    tool: &str,
+    arguments: Value,
+) -> (bool, Value) {
+    let runtime = fx.runtime.clone();
+    let auth = auth.clone();
+    let tool = tool.to_string();
+    let task = tokio::spawn(async move {
+        call(&runtime, &auth, transport, &tool, arguments).await
+    });
+    loop {
+        if task.is_finished() {
+            return task.await.unwrap();
+        }
+        if let Some(request) = probe_patch_agent_request(&fx.runtime, "client-a").await {
+            let (exit_code, stdout, stderr) = run_runner_shell_request_locally(&request);
+            fx.runtime
+                .runner_registry
+                .complete(RunnerResultPayload {
+                    result: RunnerResultRequest {
+                        client_id: "client-a".to_string(),
+                        runner_instance_id: "inst".to_string(),
+                        request_id: request.request_id,
+                        exit_code: Some(exit_code),
+                        stdout: Some(stdout),
+                        stderr: Some(stderr),
+                        stdout_truncated: false,
+                        stderr_truncated: false,
+                        duration_ms: Some(1),
+                        error: None,
+                    },
+                    command_execution_state: Some(ShellCommandExecutionState::Completed),
+                    mcp_gateway: None,
+                    plugin_gateway: None,
+                    coding_agent: None,
+                })
+                .await
+                .unwrap();
+        } else {
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
     }
 }
 
@@ -782,6 +833,134 @@ async fn approve_and_start_refuses_before_approving_and_records_nothing() {
     assert!(!ok);
     assert_eq!(error_kind(&output), "goal_owner_in_plan_mode");
     assert!(no_decisions(&db));
+}
+
+#[test]
+fn approve_and_start_replays_consumed_revision_without_new_approval_or_mode_switch() {
+    const SERVER_STACK_SIZE: usize = 8 * 1024 * 1024;
+    std::thread::Builder::new()
+        .name("plan-goal-replay-test".to_string())
+        .stack_size(SERVER_STACK_SIZE)
+        .spawn(|| {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_stack_size(SERVER_STACK_SIZE)
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async {
+                let fx = fixture().await;
+                let git_init = std::process::Command::new("git")
+                    .args(["init", "-q"])
+                    .current_dir(&fx.root)
+                    .output()
+                    .unwrap();
+                assert!(
+                    git_init.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&git_init.stderr)
+                );
+                let git_commit = std::process::Command::new("git")
+                    .args([
+                        "-c",
+                        "user.name=Chadex Test",
+                        "-c",
+                        "user.email=chadex-test@example.invalid",
+                        "commit",
+                        "--allow-empty",
+                        "-qm",
+                        "fixture base",
+                    ])
+                    .current_dir(&fx.root)
+                    .output()
+                    .unwrap();
+                assert!(
+                    git_commit.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&git_commit.stderr)
+                );
+
+                let alice = chatgpt("alice");
+                let op = operator("alice");
+                let (plan_ok, started) = call_with_fake_runner(
+                    &fx,
+                    &alice,
+                    ToolTransport::Mcp,
+                    "plan_start",
+                    json!({"project": fx.project, "title": "Add retries"}),
+                )
+                .await;
+                assert!(plan_ok, "{started}");
+                let plan_id = started["plan"]["plan_id"].as_str().unwrap().to_string();
+                let (saved_ok, saved) = call_with_fake_runner(
+                    &fx,
+                    &alice,
+                    ToolTransport::Mcp,
+                    "plan_save",
+                    json!({
+                        "plan_id": plan_id,
+                        "parent_revision": 0,
+                        "content": "Add retries with bounded backoff",
+                        "acceptance": [{"name": "unit", "argv": ["true"]}],
+                    }),
+                )
+                .await;
+                assert!(saved_ok, "{saved}");
+                let revision = saved["revision"]["revision"].as_i64().unwrap();
+                let content_sha256 = saved["revision"]["content_sha256"].clone();
+                let start = |mode: &str| {
+                    json!({
+                        "action": "approve_and_start",
+                        "plan_id": plan_id,
+                        "revision": revision,
+                        "content_sha256": content_sha256,
+                        "mode": mode,
+                    })
+                };
+
+                let (first_ok, first) = call_with_fake_runner(
+                    &fx,
+                    &op,
+                    ToolTransport::Api,
+                    "plan_review",
+                    start("codex"),
+                )
+                .await;
+                assert!(first_ok, "{first}");
+                assert_eq!(first["created"], json!(true));
+                let original_run_id = first["goal_run"]["goal_run_id"].clone();
+                let original_approval_id = first["decision"]["approval_id"].clone();
+                let original_provider = first["goal_run"]["provider"].clone();
+                let original_mode = first["goal_run"]["mode"].clone();
+
+                let (second_ok, second) = call_with_fake_runner(
+                    &fx,
+                    &op,
+                    ToolTransport::Api,
+                    "plan_review",
+                    start("chatgpt"),
+                )
+                .await;
+                assert!(second_ok, "{second}");
+                assert_eq!(second["created"], json!(false));
+                assert_eq!(second["goal_run"]["goal_run_id"], original_run_id);
+                assert_eq!(second["goal_run"]["provider"], original_provider);
+                assert_eq!(second["goal_run"]["mode"], original_mode);
+
+                let db = fx.runtime.communication_db.clone().unwrap();
+                let detail = db
+                    .plan_read(PlanReader::Operator, &plan_id, None, crate::tool_runtime::plan_mode::now_unix_ms())
+                    .unwrap();
+                assert_eq!(detail.decisions.len(), 1, "retry must not allocate another approval ID");
+                assert_eq!(detail.decisions[0].approval_id, original_approval_id);
+                assert_eq!(detail.decisions[0].state, crate::db::PlanDecisionState::Consumed);
+                assert_eq!(detail.decisions[0].consumed_by_goal_run_id.as_deref(), original_run_id.as_str());
+                assert_eq!(db.goal_run_list(PlanReader::Operator, 20).unwrap().len(), 1);
+            });
+        })
+        .expect("spawn server-sized regression test")
+        .join()
+        .expect("engine replay regression test thread panicked");
 }
 
 #[tokio::test]

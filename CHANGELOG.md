@@ -2,6 +2,14 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
+## 0.7.2 (unreleased)
+
+- Repaired Goal execution environments, acceptance revisions, checkpoints and resumable operator recovery while preserving sandbox and formal human-gate requirements.
+- Prevented repeated Plan/Goal start actions from creating duplicate runs; a pending start now remains visibly reserved until reconciled.
+- On Windows, closing the window or choosing the in-app close button hides Chadex to the system tray and keeps the helper/Tunnel running. Only the tray Quit command stops the helper.
+- Added a Windows GitHub Release installer and signed in-app update path. v0.7.1 and earlier require one manual install of v0.7.2 before in-app updates can be used.
+- See docs/releases/0.7.2.md for candidate evidence, release gates and remaining boundaries.
+
 ## 0.7.1
 
 - Fixed Plan and Goal follow-up routing, manifest-first Skill tool discovery, approval persistence across reconnects, and project-scoped cleanup.

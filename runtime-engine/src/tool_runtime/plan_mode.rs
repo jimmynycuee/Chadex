@@ -16,7 +16,7 @@ use crate::auth::{AuthContext, AuthKind};
 use crate::db::{
     plan_line_diff, AcceptanceCheck, Database, GoalBudget, GoalControlAction, GoalRunDetail,
     GoalRunRecord, GoalRunState, GoalStartEnvironment, CHATGPT_GOAL_PROVIDER, PlanApprovalBinding, PlanDecisionRecord,
-    PlanDecisionState, PlanDetail, PlanLockRecord, PlanReader, PlanSpec, PlanState, PlanStoreError, DEFAULT_PLAN_APPROVAL_TTL_MS,
+    PlanDecisionState, PlanDetail, PlanLockRecord, PlanReader, PlanSpec, WorkspaceRequirement, WorkspaceDependency, PlanState, PlanStoreError, DEFAULT_PLAN_APPROVAL_TTL_MS,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -319,6 +319,25 @@ fn change_request_projection(request: &PlanDecisionRecord) -> Value {
 }
 
 impl ToolRuntime {
+    pub(crate) async fn goal_acceptance_write_guard(
+        &self,auth:Option<&AuthContext>,tool:&str,project:Option<&str>,
+    )->Result<Option<tokio::sync::OwnedRwLockReadGuard<()>>,ToolResult>{
+        if goal_run_dispatch_active() || PLAN_MODE_READ_ONLY_TOOLS.contains(&tool)
+            || PLAN_CONTROL_TOOLS.contains(&tool) || PLAN_OPERATOR_TOOLS.contains(&tool)
+            || matches!(tool,"goal_check"|"goal_run_start"|"stop_job") {return Ok(None)}
+        let Some(db)=self.communication_db.as_ref() else{return Ok(None)};
+        let (project,_)=match self.project_or_default(project.map(str::to_owned),auth).await{Ok(p)=>p,Err(_)=>return Ok(None)};
+        let (_,config)=match self.plan_project_environment(&project,auth).await{Ok(p)=>p,Err(_)=>return Ok(None)};
+        let blocked=||ToolResult::err_with_output("Goal is preparing/checking this workspace; wait for acceptance to finish or pause/cancel it before editing",
+            json!({"error_kind":"goal_acceptance_workspace_locked","state_changed":false})).with_recovery(RecoveryKind::UserAction);
+        let gate=super::goal_workspace_gate::gate(&config.client_id,&config.path);
+        let guard=gate.try_read_owned().map_err(|_|blocked())?;
+        match db.goal_workspace_mutation_locked(&config.client_id,&config.path,now_unix_ms()) {
+            Ok(false)=>Ok(Some(guard)),Ok(true)=>Err(blocked()),
+            Err(_)=>Err(ToolResult::err_with_output("Goal workspace state is unavailable; mutation blocked",json!({"error_kind":"goal_workspace_guard_unavailable","state_changed":false})))
+        }
+    }
+
     /// The single Plan Mode decision used by the kernel and by every MCP path
     /// that dispatches outside the kernel (local MCP gateway, Plugin, SSH).
     pub(crate) fn plan_mode_denial(
@@ -505,6 +524,8 @@ impl ToolRuntime {
         content: String,
         acceptance: Option<Vec<AcceptanceCheck>>,
         budget: Option<GoalBudget>,
+        workspace_requirements: Option<Vec<WorkspaceRequirement>>,
+        dependencies: Option<Vec<WorkspaceDependency>>,
     ) -> ToolResult {
         let db = match self.plan_db() {
             Ok(db) => db.clone(),
@@ -536,6 +557,8 @@ impl ToolRuntime {
                     .map(|revision| revision.spec.budget.clone())
                     .unwrap_or_default()
             }),
+            workspace_requirements: workspace_requirements.unwrap_or_else(|| previous.as_ref().map(|revision| revision.spec.workspace_requirements.clone()).unwrap_or_default()),
+            dependencies: dependencies.unwrap_or_else(|| previous.as_ref().map(|revision| revision.spec.dependencies.clone()).unwrap_or_default()),
         };
         let outcome =
             db.plan_save_revision(&owner, &plan_id, expected_revision, &content, spec, now);
@@ -665,6 +688,8 @@ impl ToolRuntime {
         objective: String,
         acceptance: Option<Vec<AcceptanceCheck>>,
         budget: Option<GoalBudget>,
+        workspace_requirements: Option<Vec<WorkspaceRequirement>>,
+        dependencies: Option<Vec<WorkspaceDependency>>,
     ) -> ToolResult {
         let db = match self.plan_db() {
             Ok(db) => db.clone(),
@@ -684,6 +709,8 @@ impl ToolRuntime {
         let spec = PlanSpec {
             acceptance: acceptance.unwrap_or_default(),
             budget: budget.unwrap_or_default(),
+            workspace_requirements: workspace_requirements.unwrap_or_default(),
+            dependencies: dependencies.unwrap_or_default(),
         };
         let owner = plan_principal_key(auth);
         let created = db.goal_request_create(&owner, &project_id, &title, &objective, spec, &dispatch, now_unix_ms());
@@ -1119,6 +1146,17 @@ impl ToolRuntime {
         result
     }
 
+    /// Called only after the kernel observed a real edit effect or job start.
+    pub(crate) fn record_goal_workspace_activity(&self, auth:Option<&AuthContext>, project:Option<&str>, tool:&str, result:&ToolResult) {
+        if goal_run_dispatch_active() || !result.success { return; }
+        let Some(project)=project else{return};
+        let effect=matches!(tool,"write_project_file"|"apply_text_edits"|"apply_patch"|"replace_file_text") && (result.output.get("state_changed")==Some(&json!(true)) || result.output.get("changed")==Some(&json!(true)));
+        let job=matches!(tool,"run_process"|"run_script"|"run_shell") && (result.output.get("job_id").and_then(Value::as_str).is_some() || result.output.get("exit_code").and_then(Value::as_i64).is_some());
+        if effect || job {
+            if let Some(db)=self.communication_db.as_ref(){let _=db.goal_run_note_activity(&plan_principal_key(auth),project,now_unix_ms());}
+        }
+    }
+
     /// Operator-only Goal controls, including the persistent emergency stop.
     pub(crate) async fn goal_operator(
         &self,
@@ -1128,6 +1166,12 @@ impl ToolRuntime {
         goal_run_id: Option<String>,
         reason: Option<String>,
         project: Option<String>,
+        acceptance: Option<Value>,
+        workspace_requirements: Option<Value>,
+        dependencies: Option<Value>,
+        expected_acceptance_revision: Option<i64>,
+        acceptance_sha256: Option<String>,
+        proposal_id: Option<String>,
     ) -> ToolResult {
         if let Some(denied) = operator_denial(auth, transport) {
             return denied;
@@ -1137,6 +1181,57 @@ impl ToolRuntime {
             Err(result) => return result,
         };
         let now = now_unix_ms();
+        if matches!(action.as_str(),"propose_acceptance"|"approve_acceptance"|"adopt_checkpoint") {
+            let Some(run_id)=goal_run_id.as_deref() else{return invalid_action("goal_run_id is required")};
+            let detail=match db.goal_run_read(PlanReader::Operator,run_id){Ok(detail)=>detail,Err(error)=>return plan_error(error)};
+            let run=&detail.run;
+            let (_,config)=match self.plan_project_environment(&run.project_id,auth).await{Ok(config)=>config,Err(result)=>return result};
+            if config.client_id!=run.binding.runner_client_id || config.path!=run.binding.project_root {
+                return ToolResult::err_with_output("Goal Runner/root binding changed",json!({"error_kind":"plan_approval_environment_changed","state_changed":false}));
+            }
+            if action == "adopt_checkpoint" {
+                let Some(workspace_project)=run.workspace_project_id.clone() else{return invalid_action("Goal workspace is unavailable")};
+                let Some(workspace_path)=run.workspace_path.clone() else{return invalid_action("Goal workspace is unavailable")};
+                let workspace=super::goal_supervisor::Workspace{project_id:workspace_project,path:workspace_path};
+                let commit=detail.ops.iter().rev().find(|op|op.kind=="commit" && op.op_key.starts_with("commit:") && op.state==crate::db::GoalOpState::Succeeded && op.iteration==run.committed_rounds);
+                let Some(commit)=commit else{return invalid_action("No completed checkpoint commit is recorded")};
+                let gitdir=detail.ops.iter().find(|op|op.op_key=="gitdir" && op.state==crate::db::GoalOpState::Succeeded).and_then(|op|op.result.as_ref()).map(|output|super::goal_supervisor::process_stdout(output)).unwrap_or_default().trim().to_string();
+                if !std::path::Path::new(&gitdir).starts_with(std::path::Path::new(&run.binding.project_root).join(".git/worktrees")) || std::path::Path::new(&gitdir).components().any(|part|matches!(part,std::path::Component::ParentDir)) {
+                    return invalid_action("Pinned Git directory cannot be verified")
+                }
+                let executor=super::goal_supervisor::RuntimeGoalExecutor::new(self.clone());
+                let head=match executor.environment_process(run,&workspace,super::goal_supervisor::hardened_git(&gitdir,&["rev-parse","--verify","HEAD"])).await {Ok(outcome)if outcome.exit_code==Some(0)=>outcome.stdout_tail.trim().to_string(),_=>return invalid_action("Runner could not verify checkpoint HEAD")};
+                let subject=match executor.environment_process(run,&workspace,super::goal_supervisor::hardened_git(&gitdir,&["log","-1","--format=%s"])).await {Ok(outcome)if outcome.exit_code==Some(0)=>outcome.stdout_tail.trim().to_string(),_=>return invalid_action("Runner could not verify checkpoint commit")};
+                if run.binding.base_commit!=crate::db::UNBORN_BASE_COMMIT {
+                    let ancestor=executor.environment_process(run,&workspace,super::goal_supervisor::hardened_git(&gitdir,&["merge-base","--is-ancestor",&run.binding.base_commit,"HEAD"])).await;
+                    if !matches!(ancestor,Ok(outcome) if outcome.exit_code==Some(0) && !outcome.timed_out){return invalid_action("Checkpoint no longer descends from the approved base commit")}
+                }
+                let clean=executor.environment_process(run,&workspace,super::goal_supervisor::hardened_git(&gitdir,&["diff","--quiet","HEAD"])).await;
+                if !matches!(clean,Ok(outcome) if outcome.exit_code==Some(0) && !outcome.timed_out){return invalid_action("Checkpoint has tracked edits; review it before adopting")};
+                return match db.goal_run_checkpoint_adopt(PlanReader::Operator,run_id,run.committed_rounds,&commit.op_key,&head,&subject,&run.binding,"Chadex app",now) {
+                    Ok(run)=>ToolResult::ok(json!({"goal_run":goal_run_projection(&run),"adopted":true,"resumed":false})),Err(error)=>plan_error(error)
+                }
+            }
+            let Some(checkpoint)=run.checkpoint_sha.as_deref() else{return invalid_action("Verify the existing checkpoint in Chadex before editing acceptance")};
+            if action == "propose_acceptance" {
+                let Some(acceptance)=acceptance else{return invalid_action("propose_acceptance requires the complete acceptance array")};
+                let acceptance:Vec<AcceptanceCheck>=match serde_json::from_value(acceptance){Ok(value)=>value,Err(_)=>return invalid_action("Invalid acceptance array")};
+                let (requirements,dependencies)=match parse_workspace_inputs(workspace_requirements,dependencies){Ok(value)=>value,Err(result)=>return result};
+                let requirements=requirements.unwrap_or_else(||run.spec.workspace_requirements.clone());
+                let dependencies=dependencies.unwrap_or_else(||run.spec.dependencies.clone());
+                let hash=match crate::db::goal_acceptance_spec_sha256(&acceptance,&requirements,&dependencies){Ok(hash)=>hash,Err(error)=>return plan_error(error)};
+                return match db.goal_acceptance_revision_propose(PlanReader::Operator,run_id,&run.binding,expected_acceptance_revision.unwrap_or(run.acceptance_revision),checkpoint,&hash,acceptance,requirements,dependencies,now) {
+                    Ok(proposal)=>ToolResult::ok(json!(proposal)),Err(error)=>plan_error(error)
+                }
+            }
+            let (Some(proposal_id),Some(expected),Some(hash))=(proposal_id.as_deref(),expected_acceptance_revision,acceptance_sha256.as_deref()) else{return invalid_action("Approval requires the exact proposal id, source revision and displayed SHA-256")};
+            return match db.goal_acceptance_revision_approve(PlanReader::Operator,run_id,proposal_id,expected,checkpoint,hash,&run.binding,"Chadex app",now) {
+                Ok(revision)=>match db.goal_run_read(PlanReader::Operator,run_id) {
+                    Ok(detail)=>ToolResult::ok(json!({"acceptance_revision":revision,"goal_run":goal_run_projection(&detail.run)})),
+                    Err(_)=>ToolResult::ok(json!({"acceptance_revision":revision,"state_changed":true,"readback_pending":true})),
+                },Err(error)=>plan_error(error)
+            }
+        }
         let result = match action.as_str() {
             "overview" => {
                 let plans = db.plan_list(PlanReader::Operator, false, 50, now);
@@ -1182,7 +1277,7 @@ impl ToolRuntime {
                     Err(error) => plan_error(error),
                 }
             }
-            "pause" | "resume" | "cancel" => {
+            "pause" | "resume" | "cancel" | "retry_acceptance" => {
                 let Some(run_id) = goal_run_id else {
                     return invalid_action("goal_run_id is required");
                 };
@@ -1552,6 +1647,14 @@ fn goal_check_projection(db: &Database, detail: &GoalRunDetail, target: i64, che
 const GOAL_DISPATCH_MAX_AGE_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 const GOAL_STATUS_POLL: std::time::Duration = std::time::Duration::from_secs(2);
 
+pub(crate) fn parse_workspace_inputs(requirements: Option<Value>, dependencies: Option<Value>) -> Result<(Option<Vec<WorkspaceRequirement>>, Option<Vec<WorkspaceDependency>>), ToolResult> {
+    let requirements = requirements.map(serde_json::from_value::<Vec<WorkspaceRequirement>>).transpose()
+        .map_err(|_| invalid_action("workspace_requirements must be a bounded digest-bound read-only manifest"))?;
+    let dependencies = dependencies.map(serde_json::from_value::<Vec<WorkspaceDependency>>).transpose()
+        .map_err(|_| invalid_action("dependencies must be an explicit local dependency/provenance manifest"))?;
+    Ok((requirements, dependencies))
+}
+
 /// Parse the optional acceptance/budget arguments shared by plan_save and a
 /// direct goal_run_start.
 #[allow(clippy::type_complexity)]
@@ -1725,6 +1828,7 @@ fn parse_control_action(action: &str) -> Option<GoalControlAction> {
     match action {
         "pause" => Some(GoalControlAction::Pause),
         "resume" => Some(GoalControlAction::Resume),
+        "retry_acceptance" => Some(GoalControlAction::RetryAcceptance),
         "cancel" => Some(GoalControlAction::Cancel),
         _ => None,
     }
@@ -1917,6 +2021,11 @@ pub(crate) fn goal_run_projection(run: &GoalRunRecord) -> Value {
         "state_reason": run.state_reason,
         "control_request": run.control_request,
         "iteration": run.iteration,
+        "committed_rounds": run.committed_rounds,
+        "completed_acceptance_rounds": run.completed_acceptance_rounds,
+        "current_attempt": run.current_attempt,
+        "checkpoint_sha": run.checkpoint_sha,
+        "acceptance_revision": run.acceptance_revision,
         "max_iterations": run.spec.budget.max_iterations,
         "deadline_at_unix_ms": run.deadline_at_unix_ms,
         "provider": run.provider,
@@ -1924,13 +2033,17 @@ pub(crate) fn goal_run_projection(run: &GoalRunRecord) -> Value {
         "workspace_project": run.workspace_project_id,
         "workspace_path": run.workspace_path,
         "waiting_for_chatgpt": run.provider == CHATGPT_GOAL_PROVIDER
-            && matches!(run.state, GoalRunState::Queued | GoalRunState::Running)
+            && run.state == GoalRunState::Running
             && run.workspace_path.is_some()
+            && run.lease_owner.is_none()
             && run.chatgpt_ready_iteration <= run.iteration,
-        "next_action": (run.provider == CHATGPT_GOAL_PROVIDER && !run.state.terminal()).then(|| format!(
-            "ChatGPT mode: edit files in workspace project {}, then call goal_check until achieved is true.",
-            run.workspace_project_id.as_deref().unwrap_or("(being prepared)")
-        )),
+        "next_action": (run.provider == CHATGPT_GOAL_PROVIDER && !run.state.terminal()).then(|| {
+            match run.state {
+                GoalRunState::NeedsAttention => if run.committed_rounds==0 && run.state_reason.as_deref().is_some_and(|reason|reason.starts_with("toolchain_preflight_")) { "Repair the declared environment, then approve Retry preparation in Chadex; no agent/checkpoint work started." } else { "Review the blocking cause in Chadex. The app must explicitly approve retry from checkpoint or an acceptance revision; goal_check cannot resume this state." }.into(),
+                GoalRunState::Paused => "Resume this Goal in Chadex after review; its checkpoint and approval are preserved.".into(),
+                _ => format!("ChatGPT mode: edit files in workspace project {}, then call goal_check until achieved is true.", run.workspace_project_id.as_deref().unwrap_or("(being prepared)")),
+            }
+        }),
         "result_branch": run.workspace_branch,
         "tokens_used": run.tokens_used,
         "cost": if run.tokens_used.is_some() { "tokens_reported_by_provider" } else { "unknown" },
@@ -1944,8 +2057,43 @@ fn goal_run_detail_projection(detail: &GoalRunDetail) -> Value {
     json!({
         "goal_run": goal_run_projection(&detail.run),
         "acceptance": detail.run.spec.acceptance,
-        "operations": detail.ops,
+        "workspace_requirements": detail.run.spec.workspace_requirements,
+        "dependencies": detail.run.spec.dependencies,
+        "acceptance_revisions": detail.acceptance_revisions,
+        "acceptance_receipts": detail.acceptance_receipts,
+        "pending_acceptance": detail.pending_proposals.last().map(|proposal|json!({"revision":proposal.source_acceptance_revision+1,"spec_sha256":proposal.proposed_acceptance_sha256,"proposal_id":proposal.proposal_id,"state":"proposed","spec":{"acceptance":proposal.acceptance,"workspace_requirements":proposal.workspace_requirements,"dependencies":proposal.dependencies}})),
+        "operations": detail.ops.iter().map(|op|{
+            let mut value=json!(op);
+            if matches!(op.kind.as_str(),"verify"|"container_start") && (!detail.run.spec.workspace_requirements.is_empty() || !detail.run.spec.dependencies.is_empty()) {
+                if let Some(result)=value.get_mut("result").and_then(Value::as_object_mut){
+                    for key in ["stdout_tail","stderr_tail"] { if result.contains_key(key){result.insert(key.into(),json!("[private-input output redacted]"));} }
+                }
+            }
+            value
+        }).collect::<Vec<_>>(),
         "events": detail.events,
         "emergency_stop_engaged": detail.kill_switch_engaged,
+        "blocking_cause": goal_blocking_cause(detail),
     })
+}
+
+fn goal_blocking_cause(detail: &GoalRunDetail) -> Value {
+    let reason = detail.run.state_reason.as_deref().unwrap_or("");
+    if detail.run.state != GoalRunState::NeedsAttention { return Value::Null; }
+    let kind = if reason.contains("outcome_unknown") || reason.contains("unresolved") || reason.contains("cleanup_pending") { "outcome_unknown" }
+        else if reason.contains("EXECUTABLE_MISSING") || reason.contains("No such file") { "executable_missing" }
+        else if reason.contains("DEPENDENCY_") || reason.contains("MISSING_PRIVATE_FIXTURE") { "dependency_missing" }
+        else if reason.contains("blocked_external") { "needs_owner_authorization" }
+        else if reason.contains("loopback") || reason.contains("docker_backend") || reason.contains("CONTAINER_") || reason.contains("LOOPBACK_") { "sandbox_lane_unavailable" }
+        else if reason.contains("environment_blocked") || reason.contains("sandbox") || reason.contains("permission_denied") { "sandbox_policy_denied" }
+        else if reason.contains("runner_unavailable") { "transient_runner_unavailable" }
+        else { "test_failed" };
+    let op = detail.ops.iter().rev().find(|op| op.kind == "verify" && op.state != crate::db::GoalOpState::Succeeded);
+    let index = op.and_then(|op| op.op_key.split(':').nth(2)).and_then(|index| index.split('@').next()).and_then(|index| index.parse::<usize>().ok());
+    let check = index.and_then(|index| detail.run.spec.acceptance.get(index));
+    json!({"kind":kind,"blocking_check":check.map(|check| &check.name),
+        "executable":op.and_then(|op| op.result.as_ref()).and_then(|result| result.get("executable")).cloned().or_else(|| check.and_then(|check| check.argv.first()).map(|exe| json!(exe))),
+        "checkpoint_sha":detail.run.checkpoint_sha,
+        "retryable_from_checkpoint": kind != "outcome_unknown" && detail.run.checkpoint_sha.is_some() && detail.run.committed_rounds > 0 && detail.run.lease_owner.is_none(),
+        "suggested_action": if kind == "needs_owner_authorization" { "Obtain the real owner authorization/evidence; required gates remain blocked." } else if kind == "outcome_unknown" { "Review the journal and worktree; never automatically replay agent work." } else { "Repair the declared environment, then approve Retry acceptance from checkpoint in Chadex." }})
 }

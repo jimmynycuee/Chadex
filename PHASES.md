@@ -2,7 +2,7 @@
 schema_version: 1
 project: chadex
 canonical_branch: main        # 所有 agent 以此為準；階段分支完成後才合回
-updated: 2026-10-13
+updated: 2026-10-15
 updated_by: codex            # codex | webcodex | chadex | claude | human
 tracks:
   W: Windows 版
@@ -12,7 +12,7 @@ tracks:
   LS: 啟動速度
   D: 介面設計
   PG: Plan Mode 與 Goal Mode
-current_phase: V071
+current_phase: V072
 # 狀態依據：git 分支是否已合入 main（done 者的 closed_commit 為分支最後一個 commit），
 # 加上 2026-10-01～10-05 的工作紀錄。owner 留空，接手時由 agent 填入。
 phases:
@@ -460,6 +460,44 @@ phases:
         result: "passed: 31,330 nodes, 100,759 edges, 833 communities @ 70b5f72; Obsidian generated layer check: 68 outputs, changed=0, stale_generated=0"
       - cmd: "GitHub PR CI and Free Release workflow"
         result: "pending"
+    closed_commit: null
+  - id: V072
+    name: v0.7.2 Goal reliability and macOS/Windows release preparation
+    branch: codex/v072-release-prep
+    status: in_progress
+    owner: codex
+    depends_on: [V071, PG2]
+    # User authorized push, merge, tag and v0.7.2 publication on 2026-10-15 after required release gates pass.
+    gate:
+      - cmd: "Goal reliability, Windows tray lifecycle and updater implementation"
+        result: "implemented; Goal reliability A–J and Docker Worker/D1 E2E passed; Windows local contracts passed"
+      - cmd: "Windows release workflow and signed updater manifest"
+        result: "workflow and signature contract implemented; matching updater secret/public variable configured; hosted acceptance pending"
+      - cmd: "macOS and Windows release gates"
+        result: "local scripts/release_check.sh passed exit 0: Swift 307/1 skipped; helper 364 + 3 integration/4 ignored; runtime-engine 2840/3 ignored; production wrapper, release tooling, fresh optimized macOS app, Hardened Runtime and deep/strict codesign passed; PR CI and tag release gates remain pending"
+      - cmd: "graphify update .; scripts/sync_graphify_obsidian.py --check"
+        result: "passed: 33,545 nodes, 106,283 edges, 915 communities; Obsidian 69 outputs, changed=0 and stale_generated=0 at current candidate source"
+    closed_commit: null
+  - id: PG2
+    name: Goal start deduplication and execution environment/state reliability
+    branch: codex/goal-start-singleflight
+    status: in_progress
+    owner: codex
+    depends_on: [PG1]
+    # User reported duplicate effective start clicks on 2026-10-14.
+    gate:
+      - cmd: "Swift Plan/Goal action regression tests"
+        result: "passed: full Swift suite 279 tests, 1 skipped, 0 failures; focused start-state suite 12 passed"
+      - cmd: "Rust store and operator repeated/concurrent start regression tests"
+        result: "passed: Store 194/194, Plan operator 31/31, Goal 18/18; final exit 0"
+      - cmd: "isolated helper/operator E2E with rebuilt debug runtime"
+        result: "passed exit 0: baseline 3 runs -> patched 1; same/cross-mode retries created=false, approval IDs unchanged"
+      - cmd: "2026-10-15 complete Goal environment/state repair automated validation"
+        result: "passed: Store 213, Supervisor 23, Plan 32, contracts 142+96, Swift 307/1 skipped/0 failures, scoped inputs 13, staging 3; native controls 33/33 and Docker actual Worker/D1"
+      - cmd: "2026-10-15 final helper/Runner and actual provider integration"
+        result: "passed: reliability 32/32 checks; standard Plan/Goal 10/10 assertions; actual Codex one agent dispatch succeeded; no production Goal or source changed"
+      - cmd: "candidate native UI and connected ChatGPT acceptance"
+        result: "not validated; installed build35 unchanged, no candidate packaged or release published"
     closed_commit: null
 ---
 

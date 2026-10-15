@@ -29,7 +29,7 @@ final class PlanGoalModelTests: XCTestCase {
         XCTAssertNil(output.plans?.first?.closedReason)
         let run = try XCTUnwrap(output.goalRuns?.first)
         XCTAssertEqual(run.state, "needs_attention")
-        XCTAssertTrue(run.canResume)
+        XCTAssertFalse(run.canResume)
         XCTAssertFalse(run.canPause)
         XCTAssertEqual(run.resultBranch, "goal/run_1")
         XCTAssertNil(run.workspacePath)

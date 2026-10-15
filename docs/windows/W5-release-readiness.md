@@ -4,7 +4,7 @@ W5 closes the **automatable Windows release-engineering track** on top of the W1
 
 The public macOS release workflow is unchanged. W5 does not authorize a GitHub Release, Windows asset publication, Authenticode signing policy, or updater rollout.
 
-For the v0.7.1 candidate, the Windows synthetic and historical upgrade baselines advance from v0.6.5 to v0.7.0. The CI historical-source job builds from the public v0.7.0 tag; Windows remains an unsigned CI validation artifact and is not part of the public release.
+For the v0.7.2 candidate, the Windows synthetic and historical upgrade baselines advance from v0.7.0 to v0.7.1. CI builds the historical source from the public v0.7.1 tag and upgrades it to the current candidate. The ordinary W5 artifact remains an unsigned CI validation artifact; the separate v0.7.2 release workflow produces the public Windows installer and signed updater bundle.
 
 ## Candidate contract
 
@@ -73,4 +73,4 @@ The following still need a real user environment, private credentials/hardware, 
 - Credential Manager deletion policy during uninstall (default application-data preservation does not define credential deletion policy);
 - production Windows updater artifacts, authentication/signing and delivery policy.
 
-`.github/workflows/release.yml` continues to publish only the free macOS Apple Silicon DMG. A Windows CI artifact remains unsigned validation evidence until a later explicitly authorized distribution phase changes that boundary.
+`.github/workflows/release.yml` keeps the macOS Apple Silicon DMG and adds the separately gated v0.7.2 Windows installer/updater assets. A W5 CI artifact remains unsigned validation evidence and never serves as the public release asset.

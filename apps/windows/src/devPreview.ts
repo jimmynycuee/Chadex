@@ -61,6 +61,9 @@ export function previewApi(scenario: string): DesktopApi {
     installSkill: resolved({}), activateSkill: resolved({}), deactivateSkill: resolved({}), removeSkill: resolved({}),
     chooseSkillFolder: resolved(null), chooseSkillArchive: resolved(null),
     getGlobalInstructions: resolved(''), saveGlobalInstructions: (content) => Promise.resolve(content),
-    storeCredential: resolved(undefined), forgetCredential: resolved(undefined), restartHelper: resolved(undefined), quitApp: resolved(undefined),
+    storeCredential: resolved(undefined), forgetCredential: resolved(undefined), restartHelper: resolved(undefined),
+    hideWindow: () => Promise.reject(new Error('隱藏視窗需要 Chadex Windows 桌面環境。')),
+    checkForUpdate: () => Promise.reject(new Error('更新檢查需要 Chadex Windows 桌面環境。')),
+    installUpdate: () => Promise.reject(new Error('更新安裝需要 Chadex Windows 桌面環境。')),
   };
 }

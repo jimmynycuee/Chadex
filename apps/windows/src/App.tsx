@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { desktopApi, type DesktopApi } from './api';
+import { desktopApi, type DesktopApi, type UpdateInfo } from './api';
 import { defaultPreferences, type Preferences, type ProjectInspection, type RuntimeMethod } from './contracts';
 import { DesktopStore, connectionStatus, localStatus, observedRuntime, safeError } from './state';
 import { Ferret } from './FerretCompanion';
@@ -38,6 +38,109 @@ function Empty({ title, children }: { title: string; children: ReactNode }) {
 }
 function Facts({ items }: { items: [string, ReactNode][] }) {
   return <dl className="facts">{items.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
+}
+type UpdatePanelState =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'current' }
+  | { kind: 'available'; update: UpdateInfo }
+  | { kind: 'installing'; downloaded: number; total?: number }
+  | { kind: 'handoff' }
+  | { kind: 'error'; operation: 'check' | 'install'; message: string };
+
+function needsManualBootstrap(version: string) {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
+  if (!match) return true;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major === 0 && (minor < 7 || (minor === 7 && patch < 2));
+}
+function formatBytes(value: number) {
+  if (value < 1024) return `${Math.floor(value)} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let amount = value / 1024;
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1; }
+  return `${amount.toFixed(amount >= 100 ? 0 : amount >= 10 ? 1 : 2)} ${units[unit]}`;
+}
+function updateErrorMessage(operation: 'check' | 'install', error: unknown) {
+  const detail = safeError(error);
+  if (/需要.*桌面環境/.test(detail)) return '請在 Chadex Windows 桌面應用程式中使用更新功能。';
+  if (/plugin:updater|updater.*(?:not found|not registered|not allowed)/i.test(detail)) {
+    return '目前安裝版本尚未啟用 App 內更新功能。請先手動安裝含更新功能的最新版 Windows 安裝檔。';
+  }
+  return operation === 'check'
+    ? `檢查更新失敗：${detail}。請確認網路連線後重試。`
+    : `安裝未完成：${detail}。請重新檢查更新後再試。`;
+}
+function WindowsUpdatePanel({ api, version }: { api: DesktopApi; version: string | null }) {
+  const [state, setState] = useState<UpdatePanelState>({ kind: 'idle' });
+  const mounted = useRef(true);
+  const operation = useRef(false);
+  useEffect(() => () => { mounted.current = false; }, []);
+
+  async function checkUpdates() {
+    if (operation.current) return;
+    operation.current = true;
+    setState({ kind: 'checking' });
+    try {
+      const update = await api.checkForUpdate();
+      if (mounted.current) setState(update ? { kind: 'available', update } : { kind: 'current' });
+    } catch (error) {
+      if (mounted.current) setState({ kind: 'error', operation: 'check', message: updateErrorMessage('check', error) });
+    } finally { operation.current = false; }
+  }
+  async function install() {
+    if (operation.current || state.kind !== 'available') return;
+    operation.current = true;
+    setState({ kind: 'installing', downloaded: 0 });
+    try {
+      await api.installUpdate((downloaded, total) => {
+        if (!mounted.current) return;
+        const validDownloaded = Number.isFinite(downloaded) ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(downloaded))) : 0;
+        const validTotal = typeof total === 'number' && Number.isFinite(total) && total > 0
+          ? Math.floor(Math.min(Number.MAX_SAFE_INTEGER, total)) : undefined;
+        setState((current) => {
+          if (current.kind !== 'installing') return current;
+          const nextTotal = validTotal ?? current.total;
+          const boundedDownloaded = Math.max(current.downloaded, validDownloaded);
+          return { kind: 'installing', downloaded: nextTotal === undefined ? boundedDownloaded : Math.min(boundedDownloaded, nextTotal), total: nextTotal };
+        });
+      });
+      if (mounted.current) setState({ kind: 'handoff' });
+    } catch (error) {
+      if (mounted.current) setState({ kind: 'error', operation: 'install', message: updateErrorMessage('install', error) });
+    } finally { operation.current = false; }
+  }
+
+  const isBusy = state.kind === 'checking' || state.kind === 'installing';
+  const canCheck = state.kind !== 'available' && state.kind !== 'installing' && state.kind !== 'handoff';
+  return <Panel title="版本與更新">
+    <div className="version-display"><div className="brand-mark" aria-hidden="true">C<span>·</span></div><div><h2>Chadex for Windows</h2><p>{version ? `已安裝版本 ${version}` : '尚未取得版本資訊'}</p></div></div>
+    {version && needsManualBootstrap(version) && <div className="notice" role="note"><strong>首次更新需要手動安裝</strong><p>v0.7.1 及更早版本不含 App 內更新元件，無法收到首次的 v0.7.2 更新。請先手動安裝 v0.7.2 Windows 安裝檔；之後可從這裡檢查更新。</p></div>}
+    {state.kind === 'checking' && <div className="notice busy" role="status"><span className="spinner" />正在檢查更新…</div>}
+    {state.kind === 'current' && <div className="notice" role="status">目前已是最新版本。</div>}
+    {state.kind === 'available' && <div className="notice" role="status">
+      <strong>找到新版本 v{state.update.version}</strong>
+      {state.update.date && <p>發佈日期：{state.update.date}</p>}
+      {state.update.body && <p style={{ whiteSpace: 'pre-wrap' }}>{state.update.body}</p>}
+      <p>按下「下載並安裝」後才會開始更新。</p>
+    </div>}
+    {state.kind === 'installing' && <>
+      <div className="notice busy" role="status"><span className="spinner" />正在下載並安裝更新…</div>
+      <progress aria-label="更新下載進度" style={{ width: '100%' }} max={state.total} value={state.total === undefined ? undefined : state.downloaded} />
+      <p className="panel-note">{state.total === undefined ? `已下載 ${formatBytes(state.downloaded)}`
+        : `已下載 ${formatBytes(state.downloaded)} / ${formatBytes(state.total)}（${Math.round(state.downloaded / state.total * 100)}%）`}</p>
+    </>}
+    {state.kind === 'handoff' && <div className="notice" role="status">更新安裝已啟動，Chadex 將關閉以完成安裝。</div>}
+    {state.kind === 'error' && <div className="notice error" role="alert"><strong>{state.operation === 'check' ? '無法檢查更新' : '更新安裝失敗'}</strong><p>{state.message}</p></div>}
+    <div className="button-row">
+      {canCheck && <button className="primary" disabled={isBusy} onClick={() => { void checkUpdates(); }}>
+        {state.kind === 'idle' ? '檢查更新' : '重新檢查更新'}
+      </button>}
+      {state.kind === 'available' && <button className="primary" disabled={isBusy} onClick={() => { void install(); }}>下載並安裝 v{state.update.version}</button>}
+    </div>
+    <p className="panel-note">檢查更新不會下載或安裝；更新只會在你明確按下安裝按鈕後開始。</p>
+  </Panel>;
 }
 const defaultStore = new DesktopStore(desktopApi);
 export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopApi; store?: DesktopStore }) {
@@ -263,7 +366,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
           <Panel title="桌面偏好"><form onSubmit={(event) => { event.preventDefault(); if (prefsDraft) void run('儲存偏好', async () => { const latest = store.getSnapshot().desktop?.preferences ?? prefs; await api.savePreferences({ ...latest, restore_project: prefsDraft.restore_project, launch_at_login: prefsDraft.launch_at_login, notifications: prefsDraft.notifications, ferret_visible: prefsDraft.ferret_visible, ferret_motion: prefsDraft.ferret_motion, prepare_service_on_launch: prefsDraft.prepare_service_on_launch ?? true, theme: prefsDraft.theme }); setPrefsDraft(null); }); }}>
             {([['restore_project', '啟動時恢復上次專案', '回到上一次使用的本地工作範圍。'], ['launch_at_login', '登入時啟動 Chadex', '由桌面應用程式管理系統登入設定。'], ['notifications', '桌面通知', '允許桌面應用程式顯示服務通知。'], ['ferret_visible', '顯示 Code Ferret', '在側欄呈現實際任務狀態。'], ['ferret_motion', 'Code Ferret 動畫', '降低動態效果時也會自動停用。'], ['prepare_service_on_launch', '啟動時在背景準備本機服務（加快連接）', '只會恢復你設定過且未手動停止的服務；下次啟動生效。']] as const).map(([key, label, hint]) => <label className="setting-row" key={key}><span><strong>{label}</strong><small>{hint}</small></span><input type="checkbox" disabled={!prefsEditable} checked={(prefsDraft ?? prefs)[key] ?? true} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), [key]: event.target.checked })} /></label>)}
             <label className="setting-row"><span><strong>外觀</strong><small>選擇淺色、深色或跟隨系統。</small></span><select disabled={!prefsEditable} value={(prefsDraft ?? prefs).theme} onChange={(event) => setPrefsDraft({ ...(prefsDraft ?? prefs), theme: event.target.value as Preferences['theme'] })}><option value="dark">深色</option><option value="light">淺色</option><option value="system">跟隨系統</option></select></label><div className="button-row"><button className="primary" type="submit" disabled={!prefsEditable || !prefsDraft}>儲存偏好</button><button type="button" disabled={!prefsDraft || Boolean(busy)} onClick={() => setPrefsDraft(null)}>取消變更</button></div></form></Panel>
-          <Panel title="應用程式"><div className="button-row"><button onClick={() => setPage('updates')}>版本與更新</button><button onClick={() => setPage('diagnostics')}>診斷資訊</button><button disabled={Boolean(busy)} onClick={() => { void run('結束 Chadex', api.quitApp, false); }}>結束 Chadex</button></div></Panel>
+          <Panel title="應用程式"><div className="button-row"><button onClick={() => setPage('updates')}>版本與更新</button><button onClick={() => setPage('diagnostics')}>診斷資訊</button><button disabled={Boolean(busy)} onClick={() => { void run('隱藏到系統匣', api.hideWindow, false); }}>隱藏到系統匣</button></div></Panel>
         </>}
 
         {page === 'diagnostics' && <>
@@ -280,9 +383,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
           <Panel title="應用程式路徑"><Facts items={Object.entries(view.desktop?.paths ?? { helper: '未知', runtime: '未知', data: '未知' }).map(([key, value]) => [key, <code>{value}</code>])} /></Panel>
         </>}
 
-        {page === 'updates' && <Panel title="版本與更新"><div className="version-display"><div className="brand-mark" aria-hidden="true">C<span>·</span></div><div><h2>Chadex for Windows</h2><p>{view.desktop ? `已安裝版本 ${view.desktop.version}` : '尚未取得版本資訊'}</p></div></div><Facts items={[
-          ['更新狀態', '尚未提供更新資訊'], ['更新來源', '桌面後端尚未提供更新檢查介面'],
-        ]} /><p className="panel-note">此版本尚無可用的自動更新流程。</p><button onClick={() => setPage('diagnostics')}>檢視診斷</button></Panel>}
+        <div hidden={page !== 'updates'}><WindowsUpdatePanel api={api} version={view.desktop?.version ?? null} /></div>
       </main><footer><span>Chadex · 本地優先</span><span>{view.freshness === 'fresh' ? `狀態更新 ${date(view.receivedAt)}` : '等待新的服務狀態'}</span></footer>
     </div>
   </div>;

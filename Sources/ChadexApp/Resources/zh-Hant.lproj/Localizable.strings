@@ -819,6 +819,10 @@
 "planGoal.start.chatgpt.confirmTitle" = "要核准第 %d 版並在 ChatGPT 中執行嗎？";
 "planGoal.start.chatgpt.goalRequest.confirmTitle" = "要在 ChatGPT 中執行這個 Goal 嗎？";
 "planGoal.start.chatgpt.confirmMessage" = "計畫：%@\n第 %d 版，雜湊 %@。只會核准這個版本，不會消耗 Codex 額度。請保持 ChatGPT 對話開著，確認後回到 ChatGPT 說「開始」。";
+"planGoal.start.inFlight" = "正在啟動 Goal…";
+"planGoal.start.checking" = "無法確認是否已啟動，正在核對執行狀態…";
+"planGoal.start.started" = "Goal 已啟動";
+"planGoal.start.viewRun" = "查看執行";
 "planGoal.mode" = "模式：%@";
 "planGoal.mode.codex" = "Codex";
 "planGoal.mode.chatgpt" = "ChatGPT";
@@ -869,3 +873,94 @@
 "planGoal.skillExport.needTunnel" = "請先在設定填入有效的 Tunnel ID。";
 "planGoal.skillExport.done" = "已匯出到 %@。請在 ChatGPT 的「設定 → Skills」上傳這兩個 zip，並取代舊的。zip 內含你個人的通道位址，請勿分享。";
 "planGoal.skillExport.failed" = "匯出失敗：%@";
+
+/* Goal 可靠性與驗收審閱 */
+"planGoal.blockerDetails" = "阻擋詳情";
+"planGoal.stateReason" = "狀態原因";
+"planGoal.progressUnavailable" = "這份狀態回應未提供 checkpoint 與驗收進度。";
+"planGoal.retryAcceptance" = "從 checkpoint 重試驗收";
+"planGoal.retryAcceptance.confirmTitle" = "要從這個 checkpoint 重試驗收嗎？";
+"planGoal.retryAcceptance.confirmMessage" = "Chadex 會請受信任的 Goal operator 檢查阻擋原因，並從 checkpoint %@ 重跑驗收。這不會恢復 Agent，也不會重播結果不明的操作；若執行環境不可恢復，operator 會拒絕重試。";
+"planGoal.chatgpt.localValidationNote" = "程式由 ChatGPT 修改；本機 Runner 與 sandbox 負責執行驗收，不會切換成 Codex coding agent，也不會消耗 Codex 模型額度。";
+"planGoal.acceptanceEditor.open" = "檢視驗收 JSON…";
+"planGoal.acceptanceEditor.title" = "驗收與執行政策";
+"planGoal.acceptanceEditor.scopeNote" = "這個編輯器只修改本機草稿。驗收變更生效前，必須先送交伺服器提案、取得 revision hash、檢視完整伺服器比較，再另行確認核准。";
+"planGoal.acceptanceEditor.current" = "目前完整 spec JSON";
+"planGoal.acceptanceEditor.proposed" = "提議的完整 spec JSON";
+"planGoal.acceptanceEditor.invalidJSON" = "請輸入有效 JSON 才能檢視比較。";
+"planGoal.acceptanceEditor.noChanges" = "提議的 JSON 與目前驗收內容相同。";
+"planGoal.acceptanceEditor.policyPending" = "可一起編輯 acceptance、workspace requirements 與 dependency provenance；每次提案都會送出這三份完整陣列。";
+"planGoal.acceptanceEditor.review" = "檢視完整比較";
+"planGoal.acceptanceEditor.back" = "返回編輯";
+"planGoal.acceptanceEditor.done" = "完成";
+
+/* Goal 進度與伺服器驗收版本審閱 */
+"planGoal.committedRounds" = "已 commit 輪數：%d";
+"planGoal.completedAcceptanceRounds" = "已完成驗收輪數：%d";
+"planGoal.currentAttempt" = "目前嘗試";
+"planGoal.checkpointSha" = "Checkpoint Git object ID：%@";
+"planGoal.acceptanceRevision" = "驗收版本：%d";
+"planGoal.acceptanceEditor.policyUnchanged" = "物件必須包含 acceptance、workspace_requirements 與 dependencies 三個陣列。現有值會先載入；省略欄位或改成非陣列時不會送出。";
+"planGoal.acceptanceEditor.arrayRequired" = "請輸入只含 acceptance、workspace_requirements、dependencies 三個陣列的 JSON object。";
+"planGoal.acceptanceEditor.propose" = "提議新的驗收版本";
+"planGoal.acceptanceEditor.proposing" = "正在送出提案…";
+"planGoal.acceptanceEditor.serverRevision" = "伺服器提案 · 第 %d 版";
+"planGoal.acceptanceEditor.serverHash" = "伺服器 spec SHA-256：%@";
+"planGoal.acceptanceEditor.serverProposed" = "伺服器提議的完整 spec";
+"planGoal.acceptanceEditor.createdAt" = "建立時間：%@";
+"planGoal.acceptanceEditor.comparisonUnavailable" = "伺服器回應未提供完整 acceptance 與兩份 manifest，因此不能核准。";
+"planGoal.acceptanceEditor.approveRevision" = "檢視並核准第 %d 版…";
+"planGoal.acceptanceEditor.approvalConfirmTitle" = "要核准這個伺服器驗收版本嗎？";
+"planGoal.acceptanceEditor.approvalConfirmMessage" = "來源版本 %d → 提議版本 %d · SHA-256 %@ · 提案 %@。請先比較目前與提議的 acceptance 和兩份 manifest，再確認核准。";
+"planGoal.acceptanceEditor.confirmApproval" = "確認核准";
+"planGoal.acceptanceEditor.approving" = "正在核准伺服器版本…";
+"planGoal.acceptanceEditor.approved" = "驗收版本已核准";
+"planGoal.acceptanceEditor.missingProposal" = "受信任的 operator 未回傳待處理的驗收提案。";
+"planGoal.acceptanceEditor.proposalFailed" = "無法建立驗收提案。";
+"planGoal.acceptanceEditor.approvalFailed" = "無法核准驗收版本。";
+"planGoal.unknownOutcome.noRetry" = "這項操作的結果不明。請先檢查 worktree 與操作紀錄；為避免重播，已停用驗收重試。";
+"planGoal.blockingEvidence" = "結構化阻擋證據";
+"planGoal.blockingCheck" = "阻擋的驗收項目：%@";
+"planGoal.blockingExecutable" = "執行檔：%@";
+"planGoal.blockingRepair" = "建議修復：%@";
+"planGoal.blockingCause" = "原因：%@";
+"planGoal.acceptance.laneKind" = "Lane：%@ · 類型：%@";
+"planGoal.acceptance.loopbackPorts" = "Loopback port：%@";
+"planGoal.acceptance.dependsOn" = "依賴項目：%@";
+"planGoal.acceptance.externalGate" = "外部 Gate";
+"planGoal.acceptance.gateOwner" = "負責人：%@";
+"planGoal.acceptance.gateAction" = "待執行動作：%@";
+"planGoal.acceptance.gateEvidence" = "所需證據：%@";
+"planGoal.acceptance.gateNextStep" = "下一步：%@";
+"planGoal.acceptanceEditor.proposalId" = "提案 ID：%@";
+"planGoal.acceptanceEditor.sourceRevision" = "來源驗收版本：%d";
+"planGoal.acceptanceEditor.checkpointHash" = "來源 checkpoint Git object ID：%@";
+"planGoal.acceptanceEditor.sourceHash" = "來源驗收 SHA-256：%@";
+"planGoal.acceptanceEditor.proposedHash" = "提議驗收 SHA-256：%@";
+"planGoal.acceptanceEditor.invalidProposal" = "受信任的 operator 回傳的提案不完整或與目前 Goal 不符。";
+"planGoal.workspaceRequirements" = "Workspace requirements";
+"planGoal.dependencies" = "依賴項目與來源證明";
+"planGoal.manifest.none" = "未宣告項目（空 manifest）。";
+"planGoal.manifest.notProvided" = "此版本未提供這份 manifest。";
+"planGoal.workspaceRequirement.sourcePath" = "來源：%@";
+"planGoal.workspaceRequirement.sourceSha256" = "來源 SHA-256：%@";
+"planGoal.workspaceRequirement.destinationPath" = "目的地：%@";
+"planGoal.workspaceRequirement.permission" = "權限：%@";
+"planGoal.dependency.path" = "路徑：%@";
+"planGoal.dependency.provenance" = "來源證明：%@";
+"planGoal.acceptanceEditor.manifestUnavailable" = "狀態回應缺少目前 workspace requirements 或 dependencies，為避免清空原值，暫不能提案。";
+"planGoal.acceptanceEditor.revisionUnavailable" = "狀態缺少目前 acceptance revision，無法建立具有 stale 防護的提案。";
+"planGoal.acceptanceEditor.sourceRevisionChanged" = "來源 acceptance revision 已變更或目前無法驗證。請關閉編輯器，再重新開啟以載入最新版本。";
+"planGoal.acceptanceRevisions" = "驗收版本紀錄";
+"planGoal.retryAcceptance.runnerConfirmationPending" = "此 Goal 已有 committed rounds，但沒有有效的 checkpoint Git object ID。請先校驗既有 checkpoint，再重試驗收或編輯政策。";
+"planGoal.adoptCheckpoint" = "校驗既有 checkpoint";
+"planGoal.adoptCheckpoint.confirmTitle" = "要校驗並登記這個既有 checkpoint 嗎？";
+"planGoal.adoptCheckpoint.confirmMessage" = "受信任的 operator 會檢視 Git HEAD、Goal journal 與 diff，再登記 %d 個 committed round 的 checkpoint metadata。此動作不會啟動或恢復 Goal、不會重跑 Agent，也不會執行驗收。";
+
+"planGoal.acceptance.containerImage" = "私有容器映像：%@（隔離主機與外部網路）";
+
+"planGoal.retryPreparation" = "重試環境準備";
+
+"planGoal.retryPreparation.confirmTitle" = "重試 Goal 環境準備？";
+
+"planGoal.retryPreparation.confirmMessage" = "目前尚未啟動 agent 或 checkpoint 操作。修好已宣告的環境後，使用同一 Goal 與原預算重新準備；不建立重複 Goal。";

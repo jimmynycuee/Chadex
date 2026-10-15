@@ -393,6 +393,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Release staging regression failed." }
           python -B scripts/test_windows_installer_smoke.py
           if ($LASTEXITCODE -ne 0) { throw "Installer harness regression failed." }
+          python -B scripts/test_windows_updater_manifest.py
+          if ($LASTEXITCODE -ne 0) { throw "Updater manifest/signature contract regression failed." }
           python -B scripts/test_windows_suspended_launch.py
           if ($LASTEXITCODE -ne 0) { throw "Suspended ownership regression failed." }
           node --test scripts/windows_installed_probe.test.mjs
@@ -465,16 +467,16 @@ jobs:
           name: windows-w5-unsigned-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/windows-w5-candidate
 
-      - name: Build historical v0.7.0 source candidate
+      - name: Build historical v0.7.1 source candidate
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $false
-          $baselineSource = Join-Path $env:RUNNER_TEMP "chadex-v0.7.0-source"
-          $baselineCandidate = Join-Path $env:RUNNER_TEMP "windows-w5-v0.7.0-candidate"
-          $tagCommit = (& git rev-parse "refs/tags/v0.7.0^{commit}").Trim()
+          $baselineSource = Join-Path $env:RUNNER_TEMP "chadex-v0.7.1-source"
+          $baselineCandidate = Join-Path $env:RUNNER_TEMP "windows-w5-v0.7.1-candidate"
+          $tagCommit = (& git rev-parse "refs/tags/v0.7.1^{commit}").Trim()
           if ($LASTEXITCODE -ne 0 -or $tagCommit -notmatch '^[0-9a-f]{40}$') {
-            throw "Historical v0.7.0 tag is unavailable."
+            throw "Historical v0.7.1 tag is unavailable."
           }
           git worktree add --detach $baselineSource $tagCommit
           if ($LASTEXITCODE -ne 0) { throw "Historical worktree creation failed." }
@@ -486,12 +488,12 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Historical worktree cleanup failed." }
           }
 
-      - name: Upgrade actual v0.7.0 source install to current candidate
+      - name: Upgrade actual v0.7.1 source install to current candidate
         shell: pwsh
         run: |
           python -B scripts/windows_installer_smoke.py `
             --candidate-dir (Join-Path $env:RUNNER_TEMP "windows-w5-candidate") `
-            --historical-baseline-dir (Join-Path $env:RUNNER_TEMP "windows-w5-v0.7.0-candidate") `
+            --historical-baseline-dir (Join-Path $env:RUNNER_TEMP "windows-w5-v0.7.1-candidate") `
             --output (Join-Path $env:RUNNER_TEMP "windows-w5-historical-upgrade.json")
           if ($LASTEXITCODE -ne 0) { throw "Historical installed upgrade acceptance failed." }
 
