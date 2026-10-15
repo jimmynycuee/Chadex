@@ -73,6 +73,6 @@ The following still need a real user environment, private credentials/hardware, 
 - trusted Authenticode signing and SmartScreen/reputation behavior;
 - a host that genuinely lacks WebView2 and interactive bootstrapper/installer choices;
 - Credential Manager deletion policy during uninstall (default application-data preservation does not define credential deletion policy);
-- production Windows updater artifacts, authentication/signing and delivery policy.
+- real-device validation of the in-app updater; CI verifies the signed archive against the configured public key, but does not exercise installation on a user's Windows host.
 
 `.github/workflows/release.yml` keeps the macOS Apple Silicon DMG and adds the separately gated v0.7.2 Windows installer/updater assets. A W5 CI artifact remains unsigned validation evidence and never serves as the public release asset.

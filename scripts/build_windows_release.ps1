@@ -156,15 +156,17 @@ try {
                 if ($null -eq $signatureExitCode -or $signatureExitCode -ne 0) {
                     throw "Tauri failed to bind the updater signature to version $version."
                 }
-                $signatureText = ($signatureOutput | Out-String).Trim()
-                $versionPattern = [regex]::Escape($version)
-                if ($signatureText -notmatch "(?m)^trusted comment:.*app version: $versionPattern(?:$|\s)") {
-                    throw "Updater signature does not attest release version $version."
+                $signatureOutput | & python (Join-Path $PSScriptRoot "tauri_updater_signature.py") `
+                    --version $version --output "$sourceUpdaterArchive.sig"
+                $signatureParseExitCode = $LASTEXITCODE
+                if ($null -eq $signatureParseExitCode -or $signatureParseExitCode -ne 0) {
+                    throw "Tauri updater signature output is invalid or does not attest release version $version."
                 }
-                [IO.File]::WriteAllText(
-                    "$sourceUpdaterArchive.sig",
-                    "$signatureText`n",
-                    [Text.UTF8Encoding]::new($false)
+                Invoke-NativeChecked "cargo" @(
+                    "run", "--locked", "--quiet",
+                    "--manifest-path", (Join-Path $repo "scripts/windows-updater-signature-check/Cargo.toml"), "--",
+                    "--signature-file", "$sourceUpdaterArchive.sig",
+                    "--archive", $sourceUpdaterArchive
                 )
             } finally {
                 $env:TAURI_SIGNING_PRIVATE_KEY = $null

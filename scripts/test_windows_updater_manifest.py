@@ -2,6 +2,7 @@
 """Focused safety tests for the Windows Tauri updater manifest generator."""
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 import sys
@@ -22,7 +23,9 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
         self.archive = self.root / "Chadex-0.7.2-windows-x64-setup.nsis.zip"
         self.signature_file = self.root / "Chadex-0.7.2-windows-x64-setup.nsis.zip.sig"
         self.archive.write_bytes(b"signed archive fixture")
-        self.signature_contents = b"untrusted comment: fixture\r\nRUTestSignature==\r\n"
+        self.signature_contents = base64.b64encode(
+            b"untrusted comment: fixture\r\nRUTestSignature==\r\n"
+        )
         self.signature_file.write_bytes(self.signature_contents)
         self.output = self.root / "latest.json"
 
@@ -148,7 +151,9 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
         release_script = (root / "scripts/build_windows_release.ps1").read_text(encoding="utf-8")
         self.assertIn('"--features", "custom-protocol"', release_script)
         self.assertIn("signer sign $sourceUpdaterArchive --app-version $version", release_script)
-        self.assertIn("Updater signature does not attest release version", release_script)
+        self.assertIn("tauri_updater_signature.py", release_script)
+        self.assertIn("scripts/windows-updater-signature-check/Cargo.toml", release_script)
+        self.assertIn('"--signature-file", "$sourceUpdaterArchive.sig"', release_script)
         self.assertIn("windows_tauri_bundle_hash.py", release_script)
         self.assertIn("$desktopHash = Get-NsisPayloadDesktopHash $desktop", release_script)
         self.assertIn("$baselineDesktopHash = Get-NsisPayloadDesktopHash $desktop", release_script)
