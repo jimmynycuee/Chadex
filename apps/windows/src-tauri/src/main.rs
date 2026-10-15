@@ -115,7 +115,7 @@ impl Desktop {
         Ok(())
     }
 
-    async fn shutdown(&self) {
+    async fn shutdown(&self) -> bool {
         // Shutdown must preempt a long connection/startup RPC instead of
         // waiting behind the mutation lock. The helper owns request draining.
         let graceful = if let Some(bridge) = self.bridge.lock().await.take() {
@@ -132,6 +132,7 @@ impl Desktop {
         }
         self.shutdown_complete.store(true, Ordering::SeqCst);
         log_event("shutdown_complete", graceful);
+        graceful
     }
 }
 
@@ -562,9 +563,13 @@ fn begin_shutdown(app: &tauri::AppHandle) {
     }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        app.state::<Desktop>().shutdown().await;
-        app.exit(0);
+        let graceful = app.state::<Desktop>().shutdown().await;
+        app.exit(shutdown_exit_code(graceful));
     });
+}
+
+fn shutdown_exit_code(graceful: bool) -> i32 {
+    if graceful { 0 } else { 1 }
 }
 
 fn main() {
@@ -724,6 +729,13 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_graceful_shutdown_produces_nonzero_process_exit() {
+        assert_eq!(shutdown_exit_code(true), 0);
+        assert_ne!(shutdown_exit_code(false), 0);
+    }
+
     #[test]
     fn secret_and_shutdown_methods_are_backend_only() {
         for name in [

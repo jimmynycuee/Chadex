@@ -27,6 +27,9 @@ class WindowsDesktopSmokeTests(unittest.TestCase):
         self.assertIn("quit_app", smoke_only)
         self.assertNotIn("quitApp", api)
         self.assertIn('"quit" => app.exit(0)', source)
+        self.assertIn('let graceful = app.state::<Desktop>().shutdown().await;', source)
+        self.assertIn('app.exit(shutdown_exit_code(graceful));', source)
+        self.assertIn('fn shutdown_exit_code(graceful: bool) -> i32', source)
 
     def test_window_close_checkpoint_requires_hidden_window_evidence(self) -> None:
         self.assertIsNone(smoke.validate_checkpoint(

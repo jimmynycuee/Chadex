@@ -303,6 +303,18 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                 smoke.request_tray_quit("powershell.exe", 4321)
         self.assertEqual(failure.exception.code, "tray_icon_unavailable")
 
+    def test_tray_driver_scopes_and_owner_checks_native_quit_without_killing(self) -> None:
+        script = (Path(__file__).with_name("windows_tray_quit.ps1")
+                  .read_text(encoding="utf-8"))
+        self.assertIn('"TrayNotifyWnd"', script)
+        self.assertIn('"NotifyIconOverflowWindow"', script)
+        self.assertIn("Wait-ChadexMenu", script)
+        self.assertIn("MenuBelongsTo", script)
+        self.assertIn('ownerClass.ToString() == "tray_icon_app"', script)
+        self.assertIn('Invoke-Element $selection.Quit', script)
+        self.assertNotIn("Stop-Process", script)
+        self.assertNotIn("taskkill", script.lower())
+
     def test_candidate_accepts_manifest_only_resources_and_checks_both_installer_hashes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
