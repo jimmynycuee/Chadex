@@ -165,6 +165,10 @@ try {
             }
             Assert-ReleaseSource
         }
+        # Capture the production candidate binary before Tauri builds the
+        # synthetic older-version fixture, which may patch the shared target file.
+        $desktop = Join-Path $target "release/Chadex.exe"
+        $desktopHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $desktop).Hash.ToLowerInvariant()
         $upgradeBaselineVersion = $null
         if ($BuildUpgradeFixture) {
             # Synthetic older installer metadata around the SAME production binaries.
@@ -209,7 +213,6 @@ try {
     Assert-ReleaseSource
     $installers = @(Get-ChildItem -LiteralPath (Join-Path $target "release/bundle/nsis") -Filter "*_${version}_x64-setup.exe")
     if ($installers.Count -ne 1) { throw "Expected one x64 candidate installer." }
-    $desktop = Join-Path $target "release/Chadex.exe"
     foreach ($binary in @($desktop, $installers[0].FullName, (Join-Path $resources "helper/chadex-helper.exe")) +
         @(Get-ChildItem -LiteralPath (Join-Path $resources "chadex-runtime") -Filter '*.exe' | ForEach-Object FullName)) {
         if ((Get-AuthenticodeSignature -LiteralPath $binary).Status -ne 'NotSigned') {
@@ -251,7 +254,7 @@ try {
         desktop_smoke = $false; authenticode = "unsigned"; updater = $updaterStatus;
         synthetic_upgrade_baseline = $upgradeBaselineVersion;
         installer = $name; sha256 = $hash; publication = "not authorized";
-        desktop_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $desktop).Hash.ToLowerInvariant();
+        desktop_sha256 = $desktopHash;
         full_product_acceptance = "pending"; synthetic_upgrade_fixture = [bool]$BuildUpgradeFixture
     }
     if ($BuildUpgradeFixture) {

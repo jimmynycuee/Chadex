@@ -149,6 +149,16 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
         self.assertIn('"--features", "custom-protocol"', release_script)
         self.assertIn("signer sign $sourceUpdaterArchive --app-version $version", release_script)
         self.assertIn("Updater signature does not attest release version", release_script)
+        desktop_hash_capture = release_script.index(
+            '$desktopHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $desktop).Hash.ToLowerInvariant()'
+        )
+        fixture_start = release_script.index(
+            "if ($BuildUpgradeFixture) {",
+            release_script.index("$upgradeBaselineVersion = $null"),
+        )
+        self.assertLess(desktop_hash_capture, fixture_start)
+        self.assertIn("desktop_sha256 = $desktopHash", release_script)
+        self.assertNotIn("desktop_sha256 = (Get-FileHash", release_script)
 
         source_check = (root / "scripts/windows_release_source_check.ps1").read_text(encoding="utf-8")
         self.assertIn("build --ci --features custom-protocol", source_check)
