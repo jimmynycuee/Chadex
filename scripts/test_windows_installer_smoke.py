@@ -317,6 +317,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "native_click_attempted": False,
             "native_click_down_input_count": 0,
             "native_click_up_input_count": 0,
+            "preexisting_menu_count": 0,
             "menu_element_count": 0,
             "menu_app_process_count": 0,
             "menu_exact_owner_count": 0,
@@ -368,17 +369,25 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn('"tray_icon_unavailable"', script)
         self.assertIn('"tray_diagnostics="', script)
         self.assertIn("Wait-ChadexMenu", script)
-        self.assertIn("MenuBelongsTo", script)
         self.assertIn("MenuOwnerCheckCode", script)
         self.assertIn('ownerClass.ToString() != "tray_icon_app"', script)
         self.assertIn("Shell_NotifyIconGetRect", script)
         self.assertIn("Shell_NotifyIconGetRect(ref identifier, out rect) == 0", script)
         self.assertIn("FindTrayIconWindows([uint32]$AppProcessId)", script)
+        self.assertIn("if ($trayWindows.Count -ne 1)", script)
         self.assertIn("ShellTrayRootKind(", script)
         self.assertIn("native_icon_match_count", script)
         self.assertIn("native_click_down_input_count", script)
+        self.assertIn("$script:TrayDiagnostics.native_click_down_input_count -eq 1", script)
+        self.assertIn("$script:TrayDiagnostics.native_click_up_input_count -eq 1", script)
+        self.assertIn("if (-not $script:TrayDiagnostics.native_cursor_matches_rect)", script)
+        self.assertIn("$null = Find-ChadexMenu", script)
+        self.assertIn("$script:TrayDiagnostics.menu_exact_owner_count -gt 0", script)
+        self.assertIn("if ($ownerCode -ne 7)", script)
         self.assertIn("SendInput", script)
         self.assertIn("menu_owner_check_code", script)
+        self.assertIn("IntPtr expectedOwnerHwnd", script)
+        self.assertIn("$nativeIcon.Window -ne $script:ExpectedTrayWindow", script)
         self.assertIn("if (-not $script:TrayDiagnostics.same_session_as_shell)", script)
         self.assertIn('Invoke-Element $selection.Quit', script)
         self.assertNotIn("Stop-Process", script)

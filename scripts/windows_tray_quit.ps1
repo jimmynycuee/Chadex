@@ -25,6 +25,7 @@ $script:TrayDiagnostics = [ordered]@{
     native_click_attempted = $false
     native_click_down_input_count = 0
     native_click_up_input_count = 0
+    preexisting_menu_count = 0
     menu_element_count = 0
     menu_app_process_count = 0
     menu_exact_owner_count = 0
@@ -156,10 +157,10 @@ public static class ChadexTrayInput {
         };
         return Shell_NotifyIconGetRect(ref identifier, out rect) == 0;
     }
-    public static int MenuOwnerCheckCode(int nativeHandle, uint processId) {
+    public static int MenuOwnerCheckCode(int nativeHandle, uint processId, IntPtr expectedOwnerHwnd) {
         var hwnd = new IntPtr(unchecked((long)(uint)nativeHandle));
         // Sanitized diagnostics: 1=missing hwnd/thread, 2=other process,
-        // 3=no active menu, 4=wrong owner PID, 5=wrong owner class, 6=exact app.
+        // 3=no active menu, 4=wrong owner PID, 5=wrong HWND, 6=wrong class, 7=exact app.
         if (hwnd == IntPtr.Zero) return 1; // no native menu window
         uint menuProcessId;
         uint threadId = GetWindowThreadProcessId(hwnd, out menuProcessId);
@@ -170,13 +171,11 @@ public static class ChadexTrayInput {
         if (!GetGUIThreadInfo(threadId, ref info) || (info.flags & 0x14) == 0)
             return 3; // no active popup/menu state
         if (WindowProcessId(info.hwndMenuOwner) != processId) return 4;
+        if (info.hwndMenuOwner != expectedOwnerHwnd) return 5;
         var ownerClass = new StringBuilder(256);
         if (GetClassName(info.hwndMenuOwner, ownerClass, ownerClass.Capacity) == 0 ||
-            ownerClass.ToString() != "tray_icon_app") return 5;
-        return 6; // exact Chadex tray window owns the active menu
-    }
-    public static bool MenuBelongsTo(int nativeHandle, uint processId) {
-        return MenuOwnerCheckCode(nativeHandle, processId) == 6;
+            ownerClass.ToString() != "tray_icon_app") return 6;
+        return 7; // exact Chadex tray window owns the active menu
     }
 }
 "@
@@ -190,9 +189,17 @@ public static class ChadexTrayInput {
     }
     $null = $process.Handle
 
+    $trayWindows = @([ChadexTrayInput]::FindTrayIconWindows([uint32]$AppProcessId))
+    $script:TrayDiagnostics.native_window_count = $trayWindows.Count
+    if ($trayWindows.Count -ne 1) {
+        Write-TrayFailure "tray_icon_unavailable"
+        exit 2
+    }
+    $script:ExpectedTrayWindow = $trayWindows[0]
+
     # main.rs enables single-instance, but that is NOT OS-level ownership proof.
     # The pinned tray-icon 0.25.1 passes its tray_icon_app HWND to TrackPopupMenu;
-    # MenuBelongsTo checks the actual active menu owner, never a guessed HWND.
+    # menu discovery checks the exact active owner, never a guessed HWND.
     function Test-AppIdentity {
         $process.Refresh()
         return (-not $process.HasExited)
@@ -349,8 +356,9 @@ public static class ChadexTrayInput {
         if (-not (Test-AppIdentity) -or $menu.Current.ProcessId -ne $AppProcessId -or
             $menu.Current.IsOffscreen) { return $false }
         $script:TrayDiagnostics.menu_owner_check_code = [ChadexTrayInput]::MenuOwnerCheckCode(
-            $menu.Current.NativeWindowHandle, [uint32]$AppProcessId)
-        return $script:TrayDiagnostics.menu_owner_check_code -eq 6
+            $menu.Current.NativeWindowHandle, [uint32]$AppProcessId,
+            $script:ExpectedTrayWindow)
+        return $script:TrayDiagnostics.menu_owner_check_code -eq 7
     }
     function Find-ChadexMenu {
         $elements = $desktop.FindAll(
@@ -369,9 +377,10 @@ public static class ChadexTrayInput {
                     $script:TrayDiagnostics.menu_app_process_count++
                 }
                 $ownerCode = [ChadexTrayInput]::MenuOwnerCheckCode(
-                    $element.Current.NativeWindowHandle, [uint32]$AppProcessId)
+                    $element.Current.NativeWindowHandle, [uint32]$AppProcessId,
+                    $script:ExpectedTrayWindow)
                 $script:TrayDiagnostics.menu_owner_check_code = $ownerCode
-                if ($ownerCode -ne 6) { continue }
+                if ($ownerCode -ne 7) { continue }
                 $script:TrayDiagnostics.menu_exact_owner_count++
                 $items = $element.FindAll(
                     [System.Windows.Automation.TreeScope]::Children,
@@ -410,6 +419,35 @@ public static class ChadexTrayInput {
             Start-Sleep -Milliseconds 100
         } while ($wait.ElapsedMilliseconds -lt 2000)
         return $null
+    }
+
+    function Invoke-RightClickAt([int] $X, [int] $Y) {
+        if (-not [ChadexTrayInput]::SetCursorPos($X, $Y)) { return $false }
+        $script:TrayDiagnostics.native_cursor_matches_rect =
+            [ChadexTrayInput]::CursorMatches($X, $Y)
+        if (-not $script:TrayDiagnostics.native_cursor_matches_rect) { return $false }
+
+        $script:TrayDiagnostics.native_click_attempted = $true
+        $script:TrayDiagnostics.native_click_down_input_count =
+            [int][ChadexTrayInput]::SendMouseInput(0x0008)
+        Start-Sleep -Milliseconds 50
+        $script:TrayDiagnostics.native_click_up_input_count =
+            [int][ChadexTrayInput]::SendMouseInput(0x0010)
+        if ($script:TrayDiagnostics.native_click_up_input_count -ne 1) {
+            # One bounded release attempt prevents a failed down/up pair from leaving
+            # a held right button. The operation still fails closed below.
+            $script:TrayDiagnostics.native_click_up_input_count +=
+                [int][ChadexTrayInput]::SendMouseInput(0x0010)
+        }
+        return ($script:TrayDiagnostics.native_click_down_input_count -eq 1 -and
+            $script:TrayDiagnostics.native_click_up_input_count -eq 1)
+    }
+
+    $null = Find-ChadexMenu
+    if ($script:TrayDiagnostics.menu_exact_owner_count -gt 0) {
+        $script:TrayDiagnostics.preexisting_menu_count = 1
+        Write-TrayFailure "tray_menu_unavailable"
+        exit 3
     }
 
     $icon = $null
@@ -460,7 +498,8 @@ public static class ChadexTrayInput {
         # UIA. Resolve the Shell rectangle from the exact app-owned tray HWND/ID.
         $nativeIcon = Find-NativeTrayIcon
         if ($null -eq $nativeIcon -or -not (Test-AppIdentity) -or
-            [ChadexTrayInput]::WindowProcessId($nativeIcon.Window) -ne $AppProcessId) {
+            [ChadexTrayInput]::WindowProcessId($nativeIcon.Window) -ne $AppProcessId -or
+            $nativeIcon.Window -ne $script:ExpectedTrayWindow) {
             Write-TrayFailure "tray_icon_unavailable"
             exit 2
         }
@@ -479,16 +518,10 @@ public static class ChadexTrayInput {
             Write-TrayFailure "tray_icon_unavailable"
             exit 2
         }
-        if (-not [ChadexTrayInput]::SetCursorPos($x, $y)) {
+        if (-not (Invoke-RightClickAt $x $y)) {
             Write-TrayFailure "tray_menu_unavailable"
             exit 3
         }
-        $script:TrayDiagnostics.native_cursor_matches_rect =
-            [ChadexTrayInput]::CursorMatches($x, $y)
-        $script:TrayDiagnostics.native_click_attempted = $true
-        $script:TrayDiagnostics.native_click_down_input_count = [int][ChadexTrayInput]::SendMouseInput(0x0008)
-        Start-Sleep -Milliseconds 50
-        $script:TrayDiagnostics.native_click_up_input_count = [int][ChadexTrayInput]::SendMouseInput(0x0010)
         $selection = Wait-ChadexMenu
         if ($null -eq $selection) {
             Write-TrayFailure "tray_menu_unavailable"
@@ -524,18 +557,10 @@ public static class ChadexTrayInput {
             }
             $x = [int]($bounds.Left + ($bounds.Width / 2))
             $y = [int]($bounds.Top + ($bounds.Height / 2))
-            if (-not [ChadexTrayInput]::SetCursorPos($x, $y)) {
+            if (-not (Invoke-RightClickAt $x $y)) {
                 Write-TrayFailure "tray_menu_unavailable"
                 exit 3
             }
-            $script:TrayDiagnostics.native_cursor_matches_rect =
-                [ChadexTrayInput]::CursorMatches($x, $y)
-            $script:TrayDiagnostics.native_click_attempted = $true
-            $script:TrayDiagnostics.native_click_down_input_count =
-                [int][ChadexTrayInput]::SendMouseInput(0x0008)
-            Start-Sleep -Milliseconds 50
-            $script:TrayDiagnostics.native_click_up_input_count =
-                [int][ChadexTrayInput]::SendMouseInput(0x0010)
             $selection = Wait-ChadexMenu
             if ($null -eq $selection) {
                 Write-TrayFailure "tray_menu_unavailable"

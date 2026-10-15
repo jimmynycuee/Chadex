@@ -109,6 +109,7 @@ TRAY_DIAGNOSTIC_FIELDS = {
     "native_click_attempted": bool,
     "native_click_down_input_count": int,
     "native_click_up_input_count": int,
+    "preexisting_menu_count": int,
     "menu_element_count": int,
     "menu_app_process_count": int,
     "menu_exact_owner_count": int,
