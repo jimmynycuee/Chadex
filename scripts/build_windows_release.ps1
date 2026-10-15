@@ -103,6 +103,7 @@ $env:CHADEX_RUNTIME_BUILT_AT = (& git -C $repo show -s --format=%ct HEAD)
 if ($LASTEXITCODE -ne 0) { throw "Git build identity unavailable." }
 $env:CHADEX_RUNTIME_GIT_DIRTY = "false"
 $staging = Join-Path ([IO.Path]::GetTempPath()) ("chadex-release-" + [guid]::NewGuid().ToString('N'))
+$updaterBundleConfigPath = $null
 $updaterStatus = if ($EnableUpdater) { "tauri-signed" } else { "disabled" }
 $previousUpdaterPublicKey = $env:CHADEX_UPDATER_PUBLIC_KEY
 $previousRequireUpdaterKey = $env:CHADEX_REQUIRE_UPDATER_KEY
@@ -145,6 +146,8 @@ try {
             $updaterBundleConfig = @{
                 bundle = @{ createUpdaterArtifacts = $true }
             } | ConvertTo-Json -Compress
+            $updaterBundleConfigPath = Join-Path ([IO.Path]::GetTempPath()) ("chadex-updater-bundle-" + [guid]::NewGuid().ToString('N') + ".json")
+            [IO.File]::WriteAllText($updaterBundleConfigPath, $updaterBundleConfig, [Text.UTF8Encoding]::new($false))
             $env:TAURI_SIGNING_PRIVATE_KEY = $signingPrivateKey
             if (-not [string]::IsNullOrWhiteSpace($signingPassword)) {
                 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $signingPassword
@@ -157,7 +160,7 @@ try {
                 Invoke-NativeChecked "npm.cmd" @(
                     "run", "tauri", "--", "bundle", "--ci", "--bundles", "nsis",
                     "--config", "src-tauri/tauri.release.conf.json",
-                    "--config", $updaterBundleConfig
+                    "--config", $updaterBundleConfigPath
                 )
                 $bundleInstallers = @(Get-ChildItem -LiteralPath (Join-Path $target "release/bundle/nsis") -Filter "*_${version}_x64-setup.exe" -File)
                 if ($bundleInstallers.Count -ne 1) { throw "Expected exactly one signed x64 NSIS updater installer for version $version." }
@@ -301,5 +304,8 @@ try {
     $env:TAURI_CONFIG = $previousTauriConfig
     $env:CHADEX_REQUIRE_UPDATER_KEY = $previousRequireUpdaterKey
     $env:CHADEX_UPDATER_PUBLIC_KEY = $previousUpdaterPublicKey
+    if ($updaterBundleConfigPath -and (Test-Path -LiteralPath $updaterBundleConfigPath -PathType Leaf)) {
+        Remove-Item -LiteralPath $updaterBundleConfigPath -Force -ErrorAction SilentlyContinue
+    }
     if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
 }

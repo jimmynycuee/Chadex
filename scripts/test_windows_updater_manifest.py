@@ -155,9 +155,14 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
             normalized_release_script,
         )
         self.assertIn(
-            '"--config", "src-tauri/tauri.release.conf.json", "--config", $updaterBundleConfig',
+            '"--config", "src-tauri/tauri.release.conf.json", "--config", $updaterBundleConfigPath',
             normalized_release_script,
         )
+        self.assertIn(
+            '[IO.File]::WriteAllText($updaterBundleConfigPath, $updaterBundleConfig, [Text.UTF8Encoding]::new($false))',
+            normalized_release_script,
+        )
+        self.assertIn("Remove-Item -LiteralPath $updaterBundleConfigPath", normalized_release_script)
         self.assertIn('"--features", "custom-protocol"', release_script)
         self.assertIn("signer sign $sourceUpdaterInstaller --app-version $version", release_script)
         self.assertIn("tauri_updater_signature.py", release_script)
