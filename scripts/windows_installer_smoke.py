@@ -78,7 +78,9 @@ SAFE_CODES = frozenset({
     "installed_helper_identity_unowned", "installed_helper_identity_changed",
     "installed_runtime_not_ready", "installed_ui_not_rendered",
     "installed_preferences_not_restored", "installed_smoke_ipc_exposed",
-    "installed_processes_remain", "installed_app_exit_nonzero", "process_inventory_failed", "process_inventory_timeout", "process_cleanup_failed",
+    "installed_processes_remain", "installed_app_exit_nonzero", "installed_app_exited_before_tray_quit",
+    "tray_quit_driver_missing", "tray_quit_timeout", "tray_icon_unavailable", "tray_menu_unavailable",
+    "tray_quit_failed", "process_inventory_failed", "process_inventory_timeout", "process_cleanup_failed",
     "node_cleanup_failed", "owned_processes_remain", "forced_cleanup_required",
     "appdata_missing", "appdata_snapshot_invalid", "appdata_changed",
     "preferences_missing", "preferences_changed", "project_marker_changed",
@@ -750,6 +752,27 @@ def _wait_owned_gone(powershell: str, owned: dict[int, dict[str, Any]],
         raise SmokeFailure("process_inventory_failed") from None
 
 
+def request_tray_quit(powershell: str, app_pid: int) -> None:
+    script = Path(__file__).resolve().with_name("windows_tray_quit.ps1")
+    _regular_file(script, "tray_quit_driver_missing")
+    try:
+        result = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-STA",
+             "-File", str(script), "-AppProcessId", str(app_pid)],
+            capture_output=True, timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        raise SmokeFailure("tray_quit_timeout") from None
+    except OSError:
+        raise SmokeFailure("tray_quit_failed") from None
+    output = result.stdout.decode("utf-8-sig", errors="replace").strip()
+    if result.returncode == 0 and output == "tray_quit_sent":
+        return
+    if output in {"tray_icon_unavailable", "tray_menu_unavailable"}:
+        raise SmokeFailure(output)
+    raise SmokeFailure("tray_quit_failed")
+
+
 def _new_owned_group(groups: list[dict[int, dict[str, Any]]]) -> dict[int, dict[str, Any]]:
     group: dict[int, dict[str, Any]] = {}
     groups.append(group)
@@ -961,6 +984,11 @@ def _launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: 
             result, install_dir=install_dir, local_data=local_data, version=version,
             mode=mode, owned=owned, current_rows=rows,
         )
+        if process.poll() is not None:
+            app_return_code = process.wait(timeout=10)
+            require(app_return_code == 0, "installed_app_exit_nonzero")
+            raise SmokeFailure("installed_app_exited_before_tray_quit")
+        request_tray_quit(powershell, process.pid)
         remaining = _wait_owned_gone(powershell, owned, timeout=25)
         require(not remaining, "installed_processes_remain")
         try:

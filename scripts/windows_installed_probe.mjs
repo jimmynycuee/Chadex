@@ -157,10 +157,10 @@ export async function probe(port, project, mode, version, connector = connect) {
     const smokeRejected = await client.evaluate(`(async () => { try { await window.__TAURI_INTERNALS__.invoke('smoke_checkpoint', {stage:'webview_ready',observation:{}}); return false; } catch (error) { const text=String(error); return text.includes('smoke_checkpoint') && text.includes('not found'); } })()`);
     check(smokeRejected === true, 'production_smoke_ipc_exposed');
     // Paths and PID are returned only to the local wrapper for exact validation;
-    // they are never included in its public report.
+    // they are never included in its public report. The host harness closes the
+    // production app through its real system-tray Quit action.
     const result = { paths: state.paths, helper_pid: state.helper.pid, version: state.version,
       rendered: true, ui_state_ready: true, runtime_ready: true, preferences_restored: mode === 'restore', smoke_ipc_rejected: true };
-    await client.evaluate(`setTimeout(() => window.__TAURI_INTERNALS__.invoke('quit_app'), 150); true`);
     return result;
   } finally { client.close(); }
 }

@@ -230,7 +230,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         for exit_code in (0, 0xC0000005):
             with self.subTest(exit_code=exit_code):
                 app = MagicMock()
-                app.poll.return_value = exit_code
+                app.poll.return_value = None
                 app.wait.return_value = exit_code
                 node = MagicMock()
                 node.poll.return_value = 0
@@ -244,7 +244,8 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                         patch.object(smoke.subprocess, "Popen", return_value=node), \
                         patch.object(smoke, "_remember_tree", return_value={}), \
                         patch.object(smoke, "_wait_owned_gone", return_value=[]), \
-                        patch.object(smoke, "validate_probe_result", return_value={"ui_state_ready": True}):
+                        patch.object(smoke, "validate_probe_result", return_value={"ui_state_ready": True}), \
+                        patch.object(smoke, "request_tray_quit") as quit_from_tray:
                     kwargs = dict(powershell="powershell.exe", node="node", groups=[],
                                   report=smoke.SmokeReport("win32"))
                     args = (Path("install"), Path("project"), Path("."), Path("data"), "0.3.2", "initial")
@@ -254,7 +255,53 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                         with self.assertRaises(smoke.SmokeFailure) as failure:
                             smoke.launch_and_probe(*args, **kwargs)
                         self.assertEqual(failure.exception.code, "installed_app_exit_nonzero")
+                    quit_from_tray.assert_called_once_with("powershell.exe", app.pid)
                 app.wait.assert_called_once_with(timeout=10)
+
+    def test_probe_requires_tray_quit_before_accepting_an_already_exited_app(self) -> None:
+        app = MagicMock()
+        app.poll.return_value = 0
+        app.wait.return_value = 0
+        node = MagicMock()
+        node.poll.return_value = 0
+        node.wait.return_value = 0
+        node.stdout = io.BytesIO(b"{}")
+        node.stderr = io.BytesIO(b"")
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke, "_port", return_value=9222), \
+                patch.object(smoke, "installed_cdp_policy", side_effect=lambda _port: nullcontext()), \
+                patch.object(smoke.suspended, "launch_owned", return_value=app), \
+                patch.object(smoke.subprocess, "Popen", return_value=node), \
+                patch.object(smoke, "_remember_tree", return_value={}), \
+                patch.object(smoke, "_wait_owned_gone", return_value=[]), \
+                patch.object(smoke, "validate_probe_result", return_value={"ui_state_ready": True}), \
+                patch.object(smoke, "request_tray_quit") as quit_from_tray:
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.launch_and_probe(
+                    Path("install"), Path("project"), Path("."), Path("data"), "0.7.2", "initial",
+                    powershell="powershell.exe", node="node", groups=[],
+                    report=smoke.SmokeReport("win32"),
+                )
+        self.assertEqual(failure.exception.code, "installed_app_exited_before_tray_quit")
+        quit_from_tray.assert_not_called()
+
+    def test_tray_quit_driver_requires_exact_success_signal(self) -> None:
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 0, b"tray_quit_sent\n", b"")) as run:
+            smoke.request_tray_quit("powershell.exe", 4321)
+        args = run.call_args.args[0]
+        self.assertIn("-STA", args)
+        self.assertIn("windows_tray_quit.ps1", args[-3])
+        self.assertEqual(args[-1], "4321")
+        run.assert_called_once()
+
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 2, b"tray_icon_unavailable\n", b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_icon_unavailable")
 
     def test_candidate_accepts_manifest_only_resources_and_checks_both_installer_hashes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

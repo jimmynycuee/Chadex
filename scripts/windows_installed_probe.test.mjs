@@ -44,12 +44,12 @@ function desktop({ smoke = false, restore = false, rendered = true, version = '0
   }) };
 }
 
-test('installed production starts runtime, saves preferences and quits', async () => {
+test('installed production starts runtime and leaves shutdown to the tray driver', async () => {
   const app = desktop();
   const result = await probe(1234, 'C:/專案 A', 'initial', '0.7.2', app.connector);
   assert.equal(result.runtime_ready, true);
   assert.equal(result.smoke_ipc_rejected, true);
-  assert.equal(app.calls.at(-1)[0], 'quit_app');
+  assert.equal(app.calls.some(([name]) => name === 'quit_app'), false);
   assert.equal(app.closed(), true);
 });
 
