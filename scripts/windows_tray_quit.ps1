@@ -25,6 +25,10 @@ $script:TrayDiagnostics = [ordered]@{
     native_click_attempted = $false
     native_click_down_input_count = 0
     native_click_up_input_count = 0
+    native_menu_state_code = 0
+    native_callback_post_attempted = $false
+    native_callback_post_succeeded = $false
+    native_callback_post_error_code = 0
     preexisting_menu_count = 0
     menu_element_count = 0
     menu_app_process_count = 0
@@ -107,12 +111,22 @@ public static class ChadexTrayInput {
     public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint inputCount, [In] NativeInput[] inputs, int inputSize);
+    [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr hwnd, uint message, UIntPtr wParam, IntPtr lParam);
     public static uint SendMouseInput(uint flags) {
         var input = new NativeInput {
             type = 0, // INPUT_MOUSE
             mouse = new MouseInput { flags = flags, extraInfo = UIntPtr.Zero }
         };
         return SendInput(1, new[] { input }, Marshal.SizeOf(typeof(NativeInput)));
+    }
+    public static bool PostTrayRightButtonUp(IntPtr hwnd, uint iconId, out int errorCode) {
+        // Runner-only synthesized callback delivery, not physical mouse input;
+        // scalar-only tray-icon 0.25.1 message payload, with no direct app call.
+        var succeeded = PostMessage(hwnd, 6002, new UIntPtr(iconId), new IntPtr(0x0205));
+        errorCode = succeeded ? 0 : Marshal.GetLastWin32Error();
+        return succeeded;
     }
     public static bool CursorMatches(int x, int y) {
         Point point;
@@ -176,6 +190,20 @@ public static class ChadexTrayInput {
         if (GetClassName(info.hwndMenuOwner, ownerClass, ownerClass.Capacity) == 0 ||
             ownerClass.ToString() != "tray_icon_app") return 6;
         return 7; // exact Chadex tray window owns the active menu
+    }
+    public static int ActiveMenuStateCode(uint expectedProcessId, IntPtr expectedOwnerHwnd) {
+        // 0=no active menu, 1=owner HWND/PID unavailable, 2=GUIThreadInfo failed,
+        // 3=menu owned by the exact tray HWND, 4=same-process other owner, 5=other process.
+        uint ownerProcessId;
+        uint threadId = GetWindowThreadProcessId(expectedOwnerHwnd, out ownerProcessId);
+        if (threadId == 0 || ownerProcessId != expectedProcessId) return 1;
+        var info = new GuiThreadInfo();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
+        if (!GetGUIThreadInfo(threadId, ref info)) return 2;
+        if ((info.flags & 0x1C) == 0) return 0; // GUI_INMENUMODE | GUI_SYSTEMMENUMODE | GUI_POPUPMENUMODE
+        if (info.hwndMenuOwner == expectedOwnerHwnd) return 3;
+        if (WindowProcessId(info.hwndMenuOwner) == expectedProcessId) return 4;
+        return 5;
     }
 }
 "@
@@ -421,6 +449,48 @@ public static class ChadexTrayInput {
         return $null
     }
 
+    function Invoke-NativeTrayCallbackFallback {
+        # Use only after a real pointer-input attempt failed to expose a menu.
+        # Re-resolve the exact Shell-owned (HWND, uID), then post tray-icon's
+        # callback message; never invoke menu or quit code directly.
+        if (-not (Test-AppIdentity)) { return $false }
+        $nativeIcon = Find-NativeTrayIcon
+        if ($null -eq $nativeIcon -or $nativeIcon.Window -ne $script:ExpectedTrayWindow -or
+            [ChadexTrayInput]::WindowProcessId($nativeIcon.Window) -ne $AppProcessId) {
+            return $false
+        }
+        $bounds = $nativeIcon.Rect
+        $width = $bounds.right - $bounds.left
+        $height = $bounds.bottom - $bounds.top
+        if ($width -lt 2 -or $height -lt 2 -or $width -gt 128 -or $height -gt 128) {
+            return $false
+        }
+        $x = [int]($bounds.left + ($width / 2))
+        $y = [int]($bounds.top + ($height / 2))
+        $script:TrayDiagnostics.native_rect_root_kind = [ChadexTrayInput]::ShellTrayRootKind(
+            $x, $y, [uint32]$shellProcessId)
+        if ($script:TrayDiagnostics.native_rect_root_kind -eq 0 -or
+            -not [ChadexTrayInput]::SetCursorPos($x, $y) -or
+            -not [ChadexTrayInput]::CursorMatches($x, $y)) {
+            return $false
+        }
+        $script:TrayDiagnostics.native_cursor_matches_rect = $true
+
+        # Do not post a second right-click if the first input opened a menu that
+        # UI Automation could not discover. API failure or any menu state fails closed.
+        $script:TrayDiagnostics.native_menu_state_code = [ChadexTrayInput]::ActiveMenuStateCode(
+            [uint32]$AppProcessId, $script:ExpectedTrayWindow)
+        if ($script:TrayDiagnostics.native_menu_state_code -ne 0) { return $false }
+
+        $script:TrayDiagnostics.native_callback_post_attempted = $true
+        $postErrorCode = 0
+        $script:TrayDiagnostics.native_callback_post_succeeded =
+            [ChadexTrayInput]::PostTrayRightButtonUp(
+                $nativeIcon.Window, [uint32]$nativeIcon.IconId, [ref]$postErrorCode)
+        $script:TrayDiagnostics.native_callback_post_error_code = $postErrorCode
+        return $script:TrayDiagnostics.native_callback_post_succeeded
+    }
+
     function Invoke-RightClickAt([int] $X, [int] $Y) {
         if (-not [ChadexTrayInput]::SetCursorPos($X, $Y)) { return $false }
         $script:TrayDiagnostics.native_cursor_matches_rect =
@@ -524,8 +594,15 @@ public static class ChadexTrayInput {
         }
         $selection = Wait-ChadexMenu
         if ($null -eq $selection) {
-            Write-TrayFailure "tray_menu_unavailable"
-            exit 3
+            if (-not (Invoke-NativeTrayCallbackFallback)) {
+                Write-TrayFailure "tray_menu_unavailable"
+                exit 3
+            }
+            $selection = Wait-ChadexMenu
+            if ($null -eq $selection) {
+                Write-TrayFailure "tray_menu_unavailable"
+                exit 3
+            }
         }
     } else {
         # UIA name/scope is only a candidate, not AppProcessId proof. Opening it
@@ -563,8 +640,15 @@ public static class ChadexTrayInput {
             }
             $selection = Wait-ChadexMenu
             if ($null -eq $selection) {
-                Write-TrayFailure "tray_menu_unavailable"
-                exit 3
+                if (-not (Invoke-NativeTrayCallbackFallback)) {
+                    Write-TrayFailure "tray_menu_unavailable"
+                    exit 3
+                }
+                $selection = Wait-ChadexMenu
+                if ($null -eq $selection) {
+                    Write-TrayFailure "tray_menu_unavailable"
+                    exit 3
+                }
             }
         }
     }
@@ -578,6 +662,7 @@ public static class ChadexTrayInput {
     }
     Invoke-Element $selection.Quit
     [Console]::Out.WriteLine("tray_quit_sent")
+    [Console]::Out.WriteLine("tray_diagnostics=" + ($script:TrayDiagnostics | ConvertTo-Json -Compress))
     exit 0
 } catch {
     [Console]::Out.WriteLine("tray_quit_failed")

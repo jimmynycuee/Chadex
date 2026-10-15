@@ -6,6 +6,7 @@ from contextlib import nullcontext, redirect_stdout
 import io
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -246,14 +247,29 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                         patch.object(smoke, "_wait_owned_gone", return_value=[]), \
                         patch.object(smoke, "validate_probe_result", return_value={"ui_state_ready": True}), \
                         patch.object(smoke, "request_tray_quit") as quit_from_tray:
+                    report = smoke.SmokeReport("win32")
+                    tray_diagnostics = {
+                        name: (False if expected is bool else 0)
+                        for name, expected in smoke.TRAY_DIAGNOSTIC_FIELDS.items()
+                    }
+                    tray_diagnostics["native_callback_post_attempted"] = True
+                    tray_diagnostics["native_callback_post_succeeded"] = True
+                    quit_from_tray.return_value = tray_diagnostics
                     kwargs = dict(powershell="powershell.exe", node="node", groups=[],
-                                  report=smoke.SmokeReport("win32"))
+                                  report=report)
                     args = (Path("install"), Path("project"), Path("."), Path("data"), "0.3.2", "initial")
                     if exit_code == 0:
-                        self.assertEqual(smoke.launch_and_probe(*args, **kwargs), {"ui_state_ready": True, "cdp_policy_removed": True})
+                        with report.stage("initial_installed_launch"):
+                            self.assertEqual(
+                                smoke.launch_and_probe(*args, **kwargs),
+                                {"ui_state_ready": True, "cdp_policy_removed": True})
+                        stage = next(item for item in report.public_value()["stages"]
+                                     if item["name"] == "initial_installed_launch")
+                        self.assertEqual(stage["tray_diagnostics"], tray_diagnostics)
                     else:
                         with self.assertRaises(smoke.SmokeFailure) as failure:
-                            smoke.launch_and_probe(*args, **kwargs)
+                            with report.stage("initial_installed_launch"):
+                                smoke.launch_and_probe(*args, **kwargs)
                         self.assertEqual(failure.exception.code, "installed_app_exit_nonzero")
                     quit_from_tray.assert_called_once_with("powershell.exe", app.pid)
                 app.wait.assert_called_once_with(timeout=10)
@@ -289,7 +305,9 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         with patch.object(smoke, "_regular_file"), \
                 patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
                     ["powershell.exe"], 0, b"tray_quit_sent\n", b"")) as run:
-            smoke.request_tray_quit("powershell.exe", 4321)
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_quit_failed")
         args = run.call_args.args[0]
         self.assertIn("-STA", args)
         self.assertIn("windows_tray_quit.ps1", args[-3])
@@ -317,6 +335,10 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "native_click_attempted": False,
             "native_click_down_input_count": 0,
             "native_click_up_input_count": 0,
+            "native_menu_state_code": 0,
+            "native_callback_post_attempted": False,
+            "native_callback_post_succeeded": False,
+            "native_callback_post_error_code": 0,
             "preexisting_menu_count": 0,
             "menu_element_count": 0,
             "menu_app_process_count": 0,
@@ -324,6 +346,25 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "menu_exact_item_count": 0,
             "menu_owner_check_code": 0,
         }
+        extra_field_diagnostics = dict(diagnostics, unexpected_field=1)
+        missing_field_diagnostics = dict(diagnostics)
+        missing_field_diagnostics.pop("menu_owner_check_code")
+        invalid_success_outputs = (
+            b"tray_quit_sent\ntray_diagnostics={}\nextra\n",
+            b"tray_quit_sent\ntray_diagnostics=not-json\n",
+            b"tray_quit_sent\ntray_diagnostics={}\n",
+            ("tray_quit_sent\ntray_diagnostics=" + json.dumps(extra_field_diagnostics) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" + json.dumps(missing_field_diagnostics) + "\n").encode(),
+        )
+        for output in invalid_success_outputs:
+            with self.subTest(output=output), \
+                    patch.object(smoke, "_regular_file"), \
+                    patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                        ["powershell.exe"], 0, output, b"")):
+                with self.assertRaises(smoke.SmokeFailure) as failure:
+                    smoke.request_tray_quit("powershell.exe", 4321)
+                self.assertEqual(failure.exception.code, "tray_quit_failed")
+
         diagnostic_line = "tray_diagnostics=" + json.dumps(diagnostics, separators=(",", ":"))
         with patch.object(smoke, "_regular_file"), \
                 patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
@@ -340,6 +381,46 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         stage = next(item for item in report.public_value()["stages"]
                      if item["name"] == "initial_installed_launch")
         self.assertEqual(stage["tray_diagnostics"], diagnostics)
+
+        post_failure_diagnostics = dict(
+            diagnostics,
+            native_callback_post_attempted=True,
+            native_callback_post_succeeded=False,
+            native_callback_post_error_code=5,
+        )
+        failure_output = (
+            "tray_menu_unavailable\n" + "tray_diagnostics=" +
+            json.dumps(post_failure_diagnostics, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 3, failure_output, b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_menu_unavailable")
+        self.assertEqual(failure.exception.tray_diagnostics, post_failure_diagnostics)
+
+        callback_diagnostics = dict(
+            diagnostics,
+            native_callback_post_attempted=True,
+            native_callback_post_succeeded=True,
+        )
+        success_output = (
+            "tray_quit_sent\n" + "tray_diagnostics=" +
+            json.dumps(callback_diagnostics, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 0, success_output, b"")):
+            self.assertEqual(
+                smoke.request_tray_quit("powershell.exe", 4321), callback_diagnostics)
+
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 0, b"tray_quit_sent\n", b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_quit_failed")
 
         with patch.object(smoke, "_regular_file"), \
                 patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
@@ -392,6 +473,41 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn('Invoke-Element $selection.Quit', script)
         self.assertNotIn("Stop-Process", script)
         self.assertNotIn("taskkill", script.lower())
+
+    def test_tray_callback_fallback_matches_pinned_dependency_source_contract(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        lockfile = (root / "apps/windows/src-tauri/Cargo.lock").read_text(encoding="utf-8")
+        packages = re.findall(
+            r"(?ms)^\[\[package\]\]\n(.*?)(?=^\[\[package\]\]|\Z)", lockfile)
+        tray_packages = [block for block in packages if re.search(r'(?m)^name = "tray-icon"$', block)]
+        self.assertEqual(len(tray_packages), 1)
+        self.assertRegex(tray_packages[0], r'(?m)^version = "0\.25\.1"$')
+        self.assertRegex(
+            tray_packages[0],
+            r'(?m)^checksum = "b2b9c52859a94554803ccd4a24b98f74148ebc73b90676d783f3490b1bff9d72"$')
+
+        app_source = (root / "apps/windows/src-tauri/src/main.rs").read_text(encoding="utf-8")
+        self.assertIn('TrayIconBuilder::with_id("chadex")', app_source)
+        self.assertIn(".menu(&menu)", app_source)
+        self.assertNotIn("with_menu_on_right_click(false)", app_source)
+
+        script = (root / "scripts/windows_tray_quit.ps1").read_text(encoding="utf-8")
+        self.assertIn("PostTrayRightButtonUp", script)
+        self.assertIn("PostMessage(hwnd, 6002, new UIntPtr(iconId), new IntPtr(0x0205))", script)
+        self.assertIn("Marshal.GetLastWin32Error()", script)
+        self.assertIn("ActiveMenuStateCode", script)
+        self.assertIn("$script:TrayDiagnostics.native_menu_state_code -ne 0", script)
+        self.assertIn("native_callback_post_error_code", script)
+        self.assertEqual(script.count("if (-not (Invoke-NativeTrayCallbackFallback))"), 2)
+        self.assertIn("$nativeIcon.Window -ne $script:ExpectedTrayWindow", script)
+        self.assertIn("[uint32]$nativeIcon.IconId", script)
+        self.assertIn('$_.Current.Name -ceq "Show Chadex"', script)
+        self.assertIn('$_.Current.Name -ceq "Quit"', script)
+        self.assertIn("$quitItems[0].Current.IsEnabled", script)
+        self.assertIn("$quitItems[0].Current.IsOffscreen", script)
+        self.assertIn('Invoke-Element $selection.Quit', script)
+        self.assertNotIn("show_tray_menu", script)
+        self.assertNotIn("app.exit(0)", script)
 
     def test_candidate_accepts_manifest_only_resources_and_checks_both_installer_hashes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

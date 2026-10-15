@@ -109,6 +109,10 @@ TRAY_DIAGNOSTIC_FIELDS = {
     "native_click_attempted": bool,
     "native_click_down_input_count": int,
     "native_click_up_input_count": int,
+    "native_menu_state_code": int,
+    "native_callback_post_attempted": bool,
+    "native_callback_post_succeeded": bool,
+    "native_callback_post_error_code": int,
     "preexisting_menu_count": int,
     "menu_element_count": int,
     "menu_app_process_count": int,
@@ -160,7 +164,8 @@ def sanitize_tray_diagnostics(value: Any) -> dict[str, bool | int] | None:
         if expected_type is bool:
             if type(actual) is not bool:
                 return None
-        elif type(actual) is not int or not 0 <= actual <= 10000:
+        elif type(actual) is not int or not 0 <= actual <= (
+                0xFFFFFFFF if name == "native_callback_post_error_code" else 10000):
             return None
         clean[name] = actual
     return clean
@@ -812,7 +817,7 @@ def _wait_owned_gone(powershell: str, owned: dict[int, dict[str, Any]],
         raise SmokeFailure("process_inventory_failed") from None
 
 
-def request_tray_quit(powershell: str, app_pid: int) -> None:
+def request_tray_quit(powershell: str, app_pid: int) -> dict[str, bool | int]:
     script = Path(__file__).resolve().with_name("windows_tray_quit.ps1")
     _regular_file(script, "tray_quit_driver_missing")
     try:
@@ -826,8 +831,11 @@ def request_tray_quit(powershell: str, app_pid: int) -> None:
     except OSError:
         raise SmokeFailure("tray_quit_failed") from None
     lines = result.stdout.decode("utf-8-sig", errors="replace").splitlines()
-    if result.returncode == 0 and lines == ["tray_quit_sent"]:
-        return
+    if result.returncode == 0 and len(lines) == 2 and lines[0] == "tray_quit_sent":
+        try:
+            return parse_tray_diagnostics(lines[1])
+        except ValueError:
+            raise SmokeFailure("tray_quit_failed") from None
     if result.returncode != 0 and lines and lines[0] in {
         "tray_app_unavailable", "tray_taskbar_unavailable",
         "tray_icon_unavailable", "tray_menu_unavailable",
@@ -1059,7 +1067,11 @@ def _launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: 
             app_return_code = process.wait(timeout=10)
             require(app_return_code == 0, "installed_app_exit_nonzero")
             raise SmokeFailure("installed_app_exited_before_tray_quit")
-        request_tray_quit(powershell, process.pid)
+        tray_diagnostics = request_tray_quit(powershell, process.pid)
+        active_stage = next((item for item in report.value["stages"]
+                             if item["status"] == "running"), None)
+        if active_stage is not None:
+            active_stage["tray_diagnostics"] = tray_diagnostics
         remaining = _wait_owned_gone(powershell, owned, timeout=25)
         require(not remaining, "installed_processes_remain")
         try:
