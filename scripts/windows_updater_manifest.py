@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the Tauri updater manifest for one signed Windows release asset."""
+"""Generate the Tauri updater manifest for one Tauri-signed Windows installer."""
 from __future__ import annotations
 
 import argparse
@@ -76,7 +76,7 @@ def build_manifest(
     validate_repository(repository)
     signature = validate_signature(signature)
     pub_date = validate_pub_date(pub_date or default_pub_date())
-    archive_name = f"Chadex-{version}-windows-x64-setup.nsis.zip"
+    installer_name = f"Chadex-{version}-windows-x64-unsigned-setup.exe"
     return {
         "version": version,
         "notes": f"Chadex {version} Windows x64 update",
@@ -86,7 +86,7 @@ def build_manifest(
                 "signature": signature,
                 "url": (
                     f"https://github.com/{repository}/releases/download/"
-                    f"{tag}/{archive_name}"
+                    f"{tag}/{installer_name}"
                 ),
             }
         },
@@ -98,19 +98,19 @@ def generate_manifest(
     version: str,
     tag: str,
     repository: str,
-    archive: Path,
+    installer: Path,
     signature_file: Path,
     output: Path,
     pub_date: str | None = None,
 ) -> dict[str, object]:
     validate_version_and_tag(version, tag)
-    expected_archive_name = f"Chadex-{version}-windows-x64-setup.nsis.zip"
-    if archive.name != expected_archive_name:
-        raise ManifestError("archive filename does not match the versioned release asset name")
-    if signature_file.name != f"{expected_archive_name}.sig":
-        raise ManifestError("signature filename must be the updater archive filename plus .sig")
-    if not archive.is_file():
-        raise ManifestError("signed updater archive is missing")
+    expected_installer_name = f"Chadex-{version}-windows-x64-unsigned-setup.exe"
+    if installer.name != expected_installer_name:
+        raise ManifestError("installer filename does not match the versioned release asset name")
+    if signature_file.name != f"{expected_installer_name}.sig":
+        raise ManifestError("signature filename must be the Tauri-signed installer filename plus .sig")
+    if not installer.is_file():
+        raise ManifestError("Tauri updater installer is missing")
     if not signature_file.is_file():
         raise ManifestError("Tauri updater signature file is missing")
     if signature_file.stat().st_size > SIGNATURE_MAX_BYTES:
@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--repository", required=True)
-    parser.add_argument("--archive", type=Path, required=True)
+    parser.add_argument("--installer", type=Path, required=True)
     parser.add_argument("--signature-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
             version=args.version,
             tag=args.tag,
             repository=args.repository,
-            archive=args.archive,
+            installer=args.installer,
             signature_file=args.signature_file,
             output=args.output,
         )

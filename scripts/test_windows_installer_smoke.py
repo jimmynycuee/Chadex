@@ -296,12 +296,45 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertEqual(args[-1], "4321")
         run.assert_called_once()
 
+        diagnostics = {
+            "taskbar_found": True,
+            "same_session_as_shell": True,
+            "notification_scope_count": 1,
+            "overflow_scope_count": 0,
+            "overflow_toggle_count": 1,
+            "overflow_open_attempted": True,
+            "name_match_count": 0,
+            "shell_process_match_count": 0,
+            "visible_match_count": 0,
+            "enabled_match_count": 0,
+            "supported_control_match_count": 0,
+            "candidate_count": 0,
+        }
+        diagnostic_line = "tray_diagnostics=" + json.dumps(diagnostics, separators=(",", ":"))
         with patch.object(smoke, "_regular_file"), \
                 patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
-                    ["powershell.exe"], 2, b"tray_icon_unavailable\n", b"")):
+                    ["powershell.exe"], 2,
+                    f"tray_icon_unavailable\n{diagnostic_line}\n".encode(), b"")):
             with self.assertRaises(smoke.SmokeFailure) as failure:
                 smoke.request_tray_quit("powershell.exe", 4321)
         self.assertEqual(failure.exception.code, "tray_icon_unavailable")
+        self.assertEqual(failure.exception.tray_diagnostics, diagnostics)
+        report = smoke.SmokeReport("win32")
+        with self.assertRaises(smoke.SmokeFailure):
+            with report.stage("initial_installed_launch"):
+                raise failure.exception
+        stage = next(item for item in report.public_value()["stages"]
+                     if item["name"] == "initial_installed_launch")
+        self.assertEqual(stage["tray_diagnostics"], diagnostics)
+
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 2,
+                    b'tray_icon_unavailable\ntray_diagnostics={"pid":4321}\n', b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_quit_failed")
+        self.assertIsNone(failure.exception.tray_diagnostics)
         for code in ("tray_app_unavailable", "tray_taskbar_unavailable", "tray_menu_unavailable"):
             with self.subTest(code=code):
                 completed = smoke.subprocess.CompletedProcess(
@@ -320,6 +353,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn('"tray_app_unavailable"', script)
         self.assertIn('"tray_taskbar_unavailable"', script)
         self.assertIn('"tray_icon_unavailable"', script)
+        self.assertIn('"tray_diagnostics="', script)
         self.assertIn("Wait-ChadexMenu", script)
         self.assertIn("MenuBelongsTo", script)
         self.assertIn('ownerClass.ToString() == "tray_icon_app"', script)

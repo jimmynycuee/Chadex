@@ -20,9 +20,9 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.archive = self.root / "Chadex-0.7.2-windows-x64-setup.nsis.zip"
-        self.signature_file = self.root / "Chadex-0.7.2-windows-x64-setup.nsis.zip.sig"
-        self.archive.write_bytes(b"signed archive fixture")
+        self.installer = self.root / "Chadex-0.7.2-windows-x64-unsigned-setup.exe"
+        self.signature_file = self.root / "Chadex-0.7.2-windows-x64-unsigned-setup.exe.sig"
+        self.installer.write_bytes(b"Tauri-signed installer fixture")
         self.signature_contents = base64.b64encode(
             b"untrusted comment: fixture\r\nRUTestSignature==\r\n"
         )
@@ -37,7 +37,7 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
             "version": "0.7.2",
             "tag": "v0.7.2",
             "repository": "jimmynycuee/Chadex",
-            "archive": self.archive,
+            "installer": self.installer,
             "signature_file": self.signature_file,
             "output": self.output,
             "pub_date": "2026-10-15T00:00:00Z",
@@ -53,7 +53,7 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
         self.assertEqual(
             platform["url"],
             "https://github.com/jimmynycuee/Chadex/releases/download/"
-            "v0.7.2/Chadex-0.7.2-windows-x64-setup.nsis.zip",
+            "v0.7.2/Chadex-0.7.2-windows-x64-unsigned-setup.exe",
         )
         self.assertEqual(platform["signature"], self.signature_contents.decode("ascii"))
         self.assertEqual(json.loads(self.output.read_text(encoding="utf-8")), manifest)
@@ -63,7 +63,7 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
             "--version", "0.7.2",
             "--tag", "v0.7.2",
             "--repository", "jimmynycuee/Chadex",
-            "--archive", str(self.archive),
+            "--installer", str(self.installer),
             "--signature-file", str(self.signature_file),
             "--output", str(self.output),
         ])
@@ -101,18 +101,18 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def test_rejects_missing_or_non_text_artifacts(self) -> None:
-        with self.assertRaisesRegex(updater.ManifestError, "archive is missing"):
-            self.generate(archive=self.root / "missing" / self.archive.name)
+        with self.assertRaisesRegex(updater.ManifestError, "Tauri updater installer is missing"):
+            self.generate(installer=self.root / "missing" / self.installer.name)
         self.signature_file.write_bytes(b"\xff")
         with self.assertRaisesRegex(updater.ManifestError, "readable ASCII"):
             self.generate()
         self.assertFalse(self.output.exists())
 
-    def test_rejects_archive_filename_that_cannot_match_generated_release_url(self) -> None:
-        wrong_name = self.root / "candidate.nsis.zip"
-        wrong_name.write_bytes(b"archive")
-        with self.assertRaisesRegex(updater.ManifestError, "filename does not match"):
-            self.generate(archive=wrong_name)
+    def test_rejects_installer_filename_that_cannot_match_generated_release_url(self) -> None:
+        wrong_name = self.root / "candidate.exe"
+        wrong_name.write_bytes(b"installer")
+        with self.assertRaisesRegex(updater.ManifestError, "installer filename does not match"):
+            self.generate(installer=wrong_name)
         self.assertFalse(self.output.exists())
 
     def test_rejects_timestamp_without_timezone(self) -> None:
@@ -149,11 +149,26 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
         release_config = json.loads((root / "apps/windows/src-tauri/tauri.release.conf.json").read_text(encoding="utf-8"))
         self.assertIs(release_config["bundle"]["createUpdaterArtifacts"], False)
         release_script = (root / "scripts/build_windows_release.ps1").read_text(encoding="utf-8")
+        normalized_release_script = " ".join(release_script.split())
+        self.assertIn(
+            "bundle = @{ createUpdaterArtifacts = $true }",
+            normalized_release_script,
+        )
+        self.assertIn(
+            '"--config", "src-tauri/tauri.release.conf.json", "--config", $updaterBundleConfig',
+            normalized_release_script,
+        )
         self.assertIn('"--features", "custom-protocol"', release_script)
-        self.assertIn("signer sign $sourceUpdaterArchive --app-version $version", release_script)
+        self.assertIn("signer sign $sourceUpdaterInstaller --app-version $version", release_script)
         self.assertIn("tauri_updater_signature.py", release_script)
         self.assertIn("scripts/windows-updater-signature-check/Cargo.toml", release_script)
-        self.assertIn('"--signature-file", "$sourceUpdaterArchive.sig"', release_script)
+        self.assertIn('"--signature-file", "${sourceUpdaterInstaller}.sig"', release_script)
+        self.assertIn('"--installer", $sourceUpdaterInstaller', release_script)
+        self.assertIn('"--installer", $installerOutput', release_script)
+        self.assertNotIn(".nsis.zip", release_script)
+        signature_checker = (root / "scripts/windows-updater-signature-check/src/main.rs").read_text(encoding="utf-8")
+        self.assertIn('Some("--installer")', signature_checker)
+        self.assertNotIn('Some("--archive")', signature_checker)
         self.assertIn("windows_tauri_bundle_hash.py", release_script)
         self.assertIn("$desktopHash = Get-NsisPayloadDesktopHash $desktop", release_script)
         self.assertIn("$baselineDesktopHash = Get-NsisPayloadDesktopHash $desktop", release_script)
@@ -170,6 +185,11 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
 
         source_check = (root / "scripts/windows_release_source_check.ps1").read_text(encoding="utf-8")
         self.assertIn("build --ci --features custom-protocol", source_check)
+
+        workflow = (root / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        self.assertIn("${{ needs.metadata.outputs.windows_installer_name }}.sig", workflow)
+        self.assertIn('"$CHADEX_WINDOWS_INSTALLER.sig"', workflow)
+        self.assertNotIn(".nsis.zip", workflow)
 
 
 if __name__ == "__main__":

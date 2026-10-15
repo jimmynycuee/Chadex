@@ -33,7 +33,6 @@ jobs:
       artifact_name: ${{ steps.release.outputs.artifact_name }}
       windows_artifact_name: ${{ steps.release.outputs.windows_artifact_name }}
       windows_installer_name: ${{ steps.release.outputs.windows_installer_name }}
-      windows_updater_name: ${{ steps.release.outputs.windows_updater_name }}
     env:
       INPUT_TAG: ${{ inputs.tag }}
       INPUT_APP_VERSION: ${{ inputs.app_version }}
@@ -68,7 +67,6 @@ jobs:
           artifact_name="Chadex-${tag}-macos-arm64"
           windows_artifact_name="Chadex-${tag}-windows-x64"
           windows_installer_name="Chadex-${version}-windows-x64-unsigned-setup.exe"
-          windows_updater_name="Chadex-${version}-windows-x64-setup.nsis.zip"
           echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
           echo "app_version=$version" >> "$GITHUB_OUTPUT"
           echo "build_number=$build" >> "$GITHUB_OUTPUT"
@@ -76,7 +74,6 @@ jobs:
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
           echo "windows_artifact_name=$windows_artifact_name" >> "$GITHUB_OUTPUT"
           echo "windows_installer_name=$windows_installer_name" >> "$GITHUB_OUTPUT"
-          echo "windows_updater_name=$windows_updater_name" >> "$GITHUB_OUTPUT"
 
   public-history:
     name: Public history / secret scan
@@ -223,8 +220,7 @@ jobs:
           path: |
             ${{ runner.temp }}/windows-release/${{ needs.metadata.outputs.windows_installer_name }}
             ${{ runner.temp }}/windows-release/${{ needs.metadata.outputs.windows_installer_name }}.sha256
-            ${{ runner.temp }}/windows-release/${{ needs.metadata.outputs.windows_updater_name }}
-            ${{ runner.temp }}/windows-release/${{ needs.metadata.outputs.windows_updater_name }}.sig
+            ${{ runner.temp }}/windows-release/${{ needs.metadata.outputs.windows_installer_name }}.sig
             ${{ runner.temp }}/windows-release/latest.json
           if-no-files-found: error
           retention-days: 14
@@ -261,7 +257,6 @@ jobs:
           CHADEX_RELEASE_TAG: ${{ needs.metadata.outputs.release_tag }}
           CHADEX_DMG_OUTPUT: ${{ runner.temp }}/release/${{ needs.metadata.outputs.dmg_name }}
           CHADEX_WINDOWS_INSTALLER: ${{ runner.temp }}/release/windows/${{ needs.metadata.outputs.windows_installer_name }}
-          CHADEX_WINDOWS_UPDATER: ${{ runner.temp }}/release/windows/${{ needs.metadata.outputs.windows_updater_name }}
           CHADEX_WINDOWS_LATEST: ${{ runner.temp }}/release/windows/latest.json
         shell: bash
         run: |
@@ -272,9 +267,8 @@ jobs:
           test -f "$CHADEX_DMG_OUTPUT.sha256"
           test -f "$CHADEX_WINDOWS_INSTALLER"
           test -f "$CHADEX_WINDOWS_INSTALLER.sha256"
-          test -f "$CHADEX_WINDOWS_UPDATER"
-          test -f "$CHADEX_WINDOWS_UPDATER.sig"
+          test -f "$CHADEX_WINDOWS_INSTALLER.sig"
           test -f "$CHADEX_WINDOWS_LATEST"
-          args=(release create "$CHADEX_RELEASE_TAG" "$CHADEX_DMG_OUTPUT" "$CHADEX_DMG_OUTPUT.sha256" "$CHADEX_WINDOWS_INSTALLER" "$CHADEX_WINDOWS_INSTALLER.sha256" "$CHADEX_WINDOWS_UPDATER" "$CHADEX_WINDOWS_UPDATER.sig" "$CHADEX_WINDOWS_LATEST" --title "Chadex $CHADEX_RELEASE_TAG" --notes-file "$notes_file")
+          args=(release create "$CHADEX_RELEASE_TAG" "$CHADEX_DMG_OUTPUT" "$CHADEX_DMG_OUTPUT.sha256" "$CHADEX_WINDOWS_INSTALLER" "$CHADEX_WINDOWS_INSTALLER.sha256" "$CHADEX_WINDOWS_INSTALLER.sig" "$CHADEX_WINDOWS_LATEST" --title "Chadex $CHADEX_RELEASE_TAG" --notes-file "$notes_file")
           [[ "$CHADEX_RELEASE_TAG" != *-* ]] || args+=(--prerelease)
           gh "${args[@]}"

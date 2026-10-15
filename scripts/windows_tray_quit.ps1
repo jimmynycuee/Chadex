@@ -4,6 +4,25 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:TrayDiagnostics = [ordered]@{
+    taskbar_found = $false
+    same_session_as_shell = $false
+    notification_scope_count = 0
+    overflow_scope_count = 0
+    overflow_toggle_count = 0
+    overflow_open_attempted = $false
+    name_match_count = 0
+    shell_process_match_count = 0
+    visible_match_count = 0
+    enabled_match_count = 0
+    supported_control_match_count = 0
+    candidate_count = 0
+}
+
+function Write-TrayFailure([string] $Code) {
+    [Console]::Out.WriteLine($Code)
+    [Console]::Out.WriteLine("tray_diagnostics=" + ($script:TrayDiagnostics | ConvertTo-Json -Compress))
+}
 
 try {
     Add-Type -AssemblyName UIAutomationClient
@@ -85,10 +104,17 @@ public static class ChadexTrayInput {
         [Console]::Out.WriteLine("tray_taskbar_unavailable")
         exit 2
     }
+    $script:TrayDiagnostics.taskbar_found = $true
 
     $shellProcessId = $taskbar.Current.ProcessId
+    $shellProcess = Get-Process -Id $shellProcessId -ErrorAction SilentlyContinue
+    $script:TrayDiagnostics.same_session_as_shell = (
+        $null -ne $shellProcess -and
+        $shellProcess.SessionId -eq [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+    )
     function Get-NotificationScopes {
         # Never search all Shell_TrayWnd for Chadex: it also contains app buttons.
+        $found = @()
         foreach ($className in @("TrayNotifyWnd", "SystemTray.SystemTrayFrame")) {
             $areas = $taskbar.FindAll(
                 [System.Windows.Automation.TreeScope]::Descendants,
@@ -96,12 +122,15 @@ public static class ChadexTrayInput {
                     [System.Windows.Automation.AutomationElement]::ClassNameProperty, $className)
             )
             foreach ($area in $areas) {
-                if ($area.Current.ProcessId -eq $shellProcessId) { $area }
+                if ($area.Current.ProcessId -eq $shellProcessId) { $found += $area }
             }
         }
+        $script:TrayDiagnostics.notification_scope_count = $found.Count
+        return $found
     }
     function Get-TrayScopes {
-        Get-NotificationScopes
+        $notificationScopes = @(Get-NotificationScopes)
+        $overflowScopes = @()
         foreach ($className in @("NotifyIconOverflowWindow", "TopLevelWindowForOverflowXamlIsland")) {
             $overflows = $desktop.FindAll(
                 [System.Windows.Automation.TreeScope]::Children,
@@ -109,12 +138,21 @@ public static class ChadexTrayInput {
                     [System.Windows.Automation.AutomationElement]::ClassNameProperty, $className)
             )
             foreach ($overflow in $overflows) {
-                if ($overflow.Current.ProcessId -eq $shellProcessId) { $overflow }
+                if ($overflow.Current.ProcessId -eq $shellProcessId) { $overflowScopes += $overflow }
             }
         }
+        $script:TrayDiagnostics.overflow_scope_count = $overflowScopes.Count
+        return @($notificationScopes) + @($overflowScopes)
     }
     function Find-ChadexTrayIcon {
         $candidates = @{}
+        $metrics = @{
+            name_match_count = 0
+            shell_process_match_count = 0
+            visible_match_count = 0
+            enabled_match_count = 0
+            supported_control_match_count = 0
+        }
         foreach ($scope in @(Get-TrayScopes)) {
             $elements = $scope.FindAll(
                 [System.Windows.Automation.TreeScope]::Descendants,
@@ -123,18 +161,25 @@ public static class ChadexTrayInput {
             foreach ($element in $elements) {
                 try {
                     $current = $element.Current
-                    if ($current.Name -match '^Chadex(?:\s|$)' -and
-                        $current.ProcessId -eq $shellProcessId -and
-                        -not $current.IsOffscreen -and $current.IsEnabled -and
-                        ($current.ControlType -eq [System.Windows.Automation.ControlType]::Button -or
-                         $current.ControlType -eq [System.Windows.Automation.ControlType]::Custom)) {
-                        $candidates[($element.GetRuntimeId() -join ":")] = $element
-                    }
+                    if ($current.Name -notmatch '^Chadex(?:\s|$)') { continue }
+                    $metrics.name_match_count++
+                    if ($current.ProcessId -ne $shellProcessId) { continue }
+                    $metrics.shell_process_match_count++
+                    if ($current.IsOffscreen) { continue }
+                    $metrics.visible_match_count++
+                    if (-not $current.IsEnabled) { continue }
+                    $metrics.enabled_match_count++
+                    if ($current.ControlType -ne [System.Windows.Automation.ControlType]::Button -and
+                        $current.ControlType -ne [System.Windows.Automation.ControlType]::Custom) { continue }
+                    $metrics.supported_control_match_count++
+                    $candidates[($element.GetRuntimeId() -join ":")] = $element
                 } catch [System.Windows.Automation.ElementNotAvailableException] {
                     # Explorer can rebuild its notification elements while polling.
                 }
             }
         }
+        foreach ($name in $metrics.Keys) { $script:TrayDiagnostics[$name] = $metrics[$name] }
+        $script:TrayDiagnostics.candidate_count = $candidates.Count
         if ($candidates.Count -gt 1) { throw "tray_icon_ambiguous" }
         if ($candidates.Count -eq 1) { return @($candidates.Values)[0] }
         return $null
@@ -241,9 +286,11 @@ public static class ChadexTrayInput {
                     }
                 }
                 if ($toggles.Count -gt 1) { throw "tray_overflow_ambiguous" }
+                $script:TrayDiagnostics.overflow_toggle_count = $toggles.Count
                 if ($toggles.Count -eq 1) {
                     # Do not toggle again if Explorer invalidates the element on invoke.
                     $overflowOpened = $true
+                    $script:TrayDiagnostics.overflow_open_attempted = $true
                     Invoke-Element (@($toggles.Values)[0])
                 }
             }
@@ -253,7 +300,7 @@ public static class ChadexTrayInput {
         Start-Sleep -Milliseconds 100
     } while ($discovery.ElapsedMilliseconds -lt 4000)
     if ($null -eq $icon) {
-        [Console]::Out.WriteLine("tray_icon_unavailable")
+        Write-TrayFailure "tray_icon_unavailable"
         exit 2
     }
 

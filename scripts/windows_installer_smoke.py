@@ -88,6 +88,20 @@ SAFE_CODES = frozenset({
     "unexpected_appdata_created", "data_cleanup_failed", "unexpected_exception",
     "unclassified",
 })
+TRAY_DIAGNOSTIC_FIELDS = {
+    "taskbar_found": bool,
+    "same_session_as_shell": bool,
+    "notification_scope_count": int,
+    "overflow_scope_count": int,
+    "overflow_toggle_count": int,
+    "overflow_open_attempted": bool,
+    "name_match_count": int,
+    "shell_process_match_count": int,
+    "visible_match_count": int,
+    "enabled_match_count": int,
+    "supported_control_match_count": int,
+    "candidate_count": int,
+}
 PROBE_TIMEOUT_SECONDS = 300
 INSTALLER_TIMEOUT_SECONDS = 300
 MAX_JSON_BYTES = 2 * 1024 * 1024
@@ -113,12 +127,43 @@ FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 class SmokeFailure(RuntimeError):
     """A finite, report-safe failure code."""
 
-    def __init__(self, code: str, *, resource_relative_path: str | None = None) -> None:
+    def __init__(self, code: str, *, resource_relative_path: str | None = None,
+                 tray_diagnostics: dict[str, bool | int] | None = None) -> None:
         super().__init__(code if code in SAFE_CODES else "unclassified")
         self.code = code if code in SAFE_CODES else "unclassified"
         self.resource_relative_path = (
             resource_relative_path if resource_relative_path in EXPECTED_RESOURCES else None
         )
+        self.tray_diagnostics = sanitize_tray_diagnostics(tray_diagnostics)
+
+
+def sanitize_tray_diagnostics(value: Any) -> dict[str, bool | int] | None:
+    if not isinstance(value, dict) or set(value) != set(TRAY_DIAGNOSTIC_FIELDS):
+        return None
+    clean: dict[str, bool | int] = {}
+    for name, expected_type in TRAY_DIAGNOSTIC_FIELDS.items():
+        actual = value.get(name)
+        if expected_type is bool:
+            if type(actual) is not bool:
+                return None
+        elif type(actual) is not int or not 0 <= actual <= 10000:
+            return None
+        clean[name] = actual
+    return clean
+
+
+def parse_tray_diagnostics(line: str) -> dict[str, bool | int]:
+    prefix = "tray_diagnostics="
+    if not line.startswith(prefix):
+        raise ValueError("tray_diagnostics_prefix_invalid")
+    try:
+        decoded = json.loads(line[len(prefix):])
+    except (UnicodeError, ValueError):
+        raise ValueError("tray_diagnostics_json_invalid") from None
+    clean = sanitize_tray_diagnostics(decoded)
+    if clean is None:
+        raise ValueError("tray_diagnostics_schema_invalid")
+    return clean
 
 
 def require(condition: bool, code: str) -> None:
@@ -766,14 +811,22 @@ def request_tray_quit(powershell: str, app_pid: int) -> None:
         raise SmokeFailure("tray_quit_timeout") from None
     except OSError:
         raise SmokeFailure("tray_quit_failed") from None
-    output = result.stdout.decode("utf-8-sig", errors="replace").strip()
-    if result.returncode == 0 and output == "tray_quit_sent":
+    lines = result.stdout.decode("utf-8-sig", errors="replace").splitlines()
+    if result.returncode == 0 and lines == ["tray_quit_sent"]:
         return
-    if output in {
+    if result.returncode != 0 and lines and lines[0] in {
         "tray_app_unavailable", "tray_taskbar_unavailable",
         "tray_icon_unavailable", "tray_menu_unavailable",
     }:
-        raise SmokeFailure(output)
+        diagnostics = None
+        if len(lines) == 2:
+            try:
+                diagnostics = parse_tray_diagnostics(lines[1])
+            except ValueError:
+                raise SmokeFailure("tray_quit_failed") from None
+        elif len(lines) != 1:
+            raise SmokeFailure("tray_quit_failed")
+        raise SmokeFailure(lines[0], tray_diagnostics=diagnostics)
     raise SmokeFailure("tray_quit_failed")
 
 
@@ -1067,6 +1120,8 @@ class SmokeReport:
             entry["error_code"] = error.code
             if error.resource_relative_path is not None:
                 entry["resource_relative_path"] = error.resource_relative_path
+            if error.tray_diagnostics is not None:
+                entry["tray_diagnostics"] = error.tray_diagnostics
             raise
         except Exception as error:
             entry["status"] = "failed"
@@ -1115,6 +1170,9 @@ class SmokeReport:
             ):
                 if type(item.get(flag)) is bool:
                     row[flag] = item[flag]
+            tray_diagnostics = sanitize_tray_diagnostics(item.get("tray_diagnostics"))
+            if tray_diagnostics is not None:
+                row["tray_diagnostics"] = tray_diagnostics
             clean_stages.append(row)
         output: dict[str, Any] = {
             "schema": 1,

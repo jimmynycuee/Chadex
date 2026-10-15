@@ -142,22 +142,33 @@ try {
                 version = $version
                 bundle = @{ createUpdaterArtifacts = $true }
             } | ConvertTo-Json -Compress
+            $updaterBundleConfig = @{
+                bundle = @{ createUpdaterArtifacts = $true }
+            } | ConvertTo-Json -Compress
             $env:TAURI_SIGNING_PRIVATE_KEY = $signingPrivateKey
             if (-not [string]::IsNullOrWhiteSpace($signingPassword)) {
                 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $signingPassword
             }
             try {
-                Invoke-NativeChecked "npm.cmd" @("run", "tauri", "--", "bundle", "--ci", "--bundles", "nsis", "--config", "src-tauri/tauri.release.conf.json")
-                $bundleArchives = @(Get-ChildItem -LiteralPath (Join-Path $target "release/bundle/nsis") -Filter "*_${version}_x64-setup.nsis.zip" -File)
-                if ($bundleArchives.Count -ne 1) { throw "Expected exactly one signed x64 NSIS updater archive for version $version." }
-                $sourceUpdaterArchive = $bundleArchives[0].FullName
-                $signatureOutput = & npm.cmd run --silent tauri -- signer sign $sourceUpdaterArchive --app-version $version
+                # The release config disables updater artifacts for unsigned W5 builds.
+                # Pass an explicit final CLI config so it overrides that value in this
+                # signed bundle; TAURI_CONFIG alone does not override --config files.
+                # Tauri v2 reuses the standard NSIS setup.exe as the updater payload.
+                Invoke-NativeChecked "npm.cmd" @(
+                    "run", "tauri", "--", "bundle", "--ci", "--bundles", "nsis",
+                    "--config", "src-tauri/tauri.release.conf.json",
+                    "--config", $updaterBundleConfig
+                )
+                $bundleInstallers = @(Get-ChildItem -LiteralPath (Join-Path $target "release/bundle/nsis") -Filter "*_${version}_x64-setup.exe" -File)
+                if ($bundleInstallers.Count -ne 1) { throw "Expected exactly one signed x64 NSIS updater installer for version $version." }
+                $sourceUpdaterInstaller = $bundleInstallers[0].FullName
+                $signatureOutput = & npm.cmd run --silent tauri -- signer sign $sourceUpdaterInstaller --app-version $version
                 $signatureExitCode = $LASTEXITCODE
                 if ($null -eq $signatureExitCode -or $signatureExitCode -ne 0) {
                     throw "Tauri failed to bind the updater signature to version $version."
                 }
                 $signatureOutput | & python (Join-Path $PSScriptRoot "tauri_updater_signature.py") `
-                    --version $version --output "$sourceUpdaterArchive.sig"
+                    --version $version --output "${sourceUpdaterInstaller}.sig"
                 $signatureParseExitCode = $LASTEXITCODE
                 if ($null -eq $signatureParseExitCode -or $signatureParseExitCode -ne 0) {
                     throw "Tauri updater signature output is invalid or does not attest release version $version."
@@ -165,8 +176,8 @@ try {
                 Invoke-NativeChecked "cargo" @(
                     "run", "--locked", "--quiet",
                     "--manifest-path", (Join-Path $repo "scripts/windows-updater-signature-check/Cargo.toml"), "--",
-                    "--signature-file", "$sourceUpdaterArchive.sig",
-                    "--archive", $sourceUpdaterArchive
+                    "--signature-file", "${sourceUpdaterInstaller}.sig",
+                    "--installer", $sourceUpdaterInstaller
                 )
             } finally {
                 $env:TAURI_SIGNING_PRIVATE_KEY = $null
@@ -198,7 +209,7 @@ try {
             $bundleDirectory = Join-Path $target "release/bundle/nsis"
             $updaterBeforeFixture = @{}
             if (Test-Path -LiteralPath $bundleDirectory) {
-                foreach ($artifact in @(Get-ChildItem -LiteralPath $bundleDirectory -Filter "*.nsis.zip*" -File)) {
+                foreach ($artifact in @(Get-ChildItem -LiteralPath $bundleDirectory -Filter "*.exe.sig" -File)) {
                     $updaterBeforeFixture[$artifact.FullName] = "{0}:{1}" -f $artifact.Length, $artifact.LastWriteTimeUtc.Ticks
                 }
             }
@@ -220,7 +231,7 @@ try {
                 Copy-Item -LiteralPath $fixture[0].FullName -Destination (Join-Path $output "upgrade-fixture/baseline-setup.exe")
                 $updaterAfterFixture = @()
                 if (Test-Path -LiteralPath $bundleDirectory) {
-                    $updaterAfterFixture = @(Get-ChildItem -LiteralPath $bundleDirectory -Filter "*.nsis.zip*" -File)
+                    $updaterAfterFixture = @(Get-ChildItem -LiteralPath $bundleDirectory -Filter "*.exe.sig" -File)
                 }
                 foreach ($artifact in $updaterAfterFixture) {
                     $currentState = "{0}:{1}" -f $artifact.Length, $artifact.LastWriteTimeUtc.Ticks
@@ -245,26 +256,23 @@ try {
     $installerOutput = Join-Path $output $name
     Copy-Item -LiteralPath $installers[0].FullName -Destination $installerOutput
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installerOutput).Hash.ToLowerInvariant()
-    [IO.File]::WriteAllText("$installerOutput.sha256", "$hash  $name`n", [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText("${installerOutput}.sha256", "$hash  $name`n", [Text.UTF8Encoding]::new($false))
     if ($EnableUpdater) {
-        $updaterArchives = @(Get-ChildItem -LiteralPath (Join-Path $target "release/bundle/nsis") -Filter "*_${version}_x64-setup.nsis.zip" -File)
-        if ($updaterArchives.Count -ne 1) { throw "Expected exactly one signed x64 NSIS updater archive for version $version." }
-        $sourceUpdaterArchive = $updaterArchives[0].FullName
-        $sourceUpdaterSignature = "$sourceUpdaterArchive.sig"
+        $updaterInstallers = @(Get-ChildItem -LiteralPath (Join-Path $target "release/bundle/nsis") -Filter "*_${version}_x64-setup.exe" -File)
+        if ($updaterInstallers.Count -ne 1) { throw "Expected exactly one signed x64 NSIS updater installer for version $version." }
+        $sourceUpdaterInstaller = $updaterInstallers[0].FullName
+        $sourceUpdaterSignature = "${sourceUpdaterInstaller}.sig"
         if (-not (Test-Path -LiteralPath $sourceUpdaterSignature -PathType Leaf)) {
             throw "Tauri did not produce the updater signature. Check the signing key and updater build configuration."
         }
-        $updaterName = "Chadex-$version-windows-x64-setup.nsis.zip"
-        $updaterOutput = Join-Path $output $updaterName
-        $signatureOutput = "$updaterOutput.sig"
-        Copy-Item -LiteralPath $sourceUpdaterArchive -Destination $updaterOutput
+        $signatureOutput = "${installerOutput}.sig"
         Copy-Item -LiteralPath $sourceUpdaterSignature -Destination $signatureOutput
         Invoke-NativeChecked "python" @(
             (Join-Path $repo "scripts/windows_updater_manifest.py"),
             "--version", $version,
             "--tag", $releaseTag,
             "--repository", $env:GITHUB_REPOSITORY,
-            "--archive", $updaterOutput,
+            "--installer", $installerOutput,
             "--signature-file", $signatureOutput,
             "--output", (Join-Path $output "latest.json")
         )

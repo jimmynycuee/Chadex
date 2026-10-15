@@ -21,7 +21,7 @@ class TauriUpdaterSignatureTests(unittest.TestCase):
         self.raw_signature = (
             "untrusted comment: signature from minisign secret key\n"
             "RUTestSignature==\n"
-            "trusted comment: timestamp:1792080000\tfile:fixture.nsis.zip\tversion:0.7.2\n"
+            "trusted comment: timestamp:1792080000\tfile:fixture-setup.exe\tversion:0.7.2\n"
             "TestGlobalSignature==\n"
         )
         self.encoded = base64.b64encode(self.raw_signature.encode()).decode("ascii")
