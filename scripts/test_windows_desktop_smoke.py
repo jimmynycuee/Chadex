@@ -35,6 +35,23 @@ class WindowsDesktopSmokeTests(unittest.TestCase):
             smoke.validate_checkpoint({"window_hidden": False}, {"window_hidden": True})
         self.assertEqual(failure.exception.code, "checkpoint_expectation_failed")
 
+    def test_runtime_ready_does_not_require_hidden_window_until_close_checkpoint(self) -> None:
+        runtime_payload = {
+            "helper_running": True, "runtime_ready": True, "verified": False,
+            "rendered": True, "selected_expected": True, "helper_pid": 1234,
+        }
+        self.assertNotIn("window_hidden", smoke.WORKFLOW_RUNTIME_READY_EXPECTED)
+        self.assertEqual(smoke.validate_checkpoint(
+            runtime_payload, smoke.WORKFLOW_RUNTIME_READY_EXPECTED, require_helper_pid=True), 1234)
+        with self.assertRaises(smoke.w2.E2EFailure) as failure:
+            smoke.validate_checkpoint(
+                runtime_payload, smoke.WORKFLOW_WINDOW_HIDDEN_EXPECTED, require_helper_pid=True)
+        self.assertEqual(failure.exception.code, "checkpoint_expectation_failed")
+
+        hidden_payload = {**runtime_payload, "window_hidden": True}
+        self.assertEqual(smoke.validate_checkpoint(
+            hidden_payload, smoke.WORKFLOW_WINDOW_HIDDEN_EXPECTED, require_helper_pid=True), 1234)
+
     def test_checkpoint_pid_cannot_adopt_an_unowned_or_reused_helper(self) -> None:
         original = {"Name": "chadex-helper.exe", "ParentProcessId": 10,
                     "Created": "2026-10-03T00:00:01.0000000Z"}

@@ -65,7 +65,8 @@ SAFE_CODES = frozenset({
     "candidate_filename_unsafe", "candidate_hash_invalid", "candidate_hash_mismatch",
     "candidate_metadata_invalid", "candidate_fixture_missing",
     "resource_manifest_missing", "resource_manifest_invalid", "resource_path_unsafe",
-    "resource_file_missing", "resource_hash_mismatch", "resource_set_invalid",
+    "resource_file_missing", "resource_hash_mismatch", "installed_resource_hash_mismatch",
+    "installed_manifest_hash_mismatch", "installed_desktop_hash_mismatch", "resource_set_invalid",
     "runner_tool_missing", "probe_script_missing", "fixture_setup_failed",
     "fixture_cleanup_failed", "fixture_reparse_point", "installer_spawn_failed",
     "installer_timeout", "installer_exit_nonzero", "installer_processes_remain",
@@ -109,9 +110,12 @@ FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 class SmokeFailure(RuntimeError):
     """A finite, report-safe failure code."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, *, resource_relative_path: str | None = None) -> None:
         super().__init__(code if code in SAFE_CODES else "unclassified")
         self.code = code if code in SAFE_CODES else "unclassified"
+        self.resource_relative_path = (
+            resource_relative_path if resource_relative_path in EXPECTED_RESOURCES else None
+        )
 
 
 def require(condition: bool, code: str) -> None:
@@ -599,11 +603,14 @@ def verify_installed_resources(install_dir: Path, manifest: Mapping[str, Any],
         relative = metadata["relative_path"]
         destination = _checked_relative(install_dir, relative, "resource_path_unsafe")
         info = _regular_file(destination, "resource_file_missing")
-        require(info.st_size == metadata["size_bytes"]
-                and _sha256(destination) == metadata["sha256"], "resource_hash_mismatch")
+        if info.st_size != metadata["size_bytes"] or _sha256(destination) != metadata["sha256"]:
+            raise SmokeFailure("installed_resource_hash_mismatch",
+                               resource_relative_path=relative)
     installed_manifest = _checked_relative(install_dir, "release-resources.json", "resource_path_unsafe")
-    require(_sha256(installed_manifest) == resource_manifest_hash, "resource_hash_mismatch")
-    require(_sha256(install_dir / "Chadex.exe") == desktop_hash, "resource_hash_mismatch")
+    require(_sha256(installed_manifest) == resource_manifest_hash,
+            "installed_manifest_hash_mismatch")
+    require(_sha256(install_dir / "Chadex.exe") == desktop_hash,
+            "installed_desktop_hash_mismatch")
 
 
 def data_snapshot(data_dir: Path) -> dict[str, tuple[str, int] | None]:
@@ -1003,6 +1010,8 @@ class SmokeReport:
         except SmokeFailure as error:
             entry["status"] = "failed"
             entry["error_code"] = error.code
+            if error.resource_relative_path is not None:
+                entry["resource_relative_path"] = error.resource_relative_path
             raise
         except Exception as error:
             entry["status"] = "failed"
@@ -1032,6 +1041,9 @@ class SmokeReport:
             code = item.get("error_code")
             if isinstance(code, str):
                 row["error_code"] = code if code in SAFE_CODES else "unclassified"
+            resource_relative_path = item.get("resource_relative_path")
+            if resource_relative_path in EXPECTED_RESOURCES:
+                row["resource_relative_path"] = resource_relative_path
             exception_type = item.get("exception_type")
             if isinstance(exception_type, str) and EXCEPTION_TYPE_PATTERN.fullmatch(exception_type):
                 row["exception_type"] = exception_type

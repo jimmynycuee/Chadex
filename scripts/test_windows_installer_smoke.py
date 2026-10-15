@@ -384,10 +384,34 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             self.assertEqual(failure.exception.code, "installed_path_mismatch")
 
             first = install / "helper" / "chadex-helper.exe"
+            original_resource = first.read_bytes()
             first.write_bytes(b"tampered")
+            report = smoke.SmokeReport("win32")
             with self.assertRaises(smoke.SmokeFailure) as failure:
-                smoke.verify_installed_resources(install, manifest, digest(manifest_bytes), digest(desktop))
-            self.assertEqual(failure.exception.code, "resource_hash_mismatch")
+                with report.stage("baseline_resource_verification"):
+                    smoke.verify_installed_resources(
+                        install, manifest, digest(manifest_bytes), digest(desktop))
+            self.assertEqual(failure.exception.code, "installed_resource_hash_mismatch")
+            self.assertEqual(failure.exception.resource_relative_path, "helper/chadex-helper.exe")
+            safe = report.public_value()
+            failed_stage = next(item for item in safe["stages"]
+                                if item["name"] == "baseline_resource_verification")
+            self.assertEqual(failed_stage["resource_relative_path"], "helper/chadex-helper.exe")
+            self.assertNotIn(str(root), json.dumps(safe))
+
+            first.write_bytes(original_resource)
+            (install / "release-resources.json").write_bytes(b"tampered manifest")
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.verify_installed_resources(
+                    install, manifest, digest(manifest_bytes), digest(desktop))
+            self.assertEqual(failure.exception.code, "installed_manifest_hash_mismatch")
+            (install / "release-resources.json").write_bytes(manifest_bytes)
+
+            (install / "Chadex.exe").write_bytes(b"tampered desktop")
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.verify_installed_resources(
+                    install, manifest, digest(manifest_bytes), digest(desktop))
+            self.assertEqual(failure.exception.code, "installed_desktop_hash_mismatch")
 
     def test_registry_install_location_accepts_only_matched_outer_quotes(self) -> None:
         install = Path(r"C:\runner\安裝 Chadex")

@@ -23,6 +23,17 @@ CHECKPOINT_FIELDS = frozenset({
     "preferences_restored", "helper_pid", "secure_storage_roundtrip",
     "credential_deleted_after_helper_death", "window_hidden",
 })
+WORKFLOW_RUNTIME_READY_EXPECTED = {
+    "helper_running": True,
+    "runtime_ready": True,
+    "verified": False,
+    "rendered": True,
+    "selected_expected": True,
+}
+WORKFLOW_WINDOW_HIDDEN_EXPECTED = {
+    **WORKFLOW_RUNTIME_READY_EXPECTED,
+    "window_hidden": True,
+}
 FIXTURE_STAGES = (
     "webview_ready", "runtime_ready", "window_hidden", "project_switched", "helper_restarted",
     "helper_crash_observed", "recovered", "app_restored", "startup_failure", "failed",
@@ -466,9 +477,8 @@ def run_workflow(app: Path, paths: dict[str, Path], powershell: str,
                             "secure_storage_roundtrip": True}, require_helper_pid=True)
         _runtime_payload, initial_helper = observed_checkpoint(
             report, "workflow.runtime_ready", "runtime_ready", process, paths,
-            powershell, owned,
-            {"helper_running": True, "runtime_ready": True, "verified": False,
-             "rendered": True, "selected_expected": True, "window_hidden": True}, require_helper_pid=True,
+            powershell, owned, WORKFLOW_RUNTIME_READY_EXPECTED,
+            require_helper_pid=True,
             ack=False,
         )
         with report.stage("workflow.project_a_operation"):
@@ -480,9 +490,8 @@ def run_workflow(app: Path, paths: dict[str, Path], powershell: str,
 
         _hidden_payload, hidden_helper = observed_checkpoint(
             report, "workflow.window_hidden", "window_hidden", process, paths,
-            powershell, owned,
-            {"helper_running": True, "runtime_ready": True, "verified": False,
-             "rendered": True, "selected_expected": True}, require_helper_pid=True,
+            powershell, owned, WORKFLOW_WINDOW_HIDDEN_EXPECTED,
+            require_helper_pid=True,
             ack=False,
         )
         require(initial_helper is not None and hidden_helper is not None
