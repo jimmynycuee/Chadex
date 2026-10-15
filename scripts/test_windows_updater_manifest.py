@@ -196,6 +196,15 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
         self.assertIn('"$CHADEX_WINDOWS_INSTALLER.sig"', workflow)
         self.assertNotIn(".nsis.zip", workflow)
 
+        self.assertIn("$publicKey = $trimmedPublicKey", normalized_release_script)
+        self.assertEqual(
+            normalized_release_script.count("plugins = @{ updater = @{ pubkey = $publicKey } }"),
+            3,
+        )
+        self.assertIn("ConvertTo-Json -Depth 10 -Compress", normalized_release_script)
+        main_rs = (root / "apps/windows/src-tauri/src/main.rs").read_text(encoding="utf-8")
+        self.assertIn('option_env!("CHADEX_UPDATER_PUBLIC_KEY")', main_rs)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -115,7 +115,8 @@ try {
     $env:TAURI_CONFIG = @{
         version = $version
         bundle = @{ createUpdaterArtifacts = $false }
-    } | ConvertTo-Json -Compress
+        plugins = @{ updater = @{ pubkey = $publicKey } }
+    } | ConvertTo-Json -Depth 10 -Compress
     Invoke-NativeChecked "cargo" @("build", "--release", "--locked", "--manifest-path", "rust-helper/Cargo.toml", "--bin", "chadex-helper")
     Assert-ReleaseSource
     Invoke-NativeChecked "cargo" @("build", "--release", "--locked", "--manifest-path", "chadex-runtime/Cargo.toml", "--bins")
@@ -142,10 +143,12 @@ try {
             $env:TAURI_CONFIG = @{
                 version = $version
                 bundle = @{ createUpdaterArtifacts = $true }
-            } | ConvertTo-Json -Compress
+                plugins = @{ updater = @{ pubkey = $publicKey } }
+            } | ConvertTo-Json -Depth 10 -Compress
             $updaterBundleConfig = @{
                 bundle = @{ createUpdaterArtifacts = $true }
-            } | ConvertTo-Json -Compress
+                plugins = @{ updater = @{ pubkey = $publicKey } }
+            } | ConvertTo-Json -Depth 10 -Compress
             $updaterBundleConfigPath = Join-Path ([IO.Path]::GetTempPath()) ("chadex-updater-bundle-" + [guid]::NewGuid().ToString('N') + ".json")
             [IO.File]::WriteAllText($updaterBundleConfigPath, $updaterBundleConfig, [Text.UTF8Encoding]::new($false))
             $env:TAURI_SIGNING_PRIVATE_KEY = $signingPrivateKey

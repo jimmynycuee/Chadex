@@ -4966,7 +4966,7 @@ async fn websocket_proxy_connect_rejects_non_success_without_leaking_secrets() {
 
 #[tokio::test]
 async fn websocket_proxy_connect_response_header_is_bounded_and_redacted() {
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let proxy_secret = "PROXY_RESPONSE_SECRET_DO_NOT_LEAK";
     let server_token = "SERVER_TOKEN_DO_NOT_LEAK";
@@ -4981,7 +4981,13 @@ async fn websocket_proxy_connect_response_header_is_bounded_and_redacted() {
             b'x',
             WS_PROXY_CONNECT_HEADER_MAX_BYTES + 1024,
         ));
-        let _ = stream.write_all(&response).await;
+        stream.write_all(&response).await.unwrap();
+        stream.shutdown().await.unwrap();
+        // Keep the read half alive until the client observes the header limit
+        // and closes its side. This avoids a Windows TCP reset racing the
+        // client's bounded response-header read.
+        let mut byte = [0u8; 1];
+        let _ = stream.read(&mut byte).await;
     });
 
     let ws_url = "ws://127.0.0.1:9/api/agents/ws";
