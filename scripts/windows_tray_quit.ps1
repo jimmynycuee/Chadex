@@ -17,6 +17,9 @@ $script:TrayDiagnostics = [ordered]@{
     enabled_match_count = 0
     supported_control_match_count = 0
     candidate_count = 0
+    native_window_count = 0
+    native_icon_match_count = 0
+    native_rect_available = $false
 }
 
 function Write-TrayFailure([string] $Code) {
@@ -31,9 +34,38 @@ try {
 
     Add-Type -TypeDefinition @"
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class ChadexTrayInput {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TrayRect {
+        public int left, top, right, bottom;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NotifyIconIdentifier {
+        public uint cbSize;
+        public IntPtr hWnd;
+        public uint uID;
+        public Guid guidItem;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point {
+        public int x, y;
+    }
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(Point point);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+    [DllImport("shell32.dll", PreserveSig = true)]
+    private static extern int Shell_NotifyIconGetRect(
+        ref NotifyIconIdentifier identifier, out TrayRect iconLocation);
     [StructLayout(LayoutKind.Sequential)]
     private struct GuiThreadInfo {
         public uint cbSize, flags;
@@ -53,6 +85,37 @@ public static class ChadexTrayInput {
     public static uint WindowProcessId(IntPtr hwnd) {
         uint processId = 0;
         return hwnd != IntPtr.Zero && GetWindowThreadProcessId(hwnd, out processId) != 0 ? processId : 0;
+    }
+    public static IntPtr[] FindTrayIconWindows(uint expectedProcessId) {
+        var handles = new List<IntPtr>();
+        var completed = EnumWindows((hwnd, _) => {
+            if (WindowProcessId(hwnd) != expectedProcessId) return true;
+            var className = new StringBuilder(256);
+            if (GetClassName(hwnd, className, className.Capacity) != 0 &&
+                className.ToString() == "tray_icon_app") handles.Add(hwnd);
+            return true;
+        }, IntPtr.Zero);
+        return completed ? handles.ToArray() : Array.Empty<IntPtr>();
+    }
+    public static bool TryGetTrayIconRect(IntPtr hwnd, uint iconId, out TrayRect rect) {
+        var identifier = new NotifyIconIdentifier {
+            cbSize = (uint)Marshal.SizeOf(typeof(NotifyIconIdentifier)),
+            hWnd = hwnd,
+            uID = iconId,
+            guidItem = Guid.Empty
+        };
+        return Shell_NotifyIconGetRect(ref identifier, out rect) == 0;
+    }
+    public static bool IsShellTrayPoint(int x, int y, uint expectedShellProcessId) {
+        var hwnd = WindowFromPoint(new Point { x = x, y = y });
+        if (WindowProcessId(hwnd) != expectedShellProcessId) return false;
+        var root = GetAncestor(hwnd, 2); // GA_ROOT
+        if (root == IntPtr.Zero || WindowProcessId(root) != expectedShellProcessId) return false;
+        var className = new StringBuilder(256);
+        if (GetClassName(root, className, className.Capacity) == 0) return false;
+        var value = className.ToString();
+        return value == "Shell_TrayWnd" || value == "NotifyIconOverflowWindow" ||
+            value == "TopLevelWindowForOverflowXamlIsland";
     }
     public static bool MenuBelongsTo(int nativeHandle, uint processId) {
         var hwnd = new IntPtr(unchecked((long)(uint)nativeHandle));
@@ -184,6 +247,35 @@ public static class ChadexTrayInput {
         if ($candidates.Count -eq 1) { return @($candidates.Values)[0] }
         return $null
     }
+    function Find-NativeTrayIcon {
+        if (-not $script:TrayDiagnostics.same_session_as_shell) { return $null }
+        $windows = @([ChadexTrayInput]::FindTrayIconWindows([uint32]$AppProcessId))
+        $script:TrayDiagnostics.native_window_count = $windows.Count
+        $nativeMatches = @()
+        foreach ($window in $windows) {
+            # tray-icon 0.25.1 allocates notification IDs from 1; bound discovery
+            # and require exactly one Shell-owned icon for this exact app window.
+            for ($iconId = 1; $iconId -le 16; $iconId++) {
+                $rect = [ChadexTrayInput+TrayRect]::new()
+                if ([ChadexTrayInput]::TryGetTrayIconRect(
+                    $window, [uint32]$iconId, [ref]$rect
+                ) -and $rect.right -gt $rect.left -and $rect.bottom -gt $rect.top) {
+                    $nativeMatches += [PSCustomObject]@{
+                        Window = $window
+                        IconId = $iconId
+                        Rect = $rect
+                    }
+                }
+            }
+        }
+        $script:TrayDiagnostics.native_icon_match_count = $nativeMatches.Count
+        if ($nativeMatches.Count -gt 1) { throw "tray_icon_ambiguous" }
+        if ($nativeMatches.Count -eq 1) {
+            $script:TrayDiagnostics.native_rect_available = $true
+            return $nativeMatches[0]
+        }
+        return $null
+    }
 
     function Invoke-Element($element) {
         $pattern = $null
@@ -299,43 +391,31 @@ public static class ChadexTrayInput {
         }
         Start-Sleep -Milliseconds 100
     } while ($discovery.ElapsedMilliseconds -lt 4000)
+    $selection = $null
     if ($null -eq $icon) {
-        Write-TrayFailure "tray_icon_unavailable"
-        exit 2
-    }
-
-    # Explorer owns the accessible icon; UIA does not expose its NOTIFYICONDATA
-    # callback HWND/uID. Name + scope is only a candidate, not AppProcessId proof.
-    # Opening it must be followed by the independent native menu-owner check.
-    try {
-        if (-not (Test-AppIdentity)) { throw "tray_owner_unavailable" }
-        $icon.SetFocus()
-        if (-not [System.Windows.Automation.Automation]::Compare(
-            $icon, [System.Windows.Automation.AutomationElement]::FocusedElement)) {
-            throw "tray_focus_unavailable"
+        # Some Windows taskbar builds do not expose notification icons through
+        # UIA. Resolve the Shell rectangle from the exact app-owned tray HWND/ID.
+        $nativeIcon = Find-NativeTrayIcon
+        if ($null -eq $nativeIcon -or -not (Test-AppIdentity) -or
+            [ChadexTrayInput]::WindowProcessId($nativeIcon.Window) -ne $AppProcessId) {
+            Write-TrayFailure "tray_icon_unavailable"
+            exit 2
         }
-        [System.Windows.Forms.SendKeys]::SendWait("+{F10}")
-    } catch {
-        # Focus/keyboard failure must still reach the right-click fallback.
-    }
-
-    $selection = Wait-ChadexMenu
-    if ($null -eq $selection) {
-        # Re-resolve the scoped, unique candidate after any shell layout change.
-        $icon = Find-ChadexTrayIcon
-        if ($null -eq $icon -or -not (Test-AppIdentity)) {
-            [Console]::Out.WriteLine("tray_menu_unavailable")
-            exit 3
+        $bounds = $nativeIcon.Rect
+        $width = $bounds.right - $bounds.left
+        $height = $bounds.bottom - $bounds.top
+        if ($width -lt 2 -or $height -lt 2 -or $width -gt 128 -or $height -gt 128) {
+            Write-TrayFailure "tray_icon_unavailable"
+            exit 2
         }
-        $bounds = $icon.Current.BoundingRectangle
-        if ($bounds.IsEmpty -or $bounds.Width -lt 2 -or $bounds.Height -lt 2) {
-            [Console]::Out.WriteLine("tray_menu_unavailable")
-            exit 3
+        $x = [int]($bounds.left + ($width / 2))
+        $y = [int]($bounds.top + ($height / 2))
+        if (-not [ChadexTrayInput]::IsShellTrayPoint($x, $y, [uint32]$shellProcessId)) {
+            Write-TrayFailure "tray_icon_unavailable"
+            exit 2
         }
-        $x = [int]($bounds.Left + ($bounds.Width / 2))
-        $y = [int]($bounds.Top + ($bounds.Height / 2))
         if (-not [ChadexTrayInput]::SetCursorPos($x, $y)) {
-            [Console]::Out.WriteLine("tray_menu_unavailable")
+            Write-TrayFailure "tray_menu_unavailable"
             exit 3
         }
         [ChadexTrayInput]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
@@ -343,8 +423,51 @@ public static class ChadexTrayInput {
         [ChadexTrayInput]::mouse_event(0x0010, 0, 0, 0, [UIntPtr]::Zero)
         $selection = Wait-ChadexMenu
         if ($null -eq $selection) {
-            [Console]::Out.WriteLine("tray_menu_unavailable")
+            Write-TrayFailure "tray_menu_unavailable"
             exit 3
+        }
+    } else {
+        # UIA name/scope is only a candidate, not AppProcessId proof. Opening it
+        # must still be followed by the independent native menu-owner check.
+        try {
+            if (-not (Test-AppIdentity)) { throw "tray_owner_unavailable" }
+            $icon.SetFocus()
+            if (-not [System.Windows.Automation.Automation]::Compare(
+                $icon, [System.Windows.Automation.AutomationElement]::FocusedElement)) {
+                throw "tray_focus_unavailable"
+            }
+            [System.Windows.Forms.SendKeys]::SendWait("+{F10}")
+        } catch {
+            # Focus/keyboard failure must still reach the right-click fallback.
+        }
+
+        $selection = Wait-ChadexMenu
+        if ($null -eq $selection) {
+            # Re-resolve the scoped, unique candidate after any shell layout change.
+            $icon = Find-ChadexTrayIcon
+            if ($null -eq $icon -or -not (Test-AppIdentity)) {
+                Write-TrayFailure "tray_menu_unavailable"
+                exit 3
+            }
+            $bounds = $icon.Current.BoundingRectangle
+            if ($bounds.IsEmpty -or $bounds.Width -lt 2 -or $bounds.Height -lt 2) {
+                Write-TrayFailure "tray_menu_unavailable"
+                exit 3
+            }
+            $x = [int]($bounds.Left + ($bounds.Width / 2))
+            $y = [int]($bounds.Top + ($bounds.Height / 2))
+            if (-not [ChadexTrayInput]::SetCursorPos($x, $y)) {
+                Write-TrayFailure "tray_menu_unavailable"
+                exit 3
+            }
+            [ChadexTrayInput]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 50
+            [ChadexTrayInput]::mouse_event(0x0010, 0, 0, 0, [UIntPtr]::Zero)
+            $selection = Wait-ChadexMenu
+            if ($null -eq $selection) {
+                Write-TrayFailure "tray_menu_unavailable"
+                exit 3
+            }
         }
     }
     # Revalidate immediately before invoking; never trust menu labels alone.

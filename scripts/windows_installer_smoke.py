@@ -101,6 +101,9 @@ TRAY_DIAGNOSTIC_FIELDS = {
     "enabled_match_count": int,
     "supported_control_match_count": int,
     "candidate_count": int,
+    "native_window_count": int,
+    "native_icon_match_count": int,
+    "native_rect_available": bool,
 }
 PROBE_TIMEOUT_SECONDS = 300
 INSTALLER_TIMEOUT_SECONDS = 300
