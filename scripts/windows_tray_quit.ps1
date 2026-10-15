@@ -55,7 +55,7 @@ public static class ChadexTrayInput {
     # open so an exited process/PID reuse cannot be accepted during polling.
     $process = Get-Process -Id $AppProcessId -ErrorAction SilentlyContinue
     if ($AppProcessId -le 0 -or $null -eq $process) {
-        [Console]::Out.WriteLine("tray_icon_unavailable")
+        [Console]::Out.WriteLine("tray_app_unavailable")
         exit 2
     }
     $null = $process.Handle
@@ -68,7 +68,7 @@ public static class ChadexTrayInput {
         return (-not $process.HasExited)
     }
     if (-not (Test-AppIdentity)) {
-        [Console]::Out.WriteLine("tray_icon_unavailable")
+        [Console]::Out.WriteLine("tray_app_unavailable")
         exit 2
     }
 
@@ -82,7 +82,7 @@ public static class ChadexTrayInput {
         $taskbarCondition
     )
     if ($null -eq $taskbar) {
-        [Console]::Out.WriteLine("tray_icon_unavailable")
+        [Console]::Out.WriteLine("tray_taskbar_unavailable")
         exit 2
     }
 

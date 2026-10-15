@@ -302,12 +302,24 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             with self.assertRaises(smoke.SmokeFailure) as failure:
                 smoke.request_tray_quit("powershell.exe", 4321)
         self.assertEqual(failure.exception.code, "tray_icon_unavailable")
+        for code in ("tray_app_unavailable", "tray_taskbar_unavailable", "tray_menu_unavailable"):
+            with self.subTest(code=code):
+                completed = smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 2, f"{code}\n".encode(), b"")
+                with patch.object(smoke, "_regular_file"):
+                    with patch.object(smoke.subprocess, "run", return_value=completed):
+                        with self.assertRaises(smoke.SmokeFailure) as failure:
+                            smoke.request_tray_quit("powershell.exe", 4321)
+                self.assertEqual(failure.exception.code, code)
 
     def test_tray_driver_scopes_and_owner_checks_native_quit_without_killing(self) -> None:
         script = (Path(__file__).with_name("windows_tray_quit.ps1")
                   .read_text(encoding="utf-8"))
         self.assertIn('"TrayNotifyWnd"', script)
         self.assertIn('"NotifyIconOverflowWindow"', script)
+        self.assertIn('"tray_app_unavailable"', script)
+        self.assertIn('"tray_taskbar_unavailable"', script)
+        self.assertIn('"tray_icon_unavailable"', script)
         self.assertIn("Wait-ChadexMenu", script)
         self.assertIn("MenuBelongsTo", script)
         self.assertIn('ownerClass.ToString() == "tray_icon_app"', script)

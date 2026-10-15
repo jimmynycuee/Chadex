@@ -79,7 +79,8 @@ SAFE_CODES = frozenset({
     "installed_runtime_not_ready", "installed_ui_not_rendered",
     "installed_preferences_not_restored", "installed_smoke_ipc_exposed",
     "installed_processes_remain", "installed_app_exit_nonzero", "installed_app_exited_before_tray_quit",
-    "tray_quit_driver_missing", "tray_quit_timeout", "tray_icon_unavailable", "tray_menu_unavailable",
+    "tray_quit_driver_missing", "tray_quit_timeout", "tray_app_unavailable",
+    "tray_taskbar_unavailable", "tray_icon_unavailable", "tray_menu_unavailable",
     "tray_quit_failed", "process_inventory_failed", "process_inventory_timeout", "process_cleanup_failed",
     "node_cleanup_failed", "owned_processes_remain", "forced_cleanup_required",
     "appdata_missing", "appdata_snapshot_invalid", "appdata_changed",
@@ -768,7 +769,10 @@ def request_tray_quit(powershell: str, app_pid: int) -> None:
     output = result.stdout.decode("utf-8-sig", errors="replace").strip()
     if result.returncode == 0 and output == "tray_quit_sent":
         return
-    if output in {"tray_icon_unavailable", "tray_menu_unavailable"}:
+    if output in {
+        "tray_app_unavailable", "tray_taskbar_unavailable",
+        "tray_icon_unavailable", "tray_menu_unavailable",
+    }:
         raise SmokeFailure(output)
     raise SmokeFailure("tray_quit_failed")
 
