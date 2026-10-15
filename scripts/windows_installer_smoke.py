@@ -274,7 +274,7 @@ def validate_candidate(candidate_dir: Path, *, require_synthetic_fixture: bool =
             and re.fullmatch(VERSION_PATTERN, baseline_version)
             and baseline_version != version,
             "candidate_metadata_invalid")
-    require(type(manifest.get("schema")) is int and manifest.get("schema") == 1
+    require(type(manifest.get("schema")) is int and manifest.get("schema") == 2
             and manifest.get("track") == "W5"
             and re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("source_sha", "")))
             and manifest.get("architecture") == "x86_64"
@@ -287,9 +287,19 @@ def validate_candidate(candidate_dir: Path, *, require_synthetic_fixture: bool =
     installer_hash = manifest.get("sha256")
     require(isinstance(installer_hash, str) and re.fullmatch(r"[0-9a-f]{64}", installer_hash),
             "candidate_hash_invalid")
-    desktop_hash = manifest.get("desktop_sha256")
+    desktop_hash = manifest.get("desktop_payload_sha256")
+    desktop_source_hash = manifest.get("desktop_source_sha256")
+    baseline_desktop_hash = manifest.get("baseline_desktop_payload_sha256")
+    baseline_desktop_source_hash = manifest.get("baseline_desktop_source_sha256")
     fixture_hash = manifest.get("upgrade_fixture_sha256")
     require(isinstance(desktop_hash, str) and re.fullmatch(r"[0-9a-f]{64}", desktop_hash)
+            and isinstance(desktop_source_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", desktop_source_hash)
+            and isinstance(baseline_desktop_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", baseline_desktop_hash)
+            and isinstance(baseline_desktop_source_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", baseline_desktop_source_hash)
+            and baseline_desktop_source_hash == desktop_source_hash
             and isinstance(fixture_hash, str) and re.fullmatch(r"[0-9a-f]{64}", fixture_hash),
             "candidate_hash_invalid")
     installer = candidate_dir / installer_name
@@ -313,7 +323,9 @@ def validate_candidate(candidate_dir: Path, *, require_synthetic_fixture: bool =
         "source_sha": manifest["source_sha"],
         "installer": installer,
         "installer_hash": installer_hash,
+        "desktop_source_hash": desktop_source_hash,
         "desktop_hash": desktop_hash,
+        "baseline_desktop_hash": baseline_desktop_hash,
         "fixture_hash": fixture_hash,
         "baseline_installer": fixture,
         "resources": resources,
@@ -362,6 +374,17 @@ def validate_historical_baseline(baseline_dir: Path, candidate_version: str) -> 
         "desktop_hash": desktop_hash,
         "resources": resources,
         "resource_manifest_hash": _sha256(baseline_dir / "release-resources.json"),
+    }
+
+
+def synthetic_baseline(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "version": candidate["baseline_version"],
+        "probe_version": candidate["version"],
+        "installer": candidate["baseline_installer"],
+        "desktop_hash": candidate["baseline_desktop_hash"],
+        "resources": candidate["resources"],
+        "resource_manifest_hash": candidate["resource_manifest_hash"],
     }
 
 
@@ -1231,14 +1254,7 @@ def run_smoke(candidate_dir: Path, *, historical_baseline_dir: Path | None = Non
                 baseline["probe_version"] = baseline["version"]
                 report.value["baseline_source_sha"] = baseline["source_sha"]
             else:
-                baseline = {
-                    "version": candidate["baseline_version"],
-                    "probe_version": candidate["version"],
-                    "installer": candidate["baseline_installer"],
-                    "desktop_hash": candidate["desktop_hash"],
-                    "resources": candidate["resources"],
-                    "resource_manifest_hash": candidate["resource_manifest_hash"],
-                }
+                baseline = synthetic_baseline(candidate)
 
         with report.stage("user_state_preflight"):
             assert local_app_data is not None and roaming_app_data is not None

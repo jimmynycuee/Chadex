@@ -149,16 +149,19 @@ class WindowsUpdaterManifestTests(unittest.TestCase):
         self.assertIn('"--features", "custom-protocol"', release_script)
         self.assertIn("signer sign $sourceUpdaterArchive --app-version $version", release_script)
         self.assertIn("Updater signature does not attest release version", release_script)
-        desktop_hash_capture = release_script.index(
-            '$desktopHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $desktop).Hash.ToLowerInvariant()'
-        )
-        fixture_start = release_script.index(
-            "if ($BuildUpgradeFixture) {",
-            release_script.index("$upgradeBaselineVersion = $null"),
-        )
-        self.assertLess(desktop_hash_capture, fixture_start)
-        self.assertIn("desktop_sha256 = $desktopHash", release_script)
-        self.assertNotIn("desktop_sha256 = (Get-FileHash", release_script)
+        self.assertIn("windows_tauri_bundle_hash.py", release_script)
+        self.assertIn("$desktopHash = Get-NsisPayloadDesktopHash $desktop", release_script)
+        self.assertIn("$baselineDesktopHash = Get-NsisPayloadDesktopHash $desktop", release_script)
+        self.assertIn("$baselineDesktopHash -ne $desktopHash", release_script)
+        self.assertIn("schema = 2; track = \"W5\"", release_script)
+        self.assertIn("desktop_source_sha256 = $desktopSourceHash", release_script)
+        self.assertIn("desktop_payload_sha256 = $desktopHash", release_script)
+        self.assertIn("baseline_desktop_source_sha256 = $baselineDesktopSourceHash", release_script)
+        self.assertIn("baseline_desktop_payload_sha256 = $baselineDesktopHash", release_script)
+        self.assertNotIn("desktop_payload_sha256 = (Get-FileHash", release_script)
+
+        smoke_script = (root / "scripts/windows_installer_smoke.py").read_text(encoding="utf-8")
+        self.assertIn('"desktop_hash": candidate["baseline_desktop_hash"]', smoke_script)
 
         source_check = (root / "scripts/windows_release_source_check.ps1").read_text(encoding="utf-8")
         self.assertIn("build --ci --features custom-protocol", source_check)

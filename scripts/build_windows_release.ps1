@@ -21,6 +21,17 @@ function Invoke-NativeChecked {
     if ($null -eq $code -or $code -ne 0) { throw "Native command '$FilePath' failed: $code" }
 }
 
+function Get-NsisPayloadDesktopHash {
+    param([Parameter(Mandatory = $true)][string]$BinaryPath)
+    $hashOutput = & python -B (Join-Path $PSScriptRoot "windows_tauri_bundle_hash.py") --path $BinaryPath
+    $exitCode = $LASTEXITCODE
+    $hash = ($hashOutput | Out-String).Trim()
+    if ($null -eq $exitCode -or $exitCode -ne 0 -or $hash -notmatch '^[0-9a-f]{64}$') {
+        throw "Could not derive the Tauri NSIS desktop payload hash."
+    }
+    return $hash
+}
+
 function Assert-ReleaseSource {
     $current = (& git -C $repo rev-parse HEAD)
     if ($LASTEXITCODE -ne 0 -or $current -ne $source) { throw "Source HEAD changed during the build." }
@@ -165,11 +176,14 @@ try {
             }
             Assert-ReleaseSource
         }
-        # Capture the production candidate binary before Tauri builds the
-        # synthetic older-version fixture, which may patch the shared target file.
+        # Tauri patches a copy for each bundle and restores the raw target binary.
+        # Derive the NSIS payload hash by applying that same marker replacement in memory.
         $desktop = Join-Path $target "release/Chadex.exe"
-        $desktopHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $desktop).Hash.ToLowerInvariant()
+        $desktopSourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $desktop).Hash.ToLowerInvariant()
+        $desktopHash = Get-NsisPayloadDesktopHash $desktop
         $upgradeBaselineVersion = $null
+        $baselineDesktopSourceHash = $null
+        $baselineDesktopHash = $null
         if ($BuildUpgradeFixture) {
             # Synthetic older installer metadata around the SAME production binaries.
             # This tests installer migration, not historical application compatibility.
@@ -193,6 +207,11 @@ try {
                     bundle = @{ createUpdaterArtifacts = $false }
                 } | ConvertTo-Json -Compress
                 Invoke-NativeChecked "npm.cmd" @("run", "tauri", "--", "bundle", "--ci", "--bundles", "nsis", "--config", $fixtureConfigPath)
+                $baselineDesktopSourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $desktop).Hash.ToLowerInvariant()
+                $baselineDesktopHash = Get-NsisPayloadDesktopHash $desktop
+                if ($baselineDesktopSourceHash -ne $desktopSourceHash -or $baselineDesktopHash -ne $desktopHash) {
+                    throw "Synthetic baseline bundle did not preserve the candidate desktop binary."
+                }
                 New-Item -ItemType Directory -Path (Join-Path $output "upgrade-fixture") -Force | Out-Null
                 $fixture = @(Get-ChildItem -LiteralPath (Join-Path $target "release/bundle/nsis") -Filter "*$upgradeBaselineVersion*setup.exe")
                 if ($fixture.Count -ne 1) { throw "Expected one synthetic baseline installer." }
@@ -249,15 +268,18 @@ try {
         )
     }
     $manifest = [ordered]@{
-        schema = 1; track = "W5"; version = $version; source_sha = $source;
+        schema = 2; track = "W5"; version = $version; source_sha = $source;
         architecture = "x86_64"; profile = "release"; features = @("custom-protocol");
         desktop_smoke = $false; authenticode = "unsigned"; updater = $updaterStatus;
         synthetic_upgrade_baseline = $upgradeBaselineVersion;
         installer = $name; sha256 = $hash; publication = "not authorized";
-        desktop_sha256 = $desktopHash;
+        desktop_source_sha256 = $desktopSourceHash;
+        desktop_payload_sha256 = $desktopHash;
         full_product_acceptance = "pending"; synthetic_upgrade_fixture = [bool]$BuildUpgradeFixture
     }
     if ($BuildUpgradeFixture) {
+        $manifest.baseline_desktop_source_sha256 = $baselineDesktopSourceHash
+        $manifest.baseline_desktop_payload_sha256 = $baselineDesktopHash
         $manifest.upgrade_fixture_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $output "upgrade-fixture/baseline-setup.exe")).Hash.ToLowerInvariant()
     }
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output "candidate.json") -Encoding utf8NoBOM

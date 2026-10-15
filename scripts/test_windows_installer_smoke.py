@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import hashlib
-from contextlib import nullcontext
+from contextlib import nullcontext, redirect_stdout
 import io
 import json
 from pathlib import Path
@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import windows_installer_smoke as smoke
+import windows_tauri_bundle_hash as tauri_bundle_hash
 import windows_runtime_e2e as w2
 
 
@@ -157,6 +158,8 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
     candidate.mkdir()
     installer_data = b"unsigned candidate installer"
     fixture_data = b"same production binaries, synthetic 0.7.1 metadata"
+    desktop_source = (b"MZ test desktop " + tauri_bundle_hash.BUNDLE_TYPE_UNKNOWN
+                     + b" trailing bytes")
     installer_name = "Chadex-0.7.2-windows-x64-unsigned-setup.exe"
     (candidate / installer_name).write_bytes(installer_data)
     fixture_dir = candidate / "upgrade-fixture"
@@ -176,12 +179,16 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
     resource_bytes = (json.dumps(resource_manifest, sort_keys=True) + "\n").encode()
     (candidate / "release-resources.json").write_bytes(resource_bytes)
     metadata = {
-        "schema": 1, "track": "W5", "version": "0.7.2", "source_sha": "a" * 40,
+        "schema": 2, "track": "W5", "version": "0.7.2", "source_sha": "a" * 40,
         "architecture": "x86_64", "profile": "release", "features": ["custom-protocol"],
         "desktop_smoke": False, "authenticode": "unsigned", "updater": "disabled",
         "synthetic_upgrade_baseline": "0.7.1",
         "installer": installer_name, "sha256": digest(installer_data),
-        "desktop_sha256": "b" * 64, "upgrade_fixture_sha256": digest(fixture_data),
+        "desktop_source_sha256": digest(desktop_source),
+        "desktop_payload_sha256": tauri_bundle_hash.nsis_payload_sha256(desktop_source),
+        "baseline_desktop_source_sha256": digest(desktop_source),
+        "baseline_desktop_payload_sha256": tauri_bundle_hash.nsis_payload_sha256(desktop_source),
+        "upgrade_fixture_sha256": digest(fixture_data),
         "synthetic_upgrade_fixture": True,
     }
     (candidate / "candidate.json").write_text(json.dumps(metadata), encoding="utf-8")
@@ -256,11 +263,24 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             candidate = smoke.validate_candidate(candidate_dir)
             self.assertEqual(candidate["source_sha"], "a" * 40)
             self.assertEqual(candidate["baseline_version"], "0.7.1")
+            self.assertEqual(candidate["desktop_source_hash"], candidate_json["desktop_source_sha256"])
+            self.assertEqual(candidate["baseline_desktop_hash"], candidate_json["baseline_desktop_payload_sha256"])
+            baseline = smoke.synthetic_baseline(candidate)
+            self.assertEqual(baseline["desktop_hash"], candidate_json["baseline_desktop_payload_sha256"])
+            distinct_hashes = dict(candidate, desktop_hash="a" * 64, baseline_desktop_hash="b" * 64)
+            self.assertEqual(smoke.synthetic_baseline(distinct_hashes)["desktop_hash"], "b" * 64)
             self.assertEqual(len(candidate["resources"]["resources"]), 7)
             self.assertEqual({path.name for path in candidate_dir.iterdir()}, {
                 candidate_json["installer"], "candidate.json", "release-resources.json",
                 "upgrade-fixture",
             })
+
+            candidate_json["schema"] = 1
+            (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.validate_candidate(candidate_dir)
+            self.assertEqual(failure.exception.code, "candidate_metadata_invalid")
+            candidate_json["schema"] = 2
 
             candidate_json["synthetic_upgrade_baseline"] = candidate_json["version"]
             (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
@@ -268,6 +288,13 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                 smoke.validate_candidate(candidate_dir)
             self.assertEqual(failure.exception.code, "candidate_metadata_invalid")
             candidate_json["synthetic_upgrade_baseline"] = "0.7.1"
+
+            candidate_json["baseline_desktop_source_sha256"] = "0" * 64
+            (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.validate_candidate(candidate_dir)
+            self.assertEqual(failure.exception.code, "candidate_hash_invalid")
+            candidate_json["baseline_desktop_source_sha256"] = candidate_json["desktop_source_sha256"]
 
             candidate_json["upgrade_fixture_sha256"] = "0" * 64
             (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
@@ -648,6 +675,53 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         for secret in ("C:\\private", "--token secret", '"credential": "secret"', "raw exception"):
             self.assertNotIn(secret, payload)
         self.assertEqual(report.public_value()["upgrade_type"], "synthetic_metadata_upgrade")
+
+
+class TauriNsisPayloadHashTests(unittest.TestCase):
+    def test_matches_tauri_first_marker_replacement_without_mutating_input(self) -> None:
+        marker = tauri_bundle_hash.BUNDLE_TYPE_UNKNOWN
+        binary = b"prefix" + marker + b"middle" + marker + b"suffix"
+        expected_payload = binary.replace(marker, tauri_bundle_hash.BUNDLE_TYPE_NSIS, 1)
+        self.assertEqual(tauri_bundle_hash.patch_nsis_bundle_type(binary), expected_payload)
+        self.assertEqual(tauri_bundle_hash.nsis_payload_sha256(binary), digest(expected_payload))
+        self.assertEqual(binary.count(marker), 2)
+
+    def test_cli_hashes_the_transformed_binary(self) -> None:
+        binary = b"MZ" + tauri_bundle_hash.BUNDLE_TYPE_UNKNOWN + b"payload"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "Chadex.exe"
+            path.write_bytes(binary)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = tauri_bundle_hash.main(["--path", str(path)])
+        self.assertEqual(result, 0)
+        self.assertEqual(output.getvalue().strip(), tauri_bundle_hash.nsis_payload_sha256(binary))
+
+    def test_missing_marker_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "bundle_type_marker_missing"):
+            tauri_bundle_hash.patch_nsis_bundle_type(b"MZ binary without a Tauri marker")
+
+    def test_installed_binary_must_match_derived_full_nsis_payload_hash(self) -> None:
+        raw_binary = b"MZ original " + tauri_bundle_hash.BUNDLE_TYPE_UNKNOWN + b" bytes"
+        bundled_binary = tauri_bundle_hash.patch_nsis_bundle_type(raw_binary)
+        with tempfile.TemporaryDirectory() as directory:
+            install = Path(directory) / "install"
+            install.mkdir()
+            (install / "Chadex.exe").write_bytes(bundled_binary)
+            manifest_bytes = b'{"resources":[]}'
+            (install / "release-resources.json").write_bytes(manifest_bytes)
+            smoke.verify_installed_resources(
+                install, {"resources": []}, digest(manifest_bytes),
+                tauri_bundle_hash.nsis_payload_sha256(raw_binary),
+            )
+
+            (install / "Chadex.exe").write_bytes(raw_binary)
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.verify_installed_resources(
+                    install, {"resources": []}, digest(manifest_bytes),
+                    tauri_bundle_hash.nsis_payload_sha256(raw_binary),
+                )
+            self.assertEqual(failure.exception.code, "installed_desktop_hash_mismatch")
 
 
 if __name__ == "__main__":
