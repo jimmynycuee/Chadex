@@ -851,16 +851,14 @@ def request_tray_quit(powershell: str, app_pid: int) -> dict[str, bool | int]:
             raise SmokeFailure("tray_quit_failed") from None
     if result.returncode != 0 and lines and lines[0] in {
         "tray_app_unavailable", "tray_taskbar_unavailable",
-        "tray_icon_unavailable", "tray_menu_unavailable",
+        "tray_icon_unavailable", "tray_menu_unavailable", "tray_quit_failed",
     }:
-        diagnostics = None
-        if len(lines) == 2:
-            try:
-                diagnostics = parse_tray_diagnostics(lines[1])
-            except ValueError:
-                raise SmokeFailure("tray_quit_failed") from None
-        elif len(lines) != 1:
+        if len(lines) != 2:
             raise SmokeFailure("tray_quit_failed")
+        try:
+            diagnostics = parse_tray_diagnostics(lines[1])
+        except ValueError:
+            raise SmokeFailure("tray_quit_failed") from None
         raise SmokeFailure(lines[0], tray_diagnostics=diagnostics)
     raise SmokeFailure("tray_quit_failed")
 

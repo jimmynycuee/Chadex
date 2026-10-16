@@ -462,15 +462,26 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                 smoke.request_tray_quit("powershell.exe", 4321)
         self.assertEqual(failure.exception.code, "tray_quit_failed")
         self.assertIsNone(failure.exception.tray_diagnostics)
-        for code in ("tray_app_unavailable", "tray_taskbar_unavailable", "tray_menu_unavailable"):
+        for code in ("tray_app_unavailable", "tray_taskbar_unavailable", "tray_menu_unavailable",
+                     "tray_icon_unavailable", "tray_quit_failed"):
             with self.subTest(code=code):
                 completed = smoke.subprocess.CompletedProcess(
-                    ["powershell.exe"], 2, f"{code}\n".encode(), b"")
+                    ["powershell.exe"], 2,
+                    f"{code}\ntray_diagnostics=".encode() +
+                    json.dumps(diagnostics, separators=(",", ":")).encode() + b"\n", b"")
                 with patch.object(smoke, "_regular_file"):
                     with patch.object(smoke.subprocess, "run", return_value=completed):
                         with self.assertRaises(smoke.SmokeFailure) as failure:
                             smoke.request_tray_quit("powershell.exe", 4321)
                 self.assertEqual(failure.exception.code, code)
+                self.assertEqual(failure.exception.tray_diagnostics, diagnostics)
+                malformed = smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 2, f"{code}\n".encode(), b"")
+                with patch.object(smoke, "_regular_file"), \
+                        patch.object(smoke.subprocess, "run", return_value=malformed):
+                    with self.assertRaises(smoke.SmokeFailure) as failure:
+                        smoke.request_tray_quit("powershell.exe", 4321)
+                self.assertEqual(failure.exception.code, "tray_quit_failed")
 
     def test_tray_driver_scopes_and_owner_checks_native_quit_without_killing(self) -> None:
         script = (Path(__file__).with_name("windows_tray_quit.ps1")
@@ -478,6 +489,12 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn('"TrayNotifyWnd"', script)
         self.assertIn('"NotifyIconOverflowWindow"', script)
         self.assertIn('"tray_app_unavailable"', script)
+        self.assertIn('Write-TrayFailure "tray_app_unavailable"', script)
+        self.assertIn('Write-TrayFailure "tray_taskbar_unavailable"', script)
+        self.assertIn('Write-TrayFailure "tray_quit_failed"', script)
+        self.assertNotIn('[Console]::Out.WriteLine("tray_app_unavailable")', script)
+        self.assertNotIn('[Console]::Out.WriteLine("tray_taskbar_unavailable")', script)
+        self.assertNotIn('[Console]::Out.WriteLine("tray_quit_failed")', script)
         self.assertIn('"tray_taskbar_unavailable"', script)
         self.assertIn('"tray_icon_unavailable"', script)
         self.assertIn('"tray_diagnostics="', script)
