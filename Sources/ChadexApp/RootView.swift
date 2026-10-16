@@ -166,17 +166,27 @@ struct RootView: View {
                             }
                         } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: "arrow.down.circle.fill")
-                                Text(L10n.string("updates.quickUpdate"))
+                                if updateManager.isBusy {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .tint(.white)
+                                } else {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                }
+                                Text(quickUpdateTitle)
                                     .chadexFont(.callout, weight: .semibold)
+                                    .lineLimit(1)
+                                    .fixedSize()
                             }
                         }
                         .buttonStyle(ChadexButtonStyle(kind: .primary))
                         .tint(.blue)
                         .chadexControlSize(.small)
-                        .disabled(updateManager.isBusy)
-                        .help(L10n.string("updates.quickUpdateHint", release.version))
-                        .accessibilityLabel(L10n.string("updates.quickUpdateHint", release.version))
+                        .layoutPriority(1)
+                        // Stays full-color while busy: the spinner and label show progress.
+                        .allowsHitTesting(!updateManager.isBusy)
+                        .help(quickUpdateHelp(release.version))
+                        .accessibilityLabel(quickUpdateHelp(release.version))
                     }
                 }
                 .padding(.horizontal, layout.spacing(12))
@@ -419,6 +429,28 @@ struct RootView: View {
     }
 
     @ViewBuilder
+    private var quickUpdateTitle: String {
+        switch updateManager.phase {
+        case .preparing:
+            return L10n.string("updates.quickUpdate.preparing")
+        case .installing:
+            return L10n.string("updates.quickUpdate.installing")
+        default:
+            return L10n.string("updates.quickUpdate")
+        }
+    }
+
+    private func quickUpdateHelp(_ version: String) -> String {
+        switch updateManager.phase {
+        case .preparing(let target):
+            return L10n.string("updates.status.preparing", target)
+        case .installing(let target):
+            return L10n.string("updates.status.installing", target)
+        default:
+            return L10n.string("updates.quickUpdateHint", version)
+        }
+    }
+
     private var detail: some View {
         switch selection {
         case .activity:

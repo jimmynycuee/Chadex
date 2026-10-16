@@ -561,6 +561,8 @@
 "updates.checkMenu" = "檢查更新…";
 "updates.install" = "安裝 v%@";
 "updates.quickUpdate" = "更新";
+"updates.quickUpdate.preparing" = "更新中…";
+"updates.quickUpdate.installing" = "重新啟動中…";
 "updates.quickUpdateHint" = "將 Chadex 更新至 v%@";
 "updates.releaseNotes" = "版本說明";
 "updates.status.ready" = "可檢查是否有新的穩定版本。";
