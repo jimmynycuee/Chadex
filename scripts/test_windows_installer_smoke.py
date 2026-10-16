@@ -336,11 +336,19 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "native_click_down_input_count": 0,
             "native_click_up_input_count": 0,
             "native_menu_state_code": 0,
+            "post_input_menu_state_code": 0,
+            "post_input_menu_mode_flags": 0,
+            "post_input_menu_owner_matches_tray": False,
+            "post_callback_menu_state_code": 0,
+            "post_callback_menu_mode_flags": 0,
+            "post_callback_menu_owner_matches_tray": False,
             "native_callback_post_attempted": False,
             "native_callback_post_succeeded": False,
             "native_callback_post_error_code": 0,
             "preexisting_menu_count": 0,
             "menu_element_count": 0,
+            "uia_menu_desktop_child_count": 0,
+            "uia_menu_tray_owner_descendant_count": 0,
             "menu_app_process_count": 0,
             "menu_exact_owner_count": 0,
             "menu_exact_item_count": 0,
@@ -349,13 +357,34 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         extra_field_diagnostics = dict(diagnostics, unexpected_field=1)
         missing_field_diagnostics = dict(diagnostics)
         missing_field_diagnostics.pop("menu_owner_check_code")
+        valid_menu_diagnostics = dict(
+            diagnostics,
+            menu_exact_owner_count=1,
+            menu_exact_item_count=1,
+            menu_owner_check_code=7,
+        )
+        native_state_without_uia = dict(
+            diagnostics,
+            post_callback_menu_state_code=3,
+            post_callback_menu_mode_flags=0x1C,
+            post_callback_menu_owner_matches_tray=True,
+        )
         invalid_success_outputs = (
             b"tray_quit_sent\ntray_diagnostics={}\nextra\n",
             b"tray_quit_sent\ntray_diagnostics=not-json\n",
             b"tray_quit_sent\ntray_diagnostics={}\n",
             ("tray_quit_sent\ntray_diagnostics=" + json.dumps(extra_field_diagnostics) + "\n").encode(),
             ("tray_quit_sent\ntray_diagnostics=" + json.dumps(missing_field_diagnostics) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" + json.dumps(diagnostics) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" +
+             json.dumps(native_state_without_uia) + "\n").encode(),
         )
+        for field in ("menu_exact_owner_count", "menu_exact_item_count", "menu_owner_check_code"):
+            missing_menu_evidence = dict(valid_menu_diagnostics, **{field: 0})
+            invalid_success_outputs += (
+                ("tray_quit_sent\ntray_diagnostics=" +
+                 json.dumps(missing_menu_evidence) + "\n").encode(),
+            )
         for output in invalid_success_outputs:
             with self.subTest(output=output), \
                     patch.object(smoke, "_regular_file"), \
@@ -401,7 +430,10 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertEqual(failure.exception.tray_diagnostics, post_failure_diagnostics)
 
         callback_diagnostics = dict(
-            diagnostics,
+            valid_menu_diagnostics,
+            native_icon_match_count=1,
+            native_rect_available=True,
+            native_rect_root_kind=1,
             native_callback_post_attempted=True,
             native_callback_post_succeeded=True,
         )
@@ -497,6 +529,15 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn("Marshal.GetLastWin32Error()", script)
         self.assertIn("ActiveMenuStateCode", script)
         self.assertIn("$script:TrayDiagnostics.native_menu_state_code -ne 0", script)
+        self.assertIn("ReadMenuState", script)
+        self.assertIn("Record-NativeMenuState", script)
+        self.assertIn('Record-NativeMenuState "post_input"', script)
+        self.assertIn('Record-NativeMenuState "post_callback"', script)
+        self.assertIn("post_callback_menu_state_code", script)
+        self.assertIn("uia_menu_tray_owner_descendant_count", script)
+        self.assertIn("AutomationElement]::FromHandle(", script)
+        self.assertIn("[System.Windows.Automation.TreeScope]::Descendants, $condition", script)
+        self.assertIn("$ownerCode -ne 7", script)
         self.assertIn("native_callback_post_error_code", script)
         self.assertEqual(script.count("if (-not (Invoke-NativeTrayCallbackFallback))"), 2)
         self.assertIn("$nativeIcon.Window -ne $script:ExpectedTrayWindow", script)

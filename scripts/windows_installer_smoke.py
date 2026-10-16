@@ -110,11 +110,19 @@ TRAY_DIAGNOSTIC_FIELDS = {
     "native_click_down_input_count": int,
     "native_click_up_input_count": int,
     "native_menu_state_code": int,
+    "post_input_menu_state_code": int,
+    "post_input_menu_mode_flags": int,
+    "post_input_menu_owner_matches_tray": bool,
+    "post_callback_menu_state_code": int,
+    "post_callback_menu_mode_flags": int,
+    "post_callback_menu_owner_matches_tray": bool,
     "native_callback_post_attempted": bool,
     "native_callback_post_succeeded": bool,
     "native_callback_post_error_code": int,
     "preexisting_menu_count": int,
     "menu_element_count": int,
+    "uia_menu_desktop_child_count": int,
+    "uia_menu_tray_owner_descendant_count": int,
     "menu_app_process_count": int,
     "menu_exact_owner_count": int,
     "menu_exact_item_count": int,
@@ -833,7 +841,12 @@ def request_tray_quit(powershell: str, app_pid: int) -> dict[str, bool | int]:
     lines = result.stdout.decode("utf-8-sig", errors="replace").splitlines()
     if result.returncode == 0 and len(lines) == 2 and lines[0] == "tray_quit_sent":
         try:
-            return parse_tray_diagnostics(lines[1])
+            diagnostics = parse_tray_diagnostics(lines[1])
+            if (diagnostics["menu_exact_owner_count"] != 1 or
+                    diagnostics["menu_exact_item_count"] != 1 or
+                    diagnostics["menu_owner_check_code"] != 7):
+                raise ValueError("tray_menu_evidence_missing")
+            return diagnostics
         except ValueError:
             raise SmokeFailure("tray_quit_failed") from None
     if result.returncode != 0 and lines and lines[0] in {

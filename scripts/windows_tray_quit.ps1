@@ -26,11 +26,19 @@ $script:TrayDiagnostics = [ordered]@{
     native_click_down_input_count = 0
     native_click_up_input_count = 0
     native_menu_state_code = 0
+    post_input_menu_state_code = 0
+    post_input_menu_mode_flags = 0
+    post_input_menu_owner_matches_tray = $false
+    post_callback_menu_state_code = 0
+    post_callback_menu_mode_flags = 0
+    post_callback_menu_owner_matches_tray = $false
     native_callback_post_attempted = $false
     native_callback_post_succeeded = $false
     native_callback_post_error_code = 0
     preexisting_menu_count = 0
     menu_element_count = 0
+    uia_menu_desktop_child_count = 0
+    uia_menu_tray_owner_descendant_count = 0
     menu_app_process_count = 0
     menu_exact_owner_count = 0
     menu_exact_item_count = 0
@@ -100,6 +108,11 @@ public static class ChadexTrayInput {
         public uint cbSize, flags;
         public IntPtr hwndActive, hwndFocus, hwndCapture, hwndMenuOwner, hwndMoveSize, hwndCaret;
         public int left, top, right, bottom;
+    }
+    public struct MenuState {
+        public int state_code;
+        public uint mode_flags;
+        public int owner_matches_tray;
     }
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hwnd, StringBuilder className, int maxCount);
@@ -204,6 +217,28 @@ public static class ChadexTrayInput {
         if (info.hwndMenuOwner == expectedOwnerHwnd) return 3;
         if (WindowProcessId(info.hwndMenuOwner) == expectedProcessId) return 4;
         return 5;
+    }
+    public static MenuState ReadMenuState(uint expectedProcessId, IntPtr expectedOwnerHwnd) {
+        var result = new MenuState();
+        uint ownerProcessId;
+        uint threadId = GetWindowThreadProcessId(expectedOwnerHwnd, out ownerProcessId);
+        if (threadId == 0 || ownerProcessId != expectedProcessId) {
+            result.state_code = 1;
+            return result;
+        }
+        var info = new GuiThreadInfo();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
+        if (!GetGUIThreadInfo(threadId, ref info)) {
+            result.state_code = 2;
+            return result;
+        }
+        result.mode_flags = info.flags & 0x1C;
+        result.owner_matches_tray = info.hwndMenuOwner == expectedOwnerHwnd ? 1 : 0;
+        if (result.mode_flags == 0) result.state_code = 0;
+        else if (result.owner_matches_tray == 1) result.state_code = 3;
+        else if (WindowProcessId(info.hwndMenuOwner) == expectedProcessId) result.state_code = 4;
+        else result.state_code = 5;
+        return result;
     }
 }
 "@
@@ -389,12 +424,37 @@ public static class ChadexTrayInput {
         return $script:TrayDiagnostics.menu_owner_check_code -eq 7
     }
     function Find-ChadexMenu {
-        $elements = $desktop.FindAll(
-            [System.Windows.Automation.TreeScope]::Children,
-            [System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-                [System.Windows.Automation.ControlType]::Menu)
-        )
+        $condition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+            [System.Windows.Automation.ControlType]::Menu)
+        $desktopElements = $desktop.FindAll(
+            [System.Windows.Automation.TreeScope]::Children, $condition)
+        $script:TrayDiagnostics.uia_menu_desktop_child_count = [Math]::Max(
+            $script:TrayDiagnostics.uia_menu_desktop_child_count, $desktopElements.Count)
+        # Native popup menus may be exposed below their exact owner HWND instead
+        # of as direct children of the desktop root. Search only Chadex's tray
+        # owner subtree, then independently verify the active native owner below.
+        $ownerElements = @()
+        try {
+            $owner = [System.Windows.Automation.AutomationElement]::FromHandle(
+                $script:ExpectedTrayWindow)
+            if ($null -ne $owner) {
+                $ownerElements = $owner.FindAll(
+                    [System.Windows.Automation.TreeScope]::Descendants, $condition)
+            }
+        } catch [System.Windows.Automation.ElementNotAvailableException] {
+            # The exact owner may be rebuilding its UIA provider; retry next poll.
+        }
+        $script:TrayDiagnostics.uia_menu_tray_owner_descendant_count = [Math]::Max(
+            $script:TrayDiagnostics.uia_menu_tray_owner_descendant_count, $ownerElements.Count)
+        $uniqueElements = @{}
+        foreach ($element in @($desktopElements) + @($ownerElements)) {
+            try { $uniqueElements[($element.GetRuntimeId() -join ":")] = $element }
+            catch [System.Windows.Automation.ElementNotAvailableException] {
+                # Re-query after Explorer or the native menu changes its UIA tree.
+            }
+        }
+        $elements = @($uniqueElements.Values)
         $script:TrayDiagnostics.menu_element_count = [Math]::Max(
             $script:TrayDiagnostics.menu_element_count, $elements.Count)
         $menuCandidates = @()
@@ -433,6 +493,15 @@ public static class ChadexTrayInput {
         if ($menuCandidates.Count -gt 1) { throw "tray_menu_ambiguous" }
         if ($menuCandidates.Count -eq 1) { return $menuCandidates[0] }
         return $null
+    }
+
+    function Record-NativeMenuState([string] $Phase) {
+        $state = [ChadexTrayInput]::ReadMenuState(
+            [uint32]$AppProcessId, $script:ExpectedTrayWindow)
+        $script:TrayDiagnostics["${Phase}_menu_state_code"] = $state.state_code
+        $script:TrayDiagnostics["${Phase}_menu_mode_flags"] = $state.mode_flags
+        $script:TrayDiagnostics["${Phase}_menu_owner_matches_tray"] =
+            ($state.owner_matches_tray -eq 1)
     }
     function Wait-ChadexMenu {
         $wait = [System.Diagnostics.Stopwatch]::StartNew()
@@ -594,12 +663,14 @@ public static class ChadexTrayInput {
         }
         $selection = Wait-ChadexMenu
         if ($null -eq $selection) {
+            Record-NativeMenuState "post_input"
             if (-not (Invoke-NativeTrayCallbackFallback)) {
                 Write-TrayFailure "tray_menu_unavailable"
                 exit 3
             }
             $selection = Wait-ChadexMenu
             if ($null -eq $selection) {
+                Record-NativeMenuState "post_callback"
                 Write-TrayFailure "tray_menu_unavailable"
                 exit 3
             }
@@ -640,12 +711,14 @@ public static class ChadexTrayInput {
             }
             $selection = Wait-ChadexMenu
             if ($null -eq $selection) {
+                Record-NativeMenuState "post_input"
                 if (-not (Invoke-NativeTrayCallbackFallback)) {
                     Write-TrayFailure "tray_menu_unavailable"
                     exit 3
                 }
                 $selection = Wait-ChadexMenu
                 if ($null -eq $selection) {
+                    Record-NativeMenuState "post_callback"
                     Write-TrayFailure "tray_menu_unavailable"
                     exit 3
                 }
