@@ -34,14 +34,20 @@ fn acceptance_schema() -> Value {
     json!({
         "type": "array",
         "maxItems": 8,
-        "description": "Objective acceptance checks. Each runs as literal argv (no shell) in the project root or cwd; exit code 0 passes. Goal Mode succeeds only when all pass. Prefer the repository's real test/build/lint commands. Omit to keep the previous revision's checks.",
+        "description": "Literal argv, no shell (root/cwd); exit 0 passes. All checks gate Goal success.",
         "items": {
             "type": "object",
             "properties": {
                 "name": {"type": "string", "minLength": 1, "maxLength": 80},
                 "argv": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"type": "string", "maxLength": 1024}},
-                "cwd": {"type": "string", "description": "Optional project-relative directory."},
-                "timeout_secs": {"type": "integer", "minimum": 1, "maximum": 3600, "default": 600}
+                "cwd": {"type": "string", "description": "Project-relative directory."},
+                "timeout_secs": {"type": "integer", "minimum": 1, "maximum": 3600, "default": 600},
+                "lane": {"type":"string", "enum":["offline_sandbox","loopback_integration","external_attestation"], "default":"offline_sandbox"},
+                "kind": {"type":"string", "enum":["test","external_gate"], "default":"test"},
+                "loopback_ports": {"type":"array", "maxItems":8, "uniqueItems":true, "items":{"type":"integer", "minimum":49152, "maximum":65535}},
+                "container_image": {"type":"string", "pattern":"^sha256:[a-f0-9]{64}$", "description":"Exact local Linux image digest; network=none, never pulled."},
+                "depends_on": {"type":"array", "maxItems":8, "uniqueItems":true, "items":{"type":"string", "minLength":1, "maxLength":80}},
+                "external_gate": {"type":"object", "properties":{"owner":{"type":"string"},"action":{"type":"string"},"evidence":{"type":"string"},"next_step":{"type":"string"}}, "required":["owner","action","evidence","next_step"], "additionalProperties":false}
             },
             "required": ["name", "argv"],
             "additionalProperties": false
@@ -49,10 +55,25 @@ fn acceptance_schema() -> Value {
     })
 }
 
+fn workspace_requirements_schema() -> Value {
+    json!({"type":"array","maxItems":128,"items":{"type":"object","properties":{
+        "source_path":{"type":"string","minLength":1,"maxLength":1024},
+        "source_sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+        "destination_path":{"type":"string","minLength":1,"maxLength":1024},
+        "permission":{"type":"string","enum":["read_only"]}
+    },"required":["source_path","source_sha256","destination_path","permission"],"additionalProperties":false}})
+}
+fn dependencies_schema() -> Value {
+    json!({"type":"array","maxItems":32,"items":{"type":"object","properties":{
+        "path":{"type":"string","minLength":1,"maxLength":1024},
+        "provenance":{"type":"string","minLength":1,"maxLength":2048}
+    },"required":["path","provenance"],"additionalProperties":false}})
+}
+
 fn budget_schema() -> Value {
     json!({
         "type": "object",
-        "description": "Goal Mode limits. Omit to keep the previous revision's budget (defaults: 5 iterations, 120 minutes, 1800 s per agent turn).",
+        "description": "Goal limits; defaults 5 iterations, 120 min, 1800 s/agent turn.",
         "properties": {
             "max_iterations": {"type": "integer", "minimum": 1, "maximum": 20},
             "max_minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
@@ -69,7 +90,9 @@ pub fn plan_save_input_schema() -> Value {
             "parent_revision": {"type": "integer", "minimum": 0, "description": "The revision this edit is based on; must be the current latest revision (0 before the first save)."},
             "content": {"type": "string", "minLength": 1, "maxLength": 65536, "description": "Full plan in Markdown: context and evidence, approach, steps, risks, and how it will be verified."},
             "acceptance": acceptance_schema(),
-            "budget": budget_schema()
+            "budget": budget_schema(),
+            "workspace_requirements": workspace_requirements_schema(),
+            "dependencies": dependencies_schema()
         }),
         &["plan_id", "parent_revision", "content"],
     )
@@ -96,12 +119,14 @@ pub fn plan_list_input_schema() -> Value {
 pub fn goal_run_start_input_schema() -> Value {
     object(
         json!({
-            "plan_id": {"type": "string", "pattern": PLAN_ID_PATTERN, "description": "Plan id of a Goal request the user already started in the Chadex app: returns that run. Omit to send a new direct Goal."},
-            "project": {"type": "string", "minLength": 1, "description": "Direct Goal: configured project id to work in. Omit to use the project open in the Chadex app."},
-            "title": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Direct Goal: short title."},
-            "objective": {"type": "string", "minLength": 1, "maxLength": 65536, "description": "Direct Goal: what must be true when done, constraints, and anything the agent must not change."},
+            "plan_id": {"type": "string", "pattern": PLAN_ID_PATTERN, "description": "Existing plan id; omit for a new direct Goal."},
+            "project": {"type": "string", "minLength": 1, "description": "Project id; omit for the app's open project."},
+            "title": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Short direct Goal title."},
+            "objective": {"type": "string", "minLength": 1, "maxLength": 65536, "description": "Success condition, constraints, and prohibited changes."},
             "acceptance": acceptance_schema(),
-            "budget": budget_schema()
+            "budget": budget_schema(),
+            "workspace_requirements": workspace_requirements_schema(),
+            "dependencies": dependencies_schema()
         }),
         &[],
     )
@@ -170,10 +195,16 @@ pub fn plan_review_input_schema() -> Value {
 pub fn goal_operator_input_schema() -> Value {
     object(
         json!({
-            "action": {"type": "string", "enum": ["overview", "status", "pause", "resume", "cancel", "dismiss", "clear_board", "emergency_stop", "release_emergency_stop"]},
+            "action": {"type": "string", "enum": ["overview", "status", "pause", "resume", "cancel", "dismiss", "clear_board", "emergency_stop", "release_emergency_stop", "retry_acceptance", "propose_acceptance", "approve_acceptance", "adopt_checkpoint"]},
             "goal_run_id": goal_run_id(),
             "project": {"type": "string", "minLength": 1, "description": "Optional full configured project id; clear_board is scoped to this project when supplied and clears all projects when omitted."},
-            "reason": {"type": "string", "maxLength": 2048}
+            "reason": {"type": "string", "maxLength": 2048},
+            "acceptance": acceptance_schema(),
+            "workspace_requirements": workspace_requirements_schema(),
+            "dependencies": dependencies_schema(),
+            "expected_acceptance_revision": {"type":"integer","minimum":1},
+            "acceptance_sha256": {"type":"string","pattern":"^[a-f0-9]{64}$"},
+            "proposal_id": {"type":"string","minLength":1,"maxLength":96}
         }),
         &["action"],
     )

@@ -51,7 +51,7 @@ CHADEX_UPDATE_UI_REVIEW=1 swift test --filter VisualReviewTests
 `scripts/build_app.sh` accepts release metadata through environment variables:
 
 ```sh
-CHADEX_APP_VERSION=0.7.1 \
+CHADEX_APP_VERSION=0.7.2 \
 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_IDENTITY="Developer ID Application: ..." \
 ./scripts/build_app.sh
@@ -68,13 +68,21 @@ Each `docs/releases/X.Y.Z.md` records the validation evidence and remaining exte
 For the free artifact path, explicitly select ad-hoc signing, then package the resulting bundle:
 
 ```sh
-CHADEX_APP_VERSION=0.7.1 CHADEX_APP_BUILD_NUMBER=1 \
+CHADEX_APP_VERSION=0.7.2 CHADEX_APP_BUILD_NUMBER=1 \
 CHADEX_CODESIGN_MODE=adhoc CHADEX_RUNTIME_PROFILE=release \
 ./scripts/build_app.sh
 ./scripts/package_free_macos_release.sh dist/Chadex.app
 ```
 
-The expected artifacts are `dist/Chadex-v0.7.1-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
+The expected artifacts are `dist/Chadex-v0.7.2-macos-arm64.dmg` and its `.sha256` sidecar. If the requested app is running, `build_app.sh` packages a `-next.app` sibling instead; pass the actual output path to the DMG packager. Package smoke does not replace visual mascot checks, installed-app launch, or updater validation.
+
+## Windows v0.7.2 installer and in-app updater
+
+The public Windows x64 installer is built on a native Windows x64/MSVC runner and attached to the matching GitHub Release. v0.7.2 also publishes the Tauri NSIS updater archive and its generated `latest.json` manifest. The workflow requires the Tauri updater private key in `TAURI_SIGNING_PRIVATE_KEY` and its matching public key in the repository variable `CHADEX_UPDATER_PUBLIC_KEY`; it must stop before packaging or publication if either value is missing. Never put the private key in source, build logs, or frontend variables.
+
+Updater configuration requires `requireSignedVersion`. The signing CLI must bind each updater artifact to the exact app version, and release preparation verifies that version in the signature's trusted comment before generating the manifest. Keep this check enabled: the manifest version and URL are fetched over TLS but are not themselves covered by the artifact signature.
+
+The Tauri updater signature verifies update authenticity. It does not provide Windows Authenticode signing or SmartScreen reputation; the installer remains unsigned unless a separate certificate is configured. v0.7.1 and earlier do not contain the updater plugin, so users must install v0.7.2 manually once before checking for later updates in the app. The ordinary W5 CI artifact remains unsigned and does not use updater signing keys.
 
 ## Public Git history
 
@@ -132,15 +140,17 @@ CI orchestration rules:
 - **Caches.** Cargo registry and dependency build artifacts are cached with a SHA-pinned `Swatinem/rust-cache`, and Windows npm downloads with `setup-node`. Caches are keyed by toolchain/lockfiles, saved only from `main`, and only restored on other branches. The historical `v0.5.0` source build is not cached.
 - **Release tags are unaffected.** `release.yml` has no change filter and no cache; every tag rebuilds and re-validates from scratch.
 
-`.github/workflows/release.yml` is the **free public distribution path**, modeled after WebCodex Desktop's current macOS release approach. A tag-triggered run validates public history and source, builds the exact tagged source with Hardened Runtime and **ad-hoc signing**, packages an Apple Silicon DMG, smoke-tests the mounted DMG, publishes a SHA-256 checksum, and creates the GitHub Release. No Apple Developer Program membership or Apple release secret is required.
+`.github/workflows/release.yml` is the **free public distribution path**. A tag-triggered run validates public history and source, builds the exact tagged source, packages and smoke-tests the Apple Silicon DMG, and builds a per-user Windows x64 NSIS installer plus the signed Tauri updater archive, signature, and `latest.json`. Before the Windows assets can be uploaded, the workflow verifies the generated signature against the configured updater public key; a mismatched private/public pair fails the job before GitHub publication. The publish job attaches both platform packages and their required checksums/signature data. No Apple Developer Program membership or Apple release secret is required.
 
-These free macOS artifacts are intentionally **not notarized**. Users may need to open **System Settings → Privacy & Security → Open Anyway** on first launch. Do not instruct users to disable Gatekeeper globally.
+The free macOS DMG is intentionally **not notarized** and uses ad-hoc code signing. Users may need to open **System Settings → Privacy & Security → Open Anyway** on first launch. The Windows NSIS installer is not Authenticode-signed; the updater archive is signed with the Tauri updater key and must verify before installation. Do not instruct users to disable Gatekeeper globally.
 
 ### In-app update contract
 
 Packaged Chadex builds can update themselves from the latest stable GitHub Release. The app queries the repository's latest-release API and only accepts the exact free-release asset pair `Chadex-vX.Y.Z-macos-arm64.dmg` plus `Chadex-vX.Y.Z-macos-arm64.dmg.sha256`. Before shutdown it verifies the checksum, bundle identifier, version, Apple Silicon architecture, and macOS code signature, then stages the candidate beside the currently running app so write-permission failures are caught before quitting.
 
 The final swap is performed by an external installer after Chadex has completed its normal helper/runtime shutdown. The previous app is kept as a temporary sibling backup until the new version launches and writes a version-bound health marker. If launch verification times out, the installer stops the candidate, restores the backup, and reopens the previous version. The updater never removes Gatekeeper quarantine or weakens the free release's existing ad-hoc-signing boundary.
+
+Windows v0.7.2 adds a per-user NSIS installer for first-time/manual upgrades and a Tauri updater feed at `latest.json`. The app verifies the signed updater archive and its version before installation. Users moving from v0.7.1 must install v0.7.2 manually once; subsequent stable updates can be checked and installed from the app. The installer itself remains unsigned by Authenticode, so Windows SmartScreen reputation and physical-device behavior remain separate acceptance items.
 
 `.github/workflows/release-notarized.yml` preserves the optional Developer ID + notarization path for a future paid distribution upgrade. It is manual-only so a normal free release tag does not trigger a failing Apple-signing job.
 

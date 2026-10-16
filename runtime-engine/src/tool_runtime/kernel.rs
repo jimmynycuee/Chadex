@@ -809,8 +809,10 @@ impl ToolRuntime {
         };
         // Backend Plan Mode enforcement: default-deny for a principal holding
         // an active plan lock, before any business execution.
-        if let Some(denied) =
-            self.plan_mode_denial(context.auth, &request.tool_name, call.project())
+        let (_goal_mutation_guard,goal_denial)=match self.goal_acceptance_write_guard(context.auth,&request.tool_name,call.project()).await {
+            Ok(guard)=>(guard,None),Err(denied)=>(None,Some(denied)),
+        };
+        if let Some(denied) = goal_denial.or_else(||self.plan_mode_denial(context.auth, &request.tool_name, call.project()))
         {
             self.sessions.record_tool_call_finished(
                 session_event,
@@ -1025,6 +1027,7 @@ impl ToolRuntime {
                 output.insert("trace_ref".to_string(), Value::String(trace_ref));
             }
         }
+        self.record_goal_workspace_activity(context.auth, project.as_deref(), &request.tool_name, &result);
         super::dispatch::sparsify_success_model_result_metadata(&request.tool_name, &mut result);
         // The continuity hint is diagnostic only. Keep it inside the shared
         // model-result hard ceiling; if an unrelated producer already consumed

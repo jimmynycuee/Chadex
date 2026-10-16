@@ -35,6 +35,7 @@ pub async fn smoke_checkpoint(
     if ![
         "webview_ready",
         "runtime_ready",
+        "window_hidden",
         "project_switched",
         "helper_restarted",
         "helper_crash_observed",
@@ -59,6 +60,18 @@ pub async fn smoke_checkpoint(
         if let Some(value) = observation.get(field).and_then(Value::as_bool) {
             safe.insert(field.into(), json!(value));
         }
+    }
+    if stage == "window_hidden" {
+        let window = app
+            .get_webview_window("main")
+            .ok_or_else(|| "main_window_unavailable".to_owned())?;
+        let visible = window
+            .is_visible()
+            .map_err(|_| "main_window_visibility_unavailable".to_owned())?;
+        if visible {
+            return Err("window_not_hidden".into());
+        }
+        safe.insert("window_hidden".into(), json!(true));
     }
     if let Some(pid) = observation.get("helper_pid").and_then(Value::as_u64) {
         safe.insert("helper_pid".into(), json!(pid));
@@ -112,6 +125,16 @@ pub async fn smoke_checkpoint(
     Ok(())
 }
 
+#[tauri::command]
+pub fn smoke_close_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main_window_unavailable".to_owned())?;
+    window
+        .close()
+        .map_err(|_| "main_window_close_failed".to_owned())
+}
+
 pub fn start(webview: &tauri::Webview<tauri::Wry>) {
     let Some(smoke) = webview.app_handle().try_state::<Smoke>() else {
         return;
@@ -163,6 +186,11 @@ const SCRIPT: &str = r#"
     await action('configureLocalSetup');
     state = await until(s => s.runtime?.runtime_status?.runtime_ready === true);
     await checkpoint('runtime_ready', state, {selected_expected:state.runtime.selected_project.path === config.a});
+    if (config.scenario === 'workflow') {
+      await invoke('smoke_close_main_window');
+      state = await until(s => s.helper.state === 'running' && s.runtime?.runtime_status?.runtime_ready === true);
+      await checkpoint('window_hidden', state, {selected_expected:true});
+    }
     if (config.scenario === 'force_exit') return;
     await action('switchLocalProject', {path:config.b});
     state = await until(s => s.runtime?.runtime_status?.runtime_ready === true && s.runtime.selected_project.path === config.b);

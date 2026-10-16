@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import hashlib
-from contextlib import nullcontext
+from contextlib import nullcontext, redirect_stdout
 import io
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,7 @@ from unittest.mock import MagicMock, patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import windows_installer_smoke as smoke
+import windows_tauri_bundle_hash as tauri_bundle_hash
 import windows_runtime_e2e as w2
 
 
@@ -156,8 +158,10 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
     candidate = root / "candidate"
     candidate.mkdir()
     installer_data = b"unsigned candidate installer"
-    fixture_data = b"same production binaries, synthetic 0.7.0 metadata"
-    installer_name = "Chadex-0.7.1-windows-x64-unsigned-setup.exe"
+    fixture_data = b"same production binaries, synthetic 0.7.1 metadata"
+    desktop_source = (b"MZ test desktop " + tauri_bundle_hash.BUNDLE_TYPE_UNKNOWN
+                     + b" trailing bytes")
+    installer_name = "Chadex-0.7.2-windows-x64-unsigned-setup.exe"
     (candidate / installer_name).write_bytes(installer_data)
     fixture_dir = candidate / "upgrade-fixture"
     fixture_dir.mkdir()
@@ -168,7 +172,7 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
         resources.append({"relative_path": relative, "sha256": digest(content),
                           "size_bytes": len(content)})
     resource_manifest = {
-        "schema": smoke.RESOURCE_SCHEMA, "version": "0.7.1", "arch": "AMD64",
+        "schema": smoke.RESOURCE_SCHEMA, "version": "0.7.2", "arch": "AMD64",
         "profile": "release", "production_features": {
             "custom-protocol": True, "desktop-smoke": False,
         }, "unsigned": True, "resources": resources,
@@ -176,12 +180,16 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
     resource_bytes = (json.dumps(resource_manifest, sort_keys=True) + "\n").encode()
     (candidate / "release-resources.json").write_bytes(resource_bytes)
     metadata = {
-        "schema": 1, "track": "W5", "version": "0.7.1", "source_sha": "a" * 40,
+        "schema": 2, "track": "W5", "version": "0.7.2", "source_sha": "a" * 40,
         "architecture": "x86_64", "profile": "release", "features": ["custom-protocol"],
         "desktop_smoke": False, "authenticode": "unsigned", "updater": "disabled",
-        "synthetic_upgrade_baseline": "0.7.0",
+        "synthetic_upgrade_baseline": "0.7.1",
         "installer": installer_name, "sha256": digest(installer_data),
-        "desktop_sha256": "b" * 64, "upgrade_fixture_sha256": digest(fixture_data),
+        "desktop_source_sha256": digest(desktop_source),
+        "desktop_payload_sha256": tauri_bundle_hash.nsis_payload_sha256(desktop_source),
+        "baseline_desktop_source_sha256": digest(desktop_source),
+        "baseline_desktop_payload_sha256": tauri_bundle_hash.nsis_payload_sha256(desktop_source),
+        "upgrade_fixture_sha256": digest(fixture_data),
         "synthetic_upgrade_fixture": True,
     }
     (candidate / "candidate.json").write_text(json.dumps(metadata), encoding="utf-8")
@@ -191,8 +199,8 @@ def make_candidate(root: Path) -> tuple[Path, dict[str, object]]:
 def make_historical_baseline(root: Path) -> tuple[Path, dict[str, object]]:
     baseline = root / "historical"
     baseline.mkdir()
-    installer_data = b"historical 0.7.0 installer"
-    installer_name = "Chadex-0.7.0-windows-x64-unsigned-setup.exe"
+    installer_data = b"historical 0.7.1 installer"
+    installer_name = "Chadex-0.7.1-windows-x64-unsigned-setup.exe"
     (baseline / installer_name).write_bytes(installer_data)
     resources = []
     for index, relative in enumerate(sorted(smoke.EXPECTED_RESOURCES)):
@@ -200,7 +208,7 @@ def make_historical_baseline(root: Path) -> tuple[Path, dict[str, object]]:
         resources.append({"relative_path": relative, "sha256": digest(content),
                           "size_bytes": len(content)})
     resource_manifest = {
-        "schema": smoke.RESOURCE_SCHEMA, "version": "0.7.0", "arch": "AMD64",
+        "schema": smoke.RESOURCE_SCHEMA, "version": "0.7.1", "arch": "AMD64",
         "profile": "release", "production_features": {
             "custom-protocol": True, "desktop-smoke": False,
         }, "unsigned": True, "resources": resources,
@@ -208,7 +216,7 @@ def make_historical_baseline(root: Path) -> tuple[Path, dict[str, object]]:
     (baseline / "release-resources.json").write_text(
         json.dumps(resource_manifest, sort_keys=True) + "\n", encoding="utf-8")
     metadata = {
-        "schema": 1, "track": "W5", "version": "0.7.0", "source_sha": "c" * 40,
+        "schema": 1, "track": "W5", "version": "0.7.1", "source_sha": "c" * 40,
         "architecture": "x86_64", "profile": "release", "features": ["custom-protocol"],
         "desktop_smoke": False, "authenticode": "unsigned", "updater": "disabled",
         "installer": installer_name, "sha256": digest(installer_data),
@@ -223,7 +231,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         for exit_code in (0, 0xC0000005):
             with self.subTest(exit_code=exit_code):
                 app = MagicMock()
-                app.poll.return_value = exit_code
+                app.poll.return_value = None
                 app.wait.return_value = exit_code
                 node = MagicMock()
                 node.poll.return_value = 0
@@ -237,17 +245,561 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                         patch.object(smoke.subprocess, "Popen", return_value=node), \
                         patch.object(smoke, "_remember_tree", return_value={}), \
                         patch.object(smoke, "_wait_owned_gone", return_value=[]), \
-                        patch.object(smoke, "validate_probe_result", return_value={"ui_state_ready": True}):
+                        patch.object(smoke, "validate_probe_result", return_value={"ui_state_ready": True}), \
+                        patch.object(smoke, "request_tray_quit") as quit_from_tray:
+                    report = smoke.SmokeReport("win32")
+                    tray_diagnostics = {
+                        name: (False if expected is bool else 0)
+                        for name, expected in smoke.TRAY_DIAGNOSTIC_FIELDS.items()
+                    }
+                    tray_diagnostics["native_callback_post_attempted"] = True
+                    tray_diagnostics["native_callback_post_succeeded"] = True
+                    quit_from_tray.return_value = tray_diagnostics
                     kwargs = dict(powershell="powershell.exe", node="node", groups=[],
-                                  report=smoke.SmokeReport("win32"))
+                                  report=report)
                     args = (Path("install"), Path("project"), Path("."), Path("data"), "0.3.2", "initial")
                     if exit_code == 0:
-                        self.assertEqual(smoke.launch_and_probe(*args, **kwargs), {"ui_state_ready": True, "cdp_policy_removed": True})
+                        with report.stage("initial_installed_launch"):
+                            self.assertEqual(
+                                smoke.launch_and_probe(*args, **kwargs),
+                                {"ui_state_ready": True, "cdp_policy_removed": True})
+                        stage = next(item for item in report.public_value()["stages"]
+                                     if item["name"] == "initial_installed_launch")
+                        self.assertEqual(stage["tray_diagnostics"], tray_diagnostics)
                     else:
                         with self.assertRaises(smoke.SmokeFailure) as failure:
-                            smoke.launch_and_probe(*args, **kwargs)
+                            with report.stage("initial_installed_launch"):
+                                smoke.launch_and_probe(*args, **kwargs)
                         self.assertEqual(failure.exception.code, "installed_app_exit_nonzero")
+                    quit_from_tray.assert_called_once_with("powershell.exe", app.pid)
                 app.wait.assert_called_once_with(timeout=10)
+
+    def test_probe_requires_tray_quit_before_accepting_an_already_exited_app(self) -> None:
+        app = MagicMock()
+        app.poll.return_value = 0
+        app.wait.return_value = 0
+        node = MagicMock()
+        node.poll.return_value = 0
+        node.wait.return_value = 0
+        node.stdout = io.BytesIO(b"{}")
+        node.stderr = io.BytesIO(b"")
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke, "_port", return_value=9222), \
+                patch.object(smoke, "installed_cdp_policy", side_effect=lambda _port: nullcontext()), \
+                patch.object(smoke.suspended, "launch_owned", return_value=app), \
+                patch.object(smoke.subprocess, "Popen", return_value=node), \
+                patch.object(smoke, "_remember_tree", return_value={}), \
+                patch.object(smoke, "_wait_owned_gone", return_value=[]), \
+                patch.object(smoke, "validate_probe_result", return_value={"ui_state_ready": True}), \
+                patch.object(smoke, "request_tray_quit") as quit_from_tray:
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.launch_and_probe(
+                    Path("install"), Path("project"), Path("."), Path("data"), "0.7.2", "initial",
+                    powershell="powershell.exe", node="node", groups=[],
+                    report=smoke.SmokeReport("win32"),
+                )
+        self.assertEqual(failure.exception.code, "installed_app_exited_before_tray_quit")
+        quit_from_tray.assert_not_called()
+
+    def test_tray_quit_driver_requires_exact_success_signal(self) -> None:
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 0, b"tray_quit_sent\n", b"")) as run:
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_quit_failed")
+        args = run.call_args.args[0]
+        self.assertIn("-STA", args)
+        self.assertIn("windows_tray_quit.ps1", args[-3])
+        self.assertEqual(args[-1], "4321")
+        run.assert_called_once()
+
+        diagnostics = {
+            "taskbar_found": True,
+            "same_session_as_shell": True,
+            "notification_scope_count": 1,
+            "overflow_scope_count": 0,
+            "overflow_toggle_count": 1,
+            "overflow_open_attempted": True,
+            "name_match_count": 0,
+            "shell_process_match_count": 0,
+            "visible_match_count": 0,
+            "enabled_match_count": 0,
+            "supported_control_match_count": 0,
+            "candidate_count": 0,
+            "native_window_count": 1,
+            "native_icon_match_count": 0,
+            "native_rect_available": False,
+            "native_rect_root_kind": 0,
+            "native_cursor_matches_rect": False,
+            "native_click_attempted": False,
+            "native_click_down_input_count": 0,
+            "native_click_up_input_count": 0,
+            "native_menu_state_code": 0,
+            "post_input_menu_state_code": 0,
+            "post_input_menu_mode_flags": 0,
+            "post_input_menu_owner_matches_tray": False,
+            "post_callback_menu_state_code": 0,
+            "post_callback_menu_mode_flags": 0,
+            "post_callback_menu_owner_matches_tray": False,
+            "native_callback_post_attempted": False,
+            "native_callback_post_succeeded": False,
+            "native_callback_post_error_code": 0,
+            "foreground_process_grant_attempted": False,
+            "foreground_process_grant_succeeded": False,
+            "foreground_process_grant_error_code": 0,
+            "native_keyboard_fallback_attempted": False,
+            "native_keyboard_fallback_succeeded": False,
+            "native_keyboard_guard_code": 0,
+            "native_keyboard_input_count": 0,
+            "native_keyboard_input_error_code": 0,
+            "post_keyboard_menu_state_code": 0,
+            "preexisting_menu_count": 0,
+            "menu_element_count": 0,
+            "uia_menu_desktop_child_count": 0,
+            "uia_menu_tray_owner_descendant_count": 0,
+            "native_popup_window_count": 0,
+            "uia_menu_popup_handle_root_count": 0,
+            "uia_menu_popup_root_count": 0,
+            "uia_menu_popup_descendant_item_count": 0,
+            "msaa_menu_popup_count": 0,
+            "msaa_menu_child_count": 0,
+            "menu_app_process_count": 0,
+            "menu_exact_owner_count": 0,
+            "menu_exact_item_count": 0,
+            "menu_owner_check_code": 0,
+        }
+        extra_field_diagnostics = dict(diagnostics, unexpected_field=1)
+        missing_field_diagnostics = dict(diagnostics)
+        missing_field_diagnostics.pop("menu_owner_check_code")
+        valid_menu_diagnostics = dict(
+            diagnostics,
+            menu_exact_owner_count=1,
+            menu_exact_item_count=1,
+            menu_owner_check_code=7,
+        )
+        native_state_without_uia = dict(
+            diagnostics,
+            post_callback_menu_state_code=3,
+            post_callback_menu_mode_flags=0x1C,
+            post_callback_menu_owner_matches_tray=True,
+            native_popup_window_count=1,
+            uia_menu_popup_handle_root_count=1,
+        )
+        native_msaa_without_exact_items = dict(
+            native_state_without_uia,
+            msaa_menu_popup_count=1,
+            msaa_menu_child_count=3,
+            menu_exact_owner_count=1,
+            menu_owner_check_code=7,
+        )
+        invalid_success_outputs = (
+            b"tray_quit_sent\ntray_diagnostics={}\nextra\n",
+            b"tray_quit_sent\ntray_diagnostics=not-json\n",
+            b"tray_quit_sent\ntray_diagnostics={}\n",
+            ("tray_quit_sent\ntray_diagnostics=" + json.dumps(extra_field_diagnostics) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" + json.dumps(missing_field_diagnostics) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" + json.dumps(diagnostics) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" +
+             json.dumps(native_state_without_uia) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" +
+             json.dumps(native_msaa_without_exact_items) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" + json.dumps(dict(
+                valid_menu_diagnostics,
+                msaa_menu_popup_count=2,
+                msaa_menu_child_count=3,
+            )) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" + json.dumps(dict(
+                valid_menu_diagnostics,
+                msaa_menu_popup_count=1,
+                msaa_menu_child_count=1,
+            )) + "\n").encode(),
+        )
+        for field in ("menu_exact_owner_count", "menu_exact_item_count", "menu_owner_check_code"):
+            missing_menu_evidence = dict(valid_menu_diagnostics, **{field: 0})
+            invalid_success_outputs += (
+                ("tray_quit_sent\ntray_diagnostics=" +
+                 json.dumps(missing_menu_evidence) + "\n").encode(),
+            )
+        for output in invalid_success_outputs:
+            with self.subTest(output=output), \
+                    patch.object(smoke, "_regular_file"), \
+                    patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                        ["powershell.exe"], 0, output, b"")):
+                with self.assertRaises(smoke.SmokeFailure) as failure:
+                    smoke.request_tray_quit("powershell.exe", 4321)
+                self.assertEqual(failure.exception.code, "tray_quit_failed")
+
+        diagnostic_line = "tray_diagnostics=" + json.dumps(diagnostics, separators=(",", ":"))
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 2,
+                    f"tray_icon_unavailable\n{diagnostic_line}\n".encode(), b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_icon_unavailable")
+        self.assertEqual(failure.exception.tray_diagnostics, diagnostics)
+        report = smoke.SmokeReport("win32")
+        with self.assertRaises(smoke.SmokeFailure):
+            with report.stage("initial_installed_launch"):
+                raise failure.exception
+        stage = next(item for item in report.public_value()["stages"]
+                     if item["name"] == "initial_installed_launch")
+        self.assertEqual(stage["tray_diagnostics"], diagnostics)
+
+        post_failure_diagnostics = dict(
+            diagnostics,
+            native_callback_post_attempted=True,
+            native_callback_post_succeeded=False,
+            native_callback_post_error_code=5,
+            foreground_process_grant_attempted=True,
+            foreground_process_grant_succeeded=True,
+        )
+        failure_output = (
+            "tray_menu_unavailable\n" + "tray_diagnostics=" +
+            json.dumps(post_failure_diagnostics, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 3, failure_output, b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_menu_unavailable")
+        self.assertEqual(failure.exception.tray_diagnostics, post_failure_diagnostics)
+
+        callback_diagnostics = dict(
+            valid_menu_diagnostics,
+            native_icon_match_count=1,
+            native_rect_available=True,
+            native_rect_root_kind=1,
+            native_popup_window_count=1,
+            uia_menu_popup_handle_root_count=1,
+            uia_menu_popup_root_count=0,
+            uia_menu_popup_descendant_item_count=0,
+            msaa_menu_popup_count=1,
+            msaa_menu_child_count=3,
+            native_callback_post_attempted=True,
+            native_callback_post_succeeded=True,
+            foreground_process_grant_attempted=True,
+            foreground_process_grant_succeeded=True,
+        )
+        success_output = (
+            "tray_quit_sent\n" + "tray_diagnostics=" +
+            json.dumps(callback_diagnostics, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 0, success_output, b"")):
+            self.assertEqual(
+                smoke.request_tray_quit("powershell.exe", 4321), callback_diagnostics)
+
+        native_keyboard_diagnostics = dict(
+            valid_menu_diagnostics,
+            menu_exact_item_count=0,
+            native_popup_window_count=1,
+            uia_menu_popup_handle_root_count=1,
+            msaa_menu_popup_count=1,
+            msaa_menu_child_count=0,
+            post_callback_menu_state_code=3,
+            post_callback_menu_mode_flags=0x1C,
+            post_callback_menu_owner_matches_tray=True,
+            native_keyboard_fallback_attempted=True,
+            native_keyboard_fallback_succeeded=True,
+            native_keyboard_guard_code=10,
+            native_keyboard_input_count=6,
+            post_keyboard_menu_state_code=0,
+        )
+        native_keyboard_output = (
+            "tray_quit_sent\n" + "tray_diagnostics=" +
+            json.dumps(native_keyboard_diagnostics, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 0, native_keyboard_output, b"")):
+            self.assertEqual(
+                smoke.request_tray_quit("powershell.exe", 4321), native_keyboard_diagnostics)
+
+        exact_process_exit_diagnostics = dict(
+            native_keyboard_diagnostics,
+            native_keyboard_guard_code=14,
+            post_keyboard_menu_state_code=1,
+        )
+        exact_process_exit_output = (
+            "tray_quit_sent\ntray_diagnostics=" +
+            json.dumps(exact_process_exit_diagnostics, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 0, exact_process_exit_output, b"")):
+            self.assertEqual(
+                smoke.request_tray_quit("powershell.exe", 4321), exact_process_exit_diagnostics)
+
+        keyboard_guard_failure = dict(
+            native_keyboard_diagnostics,
+            native_keyboard_fallback_succeeded=False,
+            native_keyboard_guard_code=9,
+            native_keyboard_input_count=0,
+        )
+        keyboard_guard_output = (
+            "tray_menu_unavailable\ntray_diagnostics=" +
+            json.dumps(keyboard_guard_failure, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 3, keyboard_guard_output, b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_menu_unavailable")
+        self.assertEqual(failure.exception.tray_diagnostics["native_keyboard_guard_code"], 9)
+
+        foreground_grant_failure = dict(
+            diagnostics,
+            foreground_process_grant_attempted=True,
+            foreground_process_grant_succeeded=False,
+            foreground_process_grant_error_code=5,
+        )
+        foreground_grant_output = (
+            "tray_menu_unavailable\ntray_diagnostics=" +
+            json.dumps(foreground_grant_failure, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 3, foreground_grant_output, b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_menu_unavailable")
+        self.assertEqual(
+            failure.exception.tray_diagnostics["foreground_process_grant_error_code"], 5)
+        self.assertFalse(failure.exception.tray_diagnostics["native_callback_post_attempted"])
+        self.assertFalse(failure.exception.tray_diagnostics["native_keyboard_fallback_attempted"])
+
+        for invalid in (
+                dict(native_keyboard_diagnostics, native_keyboard_fallback_succeeded=False),
+                dict(native_keyboard_diagnostics, native_keyboard_input_count=3),
+                dict(native_keyboard_diagnostics, post_callback_menu_owner_matches_tray=False),
+                dict(native_keyboard_diagnostics, native_keyboard_guard_code=9),
+                dict(native_keyboard_diagnostics, native_keyboard_input_error_code=5),
+                dict(native_keyboard_diagnostics, post_keyboard_menu_state_code=3)):
+            invalid_output = (
+                "tray_quit_sent\n" + "tray_diagnostics=" +
+                json.dumps(invalid, separators=(",", ":")) + "\n"
+            ).encode()
+            with patch.object(smoke, "_regular_file"), \
+                    patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                        ["powershell.exe"], 0, invalid_output, b"")):
+                with self.assertRaises(smoke.SmokeFailure) as failure:
+                    smoke.request_tray_quit("powershell.exe", 4321)
+                self.assertEqual(failure.exception.code, "tray_quit_failed")
+
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 0, b"tray_quit_sent\n", b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_quit_failed")
+
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 2,
+                    b'tray_icon_unavailable\ntray_diagnostics={"pid":4321}\n', b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_quit_failed")
+        self.assertIsNone(failure.exception.tray_diagnostics)
+        for code in ("tray_app_unavailable", "tray_taskbar_unavailable", "tray_menu_unavailable",
+                     "tray_icon_unavailable", "tray_quit_failed"):
+            with self.subTest(code=code):
+                completed = smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 2,
+                    f"{code}\ntray_diagnostics=".encode() +
+                    json.dumps(diagnostics, separators=(",", ":")).encode() + b"\n", b"")
+                with patch.object(smoke, "_regular_file"):
+                    with patch.object(smoke.subprocess, "run", return_value=completed):
+                        with self.assertRaises(smoke.SmokeFailure) as failure:
+                            smoke.request_tray_quit("powershell.exe", 4321)
+                self.assertEqual(failure.exception.code, code)
+                self.assertEqual(failure.exception.tray_diagnostics, diagnostics)
+                malformed = smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 2, f"{code}\n".encode(), b"")
+                with patch.object(smoke, "_regular_file"), \
+                        patch.object(smoke.subprocess, "run", return_value=malformed):
+                    with self.assertRaises(smoke.SmokeFailure) as failure:
+                        smoke.request_tray_quit("powershell.exe", 4321)
+                self.assertEqual(failure.exception.code, "tray_quit_failed")
+
+    def test_tray_driver_scopes_and_owner_checks_native_quit_without_killing(self) -> None:
+        script = (Path(__file__).with_name("windows_tray_quit.ps1")
+                  .read_text(encoding="utf-8"))
+        self.assertIn('"TrayNotifyWnd"', script)
+        self.assertIn('"NotifyIconOverflowWindow"', script)
+        self.assertIn('"tray_app_unavailable"', script)
+        self.assertIn('Write-TrayFailure "tray_app_unavailable"', script)
+        self.assertIn('Write-TrayFailure "tray_taskbar_unavailable"', script)
+        self.assertIn('Write-TrayFailure "tray_quit_failed"', script)
+        self.assertNotIn('[Console]::Out.WriteLine("tray_app_unavailable")', script)
+        self.assertNotIn('[Console]::Out.WriteLine("tray_taskbar_unavailable")', script)
+        self.assertNotIn('[Console]::Out.WriteLine("tray_quit_failed")', script)
+        self.assertIn('"tray_taskbar_unavailable"', script)
+        self.assertIn('"tray_icon_unavailable"', script)
+        self.assertIn('"tray_diagnostics="', script)
+        self.assertIn("Wait-ChadexMenu", script)
+        self.assertIn("MenuOwnerCheckCode", script)
+        self.assertIn("EnumThreadWindows", script)
+        self.assertIn('className.ToString() != "#32768"', script)
+        self.assertIn("FindActivePopupMenuWindows", script)
+        self.assertIn("uia_menu_popup_handle_root_count", script)
+        self.assertIn("uia_menu_popup_root_count", script)
+        self.assertIn("uia_menu_popup_descendant_item_count", script)
+        self.assertIn("Root = $null", script)
+        self.assertIn("if ($null -ne $popupEntry.Root)", script)
+        self.assertIn("$rootRole -ne 11", script)
+        self.assertIn("$script:TrayDiagnostics.menu_exact_owner_count -gt 1", script)
+        self.assertIn("$activePopupHandles.Count -eq 1", script)
+        self.assertIn("$selection.Show.Element.Current", script)
+        self.assertIn("$selection.Quit.Element.Current", script)
+        self.assertIn("$script:TrayDiagnostics.menu_exact_owner_count = $activePopupHandles.Count", script)
+        self.assertIn("AccessibleObjectFromWindow", script)
+        self.assertIn("GetAccessiblePopupMenu", script)
+        self.assertIn("$accessible.accChildCount", script)
+        self.assertIn("$accessible.get_accName($childId)", script)
+        self.assertIn("$accessible.get_accRole($childId)", script)
+        self.assertIn("$accessible.get_accState($childId)", script)
+        self.assertIn("$childCount -lt 0 -or $childCount -gt 256", script)
+        self.assertIn("$role -ne 12", script)
+        self.assertIn("$showItems.Count -ne 1 -or $quitItems.Count -ne 1", script)
+        self.assertIn("($state -band 0x00000001) -eq 0", script)
+        self.assertIn("($state -band 0x00018000) -ne 0", script)
+        self.assertIn("$accessible.accDoDefaultAction($quitItems[0].ChildId)", script)
+        self.assertIn("$popupItems.Count -eq 0", script)
+        self.assertIn('Backend = "msaa"', script)
+        self.assertNotIn("WM_COMMAND", script)
+        self.assertIn("TreeScope]::Descendants", script)
+        self.assertIn("$popupEntry.Root.FindAll(", script)
+        self.assertIn("$popupEntry.Handle, [uint32]$AppProcessId", script)
+        self.assertIn("PopupHandle = $popupEntry.Handle", script)
+        self.assertIn("$script:TrayDiagnostics.menu_exact_owner_count = 0", script)
+        self.assertIn("$activePopupHandles -contains $selection.PopupHandle", script)
+        self.assertIn('$showCurrent.Name -cne "Show Chadex"', script)
+        self.assertIn('$quitCurrent.Name -cne "Quit"', script)
+        self.assertIn("$selection.PopupHandle", script)
+        self.assertIn('ownerClass.ToString() != "tray_icon_app"', script)
+        self.assertIn("Shell_NotifyIconGetRect", script)
+        self.assertIn("Shell_NotifyIconGetRect(ref identifier, out rect) == 0", script)
+        self.assertIn("FindTrayIconWindows([uint32]$AppProcessId)", script)
+        self.assertIn("if ($trayWindows.Count -ne 1)", script)
+        self.assertIn("ShellTrayRootKind(", script)
+        self.assertIn("native_icon_match_count", script)
+        self.assertIn("native_click_down_input_count", script)
+        self.assertIn("$script:TrayDiagnostics.native_click_down_input_count -eq 1", script)
+        self.assertIn("$script:TrayDiagnostics.native_click_up_input_count -eq 1", script)
+        self.assertIn("if (-not $script:TrayDiagnostics.native_cursor_matches_rect)", script)
+        self.assertIn("$null = Find-ChadexMenu", script)
+        self.assertIn("$script:TrayDiagnostics.menu_exact_owner_count -gt 0", script)
+        self.assertIn("if ($ownerCode -ne 7)", script)
+        self.assertIn("$showItems[0].Current.IsEnabled", script)
+        self.assertIn("$showItems[0].Current.IsOffscreen", script)
+        self.assertIn("SendInput", script)
+        self.assertIn("menu_owner_check_code", script)
+        self.assertIn("IntPtr expectedOwnerHwnd", script)
+        self.assertIn("$nativeIcon.Window -ne $script:ExpectedTrayWindow", script)
+        self.assertIn("if (-not $script:TrayDiagnostics.same_session_as_shell)", script)
+        self.assertIn('Invoke-Element $selection.Quit', script)
+        self.assertNotIn("Stop-Process", script)
+        self.assertNotIn("taskkill", script.lower())
+
+    def test_tray_callback_fallback_matches_pinned_dependency_source_contract(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        lockfile = (root / "apps/windows/src-tauri/Cargo.lock").read_text(encoding="utf-8")
+        packages = re.findall(
+            r"(?ms)^\[\[package\]\]\n(.*?)(?=^\[\[package\]\]|\Z)", lockfile)
+        tray_packages = [block for block in packages if re.search(r'(?m)^name = "tray-icon"$', block)]
+        self.assertEqual(len(tray_packages), 1)
+        self.assertRegex(tray_packages[0], r'(?m)^version = "0\.25\.1"$')
+        self.assertRegex(
+            tray_packages[0],
+            r'(?m)^checksum = "b2b9c52859a94554803ccd4a24b98f74148ebc73b90676d783f3490b1bff9d72"$')
+
+        app_source = (root / "apps/windows/src-tauri/src/main.rs").read_text(encoding="utf-8")
+        self.assertIn('TrayIconBuilder::with_id("chadex")', app_source)
+        self.assertIn(".menu(&menu)", app_source)
+        self.assertNotIn("with_menu_on_right_click(false)", app_source)
+        show_item = app_source.index('MenuItem::with_id(app, "show", "Show Chadex"')
+        quit_item = app_source.index('MenuItem::with_id(app, "quit", "Quit"')
+        self.assertLess(show_item, quit_item)
+        self.assertIn("Menu::with_items(app, &[&show, &quit])", app_source)
+
+        script = (root / "scripts/windows_tray_quit.ps1").read_text(encoding="utf-8")
+        self.assertIn("PostTrayRightButtonUp", script)
+        self.assertIn("PostMessage(hwnd, 6002, new UIntPtr(iconId), new IntPtr(0x0205))", script)
+        self.assertIn("Marshal.GetLastWin32Error()", script)
+        self.assertIn("ActiveMenuStateCode", script)
+        self.assertIn("$script:TrayDiagnostics.native_menu_state_code -ne 0", script)
+        self.assertIn("ReadMenuState", script)
+        self.assertIn("Record-NativeMenuState", script)
+        self.assertIn('Record-NativeMenuState "post_input"', script)
+        self.assertIn('Record-NativeMenuState "post_callback"', script)
+        self.assertIn("post_callback_menu_state_code", script)
+        self.assertIn("uia_menu_tray_owner_descendant_count", script)
+        self.assertIn("AutomationElement]::FromHandle(", script)
+        self.assertIn("[System.Windows.Automation.TreeScope]::Descendants, $condition", script)
+        self.assertIn("$ownerCode -ne 7", script)
+        self.assertIn("native_callback_post_error_code", script)
+        self.assertIn("AllowSetForegroundWindow(uint processId)", script)
+        self.assertIn("AllowExactProcessForeground(uint processId, out int errorCode)", script)
+        self.assertIn("foreground_process_grant_attempted", script)
+        self.assertIn("foreground_process_grant_succeeded", script)
+        self.assertNotIn("AllowSetForegroundWindow(uint.MaxValue)", script)
+        callback_fallback = script[
+            script.index("function Invoke-NativeTrayCallbackFallback"):
+            script.index("function Invoke-NativeMenuQuitFallback")
+        ]
+        self.assertLess(
+            callback_fallback.index("AllowExactProcessForeground("),
+            callback_fallback.index("PostTrayRightButtonUp("))
+        self.assertLess(
+            callback_fallback.index(
+                "if (-not $script:TrayDiagnostics.foreground_process_grant_succeeded)"),
+            callback_fallback.index("native_callback_post_attempted = $true"))
+        self.assertIn("if (-not (Test-AppIdentity) -or", callback_fallback)
+        self.assertEqual(script.count("if (-not (Invoke-NativeTrayCallbackFallback))"), 2)
+        self.assertEqual(script.count("if (-not (Invoke-NativeMenuQuitFallback))"), 2)
+        self.assertIn("GetForegroundWindow()", script)
+        self.assertIn("foregroundThreadId != ownerThreadId", script)
+        self.assertIn("MenuOwnerCheckCode(expectedPopupHwnd, expectedProcessId, expectedOwnerHwnd) != 7", script)
+        self.assertIn("(menuInfo.flags & 0x10) == 0", script)
+        self.assertIn("virtualKey = 0x28", script)
+        self.assertIn("virtualKey = 0x0D", script)
+        self.assertIn("SendInput(6, inputs", script)
+        self.assertIn("[StructLayout(LayoutKind.Explicit)]", script)
+        self.assertIn("[FieldOffset(0)] public MouseInput mouse", script)
+        self.assertIn("[FieldOffset(0)] public KeyboardInput keyboard", script)
+        keyboard_sequence = script[script.index("var inputs = new[] {"):script.index("sentCount = (int)SendInput(6, inputs")]
+        self.assertEqual(keyboard_sequence.count("virtualKey = 0x28"), 4)
+        self.assertLess(keyboard_sequence.index("virtualKey = 0x28"),
+                        keyboard_sequence.index("virtualKey = 0x0D"))
+        self.assertEqual(keyboard_sequence.count("flags = 0x0002"), 3)
+        self.assertIn("native_keyboard_fallback_attempted", script)
+        self.assertIn("native_keyboard_fallback_succeeded", script)
+        self.assertIn("out int sentCount, out int errorCode, out int guardCode, out int menuStateCode", script)
+        self.assertIn("post_keyboard_menu_state_code", script)
+        self.assertIn("ActiveMenuStateCode(expectedProcessId, expectedOwnerHwnd)", script)
+        self.assertIn("End is not part of the documented standard menu keyboard interface.", script)
+        self.assertIn("$process.HasExited", script)
+        for guard_code in range(1, 12):
+            self.assertIn(f"guardCode = {guard_code};", script)
+        self.assertIn("guardCode = menuStateCode == 3 ? 12 : 13;", script)
+        self.assertIn("$guardCode = 14", script)
+        self.assertIn("native_keyboard_guard_code", script)
+        self.assertIn("native_keyboard_input_count", script)
+        self.assertIn("$nativeIcon.Window -ne $script:ExpectedTrayWindow", script)
+        self.assertIn("[uint32]$nativeIcon.IconId", script)
+        self.assertIn('$_.Current.Name -ceq "Show Chadex"', script)
+        self.assertIn('$_.Current.Name -ceq "Quit"', script)
+        self.assertIn("$quitItems[0].Current.IsEnabled", script)
+        self.assertIn("$quitItems[0].Current.IsOffscreen", script)
+        self.assertIn('Invoke-Element $selection.Quit', script)
+        self.assertNotIn("show_tray_menu", script)
+        self.assertNotIn("app.exit(0)", script)
 
     def test_candidate_accepts_manifest_only_resources_and_checks_both_installer_hashes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -255,19 +807,39 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             candidate_dir, candidate_json = make_candidate(root)
             candidate = smoke.validate_candidate(candidate_dir)
             self.assertEqual(candidate["source_sha"], "a" * 40)
-            self.assertEqual(candidate["baseline_version"], "0.7.0")
+            self.assertEqual(candidate["baseline_version"], "0.7.1")
+            self.assertEqual(candidate["desktop_source_hash"], candidate_json["desktop_source_sha256"])
+            self.assertEqual(candidate["baseline_desktop_hash"], candidate_json["baseline_desktop_payload_sha256"])
+            baseline = smoke.synthetic_baseline(candidate)
+            self.assertEqual(baseline["desktop_hash"], candidate_json["baseline_desktop_payload_sha256"])
+            distinct_hashes = dict(candidate, desktop_hash="a" * 64, baseline_desktop_hash="b" * 64)
+            self.assertEqual(smoke.synthetic_baseline(distinct_hashes)["desktop_hash"], "b" * 64)
             self.assertEqual(len(candidate["resources"]["resources"]), 7)
             self.assertEqual({path.name for path in candidate_dir.iterdir()}, {
                 candidate_json["installer"], "candidate.json", "release-resources.json",
                 "upgrade-fixture",
             })
 
+            candidate_json["schema"] = 1
+            (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.validate_candidate(candidate_dir)
+            self.assertEqual(failure.exception.code, "candidate_metadata_invalid")
+            candidate_json["schema"] = 2
+
             candidate_json["synthetic_upgrade_baseline"] = candidate_json["version"]
             (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
             with self.assertRaises(smoke.SmokeFailure) as failure:
                 smoke.validate_candidate(candidate_dir)
             self.assertEqual(failure.exception.code, "candidate_metadata_invalid")
-            candidate_json["synthetic_upgrade_baseline"] = "0.7.0"
+            candidate_json["synthetic_upgrade_baseline"] = "0.7.1"
+
+            candidate_json["baseline_desktop_source_sha256"] = "0" * 64
+            (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.validate_candidate(candidate_dir)
+            self.assertEqual(failure.exception.code, "candidate_hash_invalid")
+            candidate_json["baseline_desktop_source_sha256"] = candidate_json["desktop_source_sha256"]
 
             candidate_json["upgrade_fixture_sha256"] = "0" * 64
             (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
@@ -279,7 +851,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             (candidate_dir / "candidate.json").write_text(json.dumps(candidate_json))
             (candidate_dir / "upgrade-fixture" / "baseline-setup.exe").unlink()
             candidate = smoke.validate_candidate(candidate_dir, require_synthetic_fixture=False)
-            self.assertEqual(candidate["version"], "0.7.1")
+            self.assertEqual(candidate["version"], "0.7.2")
             with self.assertRaises(smoke.SmokeFailure) as failure:
                 smoke.validate_candidate(candidate_dir)
             self.assertEqual(failure.exception.code, "candidate_fixture_missing")
@@ -288,16 +860,16 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             baseline_dir, metadata = make_historical_baseline(root)
-            baseline = smoke.validate_historical_baseline(baseline_dir, "0.7.1")
-            self.assertEqual(baseline["version"], "0.7.0")
+            baseline = smoke.validate_historical_baseline(baseline_dir, "0.7.2")
+            self.assertEqual(baseline["version"], "0.7.1")
             self.assertEqual(baseline["source_sha"], "c" * 40)
-            self.assertEqual(baseline["resources"]["version"], "0.7.0")
+            self.assertEqual(baseline["resources"]["version"], "0.7.1")
             self.assertEqual(len(baseline["resources"]["resources"]), 7)
 
-            metadata["version"] = "0.7.1"
+            metadata["version"] = "0.7.2"
             (baseline_dir / "candidate.json").write_text(json.dumps(metadata), encoding="utf-8")
             with self.assertRaises(smoke.SmokeFailure) as failure:
-                smoke.validate_historical_baseline(baseline_dir, "0.7.1")
+                smoke.validate_historical_baseline(baseline_dir, "0.7.2")
             self.assertEqual(failure.exception.code, "candidate_metadata_invalid")
 
     def test_candidate_rejects_traversal_and_installer_hash_mismatch(self) -> None:
@@ -384,10 +956,34 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             self.assertEqual(failure.exception.code, "installed_path_mismatch")
 
             first = install / "helper" / "chadex-helper.exe"
+            original_resource = first.read_bytes()
             first.write_bytes(b"tampered")
+            report = smoke.SmokeReport("win32")
             with self.assertRaises(smoke.SmokeFailure) as failure:
-                smoke.verify_installed_resources(install, manifest, digest(manifest_bytes), digest(desktop))
-            self.assertEqual(failure.exception.code, "resource_hash_mismatch")
+                with report.stage("baseline_resource_verification"):
+                    smoke.verify_installed_resources(
+                        install, manifest, digest(manifest_bytes), digest(desktop))
+            self.assertEqual(failure.exception.code, "installed_resource_hash_mismatch")
+            self.assertEqual(failure.exception.resource_relative_path, "helper/chadex-helper.exe")
+            safe = report.public_value()
+            failed_stage = next(item for item in safe["stages"]
+                                if item["name"] == "baseline_resource_verification")
+            self.assertEqual(failed_stage["resource_relative_path"], "helper/chadex-helper.exe")
+            self.assertNotIn(str(root), json.dumps(safe))
+
+            first.write_bytes(original_resource)
+            (install / "release-resources.json").write_bytes(b"tampered manifest")
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.verify_installed_resources(
+                    install, manifest, digest(manifest_bytes), digest(desktop))
+            self.assertEqual(failure.exception.code, "installed_manifest_hash_mismatch")
+            (install / "release-resources.json").write_bytes(manifest_bytes)
+
+            (install / "Chadex.exe").write_bytes(b"tampered desktop")
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.verify_installed_resources(
+                    install, manifest, digest(manifest_bytes), digest(desktop))
+            self.assertEqual(failure.exception.code, "installed_desktop_hash_mismatch")
 
     def test_registry_install_location_accepts_only_matched_outer_quotes(self) -> None:
         install = Path(r"C:\runner\安裝 Chadex")
@@ -624,6 +1220,53 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         for secret in ("C:\\private", "--token secret", '"credential": "secret"', "raw exception"):
             self.assertNotIn(secret, payload)
         self.assertEqual(report.public_value()["upgrade_type"], "synthetic_metadata_upgrade")
+
+
+class TauriNsisPayloadHashTests(unittest.TestCase):
+    def test_matches_tauri_first_marker_replacement_without_mutating_input(self) -> None:
+        marker = tauri_bundle_hash.BUNDLE_TYPE_UNKNOWN
+        binary = b"prefix" + marker + b"middle" + marker + b"suffix"
+        expected_payload = binary.replace(marker, tauri_bundle_hash.BUNDLE_TYPE_NSIS, 1)
+        self.assertEqual(tauri_bundle_hash.patch_nsis_bundle_type(binary), expected_payload)
+        self.assertEqual(tauri_bundle_hash.nsis_payload_sha256(binary), digest(expected_payload))
+        self.assertEqual(binary.count(marker), 2)
+
+    def test_cli_hashes_the_transformed_binary(self) -> None:
+        binary = b"MZ" + tauri_bundle_hash.BUNDLE_TYPE_UNKNOWN + b"payload"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "Chadex.exe"
+            path.write_bytes(binary)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = tauri_bundle_hash.main(["--path", str(path)])
+        self.assertEqual(result, 0)
+        self.assertEqual(output.getvalue().strip(), tauri_bundle_hash.nsis_payload_sha256(binary))
+
+    def test_missing_marker_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "bundle_type_marker_missing"):
+            tauri_bundle_hash.patch_nsis_bundle_type(b"MZ binary without a Tauri marker")
+
+    def test_installed_binary_must_match_derived_full_nsis_payload_hash(self) -> None:
+        raw_binary = b"MZ original " + tauri_bundle_hash.BUNDLE_TYPE_UNKNOWN + b" bytes"
+        bundled_binary = tauri_bundle_hash.patch_nsis_bundle_type(raw_binary)
+        with tempfile.TemporaryDirectory() as directory:
+            install = Path(directory) / "install"
+            install.mkdir()
+            (install / "Chadex.exe").write_bytes(bundled_binary)
+            manifest_bytes = b'{"resources":[]}'
+            (install / "release-resources.json").write_bytes(manifest_bytes)
+            smoke.verify_installed_resources(
+                install, {"resources": []}, digest(manifest_bytes),
+                tauri_bundle_hash.nsis_payload_sha256(raw_binary),
+            )
+
+            (install / "Chadex.exe").write_bytes(raw_binary)
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.verify_installed_resources(
+                    install, {"resources": []}, digest(manifest_bytes),
+                    tauri_bundle_hash.nsis_payload_sha256(raw_binary),
+                )
+            self.assertEqual(failure.exception.code, "installed_desktop_hash_mismatch")
 
 
 if __name__ == "__main__":

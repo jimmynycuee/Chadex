@@ -819,6 +819,10 @@
 "planGoal.start.chatgpt.confirmTitle" = "Approve revision %d and run in ChatGPT?";
 "planGoal.start.chatgpt.goalRequest.confirmTitle" = "Run this Goal in ChatGPT?";
 "planGoal.start.chatgpt.confirmMessage" = "Plan: %@\nRevision %d, hash %@. Only this exact revision is approved. This does not use Codex quota. Keep the ChatGPT conversation open, and after confirming, go back to ChatGPT and say \"start\".";
+"planGoal.start.inFlight" = "Starting Goal…";
+"planGoal.start.checking" = "Unable to confirm whether the Goal started; checking its status…";
+"planGoal.start.started" = "Goal started";
+"planGoal.start.viewRun" = "View run";
 "planGoal.mode" = "Mode: %@";
 "planGoal.mode.codex" = "Codex";
 "planGoal.mode.chatgpt" = "ChatGPT";
@@ -869,3 +873,94 @@
 "planGoal.skillExport.needTunnel" = "Set a valid Tunnel ID in Settings first.";
 "planGoal.skillExport.done" = "Exported to %@. In ChatGPT open Settings → Skills and upload both zips, replacing the old ones. The zips contain your personal tunnel address, so do not share them.";
 "planGoal.skillExport.failed" = "Export failed: %@";
+
+/* Goal reliability and acceptance review */
+"planGoal.blockerDetails" = "Blocking details";
+"planGoal.stateReason" = "State reason";
+"planGoal.progressUnavailable" = "Checkpoint and acceptance progress are not available in this status response.";
+"planGoal.retryAcceptance" = "Retry acceptance from checkpoint";
+"planGoal.retryAcceptance.confirmTitle" = "Retry acceptance from this checkpoint?";
+"planGoal.retryAcceptance.confirmMessage" = "Chadex will ask the trusted Goal operator to validate the blocker and rerun acceptance from checkpoint %@. This does not resume the agent or replay an unknown outcome. The operator may reject the retry if the environment is not recoverable.";
+"planGoal.chatgpt.localValidationNote" = "ChatGPT handles code changes. The local runner and sandbox execute acceptance checks; this does not switch to a Codex coding agent or use Codex model quota.";
+"planGoal.acceptanceEditor.open" = "Review acceptance JSON…";
+"planGoal.acceptanceEditor.title" = "Acceptance and execution policy";
+"planGoal.acceptanceEditor.scopeNote" = "This editor changes a local draft only. A server proposal, revision hash, full server comparison, and a separate approval confirmation are required before any acceptance change takes effect.";
+"planGoal.acceptanceEditor.current" = "Current full spec JSON";
+"planGoal.acceptanceEditor.proposed" = "Proposed full spec JSON";
+"planGoal.acceptanceEditor.invalidJSON" = "Enter valid JSON to review the comparison.";
+"planGoal.acceptanceEditor.noChanges" = "The proposed JSON matches the current acceptance.";
+"planGoal.acceptanceEditor.policyPending" = "Edit the acceptance, workspace requirements, and dependency provenance together. All three arrays are sent in every proposal.";
+"planGoal.acceptanceEditor.review" = "Review full comparison";
+"planGoal.acceptanceEditor.back" = "Back to edit";
+"planGoal.acceptanceEditor.done" = "Done";
+
+/* Goal progress and server-reviewed acceptance revisions */
+"planGoal.committedRounds" = "Committed rounds: %d";
+"planGoal.completedAcceptanceRounds" = "Completed acceptance rounds: %d";
+"planGoal.currentAttempt" = "Current attempt";
+"planGoal.checkpointSha" = "Checkpoint Git object ID: %@";
+"planGoal.acceptanceRevision" = "Acceptance revision: %d";
+"planGoal.acceptanceEditor.policyUnchanged" = "The object must contain acceptance, workspace_requirements, and dependencies as arrays. Existing values are preloaded; omitting a key or using a non-array is rejected.";
+"planGoal.acceptanceEditor.arrayRequired" = "Enter one JSON object with exactly acceptance, workspace_requirements, and dependencies arrays.";
+"planGoal.acceptanceEditor.propose" = "Propose acceptance revision";
+"planGoal.acceptanceEditor.proposing" = "Submitting proposal…";
+"planGoal.acceptanceEditor.serverRevision" = "Server proposal · revision %d";
+"planGoal.acceptanceEditor.serverHash" = "Server spec SHA-256: %@";
+"planGoal.acceptanceEditor.serverProposed" = "Server-proposed full spec";
+"planGoal.acceptanceEditor.createdAt" = "Created: %@";
+"planGoal.acceptanceEditor.comparisonUnavailable" = "The server response did not include the complete acceptance and manifest spec; approval is disabled.";
+"planGoal.acceptanceEditor.approveRevision" = "Review approval for revision %d…";
+"planGoal.acceptanceEditor.approvalConfirmTitle" = "Approve this server acceptance revision?";
+"planGoal.acceptanceEditor.approvalConfirmMessage" = "Source revision %d → proposed revision %d · SHA-256 %@ · proposal %@. Confirm only after reviewing the complete current and proposed acceptance plus both manifests.";
+"planGoal.acceptanceEditor.confirmApproval" = "Confirm approval";
+"planGoal.acceptanceEditor.approving" = "Approving server revision…";
+"planGoal.acceptanceEditor.approved" = "Acceptance revision approved";
+"planGoal.acceptanceEditor.missingProposal" = "The trusted operator did not return a pending acceptance proposal.";
+"planGoal.acceptanceEditor.proposalFailed" = "Could not create an acceptance proposal.";
+"planGoal.acceptanceEditor.approvalFailed" = "Could not approve the acceptance revision.";
+"planGoal.unknownOutcome.noRetry" = "This operation has an unknown outcome. Review the worktree and operation record; acceptance retry is disabled to prevent replay.";
+"planGoal.blockingEvidence" = "Structured blocking evidence";
+"planGoal.blockingCheck" = "Blocking check: %@";
+"planGoal.blockingExecutable" = "Executable: %@";
+"planGoal.blockingRepair" = "Suggested repair: %@";
+"planGoal.blockingCause" = "Cause: %@";
+"planGoal.acceptance.laneKind" = "Lane: %@ · kind: %@";
+"planGoal.acceptance.loopbackPorts" = "Loopback ports: %@";
+"planGoal.acceptance.dependsOn" = "Depends on: %@";
+"planGoal.acceptance.externalGate" = "External gate";
+"planGoal.acceptance.gateOwner" = "Owner: %@";
+"planGoal.acceptance.gateAction" = "Action: %@";
+"planGoal.acceptance.gateEvidence" = "Evidence: %@";
+"planGoal.acceptance.gateNextStep" = "Next step: %@";
+"planGoal.acceptanceEditor.proposalId" = "Proposal ID: %@";
+"planGoal.acceptanceEditor.sourceRevision" = "Source acceptance revision: %d";
+"planGoal.acceptanceEditor.checkpointHash" = "Source checkpoint Git object ID: %@";
+"planGoal.acceptanceEditor.sourceHash" = "Source acceptance SHA-256: %@";
+"planGoal.acceptanceEditor.proposedHash" = "Proposed acceptance SHA-256: %@";
+"planGoal.acceptanceEditor.invalidProposal" = "The trusted operator returned an incomplete or mismatched proposal.";
+"planGoal.workspaceRequirements" = "Workspace requirements";
+"planGoal.dependencies" = "Dependencies and provenance";
+"planGoal.manifest.none" = "None declared (empty manifest).";
+"planGoal.manifest.notProvided" = "This revision did not provide this manifest.";
+"planGoal.workspaceRequirement.sourcePath" = "Source: %@";
+"planGoal.workspaceRequirement.sourceSha256" = "Source SHA-256: %@";
+"planGoal.workspaceRequirement.destinationPath" = "Destination: %@";
+"planGoal.workspaceRequirement.permission" = "Permission: %@";
+"planGoal.dependency.path" = "Path: %@";
+"planGoal.dependency.provenance" = "Provenance: %@";
+"planGoal.acceptanceEditor.manifestUnavailable" = "Cannot propose safely because this status omitted the current workspace requirements or dependencies.";
+"planGoal.acceptanceEditor.revisionUnavailable" = "The current acceptance revision is missing, so this editor cannot create a stale-safe proposal.";
+"planGoal.acceptanceEditor.sourceRevisionChanged" = "The source acceptance revision changed or could not be verified. Close this editor and reopen it to load the current revision.";
+"planGoal.acceptanceRevisions" = "Acceptance revision history";
+"planGoal.retryAcceptance.runnerConfirmationPending" = "This Goal has committed rounds but no valid checkpoint Git object ID. Verify the existing checkpoint before retrying acceptance or editing its policy.";
+"planGoal.adoptCheckpoint" = "Verify existing checkpoint";
+"planGoal.adoptCheckpoint.confirmTitle" = "Verify and record this existing checkpoint?";
+"planGoal.adoptCheckpoint.confirmMessage" = "The trusted operator will inspect Git HEAD, the Goal journal, and the diff, then record checkpoint metadata for %d committed round(s). This does not start or resume the Goal, rerun the agent, or run acceptance.";
+
+"planGoal.acceptance.containerImage" = "Private container image: %@ (no host or external network)";
+
+"planGoal.retryPreparation" = "Retry preparation";
+
+"planGoal.retryPreparation.confirmTitle" = "Retry Goal preparation?";
+
+"planGoal.retryPreparation.confirmMessage" = "No agent or checkpoint operation has started. After repairing the declared environment, retry preparation of the same Goal and original budget.";

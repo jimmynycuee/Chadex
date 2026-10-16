@@ -65,7 +65,8 @@ SAFE_CODES = frozenset({
     "candidate_filename_unsafe", "candidate_hash_invalid", "candidate_hash_mismatch",
     "candidate_metadata_invalid", "candidate_fixture_missing",
     "resource_manifest_missing", "resource_manifest_invalid", "resource_path_unsafe",
-    "resource_file_missing", "resource_hash_mismatch", "resource_set_invalid",
+    "resource_file_missing", "resource_hash_mismatch", "installed_resource_hash_mismatch",
+    "installed_manifest_hash_mismatch", "installed_desktop_hash_mismatch", "resource_set_invalid",
     "runner_tool_missing", "probe_script_missing", "fixture_setup_failed",
     "fixture_cleanup_failed", "fixture_reparse_point", "installer_spawn_failed",
     "installer_timeout", "installer_exit_nonzero", "installer_processes_remain",
@@ -77,13 +78,71 @@ SAFE_CODES = frozenset({
     "installed_helper_identity_unowned", "installed_helper_identity_changed",
     "installed_runtime_not_ready", "installed_ui_not_rendered",
     "installed_preferences_not_restored", "installed_smoke_ipc_exposed",
-    "installed_processes_remain", "installed_app_exit_nonzero", "process_inventory_failed", "process_inventory_timeout", "process_cleanup_failed",
+    "installed_processes_remain", "installed_app_exit_nonzero", "installed_app_exited_before_tray_quit",
+    "tray_quit_driver_missing", "tray_quit_timeout", "tray_app_unavailable",
+    "tray_taskbar_unavailable", "tray_icon_unavailable", "tray_menu_unavailable",
+    "tray_quit_failed", "process_inventory_failed", "process_inventory_timeout", "process_cleanup_failed",
     "node_cleanup_failed", "owned_processes_remain", "forced_cleanup_required",
     "appdata_missing", "appdata_snapshot_invalid", "appdata_changed",
     "preferences_missing", "preferences_changed", "project_marker_changed",
     "unexpected_appdata_created", "data_cleanup_failed", "unexpected_exception",
     "unclassified",
 })
+TRAY_DIAGNOSTIC_FIELDS = {
+    "taskbar_found": bool,
+    "same_session_as_shell": bool,
+    "notification_scope_count": int,
+    "overflow_scope_count": int,
+    "overflow_toggle_count": int,
+    "overflow_open_attempted": bool,
+    "name_match_count": int,
+    "shell_process_match_count": int,
+    "visible_match_count": int,
+    "enabled_match_count": int,
+    "supported_control_match_count": int,
+    "candidate_count": int,
+    "native_window_count": int,
+    "native_icon_match_count": int,
+    "native_rect_available": bool,
+    "native_rect_root_kind": int,
+    "native_cursor_matches_rect": bool,
+    "native_click_attempted": bool,
+    "native_click_down_input_count": int,
+    "native_click_up_input_count": int,
+    "native_menu_state_code": int,
+    "post_input_menu_state_code": int,
+    "post_input_menu_mode_flags": int,
+    "post_input_menu_owner_matches_tray": bool,
+    "post_callback_menu_state_code": int,
+    "post_callback_menu_mode_flags": int,
+    "post_callback_menu_owner_matches_tray": bool,
+    "native_callback_post_attempted": bool,
+    "native_callback_post_succeeded": bool,
+    "native_callback_post_error_code": int,
+    "foreground_process_grant_attempted": bool,
+    "foreground_process_grant_succeeded": bool,
+    "foreground_process_grant_error_code": int,
+    "native_keyboard_fallback_attempted": bool,
+    "native_keyboard_fallback_succeeded": bool,
+    "native_keyboard_guard_code": int,
+    "native_keyboard_input_count": int,
+    "native_keyboard_input_error_code": int,
+    "post_keyboard_menu_state_code": int,
+    "preexisting_menu_count": int,
+    "menu_element_count": int,
+    "uia_menu_desktop_child_count": int,
+    "uia_menu_tray_owner_descendant_count": int,
+    "native_popup_window_count": int,
+    "uia_menu_popup_handle_root_count": int,
+    "uia_menu_popup_root_count": int,
+    "uia_menu_popup_descendant_item_count": int,
+    "msaa_menu_popup_count": int,
+    "msaa_menu_child_count": int,
+    "menu_app_process_count": int,
+    "menu_exact_owner_count": int,
+    "menu_exact_item_count": int,
+    "menu_owner_check_code": int,
+}
 PROBE_TIMEOUT_SECONDS = 300
 INSTALLER_TIMEOUT_SECONDS = 300
 MAX_JSON_BYTES = 2 * 1024 * 1024
@@ -109,9 +168,46 @@ FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 class SmokeFailure(RuntimeError):
     """A finite, report-safe failure code."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, *, resource_relative_path: str | None = None,
+                 tray_diagnostics: dict[str, bool | int] | None = None) -> None:
         super().__init__(code if code in SAFE_CODES else "unclassified")
         self.code = code if code in SAFE_CODES else "unclassified"
+        self.resource_relative_path = (
+            resource_relative_path if resource_relative_path in EXPECTED_RESOURCES else None
+        )
+        self.tray_diagnostics = sanitize_tray_diagnostics(tray_diagnostics)
+
+
+def sanitize_tray_diagnostics(value: Any) -> dict[str, bool | int] | None:
+    if not isinstance(value, dict) or set(value) != set(TRAY_DIAGNOSTIC_FIELDS):
+        return None
+    clean: dict[str, bool | int] = {}
+    for name, expected_type in TRAY_DIAGNOSTIC_FIELDS.items():
+        actual = value.get(name)
+        if expected_type is bool:
+            if type(actual) is not bool:
+                return None
+        elif type(actual) is not int or not 0 <= actual <= (
+                0xFFFFFFFF if name in {
+                    "native_callback_post_error_code", "native_keyboard_input_error_code"
+                } else 10000):
+            return None
+        clean[name] = actual
+    return clean
+
+
+def parse_tray_diagnostics(line: str) -> dict[str, bool | int]:
+    prefix = "tray_diagnostics="
+    if not line.startswith(prefix):
+        raise ValueError("tray_diagnostics_prefix_invalid")
+    try:
+        decoded = json.loads(line[len(prefix):])
+    except (UnicodeError, ValueError):
+        raise ValueError("tray_diagnostics_json_invalid") from None
+    clean = sanitize_tray_diagnostics(decoded)
+    if clean is None:
+        raise ValueError("tray_diagnostics_schema_invalid")
+    return clean
 
 
 def require(condition: bool, code: str) -> None:
@@ -270,7 +366,7 @@ def validate_candidate(candidate_dir: Path, *, require_synthetic_fixture: bool =
             and re.fullmatch(VERSION_PATTERN, baseline_version)
             and baseline_version != version,
             "candidate_metadata_invalid")
-    require(type(manifest.get("schema")) is int and manifest.get("schema") == 1
+    require(type(manifest.get("schema")) is int and manifest.get("schema") == 2
             and manifest.get("track") == "W5"
             and re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("source_sha", "")))
             and manifest.get("architecture") == "x86_64"
@@ -283,9 +379,19 @@ def validate_candidate(candidate_dir: Path, *, require_synthetic_fixture: bool =
     installer_hash = manifest.get("sha256")
     require(isinstance(installer_hash, str) and re.fullmatch(r"[0-9a-f]{64}", installer_hash),
             "candidate_hash_invalid")
-    desktop_hash = manifest.get("desktop_sha256")
+    desktop_hash = manifest.get("desktop_payload_sha256")
+    desktop_source_hash = manifest.get("desktop_source_sha256")
+    baseline_desktop_hash = manifest.get("baseline_desktop_payload_sha256")
+    baseline_desktop_source_hash = manifest.get("baseline_desktop_source_sha256")
     fixture_hash = manifest.get("upgrade_fixture_sha256")
     require(isinstance(desktop_hash, str) and re.fullmatch(r"[0-9a-f]{64}", desktop_hash)
+            and isinstance(desktop_source_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", desktop_source_hash)
+            and isinstance(baseline_desktop_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", baseline_desktop_hash)
+            and isinstance(baseline_desktop_source_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", baseline_desktop_source_hash)
+            and baseline_desktop_source_hash == desktop_source_hash
             and isinstance(fixture_hash, str) and re.fullmatch(r"[0-9a-f]{64}", fixture_hash),
             "candidate_hash_invalid")
     installer = candidate_dir / installer_name
@@ -309,7 +415,9 @@ def validate_candidate(candidate_dir: Path, *, require_synthetic_fixture: bool =
         "source_sha": manifest["source_sha"],
         "installer": installer,
         "installer_hash": installer_hash,
+        "desktop_source_hash": desktop_source_hash,
         "desktop_hash": desktop_hash,
+        "baseline_desktop_hash": baseline_desktop_hash,
         "fixture_hash": fixture_hash,
         "baseline_installer": fixture,
         "resources": resources,
@@ -358,6 +466,17 @@ def validate_historical_baseline(baseline_dir: Path, candidate_version: str) -> 
         "desktop_hash": desktop_hash,
         "resources": resources,
         "resource_manifest_hash": _sha256(baseline_dir / "release-resources.json"),
+    }
+
+
+def synthetic_baseline(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "version": candidate["baseline_version"],
+        "probe_version": candidate["version"],
+        "installer": candidate["baseline_installer"],
+        "desktop_hash": candidate["baseline_desktop_hash"],
+        "resources": candidate["resources"],
+        "resource_manifest_hash": candidate["resource_manifest_hash"],
     }
 
 
@@ -599,11 +718,14 @@ def verify_installed_resources(install_dir: Path, manifest: Mapping[str, Any],
         relative = metadata["relative_path"]
         destination = _checked_relative(install_dir, relative, "resource_path_unsafe")
         info = _regular_file(destination, "resource_file_missing")
-        require(info.st_size == metadata["size_bytes"]
-                and _sha256(destination) == metadata["sha256"], "resource_hash_mismatch")
+        if info.st_size != metadata["size_bytes"] or _sha256(destination) != metadata["sha256"]:
+            raise SmokeFailure("installed_resource_hash_mismatch",
+                               resource_relative_path=relative)
     installed_manifest = _checked_relative(install_dir, "release-resources.json", "resource_path_unsafe")
-    require(_sha256(installed_manifest) == resource_manifest_hash, "resource_hash_mismatch")
-    require(_sha256(install_dir / "Chadex.exe") == desktop_hash, "resource_hash_mismatch")
+    require(_sha256(installed_manifest) == resource_manifest_hash,
+            "installed_manifest_hash_mismatch")
+    require(_sha256(install_dir / "Chadex.exe") == desktop_hash,
+            "installed_desktop_hash_mismatch")
 
 
 def data_snapshot(data_dir: Path) -> dict[str, tuple[str, int] | None]:
@@ -718,6 +840,73 @@ def _wait_owned_gone(powershell: str, owned: dict[int, dict[str, Any]],
         raise SmokeFailure(code) from None
     except OSError:
         raise SmokeFailure("process_inventory_failed") from None
+
+
+def request_tray_quit(powershell: str, app_pid: int) -> dict[str, bool | int]:
+    script = Path(__file__).resolve().with_name("windows_tray_quit.ps1")
+    _regular_file(script, "tray_quit_driver_missing")
+    try:
+        result = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-STA",
+             "-File", str(script), "-AppProcessId", str(app_pid)],
+            capture_output=True, timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        raise SmokeFailure("tray_quit_timeout") from None
+    except OSError:
+        raise SmokeFailure("tray_quit_failed") from None
+    lines = result.stdout.decode("utf-8-sig", errors="replace").splitlines()
+    if result.returncode == 0 and len(lines) == 2 and lines[0] == "tray_quit_sent":
+        try:
+            diagnostics = parse_tray_diagnostics(lines[1])
+            foreground_grant_attempted = diagnostics["foreground_process_grant_attempted"]
+            foreground_grant_succeeded = diagnostics["foreground_process_grant_succeeded"]
+            if foreground_grant_attempted != foreground_grant_succeeded:
+                raise ValueError("tray_foreground_grant_incomplete")
+            if foreground_grant_attempted and diagnostics["foreground_process_grant_error_code"] != 0:
+                raise ValueError("tray_foreground_grant_error")
+            if diagnostics["native_callback_post_attempted"] and not foreground_grant_succeeded:
+                raise ValueError("tray_callback_without_foreground_grant")
+            keyboard_attempted = diagnostics["native_keyboard_fallback_attempted"]
+            keyboard_succeeded = diagnostics["native_keyboard_fallback_succeeded"]
+            if keyboard_attempted != keyboard_succeeded:
+                raise ValueError("tray_keyboard_fallback_incomplete")
+            if keyboard_attempted and diagnostics["native_keyboard_guard_code"] not in (10, 14):
+                raise ValueError("tray_keyboard_fallback_guard_unverified")
+            if keyboard_attempted and (
+                    diagnostics["native_keyboard_input_count"] != 6
+                    or diagnostics["native_keyboard_input_error_code"] != 0
+                    or diagnostics["post_keyboard_menu_state_code"] not in (0, 1)
+                    or diagnostics["native_popup_window_count"] != 1
+                    or diagnostics["post_callback_menu_state_code"] != 3
+                    or not diagnostics["post_callback_menu_owner_matches_tray"]):
+                raise ValueError("tray_keyboard_fallback_unverified")
+            if not keyboard_attempted and (
+                    diagnostics["native_keyboard_input_count"] != 0):
+                raise ValueError("unexpected_tray_keyboard_input")
+            if (diagnostics["menu_exact_owner_count"] != 1 or
+                    diagnostics["menu_owner_check_code"] != 7 or
+                    diagnostics["msaa_menu_popup_count"] not in (0, 1) or
+                    (not keyboard_attempted and diagnostics["menu_exact_item_count"] != 1) or
+                    (not keyboard_attempted and
+                     diagnostics["msaa_menu_popup_count"] == 1 and
+                     diagnostics["msaa_menu_child_count"] < 2)):
+                raise ValueError("tray_menu_evidence_missing")
+            return diagnostics
+        except ValueError:
+            raise SmokeFailure("tray_quit_failed") from None
+    if result.returncode != 0 and lines and lines[0] in {
+        "tray_app_unavailable", "tray_taskbar_unavailable",
+        "tray_icon_unavailable", "tray_menu_unavailable", "tray_quit_failed",
+    }:
+        if len(lines) != 2:
+            raise SmokeFailure("tray_quit_failed")
+        try:
+            diagnostics = parse_tray_diagnostics(lines[1])
+        except ValueError:
+            raise SmokeFailure("tray_quit_failed") from None
+        raise SmokeFailure(lines[0], tray_diagnostics=diagnostics)
+    raise SmokeFailure("tray_quit_failed")
 
 
 def _new_owned_group(groups: list[dict[int, dict[str, Any]]]) -> dict[int, dict[str, Any]]:
@@ -931,6 +1120,15 @@ def _launch_and_probe(install_dir: Path, project: Path, root: Path, local_data: 
             result, install_dir=install_dir, local_data=local_data, version=version,
             mode=mode, owned=owned, current_rows=rows,
         )
+        if process.poll() is not None:
+            app_return_code = process.wait(timeout=10)
+            require(app_return_code == 0, "installed_app_exit_nonzero")
+            raise SmokeFailure("installed_app_exited_before_tray_quit")
+        tray_diagnostics = request_tray_quit(powershell, process.pid)
+        active_stage = next((item for item in report.value["stages"]
+                             if item["status"] == "running"), None)
+        if active_stage is not None:
+            active_stage["tray_diagnostics"] = tray_diagnostics
         remaining = _wait_owned_gone(powershell, owned, timeout=25)
         require(not remaining, "installed_processes_remain")
         try:
@@ -1003,6 +1201,10 @@ class SmokeReport:
         except SmokeFailure as error:
             entry["status"] = "failed"
             entry["error_code"] = error.code
+            if error.resource_relative_path is not None:
+                entry["resource_relative_path"] = error.resource_relative_path
+            if error.tray_diagnostics is not None:
+                entry["tray_diagnostics"] = error.tray_diagnostics
             raise
         except Exception as error:
             entry["status"] = "failed"
@@ -1032,6 +1234,9 @@ class SmokeReport:
             code = item.get("error_code")
             if isinstance(code, str):
                 row["error_code"] = code if code in SAFE_CODES else "unclassified"
+            resource_relative_path = item.get("resource_relative_path")
+            if resource_relative_path in EXPECTED_RESOURCES:
+                row["resource_relative_path"] = resource_relative_path
             exception_type = item.get("exception_type")
             if isinstance(exception_type, str) and EXCEPTION_TYPE_PATTERN.fullmatch(exception_type):
                 row["exception_type"] = exception_type
@@ -1048,6 +1253,9 @@ class SmokeReport:
             ):
                 if type(item.get(flag)) is bool:
                     row[flag] = item[flag]
+            tray_diagnostics = sanitize_tray_diagnostics(item.get("tray_diagnostics"))
+            if tray_diagnostics is not None:
+                row["tray_diagnostics"] = tray_diagnostics
             clean_stages.append(row)
         output: dict[str, Any] = {
             "schema": 1,
@@ -1219,14 +1427,7 @@ def run_smoke(candidate_dir: Path, *, historical_baseline_dir: Path | None = Non
                 baseline["probe_version"] = baseline["version"]
                 report.value["baseline_source_sha"] = baseline["source_sha"]
             else:
-                baseline = {
-                    "version": candidate["baseline_version"],
-                    "probe_version": candidate["version"],
-                    "installer": candidate["baseline_installer"],
-                    "desktop_hash": candidate["desktop_hash"],
-                    "resources": candidate["resources"],
-                    "resource_manifest_hash": candidate["resource_manifest_hash"],
-                }
+                baseline = synthetic_baseline(candidate)
 
         with report.stage("user_state_preflight"):
             assert local_app_data is not None and roaming_app_data is not None

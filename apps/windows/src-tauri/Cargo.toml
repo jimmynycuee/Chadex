@@ -1,6 +1,6 @@
 [package]
 name = "chadex-windows"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2021"
 license = "Apache-2.0"
 publish = false
@@ -9,7 +9,7 @@ publish = false
 
 [features]
 desktop-smoke = []
-custom-protocol = ["tauri/custom-protocol"]
+custom-protocol = ["tauri/custom-protocol", "dep:tauri-plugin-updater"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -24,6 +24,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = { version = "2.13.3", optional = true }
 tokio = { version = "1", features = ["sync", "time"] }
 zeroize = "1"
 

@@ -23,7 +23,7 @@ use super::kernel::{ToolCallContext, ToolCallRequest, ToolTransport};
 use super::plan_mode::{goal_dispatch_auth, now_unix_ms, with_goal_run_dispatch};
 use super::ToolRuntime;
 use crate::db::{
-    Database, GoalLease, GoalOpState, GoalRunRecord, GoalRunState, PlanReader, PlanStoreError,
+    Database, GoalLease, GoalOpState, GoalRunRecord, GoalRunState, PlanReader, PlanStoreError, AcceptanceLane, AcceptanceKind, GoalAcceptanceReceiptObservation, goal_acceptance_argv_sha256,
     CHATGPT_GOAL_IDLE_MS, CHATGPT_GOAL_PROVIDER,
 };
 use serde_json::{json, Value};
@@ -39,6 +39,8 @@ pub(crate) type BoxFut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 const GOAL_AGENT_ARGV_ENV: &str = "CHADEX_GOAL_AGENT_ARGV";
 const GOAL_CHECK_SANDBOX_ENV: &str = "CHADEX_GOAL_CHECK_SANDBOX_ARGV";
+mod container { include!("goal_container.rs"); }
+
 const MAX_FEEDBACK_BYTES: usize = 6 * 1024;
 const MAX_PROMPT_BYTES: usize = 60 * 1024;
 
@@ -48,8 +50,11 @@ const MAX_PROMPT_BYTES: usize = 60 * 1024;
 pub(crate) struct GoalProvider {
     name: &'static str,
     argv: Vec<String>,
-    /// Operator-configured acceptance sandbox prefix (`[]` = disabled).
+    /// Legacy environment override; production rejects every custom prefix.
+    /// Deterministic unit-test executors retain a test-only wrapper contract.
     check_sandbox: Option<Vec<String>>,
+    resolved_checks: std::collections::BTreeMap<String,Vec<String>>,
+    preflight_python: Option<String>,
 }
 
 impl GoalProvider {
@@ -78,6 +83,8 @@ impl GoalProvider {
                 name: "custom",
                 argv,
                 check_sandbox: None,
+                resolved_checks: Default::default(),
+                preflight_python: None,
             };
         }
         Self {
@@ -104,6 +111,8 @@ impl GoalProvider {
             .map(|value| value.to_string())
             .collect(),
             check_sandbox: None,
+            resolved_checks: Default::default(),
+                preflight_python: None,
         }
     }
 
@@ -117,6 +126,8 @@ impl GoalProvider {
             name: "custom",
             argv: argv.iter().map(|value| value.to_string()).collect(),
             check_sandbox: Some(Vec::new()),
+            resolved_checks: Default::default(),
+                preflight_python: None,
         }
     }
 
@@ -131,8 +142,8 @@ impl GoalProvider {
     /// Acceptance checks execute code the agent wrote, so they run inside the
     /// same kind of sandbox: writes limited to the worktree, no network (which
     /// also keeps them away from Chadex's loopback operator API). An operator
-    /// may override the prefix with CHADEX_GOAL_CHECK_SANDBOX_ARGV (JSON array;
-    /// `[]` disables it, e.g. for tests).
+    /// legacy prefix is retained only for deterministic unit-test compatibility.
+    /// Production rejects overrides and uses the reviewed native/container lanes.
     /// `None` = no sandbox is configured for this provider: checks must not run.
     fn check_sandbox_prefix(&self) -> Option<Vec<String>> {
         if let Some(prefix) = self.check_sandbox.as_ref() {
@@ -266,6 +277,31 @@ pub(crate) struct Workspace {
 /// Execution backend. Production dispatches through the normal tool kernel and
 /// Runner; tests use a deterministic fake with fault injection.
 pub(crate) trait GoalExecutor: Send + Sync {
+    /// Preflight executes on the bound Runner before agent work or checkpointing.
+    /// Test executors may supply deterministic capabilities; production must probe.
+    fn preflight<'a>(
+        &'a self,
+        _run: &'a GoalRunRecord,
+        _workspace: &'a Workspace,
+        provider: &'a GoalProvider,
+    ) -> BoxFut<'a, Result<GoalProvider, ExecError>> {
+        Box::pin(async move {
+            #[cfg(test)] { Ok(provider.clone()) }
+            #[cfg(not(test))] { let _=provider; Err(ExecError::Denied("TOOLCHAIN_PREFLIGHT_UNIMPLEMENTED: this executor has no verified safe environment".into())) }
+        })
+    }
+    fn workspace_guard<'a>(&'a self,_run:&'a GoalRunRecord,_workspace:&'a Workspace)
+        ->BoxFut<'a,Option<tokio::sync::OwnedRwLockWriteGuard<()>>>{Box::pin(async{None})}
+    fn external_attestation<'a>(
+        &'a self,_run:&'a GoalRunRecord,_workspace:&'a Workspace,_path:&'a str,
+    )->BoxFut<'a,Option<Value>> {Box::pin(async{None})}
+    fn has_active_work<'a>(
+        &'a self,
+        _run: &'a GoalRunRecord,
+        _workspace: &'a Workspace,
+    ) -> BoxFut<'a, bool> {
+        Box::pin(async { false })
+    }
     fn prepare_workspace<'a>(
         &'a self,
         run: &'a GoalRunRecord,
@@ -370,6 +406,12 @@ enum OpOutcome {
     Park(Park),
 }
 
+pub(super) fn windows_goal_acceptance_unavailable(host_os: &str, has_acceptance: bool) -> Option<&'static str> {
+    (host_os == "windows" && has_acceptance).then_some(
+        "WINDOWS_GOAL_SANDBOX_UNAVAILABLE: this Runner has no validated Windows acceptance sandbox; no agent or acceptance check was dispatched.",
+    )
+}
+
 impl GoalSupervisor {
     pub(crate) fn new(
         db: Arc<Database>,
@@ -394,6 +436,7 @@ impl GoalSupervisor {
         let this = self.clone();
         tokio::spawn(async move {
             loop {
+                this.recover_owned_containers().await;
                 this.tick_once().await;
                 tokio::select! {
                     _ = tokio::time::sleep(this.config.tick) => {}
@@ -531,10 +574,58 @@ impl GoalSupervisor {
             return self.park(run_id, lease, park);
         }
         let run = self.db.goal_run_fenced(run_id, lease)?;
+        if let Some(reason) = windows_goal_acceptance_unavailable(std::env::consts::OS, !run.spec.acceptance.is_empty()) {
+            self.event(run_id, "preflight_blocked", json!({"cause": reason, "work_started": false, "checkpoint_preserved": true}));
+            return self.park(run_id, lease, Park::new(GoalRunState::NeedsAttention, reason));
+        }
         let workspace = match self.ensure_workspace(&run, lease, lost).await? {
             Ok(workspace) => workspace,
             Err(park) => return self.park(run_id, lease, park),
         };
+        let guard_future=self.executor.workspace_guard(&run,&workspace);
+        tokio::pin!(guard_future);
+        let _workspace_guard=loop {
+            tokio::select! {
+                guard=&mut guard_future=>break guard,
+                _=tokio::time::sleep(Duration::from_millis(250))=>{
+                    if let Some(park)=self.control_check(run_id,lease,lost)?{return self.park(run_id,lease,park)}
+                }
+            }
+        };
+        let mut waiting=false;
+        let mut activity_observed=tokio::time::Instant::now()-Duration::from_secs(15);
+        while _workspace_guard.is_some() && self.executor.has_active_work(&run,&workspace).await {
+            if !waiting{self.event(run_id,"waiting_workspace_jobs",json!({"work_started":false}));waiting=true;}
+            if activity_observed.elapsed()>=Duration::from_secs(15) {
+                self.db.goal_run_verified_activity(run_id,lease,now_unix_ms())?;
+                activity_observed=tokio::time::Instant::now();
+            }
+            if let Some(park)=self.control_check(run_id,lease,lost)?{return self.park(run_id,lease,park)}
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        let provider = match self.executor.preflight(&run, &workspace, &self.provider).await {
+            Ok(provider) => provider,
+            Err(error) => {
+                if !matches!(&error,ExecError::Unknown(_)) {
+                    if let Some(park)=self.control_check(run_id,lease,lost)?{return self.park(run_id,lease,park)}
+                }
+                let cause = match error {
+                    ExecError::NotStarted(message) => format!("toolchain_preflight_not_started: {message}"),
+                    ExecError::Denied(message) => format!("toolchain_preflight_blocked: {message}"),
+                    ExecError::Unknown(message) => format!("toolchain_preflight_outcome_unknown: {message}"),
+                };
+                self.event(run_id, "preflight_blocked", json!({"cause": cause, "work_started": false}));
+                return self.park(run_id, lease, Park::new(GoalRunState::NeedsAttention, cause));
+            }
+        };
+        for (index,check) in run.spec.acceptance.iter().enumerate().filter(|(_,check)|check.container_image.is_some()) {
+            match self.run_container_check(&run,&workspace,lease,lost,index,check,true).await? {
+                OpOutcome::Done(outcome) if outcome.passed()=>{},
+                OpOutcome::Done(_)=>return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,format!("toolchain_preflight_blocked: container_toolchain_missing: {}; no agent work was started",check.name))),
+                OpOutcome::Park(park)=>return self.park(run_id,lease,park),
+            }
+        }
+        self.event(run_id, "toolchain_preflight", json!({"state": "ready", "agent_executable": (run.provider != CHATGPT_GOAL_PROVIDER).then(|| provider.argv[0].clone())}));
         // Pin the worktree's real git dir before any agent runs, so a later
         // tampered `.git` file cannot redirect Chadex's own git commands.
         let git_dir = match self.pinned_git_dir(&run, &workspace, lease, lost).await? {
@@ -544,7 +635,7 @@ impl GoalSupervisor {
         self.event(
             run_id,
             "acceptance_sandbox",
-            json!({"state": self.provider.check_sandbox_description()}),
+            json!({"state": provider.check_sandbox_description()}),
         );
         let mut tokens = run.tokens_used;
         loop {
@@ -552,7 +643,8 @@ impl GoalSupervisor {
                 return self.park(run_id, lease, park);
             }
             let run = self.db.goal_run_fenced(run_id, lease)?;
-            let iteration = run.iteration + 1;
+            let acceptance_only = run.committed_rounds > run.iteration || run.state_reason.as_deref() == Some("acceptance_retry");
+            let iteration = if acceptance_only { run.committed_rounds } else { run.iteration + 1 };
             let max = i64::from(run.spec.budget.max_iterations);
             if iteration > max {
                 self.make_result_branch(&run, &workspace, &git_dir, lease, lost).await?;
@@ -568,7 +660,9 @@ impl GoalSupervisor {
 
             // 1. Agent work (exactly once per iteration). In ChatGPT mode the
             //    work is ChatGPT's own edits, signalled by goal_check.
-            let agent = if run.provider == CHATGPT_GOAL_PROVIDER {
+            let agent = if acceptance_only {
+                ProcessOutcome { exit_code:Some(0),timed_out:false,stdout_tail:String::new(),stderr_tail:String::new() }
+            } else if run.provider == CHATGPT_GOAL_PROVIDER {
                 if run.chatgpt_ready_iteration < iteration {
                     // Fresh read: a goal_check that just arrived must win.
                     let run = self.db.goal_run_fenced(run_id, lease)?;
@@ -577,6 +671,11 @@ impl GoalSupervisor {
                     }
                     let seen = run.chatgpt_seen_at_unix_ms.unwrap_or(run.created_at_unix_ms);
                     if now_unix_ms() - seen >= CHATGPT_GOAL_IDLE_MS {
+                        if self.executor.has_active_work(&run, &workspace).await {
+                            self.db.goal_run_verified_activity(run_id, lease, now_unix_ms())?;
+                            self.db.goal_run_release_lease(run_id, lease)?;
+                            return Ok(());
+                        }
                         return self.park(
                             run_id,
                             lease,
@@ -601,7 +700,7 @@ impl GoalSupervisor {
             } else {
                 let feedback = self.previous_feedback(run_id, iteration - 1);
                 let prompt = build_prompt(&self.db, &run, iteration, feedback.as_deref());
-                let spec = self.provider.spec(prompt, run.spec.budget.agent_timeout_secs);
+                let spec = provider.spec(prompt, run.spec.budget.agent_timeout_secs);
                 match self
                     .run_op(&run, &workspace, lease, lost, &format!("agent:{iteration}"), "agent", iteration, spec, OpPolicy::ExactlyOnce)
                     .await?
@@ -617,9 +716,12 @@ impl GoalSupervisor {
             // 2. Checkpoint commit of whatever the agent changed (literal argv;
             //    repository hooks are skipped so no project code runs here).
             let git = |args: &[&str]| hardened_git(&git_dir, args);
+            if !acceptance_only {
             let message = format!("chadex goal {}: iteration {}", run.goal_run_id, iteration);
             let steps = [
-                ("stage", git(&["add", "-A"])),
+                ("stage", super::goal_environment::checkpoint_stage_spec(
+                    provider.preflight_python.as_deref().unwrap_or("/usr/bin/python3"),&workspace.path,git(&[]),
+                    std::iter::once(".goal-acceptance".into()).chain(run.spec.workspace_requirements.iter().map(|r|r.destination_path.clone())).chain(run.spec.dependencies.iter().map(|d|d.path.clone())).collect())),
                 (
                     "commit",
                     git(&[
@@ -663,38 +765,123 @@ impl GoalSupervisor {
                 }
             }
 
+            }
+            // Resume validates the existing HEAD and never creates another commit.
+            let head_spec = git(&["rev-parse", "--verify", "HEAD"]);
+            let head = match self.run_op(&run, &workspace, lease, lost, &format!("head:{iteration}@g{}", lease.generation), "checkpoint", iteration, head_spec, OpPolicy::Reobservable).await? {
+                OpOutcome::Done(outcome) if outcome.passed() => outcome.stdout_tail.trim().to_string(),
+                OpOutcome::Done(_) => return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,"checkpoint_head_unavailable")),
+                OpOutcome::Park(park) => return self.park(run_id,lease,park),
+            };
+            if !matches!(head.len(),40|64) || !head.bytes().all(|b| b.is_ascii_hexdigit()) || (acceptance_only && run.checkpoint_sha.as_deref().is_some_and(|sha| sha != head)) {
+                return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,"checkpoint_changed_or_invalid: inspect HEAD before retry; no checkpoint was replayed"));
+            }
+            if acceptance_only && run.checkpoint_sha.is_none() {
+                let subject_spec = git(&["log", "-1", "--format=%s"]);
+                let expected = format!("chadex goal {run_id}: iteration {iteration}");
+                match self.run_op(&run,&workspace,lease,lost,&format!("legacy-subject:{iteration}@g{}",lease.generation),"checkpoint",iteration,subject_spec,OpPolicy::Reobservable).await? {
+                    OpOutcome::Done(outcome) if outcome.passed() && outcome.stdout_tail.trim() == expected => {},
+                    OpOutcome::Done(_) => return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,"legacy_checkpoint_unverified: HEAD does not match the successful Goal commit")),
+                    OpOutcome::Park(park) => return self.park(run_id,lease,park),
+                }
+            }
+            if acceptance_only {
+                match self.run_op(&run,&workspace,lease,lost,&format!("checkpoint-clean:{iteration}:a{}@g{}",run.current_attempt,lease.generation),"checkpoint",iteration,hardened_git(&git_dir,&["diff","--quiet","HEAD"]),OpPolicy::Reobservable).await? {
+                    OpOutcome::Done(outcome) if outcome.passed()=>{},
+                    OpOutcome::Done(_)=>return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,"checkpoint_dirty: review tracked edits before retrying this immutable checkpoint")),
+                    OpOutcome::Park(park)=>return self.park(run_id,lease,park),
+                }
+            }
+            let run = self.db.goal_run_checkpoint_record(run_id,lease,iteration,&head,now_unix_ms())?;
+            // Agent work may change a declared input. Revalidate every pinned
+            // fixture/dependency and executable after checkpointing, before any
+            // independent check; source inputs are never silently trusted twice.
+            let acceptance_provider=match self.executor.preflight(&run,&workspace,&provider).await {
+                Ok(provider)=>provider,
+                Err(error)=>{
+                    if !matches!(&error,ExecError::Unknown(_)) {
+                        if let Some(park)=self.control_check(run_id,lease,lost)?{return self.park(run_id,lease,park)}
+                    }
+                    return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,format!("acceptance_environment_blocked: {error:?}")))
+                },
+            };
             // 3. Independent acceptance checks.
             let mut results = Vec::new();
-            for (index, check) in run.spec.acceptance.iter().enumerate() {
-                let Some((executable, args)) = self.provider.sandboxed_check(&check.argv) else {
-                    return self.park(
-                        run_id,
-                        lease,
-                        Park::new(
-                            GoalRunState::NeedsAttention,
-                            "acceptance_sandbox_unconfigured: this provider has no acceptance sandbox; set CHADEX_GOAL_CHECK_SANDBOX_ARGV",
-                        ),
-                    );
+            let existing_receipts=self.db.goal_acceptance_receipts(PlanReader::Operator,run_id)?;
+            let mut order=Vec::new();
+            let mut remaining:Vec<_>=(0..run.spec.acceptance.len()).collect();
+            while !remaining.is_empty() {
+                let Some(position)=remaining.iter().position(|index|run.spec.acceptance[*index].depends_on.iter().all(|dependency|order.iter().any(|previous:&usize|run.spec.acceptance[*previous].name==*dependency))) else {
+                    return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,"acceptance_dependency_invalid"));
                 };
-                let spec = ProcessSpec {
-                    executable,
-                    args,
-                    stdin: None,
-                    cwd: check.cwd.clone(),
-                    timeout_secs: check.timeout_secs,
+                order.push(remaining.remove(position));
+            }
+            let mut completed=std::collections::HashMap::new();
+            let mut externally_blocked=std::collections::HashSet::new();
+            for index in order {
+                let check=&run.spec.acceptance[index];
+                if !check.depends_on.iter().all(|dependency|completed.get(dependency)==Some(&true)) {
+                    self.event(run_id,"acceptance_dependency_blocked",json!({"check":check.name,"depends_on":check.depends_on,"executed":false}));
+                    completed.insert(check.name.clone(),false);
+                    results.push((check.name.clone(),ProcessOutcome{exit_code:None,timed_out:false,stdout_tail:String::new(),stderr_tail:"BLOCKED_DEPENDENCY: an approved prerequisite has not passed".into()}));
+                    continue;
+                }
+                if let Some(receipt)=existing_receipts.iter().find(|receipt|receipt.acceptance_revision==run.acceptance_revision && receipt.attempt==run.current_attempt && receipt.checkpoint_round==iteration && receipt.checkpoint_sha==head && receipt.check_name==check.name) {
+                    let cached=self.db.goal_run_read(PlanReader::Operator,run_id)?.ops.into_iter().rev().find(|op|op.kind=="verify" && op.iteration==iteration && op.result.as_ref().and_then(|result|result.get("name")).and_then(Value::as_str)==Some(check.name.as_str())).and_then(|op|op.result).map(|result|ProcessOutcome::from_json(&result));
+                    let mut outcome=ProcessOutcome{exit_code:receipt.exit_code.map(i64::from),timed_out:receipt.timed_out,stdout_tail:String::new(),stderr_tail:String::new()};
+                    if let Some(cached)=cached.filter(|cached|format!("{:x}",Sha256::digest(serde_json::to_vec(&cached.to_json()).expect("outcome serializes")))==receipt.output_sha256) {
+                        outcome.stdout_tail=cached.stdout_tail;
+                        outcome.stderr_tail=cached.stderr_tail;
+                    }
+                    if receipt.outcome==crate::db::GoalAcceptanceOutcome::BlockedExternal {externally_blocked.insert(check.name.clone());}
+                    completed.insert(check.name.clone(),outcome.passed() && !externally_blocked.contains(&check.name));
+                    results.push((check.name.clone(),outcome));
+                    continue;
+                }
+                let outcome = if check.container_image.is_some() {
+                    self.run_container_check(&run,&workspace,lease,lost,index,check,false).await?
+                } else {
+                    let (executable,args,stdin)=match acceptance_wrapper(&acceptance_provider,&workspace,check,&run.spec.workspace_requirements,&run.spec.dependencies) {
+                        Ok(argv)=>argv,Err(message)=>return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,message)),
+                    };
+                    let spec=ProcessSpec{executable,args,stdin,cwd:check.cwd.clone(),timeout_secs:check.timeout_secs};
+                    let key=format!("verify:{iteration}:{index}:r{}:a{}@g{}",run.acceptance_revision,run.current_attempt,lease.generation);
+                    self.run_op(&run,&workspace,lease,lost,&key,"verify",iteration,spec,OpPolicy::Reobservable).await?
                 };
-                let key = format!("verify:{iteration}:{index}@g{}", lease.generation);
-                match self
-                    .run_op(&run, &workspace, lease, lost, &key, "verify", iteration, spec, OpPolicy::Reobservable)
-                    .await?
-                {
-                    OpOutcome::Done(outcome) => results.push((check.name.clone(), outcome)),
+                match outcome {
+                    OpOutcome::Done(outcome) => {
+                        let output_sha256 = format!("{:x}",Sha256::digest(serde_json::to_vec(&outcome.to_json()).expect("process result serializes")));
+                        let external_attestation=if check.kind==AcceptanceKind::ExternalGate && outcome.passed() {
+                            match check.external_gate.as_ref() {Some(manifest)=>self.executor.external_attestation(&run,&workspace,&manifest.evidence).await,None=>None}
+                        }else{None};
+                        let receipt=self.db.goal_acceptance_receipt_record(run_id,lease,GoalAcceptanceReceiptObservation {
+                            acceptance_revision: run.acceptance_revision, checkpoint_round: iteration,
+                            checkpoint_sha: head.clone(),check_name:check.name.clone(),
+                            argv_sha256:goal_acceptance_argv_sha256(&check.argv)?,
+                            exit_code:outcome.exit_code.and_then(|code|i32::try_from(code).ok()),
+                            timed_out:outcome.timed_out,output_sha256,observed_at_unix_ms:now_unix_ms(),external_attestation,
+                        })?;
+                        if receipt.outcome==crate::db::GoalAcceptanceOutcome::BlockedExternal {externally_blocked.insert(check.name.clone());}
+                        completed.insert(check.name.clone(),outcome.passed() && !externally_blocked.contains(&check.name));
+                        results.push((check.name.clone(),outcome));
+                    },
                     OpOutcome::Park(park) => return self.park(run_id, lease, park),
                 }
             }
-            let all_passed = !results.is_empty() && results.iter().all(|(_, outcome)| outcome.passed());
-            let digest = failure_digest(&results);
-            let streak = if !all_passed && run.last_failure_digest.as_deref() == Some(digest.as_str()) {
+            if let Some((name,_outcome))=results.iter().find(|(_,outcome)|outcome.exit_code.is_none() && !outcome.stderr_tail.starts_with("BLOCKED_DEPENDENCY")) {
+                return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,format!("outcome_unknown: acceptance {name}; review its journal before retry")));
+            }
+            if let Some((name,_))=results.iter().find(|(_,outcome)|!outcome.passed() && ["Operation not permitted","operation not permitted","Permission denied","EPERM","ModuleNotFoundError","MODULE_NOT_FOUND","NATIVE_SANDBOX_UNAVAILABLE","ACCEPTANCE_WRAPPER_INPUT_INVALID"].iter().any(|marker|outcome.stderr_tail.contains(marker))) {
+                return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,format!("acceptance_environment_blocked: {name}; repair its declared environment then retry from checkpoint")));
+            }
+            let all_passed = !results.is_empty() && externally_blocked.is_empty() && results.iter().all(|(_, outcome)| outcome.passed());
+            let blocked_external = !externally_blocked.is_empty() || results.iter().filter_map(|(name,outcome)|run.spec.acceptance.iter().find(|check|check.name==*name).map(|check|(check,(name,outcome)))).any(|(check,(_,outcome))| check.kind == AcceptanceKind::ExternalGate && outcome.exit_code == Some(2) && !outcome.timed_out);
+            let functional_results: Vec<_> = results.iter().filter_map(|(name,outcome)|run.spec.acceptance.iter().find(|check|check.name==*name).map(|check|(check,(name,outcome))))
+                .filter(|(check,(_,outcome))| !externally_blocked.contains(&check.name) && !(check.kind == AcceptanceKind::ExternalGate && outcome.exit_code == Some(2) && !outcome.timed_out))
+                .filter(|(_,(_,outcome))|!outcome.stderr_tail.starts_with("BLOCKED_DEPENDENCY"))
+                .map(|(_,(name,outcome))|(name.to_string(),outcome.clone())).collect();
+            let digest = failure_digest(&functional_results);
+            let streak = if !all_passed && !functional_results.iter().all(|(_,outcome)| outcome.passed()) && run.last_failure_digest.as_deref() == Some(digest.as_str()) {
                 run.same_failure_streak + 1
             } else {
                 0
@@ -717,13 +904,27 @@ impl GoalSupervisor {
                     "agent_timed_out": agent.timed_out,
                     "acceptance": results.iter().map(|(name, outcome)| json!({
                         "name": name,
-                        "passed": outcome.passed(),
+                        "passed": outcome.passed() && !externally_blocked.contains(name),
+                        "blocked_external": externally_blocked.contains(name),
                         "exit_code": outcome.exit_code,
                         "timed_out": outcome.timed_out,
                     })).collect::<Vec<_>>(),
                     "all_passed": all_passed,
                 }),
             );
+            if blocked_external && functional_results.iter().all(|(_,outcome)| outcome.passed()) {
+                return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,"blocked_external_action: runnable checks completed; real required owner authorization/evidence is still missing"));
+            }
+            if all_passed {
+                for (suffix,args) in [("head",vec!["rev-parse","--verify","HEAD"]),("clean",vec!["diff","--quiet","HEAD"])] {
+                    let result=self.run_op(&run,&workspace,lease,lost,&format!("post-acceptance:{iteration}:a{}:{suffix}@g{}",run.current_attempt,lease.generation),"checkpoint",iteration,hardened_git(&git_dir,&args),OpPolicy::Reobservable).await?;
+                    match result {
+                        OpOutcome::Done(outcome) if outcome.passed() && (suffix!="head" || outcome.stdout_tail.trim()==head)=>{},
+                        OpOutcome::Done(_)=>return self.park(run_id,lease,Park::new(GoalRunState::NeedsAttention,"checkpoint_changed_during_acceptance: no Goal success is recorded; review concurrent edits")),
+                        OpOutcome::Park(park)=>return self.park(run_id,lease,park),
+                    }
+                }
+            }
             if all_passed {
                 let run = self.db.goal_run_fenced(run_id, lease)?;
                 self.make_result_branch(&run, &workspace, &git_dir, lease, lost).await?;
@@ -916,8 +1117,8 @@ pub(crate) fn acceptance_feedback(db: &Database, run_id: &str, iteration: i64) -
                 "- {name}: exit {:?}{}\n  stdout (tail):\n{}\n  stderr (tail):\n{}\n",
                 outcome.exit_code,
                 if outcome.timed_out { " (timed out)" } else { "" },
-                indent(&tail_bytes(&outcome.stdout_tail, 1500)),
-                indent(&tail_bytes(&outcome.stderr_tail, 1500)),
+                if detail.run.spec.workspace_requirements.is_empty() && detail.run.spec.dependencies.is_empty() { indent(&tail_bytes(&outcome.stdout_tail,1500)) } else {"[private-input output redacted]".into()},
+                if detail.run.spec.workspace_requirements.is_empty() && detail.run.spec.dependencies.is_empty() { indent(&tail_bytes(&outcome.stderr_tail,1500)) } else {"[private-input output redacted]".into()},
             ));
         }
         (!feedback.is_empty()).then(|| tail_bytes(&feedback, MAX_FEEDBACK_BYTES))
@@ -940,7 +1141,9 @@ impl GoalSupervisor {
         policy: OpPolicy,
     ) -> Result<OpOutcome, Exit> {
         let run_id = run.goal_run_id.as_str();
-        let label = spec_label(kind, &spec);
+        let label = if kind == "verify" {
+            op_key.split(':').nth(2).and_then(|index|index.split('@').next()).and_then(|index|index.parse::<usize>().ok()).and_then(|index|run.spec.acceptance.get(index)).map(|check|check.name.clone()).unwrap_or_else(||"acceptance".into())
+        } else {spec_label(kind,&spec)};
         let job_id = match self.db.goal_op_get(run_id, op_key)? {
             Some(op) => match op.state {
                 GoalOpState::Succeeded | GoalOpState::Failed => {
@@ -986,7 +1189,7 @@ impl GoalSupervisor {
                         Err(ExecError::NotStarted(message)) => {
                             attempts += 1;
                             if attempts >= self.config.transient_retry_limit {
-                                self.db.goal_op_finish(run_id, lease, op_key, GoalOpState::Failed, &json!({"error": message, "dispatched": false}), now_unix_ms())?;
+                                self.db.goal_op_finish(run_id, lease, op_key, GoalOpState::Failed, &json!({"error": message, "dispatched": false, "executable": spec.executable}), now_unix_ms())?;
                                 return Ok(OpOutcome::Park(Park::new(
                                     GoalRunState::NeedsAttention,
                                     format!("runner_unavailable: {message}"),
@@ -999,7 +1202,7 @@ impl GoalSupervisor {
                             tokio::time::sleep(self.config.transient_retry_delay).await;
                         }
                         Err(ExecError::Denied(message)) => {
-                            self.db.goal_op_finish(run_id, lease, op_key, GoalOpState::Failed, &json!({"error": message, "denied": true}), now_unix_ms())?;
+                            self.db.goal_op_finish(run_id, lease, op_key, GoalOpState::Failed, &json!({"error": message, "denied": true, "executable": spec.executable}), now_unix_ms())?;
                             return Ok(OpOutcome::Park(Park::new(
                                 GoalRunState::NeedsAttention,
                                 format!("permission_denied: {message}"),
@@ -1109,6 +1312,25 @@ impl GoalSupervisor {
     }
 }
 
+fn acceptance_wrapper(provider: &GoalProvider, workspace: &Workspace, check: &crate::db::AcceptanceCheck, requirements: &[crate::db::WorkspaceRequirement], dependencies: &[crate::db::WorkspaceDependency]) -> Result<super::goal_acceptance_sandbox::ProcessArgv,String> {
+    #[cfg(test)]
+    if provider.name == "custom" {
+        return provider.sandboxed_check(&check.argv).map(|(exe,args)|(exe,args,None)).ok_or_else(||"acceptance_sandbox_unconfigured: custom test provider has no sandbox".into());
+    }
+    let _ = provider;
+    let root = std::path::Path::new(&workspace.path);
+    let cwd = check.cwd.as_deref().map(std::path::Path::new);
+    let readonly: Vec<_> = requirements.iter().map(|requirement|root.join(&requirement.destination_path)).chain(dependencies.iter().map(|d|root.join(&d.path))).collect();
+    let lane = match check.lane {
+        AcceptanceLane::OfflineSandbox | AcceptanceLane::ExternalAttestation => super::goal_acceptance_sandbox::SandboxLane::Offline,
+        AcceptanceLane::LoopbackIntegration => super::goal_acceptance_sandbox::SandboxLane::Loopback,
+    };
+    let argv=provider.resolved_checks.get(&check.name).unwrap_or(&check.argv);
+    let mut command=super::goal_acceptance_sandbox::build_with_read_only(root,argv,cwd,lane,&check.loopback_ports,&readonly).map_err(|error|error.to_string())?;
+    if command.2.is_some(){if let Some(python)=&provider.preflight_python{command.0=python.clone();}}
+    Ok(command)
+}
+
 /// The Runner requires a UUID operation id; derive a stable one from the run
 /// id so every retry or restart re-observes the same managed worktree.
 pub(crate) fn workspace_operation_id(goal_run_id: &str) -> String {
@@ -1139,7 +1361,7 @@ pub(crate) fn parse_workspace(output: &Value) -> Option<Workspace> {
 /// Chadex's own git commands: pinned git dir/work tree, no hooks, no
 /// fsmonitor, no signing prompts, so no repository-controlled program runs
 /// outside the sandbox.
-fn hardened_git(git_dir: &str, args: &[&str]) -> ProcessSpec {
+pub(super) fn hardened_git(git_dir: &str, args: &[&str]) -> ProcessSpec {
     let mut argv: Vec<String> = vec![
         format!("--git-dir={git_dir}"),
         "--work-tree=.".to_string(),
@@ -1435,9 +1657,84 @@ pub(crate) struct RuntimeGoalExecutor {
     runtime: ToolRuntime,
 }
 
+fn environment_stop_reason(state:GoalRunState,control:Option<&str>,deadline:i64,now:i64)->Option<&'static str> {
+    if state.terminal(){return Some("Goal is terminal")}
+    if control.is_some(){return Some("Goal control requested")}
+    if matches!(state,GoalRunState::Running|GoalRunState::Queued) && now>=deadline{return Some("Goal deadline reached")}
+    None
+}
+
+#[cfg(test)]
+mod environment_control_tests {
+    use super::*;
+    #[test]
+    fn active_preparation_honors_deadline_and_control_without_restricting_parked_metadata() {
+        assert_eq!(environment_stop_reason(GoalRunState::Running,None,10,10),Some("Goal deadline reached"));
+        assert_eq!(environment_stop_reason(GoalRunState::Queued,None,10,11),Some("Goal deadline reached"));
+        assert_eq!(environment_stop_reason(GoalRunState::Running,Some("cancel"),20,10),Some("Goal control requested"));
+        assert_eq!(environment_stop_reason(GoalRunState::Running,Some("pause"),20,10),Some("Goal control requested"));
+        assert_eq!(environment_stop_reason(GoalRunState::Cancelled,None,20,10),Some("Goal is terminal"));
+        assert_eq!(environment_stop_reason(GoalRunState::NeedsAttention,None,10,11),None);
+        assert_eq!(environment_stop_reason(GoalRunState::Running,None,20,10),None);
+    }
+}
+
 impl RuntimeGoalExecutor {
     pub(crate) fn new(runtime: ToolRuntime) -> Self {
         Self { runtime }
+    }
+
+    pub(super) async fn environment_process(&self, run: &GoalRunRecord, workspace: &Workspace, mut spec: ProcessSpec) -> Result<ProcessOutcome,ExecError> {
+        let control = || -> Result<Option<String>,ExecError> {
+            let current=match self.runtime.communication_db.as_ref() {
+                Some(db)=>db.goal_run_read(PlanReader::Operator,&run.goal_run_id).map_err(|error|ExecError::Denied(error.to_string()))?.run,
+                None=>return Err(ExecError::Denied("Goal store unavailable".into())),
+            };
+            Ok(environment_stop_reason(current.state,current.control_request.as_deref(),current.deadline_at_unix_ms,now_unix_ms()).map(str::to_owned))
+        };
+        if let Some(reason)=control()? {
+            return Err(ExecError::NotStarted(format!("{reason}; environment command was not dispatched")));
+        }
+        // Parked operator metadata reads remain available after a deadline;
+        // active preparation cannot extend the original Goal time budget.
+        if matches!(run.state,GoalRunState::Running|GoalRunState::Queued) {
+            let remaining=((run.deadline_at_unix_ms-now_unix_ms()).max(0) as u64).div_ceil(1000).max(1);
+            spec.timeout_secs=spec.timeout_secs.min(remaining.min(u64::from(u32::MAX)) as u32);
+        }
+        let timeout = u64::from(spec.timeout_secs) + 5;
+        match self.start(run,workspace,spec).await? {
+            StartResult::Finished(outcome) => Ok(outcome),
+            StartResult::Started(job) => {
+                let deadline=tokio::time::Instant::now()+Duration::from_secs(timeout);
+                loop {
+                    let observation=self.observe(run,workspace,&job);
+                    tokio::pin!(observation);
+                    let result=loop {
+                        tokio::select! {
+                            result=&mut observation=>break result,
+                            _=tokio::time::sleep(Duration::from_millis(100))=>{
+                                let reason=control();
+                                if !matches!(reason,Ok(None)) || tokio::time::Instant::now()>=deadline {
+                                    let reason=match reason {
+                                        Ok(Some(reason))=>reason,
+                                        Err(error)=>format!("Goal control could not be verified: {error:?}"),
+                                        _=>"environment probe timed out".to_owned(),
+                                    };
+                                    // Never treat an unconfirmed stop as a safely retryable preparation.
+                                    self.stop(run,workspace,&job).await.map_err(|error|ExecError::Unknown(format!("{reason}; environment stop unconfirmed: {error:?}")))?;
+                                    return Err(ExecError::NotStarted(format!("{reason}; environment job stopped")));
+                                }
+                            }
+                        }
+                    };
+                    match result? {
+                        ObserveResult::Finished(outcome)=>return Ok(outcome),
+                        ObserveResult::Lost(message)=>return Err(ExecError::Unknown(message)),
+                        ObserveResult::Running=>tokio::time::sleep(Duration::from_millis(100)).await,
+                    }
+                }
+            }
+        }
     }
 
     async fn call(&self, run: &GoalRunRecord, tool: &str, arguments: Value) -> Result<(bool, Value, Option<String>), ExecError> {
@@ -1470,6 +1767,97 @@ impl RuntimeGoalExecutor {
 }
 
 impl GoalExecutor for RuntimeGoalExecutor {
+    fn preflight<'a>(
+        &'a self,
+        run: &'a GoalRunRecord,
+        workspace: &'a Workspace,
+        provider: &'a GoalProvider,
+    ) -> BoxFut<'a, Result<GoalProvider, ExecError>> {
+        Box::pin(async move {
+            if std::env::var("CHADEX_GOAL_PREFLIGHT_PYTHON").ok().is_some_and(|path|!std::path::Path::new(&path).is_absolute() || path.contains('\0')) {
+                return Err(ExecError::Denied("PREFLIGHT_PYTHON_INVALID: configure an absolute executable on the bound Runner".into()));
+            }
+            if provider.check_sandbox.is_some() || std::env::var_os(GOAL_CHECK_SANDBOX_ENV).is_some() {
+                return Err(ExecError::Denied("UNSAFE_SANDBOX_OVERRIDE: remove CHADEX_GOAL_CHECK_SANDBOX_ARGV; acceptance uses the reviewed native lane policy and never a disabled or arbitrary wrapper".into()));
+            }
+            let agent = if run.provider == CHATGPT_GOAL_PROVIDER { "" } else { &provider.argv[0] };
+            let spec = super::goal_environment::probe_spec(&workspace.path, agent, json!([]));
+            let capabilities = super::goal_environment::parse_probe(self.environment_process(run,workspace,spec).await?)?;
+            let python = capabilities["python_executable"].as_str().filter(|path|std::path::Path::new(path).is_absolute()).ok_or_else(||ExecError::Denied("PYTHON_TOOLCHAIN_UNVERIFIED".into()))?;
+            for setup in super::goal_environment::prepare_input_specs(python,&run.binding.project_root,&workspace.path,json!({"workspace_requirements":run.spec.workspace_requirements,"dependencies":run.spec.dependencies})) {
+                let result=self.environment_process(run,workspace,setup).await?;
+                let setup_output:Value=serde_json::from_str(result.stdout_tail.trim()).unwrap_or(Value::Null);
+                if !result.passed() || setup_output.get("ready") != Some(&json!(true)) {
+                    let known=["DEPENDENCY_TREE_DIGEST_MISMATCH","DEPENDENCY_LOCKFILE_DIGEST_MISMATCH","DEPENDENCY_SOURCE_TREE_DIGEST_MISMATCH","DEPENDENCY_SYMLINK_ESCAPE","WORKSPACE_INPUT_DIGEST_MISMATCH"].iter().find(|marker|result.stderr_tail.contains(**marker)).copied().unwrap_or("WORKSPACE_INPUTS_NOT_READY");
+                    let known=if result.timed_out {"WORKSPACE_INPUTS_TIMED_OUT"}else{known};
+                    return Err(ExecError::Denied(format!("{known}: declared input preflight failed; exit={:?}, timed_out={}; {}",result.exit_code,result.timed_out,tail_bytes(&setup_output.to_string(),1000))));
+                }
+            }
+            let spec=super::goal_environment::probe_spec(&workspace.path,agent,json!(run.spec.acceptance));
+            let check_capabilities=super::goal_environment::parse_probe(self.environment_process(run,workspace,spec).await?)?;
+            if let Some(db)=self.runtime.communication_db.as_ref(){
+                let _=db.goal_run_event(&run.goal_run_id,"toolchain_capabilities",&json!({"sandbox":capabilities["sandbox_executable"],"agent":capabilities["agent_executable"],"agent_version":capabilities["agent_version"],"checks":check_capabilities["checks"]}),now_unix_ms());
+            }
+            let root=std::path::Path::new(&workspace.path);
+            let readonly:Vec<_>=run.spec.workspace_requirements.iter().map(|r|root.join(&r.destination_path)).chain(run.spec.dependencies.iter().map(|d|root.join(&d.path))).collect();
+            for check in &run.spec.acceptance {
+                if check.container_image.is_some() {
+                    container::preflight(self,run,workspace,check).await?;
+                    continue;
+                }
+                let lane=match check.lane {
+                    AcceptanceLane::OfflineSandbox|AcceptanceLane::ExternalAttestation=>super::goal_acceptance_sandbox::SandboxLane::Offline,
+                    AcceptanceLane::LoopbackIntegration=>super::goal_acceptance_sandbox::SandboxLane::Loopback,
+                };
+                let (executable,args,stdin)=super::goal_acceptance_sandbox::preflight_with_read_only(root,check.cwd.as_deref().map(std::path::Path::new),lane,&check.loopback_ports,&readonly).map_err(|error|ExecError::Denied(error.to_string()))?;
+                let spec=ProcessSpec{executable,args,stdin,cwd:check.cwd.clone(),timeout_secs:15};
+                let result=self.environment_process(run,workspace,spec).await?;
+                if !result.passed(){return Err(ExecError::Denied(format!("SANDBOX_POLICY_DENIED: blocking check {} has no usable safe lane",check.name)));}
+            }
+            let mut resolved = provider.clone();
+            resolved.preflight_python=Some(python.into());
+            for check in &run.spec.acceptance {
+                let record=check_capabilities["checks"].as_array().and_then(|checks|checks.iter().find(|value|value["check"]==check.name));
+                if let Some(path)=record.and_then(|r|r["resolved_path"].as_str()) {
+                    let mut argv=check.argv.clone();
+                    let target=if std::path::Path::new(&argv[0]).file_name().and_then(|s|s.to_str())==Some("env") {
+                        argv.iter().enumerate().skip(1).find(|(_,a)|!a.contains('=')).map(|(i,_)|i)
+                    }else{Some(0)};
+                    if let Some(index)=target {argv[index]=path.into();resolved.resolved_checks.insert(check.name.clone(),argv);}
+                }
+            }
+            if !agent.is_empty() {
+                let executable = capabilities["agent_executable"].as_str().filter(|p| std::path::Path::new(p).is_absolute()).ok_or_else(|| ExecError::Denied("EXECUTABLE_MISSING: configure the agent executable on this Runner".into()))?;
+                resolved.argv[0] = executable.into();
+            }
+            Ok(resolved)
+        })
+    }
+
+    fn workspace_guard<'a>(&'a self,run:&'a GoalRunRecord,workspace:&'a Workspace)
+        ->BoxFut<'a,Option<tokio::sync::OwnedRwLockWriteGuard<()>>>{
+        Box::pin(async move{Some(super::goal_workspace_gate::gate(&run.binding.runner_client_id,&workspace.path).write_owned().await)})
+    }
+    fn external_attestation<'a>(
+        &'a self,run:&'a GoalRunRecord,workspace:&'a Workspace,path:&'a str,
+    )->BoxFut<'a,Option<Value>> {
+        Box::pin(async move {
+            let result=self.environment_process(run,workspace,super::goal_environment::external_attestation_spec(&workspace.path,path)).await.ok()?;
+            if !result.passed(){return None}
+            serde_json::from_str::<Value>(result.stdout_tail.trim()).ok().filter(|v|v.get("statement").is_some())
+        })
+    }
+    fn has_active_work<'a>(&'a self, run: &'a GoalRunRecord, workspace: &'a Workspace) -> BoxFut<'a, bool> {
+        Box::pin(async move {
+            let Ok((true, output, _)) = self.call(run, "list_jobs", json!({"project": workspace.project_id, "status": "running", "limit": 100})).await else { return false };
+            output.get("jobs").and_then(Value::as_array).is_some_and(|jobs| jobs.iter().any(|job| {
+                job.get("job_id").and_then(Value::as_str).is_some()
+                    && job.get("project").and_then(Value::as_str) == Some(workspace.project_id.as_str())
+                    && job.get("status").and_then(Value::as_str) == Some("running")
+            }))
+        })
+    }
+
     fn prepare_workspace<'a>(&'a self, run: &'a GoalRunRecord) -> BoxFut<'a, Result<Workspace, ExecError>> {
         Box::pin(async move {
             let auth = goal_dispatch_auth(&run.dispatch_auth).map_err(ExecError::Denied)?;
@@ -1514,6 +1902,12 @@ impl GoalExecutor for RuntimeGoalExecutor {
 
     fn start<'a>(&'a self, run: &'a GoalRunRecord, workspace: &'a Workspace, spec: ProcessSpec) -> BoxFut<'a, Result<StartResult, ExecError>> {
         Box::pin(async move {
+            let auth=goal_dispatch_auth(&run.dispatch_auth).map_err(ExecError::Denied)?;
+            let resolved=self.runtime.resolve_project_input_for_auth(&workspace.project_id,auth.as_ref()).await
+                .map_err(|_|ExecError::NotStarted("Goal workspace binding is temporarily unavailable".into()))?;
+            if resolved.config.client_id!=run.binding.runner_client_id || resolved.config.path!=workspace.path {
+                return Err(ExecError::Denied("GOAL_WORKSPACE_BINDING_CHANGED: Runner/root differs from the approved workspace".into()));
+            }
             let mut arguments = json!({
                 "project": workspace.project_id,
                 "executable": spec.executable,

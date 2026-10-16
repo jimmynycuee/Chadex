@@ -2376,13 +2376,18 @@ impl ToolRuntime {
                 content,
                 acceptance,
                 budget,
+                workspace_requirements,
+                dependencies,
             } => {
                 let (acceptance, budget) =
                     match super::plan_mode::parse_plan_spec_parts(acceptance, budget) {
                         Ok(value) => value,
                         Err(result) => return result,
                     };
-                self.plan_save(auth, plan_id, parent_revision, content, acceptance, budget)
+                let (workspace_requirements, dependencies) = match super::plan_mode::parse_workspace_inputs(workspace_requirements, dependencies) {
+                    Ok(value) => value, Err(result) => return result,
+                };
+                self.plan_save(auth, plan_id, parent_revision, content, acceptance, budget, workspace_requirements, dependencies)
                     .await
             }
 
@@ -2403,8 +2408,10 @@ impl ToolRuntime {
                 objective,
                 acceptance,
                 budget,
+                workspace_requirements,
+                dependencies,
             } => match (plan_id, objective) {
-                (Some(plan_id), None) if project.is_none() && acceptance.is_none() && budget.is_none() => {
+                (Some(plan_id), None) if project.is_none() && acceptance.is_none() && budget.is_none() && workspace_requirements.is_none() && dependencies.is_none() => {
                     self.goal_run_start(auth, plan_id).await
                 }
                 (None, Some(objective)) => {
@@ -2413,7 +2420,10 @@ impl ToolRuntime {
                             Ok(value) => value,
                             Err(result) => return result,
                         };
-                    self.goal_request(auth, project, title, objective, acceptance, budget)
+                    let (workspace_requirements, dependencies) = match super::plan_mode::parse_workspace_inputs(workspace_requirements, dependencies) {
+                        Ok(value) => value, Err(result) => return result,
+                    };
+                    self.goal_request(auth, project, title, objective, acceptance, budget, workspace_requirements, dependencies)
                         .await
                 }
                 _ => ToolResult::err_with_output(
@@ -2474,8 +2484,14 @@ impl ToolRuntime {
                 goal_run_id,
                 project,
                 reason,
+                acceptance,
+                workspace_requirements,
+                dependencies,
+                expected_acceptance_revision,
+                acceptance_sha256,
+                proposal_id,
             } => {
-                self.goal_operator(auth, transport, action, goal_run_id, reason, project)
+                self.goal_operator(auth, transport, action, goal_run_id, reason, project, acceptance, workspace_requirements, dependencies, expected_acceptance_revision, acceptance_sha256, proposal_id)
                     .await
             }
 

@@ -72,6 +72,14 @@ class GraphifyObsidianSyncTests(unittest.TestCase):
         self.assertTrue(stats["metadata_source_mismatch"])
         self.assertGreaterEqual(stats["components"], 10)
 
+    def test_snapshot_marks_uncommitted_source_content(self):
+        outputs, stats = MODULE.build_outputs(
+            self.sample_graph(), "abc123", 20, source_tree_clean=False)
+        snapshot = outputs[MODULE.GENERATED_ROOT / "Graphify Snapshot.md"]
+        self.assertFalse(stats["source_tree_clean"])
+        self.assertIn("Source worktree at sync: **dirty**", snapshot)
+        self.assertIn("Source worktree was dirty", snapshot)
+
     def test_sync_is_idempotent_and_check_detects_drift(self):
         outputs, _ = MODULE.build_outputs(self.sample_graph(), "abc123", 20)
         with tempfile.TemporaryDirectory() as temporary:
@@ -105,7 +113,7 @@ class GraphifyObsidianSyncTests(unittest.TestCase):
         for path in sources:
             self.assertIn(path, joined, path)
         self.assertIn("[[W3 Desktop Product]]", joined)
-        self.assertEqual(stats["components"], 17)
+        self.assertEqual(stats["components"], 18)
         for path in [
             "apps/windows/src-tauri/src/smoke.rs",
             "apps/windows/bridge/src/bin/smoke.rs",
@@ -117,6 +125,22 @@ class GraphifyObsidianSyncTests(unittest.TestCase):
             "vendor/webcodex/src/main.rs",
         ]:
             self.assertFalse(MODULE.is_production_file(path), path)
+
+    def test_goal_reliability_component_links_runner_store_and_human_phase(self):
+        graph = self.sample_graph()
+        graph["nodes"].extend([
+            {"id": "goal-supervisor", "label": "GoalSupervisor", "source_file": "runtime-engine/src/tool_runtime/goal_supervisor.rs", "source_location": "L1"},
+            {"id": "goal-attestation", "label": "verify", "source_file": "runtime-engine/crates/chadex-runtime-store/src/goal_attestation.rs", "source_location": "L1"},
+        ])
+        graph["links"].append({"source": "goal-supervisor", "target": "goal-attestation", "relation": "calls", "confidence": "EXTRACTED"})
+        prefix = Path("01 Projects/Chadex")
+        outputs, _ = MODULE.build_outputs(graph, "abc123", 48, prefix)
+        note = outputs[MODULE.GENERATED_ROOT / "Components/Plan and Goal Reliability.md"]
+        self.assertIn("runtime-engine/src/tool_runtime/goal_supervisor.rs", note)
+        self.assertIn("runtime-engine/crates/chadex-runtime-store/src/goal_attestation.rs", note)
+        self.assertIn("[[PG2 Goal Reliability]]", note)
+        canvas = json.loads(outputs[MODULE.CANVAS_PATH])
+        self.assertTrue(any(node["file"].endswith("/Components/Plan and Goal Reliability.md") for node in canvas["nodes"]))
 
     def test_output_does_not_depend_on_graph_input_order(self):
         graph = self.sample_graph()

@@ -115,6 +115,25 @@ COMPONENTS: tuple[ComponentSpec, ...] = (
         phases=("P16A First-tool Differential Diagnosis", "P16B First-tool Surface Optimization", "P16C First-tool Variance Validation"),
     ),
     ComponentSpec(
+        "Plan and Goal Reliability",
+        "Immutable approval/revision/checkpoint receipts, Runner preflight, isolated acceptance, operator recovery and honest external gates.",
+        exact_files=(
+            "Sources/ChadexApp/PlanGoalModels.swift",
+            "Sources/ChadexApp/PlanGoalPanelModel.swift",
+            "Sources/ChadexApp/PlanGoalView.swift",
+            "runtime-engine/src/tool_runtime/plan_mode.rs",
+            "runtime-engine/src/tool_runtime/goal_supervisor.rs",
+            "runtime-engine/src/tool_runtime/goal_environment.rs",
+            "runtime-engine/src/tool_runtime/goal_acceptance_sandbox.rs",
+            "runtime-engine/src/tool_runtime/goal_container.rs",
+            "runtime-engine/src/tool_runtime/goal_workspace_gate.rs",
+            "runtime-engine/crates/chadex-runtime-store/src/plan.rs",
+            "runtime-engine/crates/chadex-runtime-store/src/goal_run.rs",
+            "runtime-engine/crates/chadex-runtime-store/src/goal_attestation.rs",
+        ),
+        phases=("PG2 Goal Reliability",),
+    ),
+    ComponentSpec(
         "Project Authority",
         "Project resolution, Runner authorization, and exact project identity fences.",
         exact_files=(
@@ -225,7 +244,28 @@ def git_head(source_root: Path) -> str | None:
     return completed.stdout.strip() or None
 
 
-def yaml_header(kind: str, graph_commit: str | None, source_head: str | None, extra: Iterable[tuple[str, str]] = ()) -> str:
+def git_worktree_clean(source_root: Path) -> bool | None:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(source_root), "status", "--porcelain=v1", "--untracked-files=all"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return not completed.stdout.strip()
+
+
+def yaml_header(
+    kind: str,
+    graph_commit: str | None,
+    source_head: str | None,
+    source_tree_clean: bool | None,
+    extra: Iterable[tuple[str, str]] = (),
+) -> str:
     lines = [
         "---",
         f"type: {json.dumps(kind)}",
@@ -234,6 +274,7 @@ def yaml_header(kind: str, graph_commit: str | None, source_head: str | None, ex
         f"sync_version: {SYNC_VERSION}",
         f"graph_built_at_commit: {json.dumps(graph_commit or 'unknown')}",
         f"source_head: {json.dumps(source_head or 'unknown')}",
+        f"source_tree_clean: {json.dumps(source_tree_clean)}",
     ]
     for key, value in extra:
         lines.append(f"{key}: {json.dumps(value)}")
@@ -256,7 +297,14 @@ def vault_project_prefix(obsidian_root: Path) -> Path:
     return Path()
 
 
-def build_outputs(graph: dict, source_head: str | None, max_files: int, vault_prefix: Path = Path()) -> tuple[dict[Path, str], dict]:
+def build_outputs(
+    graph: dict,
+    source_head: str | None,
+    max_files: int,
+    vault_prefix: Path = Path(),
+    *,
+    source_tree_clean: bool | None = None,
+) -> tuple[dict[Path, str], dict]:
     nodes = graph["nodes"]
     links = graph["links"]
     graph_commit = graph.get("built_at_commit")
@@ -384,7 +432,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int, vault_pr
             elif right == spec.title:
                 related_components[left] += count
 
-        body = [yaml_header("graphify_component", graph_commit, source_head, (("component", spec.title),))]
+        body = [yaml_header("graphify_component", graph_commit, source_head, source_tree_clean, (("component", spec.title),))]
         body += [f"# {spec.title}", "", spec.summary, ""]
         body += ["## Related phases", ""]
         body += [f"- {markdown_link(phase)}" for phase in spec.phases] or ["- none"]
@@ -421,7 +469,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int, vault_pr
             for node_id in ids
             for component in node_components.get(node_id, ())
         })
-        body = [yaml_header("graphify_file", graph_commit, source_head, (("source_file", source_file),))]
+        body = [yaml_header("graphify_file", graph_commit, source_head, source_tree_clean, (("source_file", source_file),))]
         body += [f"# {source_file}", "", "Graphify-selected production source file.", ""]
         body += ["## Components", ""]
         body += [f"- {component_link(component)}" for component in related_components] or ["- none"]
@@ -443,7 +491,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int, vault_pr
         outputs[GENERATED_ROOT / "Files" / f"{file_note_by_path[source_file]}.md"] = "\n".join(body)
 
     mismatch = bool(graph_commit and source_head and graph_commit != source_head)
-    snapshot = [yaml_header("graphify_snapshot", graph_commit, source_head)]
+    snapshot = [yaml_header("graphify_snapshot", graph_commit, source_head, source_tree_clean)]
     snapshot += [
         "# Graphify Snapshot",
         "",
@@ -452,8 +500,9 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int, vault_pr
         f"- Production-to-production links: **{production_links:,}**",
         f"- Curated components: **{len(COMPONENTS)}**",
         f"- Curated production files: **{len(selected_files)}**",
-        f"- Graph metadata commit: `{graph_commit or 'unknown'}`",
-        f"- Source HEAD at sync: `{source_head or 'unknown'}`",
+        f"- Graph metadata commit: {graph_commit or 'unknown'}",
+        f"- Source HEAD at sync: {source_head or 'unknown'}",
+        f"- Source worktree at sync: **{'clean' if source_tree_clean is True else 'dirty' if source_tree_clean is False else 'unknown'}**",
         f"- Metadata/source mismatch: **{'yes' if mismatch else 'no'}**",
         "",
         "## Confidence distribution for production links",
@@ -481,9 +530,15 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int, vault_pr
             "> Graphify may leave graph metadata unchanged when an update produces no topology delta. Treat the graph as current only after the normal Graphify freshness/update checks have been run.",
             "",
         ]
+    if source_tree_clean is False:
+        snapshot += [
+            "> [!warning] Source worktree was dirty",
+            "> The graph and curated notes may include uncommitted source changes. The recorded source HEAD is only the base commit, not a release receipt.",
+            "",
+        ]
     outputs[GENERATED_ROOT / "Graphify Snapshot.md"] = "\n".join(snapshot)
 
-    index_body = [yaml_header("graphify_index", graph_commit, source_head)]
+    index_body = [yaml_header("graphify_index", graph_commit, source_head, source_tree_clean)]
     index_body += [
         "# Graphify Knowledge Index",
         "",
@@ -569,6 +624,7 @@ def build_outputs(graph: dict, source_head: str | None, max_files: int, vault_pr
         "selected_files": len(selected_files),
         "graph_commit": graph_commit,
         "source_head": source_head,
+        "source_tree_clean": source_tree_clean,
         "metadata_source_mismatch": mismatch,
     }
     return outputs, stats
@@ -649,7 +705,13 @@ def main() -> int:
         return 2
 
     graph = load_graph(graph_path)
-    outputs, stats = build_outputs(graph, git_head(source_root), args.max_files, vault_project_prefix(obsidian_root))
+    outputs, stats = build_outputs(
+        graph,
+        git_head(source_root),
+        args.max_files,
+        vault_project_prefix(obsidian_root),
+        source_tree_clean=git_worktree_clean(source_root),
+    )
     changed, stale = sync_outputs(obsidian_root, outputs, check=args.check, dry_run=args.dry_run)
 
     print(json.dumps({

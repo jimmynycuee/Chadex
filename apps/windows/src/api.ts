@@ -1,4 +1,4 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { Channel, invoke, isTauri, Resource } from '@tauri-apps/api/core';
 import type {
   DesktopState, ExternalSkillRootsState, ExternalSkillSourceDiscovery, ManagedSkillEntry, Preferences, ProjectInspection,
   RuntimeMethod, SetExternalSkillRootsParams, SkillCatalog, SkillDefinitionPreview, SkillInventory,
@@ -37,7 +37,114 @@ export interface DesktopApi {
   storeCredential(credential: string): Promise<void>;
   forgetCredential(): Promise<void>;
   restartHelper(): Promise<void>;
-  quitApp(): Promise<void>;
+  hideWindow(): Promise<void>;
+  checkForUpdate(): Promise<UpdateInfo | null>;
+  installUpdate(onProgress?: (downloaded: number, total?: number) => void): Promise<void>;
+}
+
+export interface UpdateInfo { version: string; date?: string | null; body?: string | null }
+
+type UpdaterDownloadEvent =
+  | { event: 'Started'; data: { contentLength?: number } }
+  | { event: 'Progress'; data: { chunkLength: number } }
+  | { event: 'Finished' };
+type UpdaterMetadata = UpdateInfo & { rid: number };
+
+let pendingUpdate: Resource | null = null;
+let updateCheckInFlight: Promise<UpdateInfo | null> | null = null;
+let updateInstallInFlight: Promise<void> | null = null;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object';
+}
+function optionalUpdateText(value: unknown, maxLength: number): string | null | undefined {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== 'string') throw new Error('更新服務回傳了無效的版本資訊，請稍後重試。');
+  return value.slice(0, maxLength);
+}
+function parseUpdaterMetadata(value: unknown): UpdaterMetadata | null {
+  if (value === null) return null;
+  if (!isRecord(value) || !Number.isSafeInteger(value.rid) || (value.rid as number) < 0
+    || typeof value.version !== 'string' || !value.version.trim() || value.version.length > 128) {
+    throw new Error('更新服務回傳了無效的版本資訊，請稍後重試。');
+  }
+  const date = optionalUpdateText(value.date, 128);
+  const body = optionalUpdateText(value.body, 16_384);
+  return { rid: value.rid as number, version: value.version.trim(), date, body };
+}
+async function releasePendingUpdate() {
+  const previous = pendingUpdate;
+  pendingUpdate = null;
+  if (previous) {
+    try { await previous.close(); } catch { /* The updater may already have released the resource. */ }
+  }
+}
+function checkForUpdate(): Promise<UpdateInfo | null> {
+  if (!isTauri()) return Promise.reject(new Error('更新檢查需要 Chadex 桌面環境。'));
+  if (updateInstallInFlight) return Promise.reject(new Error('更新安裝已在進行中，請稍候。'));
+  if (updateCheckInFlight) return updateCheckInFlight;
+  const check = (async () => {
+    const raw = await invoke<unknown>('plugin:updater|check');
+    let metadata: UpdaterMetadata | null;
+    try { metadata = parseUpdaterMetadata(raw); }
+    catch (error) {
+      if (isRecord(raw) && Number.isSafeInteger(raw.rid) && (raw.rid as number) >= 0) {
+        try { await new Resource(raw.rid as number).close(); } catch { /* Ignore malformed response cleanup errors. */ }
+      }
+      throw error;
+    }
+    await releasePendingUpdate();
+    if (!metadata) return null;
+    pendingUpdate = new Resource(metadata.rid);
+    return { version: metadata.version, date: metadata.date, body: metadata.body };
+  })();
+  updateCheckInFlight = check.finally(() => { updateCheckInFlight = null; });
+  return updateCheckInFlight;
+}
+function installUpdate(onProgress?: (downloaded: number, total?: number) => void): Promise<void> {
+  if (updateInstallInFlight) return updateInstallInFlight;
+  if (updateCheckInFlight) return Promise.reject(new Error('更新檢查尚未完成，請稍候。'));
+  if (!isTauri()) return Promise.reject(new Error('更新安裝需要 Chadex 桌面環境。'));
+  const update = pendingUpdate;
+  if (!update) return Promise.reject(new Error('請先檢查更新，再安裝可用版本。'));
+
+  const install = (async () => {
+    let downloaded = 0;
+    let total: number | undefined;
+    const report = () => {
+      try { onProgress?.(downloaded, total); } catch { /* UI observers must not interrupt the native installer. */ }
+    };
+    const channel = new Channel<UpdaterDownloadEvent>();
+    channel.onmessage = (event) => {
+      if (event.event === 'Started') {
+        const length = event.data?.contentLength;
+        if (typeof length === 'number' && Number.isFinite(length) && length > 0) total = Math.floor(Math.min(length, Number.MAX_SAFE_INTEGER));
+        report();
+      } else if (event.event === 'Progress') {
+        const chunk = event.data?.chunkLength;
+        if (typeof chunk === 'number' && Number.isFinite(chunk) && chunk > 0) {
+          downloaded = Math.min(Number.MAX_SAFE_INTEGER, downloaded + Math.floor(chunk));
+          if (total !== undefined) downloaded = Math.min(downloaded, total);
+          report();
+        }
+      } else if (event.event === 'Finished') {
+        if (total !== undefined) downloaded = total;
+        report();
+      }
+    };
+    try {
+      await invoke<void>('plugin:updater|download_and_install', { rid: update.rid, onEvent: channel });
+      if (pendingUpdate === update) pendingUpdate = null;
+    } catch (error) {
+      if (pendingUpdate === update) {
+        pendingUpdate = null;
+        try { await update.close(); } catch { /* The updater may have consumed the resource already. */ }
+      }
+      throw error;
+    }
+  })();
+  updateInstallInFlight = install.finally(() => { updateInstallInFlight = null; });
+  return updateInstallInFlight;
 }
 
 const SKILL_ARCHIVE_ERRORS: Record<string, string> = {
@@ -89,5 +196,7 @@ export const desktopApi: DesktopApi = {
   storeCredential: (credential) => call('store_credential', { credential }),
   forgetCredential: () => call('forget_credential'),
   restartHelper: () => call('restart_helper'),
-  quitApp: () => call('quit_app'),
+  hideWindow: () => call('hide_main_window'),
+  checkForUpdate,
+  installUpdate,
 };

@@ -33,7 +33,8 @@ export function apiMock(state = desktop()): DesktopApi {
     getSkillInventory: vi.fn().mockResolvedValue({ project: 'C:\\work\\chadex', total_count: 0, skills: [] }),
     installSkill: vi.fn().mockResolvedValue({}), activateSkill: vi.fn().mockResolvedValue({}), deactivateSkill: vi.fn().mockResolvedValue({}), removeSkill: vi.fn().mockResolvedValue({}),
     chooseSkillFolder: vi.fn().mockResolvedValue(null), chooseSkillArchive: vi.fn().mockResolvedValue(null),
-    restartHelper: vi.fn().mockResolvedValue(undefined), quitApp: vi.fn().mockResolvedValue(undefined) };
+    restartHelper: vi.fn().mockResolvedValue(undefined), hideWindow: vi.fn().mockResolvedValue(undefined),
+    checkForUpdate: vi.fn().mockResolvedValue(null), installUpdate: vi.fn().mockResolvedValue(undefined) };
 }
 export function deferred<T>() {
   let resolve!: (value: T) => void; let reject!: (error: unknown) => void;

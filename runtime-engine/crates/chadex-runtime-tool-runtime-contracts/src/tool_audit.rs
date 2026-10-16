@@ -3981,12 +3981,16 @@ impl ToolCall {
                 content,
                 acceptance,
                 budget,
+                workspace_requirements,
+                dependencies,
             } => serde_json::json!({
                 "plan_id": plan_id,
                 "parent_revision": parent_revision,
                 "content_bytes": content.len(),
                 "acceptance_count": acceptance.as_ref().and_then(Value::as_array).map(Vec::len),
                 "budget_present": budget.is_some(),
+                "workspace_requirement_count": workspace_requirements.as_ref().and_then(Value::as_array).map(Vec::len),
+                "dependency_count": dependencies.as_ref().and_then(Value::as_array).map(Vec::len),
             }),
             Self::PlanGet {
                 plan_id,
@@ -4030,9 +4034,21 @@ impl ToolCall {
                 action,
                 goal_run_id,
                 project,
+                expected_acceptance_revision,
+                acceptance_sha256,
+                proposal_id,
+                acceptance,
+                workspace_requirements,
+                dependencies,
                 ..
             } => {
                 let mut arguments = serde_json::json!({"action": action, "goal_run_id": goal_run_id});
+                arguments["expected_acceptance_revision"]=serde_json::json!(expected_acceptance_revision);
+                arguments["acceptance_sha256"]=serde_json::json!(acceptance_sha256);
+                arguments["proposal_id"]=serde_json::json!(proposal_id);
+                arguments["acceptance_count"]=serde_json::json!(acceptance.as_ref().and_then(Value::as_array).map(Vec::len));
+                arguments["workspace_requirement_count"]=serde_json::json!(workspace_requirements.as_ref().and_then(Value::as_array).map(Vec::len));
+                arguments["dependency_count"]=serde_json::json!(dependencies.as_ref().and_then(Value::as_array).map(Vec::len));
                 if let Some(project) = project {
                     arguments["project"] = serde_json::json!(project);
                 }

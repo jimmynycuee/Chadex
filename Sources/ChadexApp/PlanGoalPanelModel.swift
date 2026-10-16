@@ -21,6 +21,7 @@ final class PlanGoalPanelModel: ObservableObject {
     @Published private(set) var detailError: String?
     @Published private(set) var actionError: String?
     @Published private(set) var actionInFlight = false
+    @Published private(set) var goalStartLedger = GoalStartLedger()
     @Published private(set) var emergencyInFlight = false
     /// Revision the person picked; nil follows the latest one.
     @Published private(set) var viewedRevision: Int?
@@ -56,6 +57,9 @@ final class PlanGoalPanelModel: ObservableObject {
         detailError = nil
         actionError = nil
         viewedRevision = nil
+        var ledger = goalStartLedger
+        ledger.resetForProjectChange()
+        goalStartLedger = ledger
     }
 
     func select(_ newSelection: Selection?) async {
@@ -113,8 +117,15 @@ final class PlanGoalPanelModel: ObservableObject {
             as: GoalOverviewOutput.self
         )
         guard isCurrent(projectID, app) else { return }
+        var overviewReadSucceeded = false
+        var refreshedRuns: [GoalRun] = []
         switch overviewResult {
         case .success(let value):
+            overviewReadSucceeded = true
+            refreshedRuns = value.goalRuns ?? []
+            var ledger = goalStartLedger
+            ledger.reconcileUnknownRuns(projectScopeID: projectID, runs: refreshedRuns)
+            goalStartLedger = ledger
             overview = value
             overviewError = nil
         case .failure(let message, _):
@@ -133,6 +144,26 @@ final class PlanGoalPanelModel: ObservableObject {
             guard isCurrent(projectID, app), selection == requested, viewedRevision == requestedRevision else { return }
             switch result {
             case .success(let value):
+                if overviewReadSucceeded,
+                   let revision = value.revision,
+                   requestedRevision == nil || requestedRevision == revision.revision {
+                    let key = GoalStartKey(
+                        projectScopeID: projectID,
+                        projectId: value.plan.projectId,
+                        planId: value.plan.planId,
+                        revision: revision.revision,
+                        contentSha256: revision.contentSha256
+                    )
+                    var ledger = goalStartLedger
+                    ledger.reconcileUnknown(
+                        key,
+                        projectId: value.plan.projectId,
+                        decisions: value.decisions ?? [],
+                        runs: refreshedRuns,
+                        authoritative: true
+                    )
+                    goalStartLedger = ledger
+                }
                 planDetail = value
                 detailError = nil
             case .failure(let message, _):
@@ -168,10 +199,125 @@ final class PlanGoalPanelModel: ObservableObject {
     /// Approves the displayed revision and starts its Goal in one step.
     @discardableResult
     func approveAndStart(planId: String, revision: Int, contentSha256: String, mode: String) async -> Bool {
-        await act(tool: "plan_review", PlanGoalArguments(
-            action: "approve_and_start", planId: planId, revision: revision, contentSha256: contentSha256,
-            mode: mode
-        ))
+        guard !actionInFlight,
+              let app,
+              let projectID = app.selectedProject?.id,
+              boundProjectID == projectID else { return false }
+        var ledger = goalStartLedger
+        guard let key = ledger.pendingKey(
+            projectScopeID: projectID,
+            planId: planId,
+            revision: revision,
+            contentSha256: contentSha256
+        ) else { return false }
+        guard ledger.beginSubmission(key) else { return false }
+        goalStartLedger = ledger
+
+        actionInFlight = true
+        actionError = nil
+        defer { actionInFlight = false }
+        let result = await app.planGoalOperator(
+            tool: "plan_review",
+            arguments: PlanGoalArguments(
+                action: "approve_and_start", planId: planId, revision: revision,
+                contentSha256: contentSha256, mode: mode
+            ),
+            as: GoalStartOutput.self
+        )
+        guard isCurrent(projectID, app) else { return false }
+
+        var succeeded = false
+        switch result {
+        case .success(let output):
+            let run = output.goalRun.flatMap {
+                GoalStartLedger.matches($0, key: key, projectId: planDetail?.plan.projectId) ? $0 : nil
+            }
+            ledger = goalStartLedger
+            ledger.complete(key, run: run, runId: run?.goalRunId ?? output.decision?.consumedByGoalRunId)
+            goalStartLedger = ledger
+            if let run { recordStartedRun(run) }
+            succeeded = true
+        case .failure(let message, let kind):
+            ledger = goalStartLedger
+            ledger.recordFailure(key, kind: kind)
+            goalStartLedger = ledger
+            actionError = message
+        }
+        await refresh()
+        return succeeded
+    }
+
+    func goalStartPresentation(
+        planId: String,
+        revision: Int,
+        contentSha256: String,
+        projectId: String?,
+        decisions: [PlanDecision]
+    ) -> GoalStartPresentation {
+        guard let projectScopeID = boundProjectID else { return .available }
+        return goalStartLedger.presentation(
+            for: GoalStartKey(
+                projectScopeID: projectScopeID,
+                projectId: projectId,
+                planId: planId,
+                revision: revision,
+                contentSha256: contentSha256
+            ),
+            projectId: projectId,
+            decisions: decisions,
+            runs: overview?.goalRuns ?? []
+        )
+    }
+
+    /// Reserves the revision synchronously on button tap, before the
+    /// confirmation alert is shown, so either mode blocks the other at once.
+    func reserveGoalStart(
+        planId: String,
+        revision: Int,
+        contentSha256: String,
+        projectId: String?,
+        decisions: [PlanDecision]
+    ) -> Bool {
+        guard !actionInFlight,
+              let app,
+              let selectedProjectID = app.selectedProject?.id,
+              boundProjectID == selectedProjectID else { return false }
+        let key = GoalStartKey(
+            projectScopeID: selectedProjectID,
+            projectId: projectId,
+            planId: planId,
+            revision: revision,
+            contentSha256: contentSha256
+        )
+        var ledger = goalStartLedger
+        guard ledger.reserve(key, projectId: projectId, decisions: decisions, runs: overview?.goalRuns ?? []) else {
+            return false
+        }
+        goalStartLedger = ledger
+        return true
+    }
+
+    func cancelGoalStartConfirmation(planId: String, revision: Int, contentSha256: String) {
+        guard let projectScopeID = boundProjectID else { return }
+        var ledger = goalStartLedger
+        ledger.cancelConfirmation(
+            projectScopeID: projectScopeID,
+            planId: planId,
+            revision: revision,
+            contentSha256: contentSha256
+        )
+        goalStartLedger = ledger
+    }
+
+    private func recordStartedRun(_ run: GoalRun) {
+        var current = overview ?? GoalOverviewOutput(
+            plans: nil, goalRuns: nil, emergencyStopEngaged: nil, planModeLocks: nil, supervisorRunning: nil
+        )
+        var runs = current.goalRuns ?? []
+        runs.removeAll { $0.goalRunId == run.goalRunId }
+        runs.insert(run, at: 0)
+        current.goalRuns = runs
+        overview = current
     }
 
     @discardableResult
@@ -201,6 +347,84 @@ final class PlanGoalPanelModel: ObservableObject {
 
     // MARK: - Goal actions
 
+    /// Proposes all three approval-bearing Goal spec arrays. The returned
+    /// server record is shown for full comparison before separate approval.
+    @discardableResult
+    func proposeAcceptance(
+        goalRunId: String,
+        expectedAcceptanceRevision: Int,
+        acceptance: [JSONValue],
+        workspaceRequirements: [JSONValue],
+        dependencies: [JSONValue]
+    ) async -> GoalAcceptanceProposal? {
+        guard !actionInFlight,
+              expectedAcceptanceRevision >= 0,
+              expectedAcceptanceRevision < Int.max,
+              let app,
+              let projectID = app.selectedProject?.id,
+              boundProjectID == projectID else { return nil }
+
+        actionInFlight = true
+        actionError = nil
+        defer { actionInFlight = false }
+        let result = await app.planGoalOperator(
+            tool: "goal_operator",
+            arguments: PlanGoalArguments(
+                action: "propose_acceptance",
+                goalRunId: goalRunId,
+                acceptance: .array(acceptance),
+                workspaceRequirements: .array(workspaceRequirements),
+                dependencies: .array(dependencies),
+                expectedAcceptanceRevision: expectedAcceptanceRevision
+            ),
+            as: GoalAcceptanceProposal.self
+        )
+        guard isCurrent(projectID, app) else { return nil }
+
+        let proposal: GoalAcceptanceProposal?
+        switch result {
+        case .success(let output):
+            let isBoundToRun = output.goalRunId == goalRunId
+            let hasServerEvidence = !output.proposalId.isEmpty
+                && GoalWireHash.isSHA256(output.proposedAcceptanceSha256)
+                && GoalWireHash.isGitObjectID(output.checkpointSha)
+                && GoalWireHash.isSHA256(output.sourceAcceptanceSha256)
+                && output.sourceAcceptanceRevision >= 0
+                && output.sourceAcceptanceRevision == expectedAcceptanceRevision
+                && output.proposedAtUnixMs >= 0
+            proposal = isBoundToRun && hasServerEvidence ? output : nil
+            if proposal == nil {
+                actionError = L10n.string("planGoal.acceptanceEditor.invalidProposal")
+            }
+        case .failure(let message, _):
+            proposal = nil
+            actionError = message
+        }
+        await refresh()
+        return proposal
+    }
+
+    /// Approves only the displayed proposal, fenced by its original revision.
+    @discardableResult
+    func approveAcceptance(
+        goalRunId: String,
+        expectedAcceptanceRevision: Int,
+        acceptanceSha256: String,
+        proposalId: String
+    ) async -> Bool {
+        guard expectedAcceptanceRevision >= 0,
+              expectedAcceptanceRevision < Int.max,
+              GoalWireHash.isSHA256(acceptanceSha256),
+              !proposalId.isEmpty else { return false }
+        return await act(tool: "goal_operator", PlanGoalArguments(
+            action: "approve_acceptance",
+            goalRunId: goalRunId,
+            expectedAcceptanceRevision: expectedAcceptanceRevision,
+            acceptanceSha256: acceptanceSha256,
+            proposalId: proposalId
+        ))
+    }
+
     /// Removes a finished run from the lists; its record and branch are kept.
     @discardableResult
     func deleteRun(goalRunId: String) async -> Bool {
@@ -226,6 +450,31 @@ final class PlanGoalPanelModel: ObservableObject {
     @discardableResult
     func resume(goalRunId: String) async -> Bool {
         await act(tool: "goal_operator", PlanGoalArguments(action: "resume", goalRunId: goalRunId))
+    }
+
+    /// The view exposes this only for a proved before-work preflight blocker.
+    @discardableResult
+    func retryPreparation(goalRunId: String) async -> Bool {
+        await resume(goalRunId: goalRunId)
+    }
+
+    /// Retries acceptance from the existing checkpoint only after the person
+    /// confirms. The trusted operator validates that the blocker is recoverable.
+    @discardableResult
+    func retryAcceptance(goalRunId: String) async -> Bool {
+        await act(tool: "goal_operator", PlanGoalArguments(
+            action: "retry_acceptance", goalRunId: goalRunId
+        ))
+    }
+
+    /// Adopts metadata for an existing committed checkpoint after the person
+    /// confirms. The trusted operator validates HEAD, journal, and diff; this
+    /// action does not start or resume the Goal.
+    @discardableResult
+    func adoptCheckpoint(goalRunId: String) async -> Bool {
+        await act(tool: "goal_operator", PlanGoalArguments(
+            action: "adopt_checkpoint", goalRunId: goalRunId
+        ))
     }
 
     @discardableResult

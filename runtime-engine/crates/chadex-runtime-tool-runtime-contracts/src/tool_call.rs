@@ -1731,6 +1731,10 @@ pub enum ToolCall {
         acceptance: Option<Value>,
         #[serde(default)]
         budget: Option<Value>,
+        #[serde(default)]
+        workspace_requirements: Option<Value>,
+        #[serde(default)]
+        dependencies: Option<Value>,
     },
 
     /// Read one owned plan revision, history, decisions, and optional diff.
@@ -1763,6 +1767,10 @@ pub enum ToolCall {
         acceptance: Option<Value>,
         #[serde(default)]
         budget: Option<Value>,
+        #[serde(default)]
+        workspace_requirements: Option<Value>,
+        #[serde(default)]
+        dependencies: Option<Value>,
     },
 
     /// Wait (bounded) for the user's decision on a saved plan revision.
@@ -1824,6 +1832,18 @@ pub enum ToolCall {
         project: Option<String>,
         #[serde(default)]
         reason: Option<String>,
+        #[serde(default)]
+        acceptance: Option<Value>,
+        #[serde(default)]
+        workspace_requirements: Option<Value>,
+        #[serde(default)]
+        dependencies: Option<Value>,
+        #[serde(default)]
+        expected_acceptance_revision: Option<i64>,
+        #[serde(default)]
+        acceptance_sha256: Option<String>,
+        #[serde(default)]
+        proposal_id: Option<String>,
     },
 
     /// Create explicit high-level durable intent/control state without execution authority.

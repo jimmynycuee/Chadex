@@ -4,11 +4,13 @@ W5 closes the **automatable Windows release-engineering track** on top of the W1
 
 The public macOS release workflow is unchanged. W5 does not authorize a GitHub Release, Windows asset publication, Authenticode signing policy, or updater rollout.
 
-For the v0.7.1 candidate, the Windows synthetic and historical upgrade baselines advance from v0.6.5 to v0.7.0. The CI historical-source job builds from the public v0.7.0 tag; Windows remains an unsigned CI validation artifact and is not part of the public release.
+For the v0.7.2 candidate, the Windows synthetic and historical upgrade baselines advance from v0.7.0 to v0.7.1. CI builds the historical source from the public v0.7.1 tag and upgrades it to the current candidate. The ordinary W5 artifact remains an unsigned CI validation artifact; the separate v0.7.2 release workflow produces the public Windows installer and signed updater bundle.
 
 ## Candidate contract
 
 `apps/windows/src-tauri/tauri.release.conf.json` builds a per-user NSIS installer with Traditional Chinese and English resources, downgrade blocking and the WebView2 downloaded bootstrapper. `scripts/build_windows_release.ps1` requires native Windows x64/MSVC, pinned source identity and a clean checkout, builds the helper plus all three runtime entrypoints in release mode, stages only verified production resources, and emits SHA-256/size metadata. The production desktop uses `custom-protocol` and explicitly excludes the `desktop-smoke` feature.
+
+W5 candidate manifest schema 2 distinguishes the raw build input from the executable embedded in an NSIS installer. The pinned Tauri CLI 2.12.2 bundler patches the first `__TAURI_BUNDLE_TYPE_VAR_UNK` marker to `__TAURI_BUNDLE_TYPE_VAR_NSS` while producing the installer, then restores the raw target binary. The build records `desktop_source_sha256` and separate candidate/baseline `*_desktop_payload_sha256` values by applying that exact equal-length replacement to an in-memory copy. The synthetic baseline must use the same raw binary; installed executables are still checked against their full payload SHA-256. A missing marker, changed raw input or hash mismatch fails the gate. Historical v0.7.1 candidate manifests remain schema 1 and retain their existing `desktop_sha256` interpretation.
 
 For v0.5.0 the same-binary synthetic migration fixture is `0.4.1 → 0.5.0` (`scripts/build_windows_release.ps1 -BuildUpgradeFixture` fixes the baseline to `0.4.1` and requires the candidate version to be `0.5.0`). It remains useful for deterministic installer-metadata migration checks, but it is **not** treated as historical application compatibility evidence.
 
@@ -71,6 +73,6 @@ The following still need a real user environment, private credentials/hardware, 
 - trusted Authenticode signing and SmartScreen/reputation behavior;
 - a host that genuinely lacks WebView2 and interactive bootstrapper/installer choices;
 - Credential Manager deletion policy during uninstall (default application-data preservation does not define credential deletion policy);
-- production Windows updater artifacts, authentication/signing and delivery policy.
+- real-device validation of the in-app updater; CI verifies the signed archive against the configured public key, but does not exercise installation on a user's Windows host.
 
-`.github/workflows/release.yml` continues to publish only the free macOS Apple Silicon DMG. A Windows CI artifact remains unsigned validation evidence until a later explicitly authorized distribution phase changes that boundary.
+`.github/workflows/release.yml` keeps the macOS Apple Silicon DMG and adds the separately gated v0.7.2 Windows installer/updater assets. A W5 CI artifact remains unsigned validation evidence and never serves as the public release asset.

@@ -21,15 +21,27 @@ import windows_runtime_e2e as w2
 CHECKPOINT_FIELDS = frozenset({
     "helper_running", "runtime_ready", "verified", "rendered", "selected_expected",
     "preferences_restored", "helper_pid", "secure_storage_roundtrip",
-    "credential_deleted_after_helper_death",
+    "credential_deleted_after_helper_death", "window_hidden",
 })
+WORKFLOW_RUNTIME_READY_EXPECTED = {
+    "helper_running": True,
+    "runtime_ready": True,
+    "verified": False,
+    "rendered": True,
+    "selected_expected": True,
+}
+WORKFLOW_WINDOW_HIDDEN_EXPECTED = {
+    **WORKFLOW_RUNTIME_READY_EXPECTED,
+    "window_hidden": True,
+}
 FIXTURE_STAGES = (
-    "webview_ready", "runtime_ready", "project_switched", "helper_restarted",
+    "webview_ready", "runtime_ready", "window_hidden", "project_switched", "helper_restarted",
     "helper_crash_observed", "recovered", "app_restored", "startup_failure", "failed",
 )
 STAGES = (
     "preflight",
-    "workflow.webview_ready", "workflow.runtime_ready", "workflow.project_switched",
+    "workflow.webview_ready", "workflow.runtime_ready", "workflow.window_hidden",
+    "workflow.project_switched",
     "workflow.project_a_operation", "workflow.project_b_operation",
     "workflow.helper_restarted", "workflow.helper_kill",
     "workflow.helper_crash_observed", "workflow.old_helper_tree_gone",
@@ -51,6 +63,7 @@ SAFE_ERROR_CODES = frozenset(w2.SAFE_FAILURES) | frozenset({
     "checkpoint_timeout", "app_exited_before_checkpoint", "checkpoint_invalid",
     "checkpoint_too_large", "checkpoint_schema_invalid", "checkpoint_value_invalid",
     "checkpoint_expectation_failed", "checkpoint_stage_failed", "checkpoint_ack_exists",
+    "window_not_hidden", "main_window_visibility_unavailable",
     "smoke_js_failed", "unexpected_readiness_checkpoint", "helper_restart_not_observed",
     "helper_pid_not_changed", "old_helper_tree_alive", "mcp_project_not_switched",
     "project_fixture_mismatch", "project_operation_failed", "project_result_mismatch",
@@ -464,9 +477,8 @@ def run_workflow(app: Path, paths: dict[str, Path], powershell: str,
                             "secure_storage_roundtrip": True}, require_helper_pid=True)
         _runtime_payload, initial_helper = observed_checkpoint(
             report, "workflow.runtime_ready", "runtime_ready", process, paths,
-            powershell, owned,
-            {"helper_running": True, "runtime_ready": True, "verified": False,
-             "rendered": True, "selected_expected": True}, require_helper_pid=True,
+            powershell, owned, WORKFLOW_RUNTIME_READY_EXPECTED,
+            require_helper_pid=True,
             ack=False,
         )
         with report.stage("workflow.project_a_operation"):
@@ -475,6 +487,17 @@ def run_workflow(app: Path, paths: dict[str, Path], powershell: str,
                                      "W3 project A initial marker", "W3 operation A passed",
                                      write_result=True)
         acknowledge(paths["control"], "runtime_ready")
+
+        _hidden_payload, hidden_helper = observed_checkpoint(
+            report, "workflow.window_hidden", "window_hidden", process, paths,
+            powershell, owned, WORKFLOW_WINDOW_HIDDEN_EXPECTED,
+            require_helper_pid=True,
+            ack=False,
+        )
+        require(initial_helper is not None and hidden_helper is not None
+                and w2.same_process(hidden_helper, initial_helper),
+                "helper_restart_not_observed")
+        acknowledge(paths["control"], "window_hidden")
 
         observed_checkpoint(report, "workflow.project_switched", "project_switched", process,
                            paths, powershell, owned,
