@@ -349,6 +349,9 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "menu_element_count": 0,
             "uia_menu_desktop_child_count": 0,
             "uia_menu_tray_owner_descendant_count": 0,
+            "native_popup_window_count": 0,
+            "uia_menu_popup_handle_root_count": 0,
+            "uia_menu_popup_root_count": 0,
             "menu_app_process_count": 0,
             "menu_exact_owner_count": 0,
             "menu_exact_item_count": 0,
@@ -368,6 +371,8 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             post_callback_menu_state_code=3,
             post_callback_menu_mode_flags=0x1C,
             post_callback_menu_owner_matches_tray=True,
+            native_popup_window_count=1,
+            uia_menu_popup_handle_root_count=1,
         )
         invalid_success_outputs = (
             b"tray_quit_sent\ntray_diagnostics={}\nextra\n",
@@ -434,6 +439,9 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             native_icon_match_count=1,
             native_rect_available=True,
             native_rect_root_kind=1,
+            native_popup_window_count=1,
+            uia_menu_popup_handle_root_count=1,
+            uia_menu_popup_root_count=1,
             native_callback_post_attempted=True,
             native_callback_post_succeeded=True,
         )
@@ -500,6 +508,11 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn('"tray_diagnostics="', script)
         self.assertIn("Wait-ChadexMenu", script)
         self.assertIn("MenuOwnerCheckCode", script)
+        self.assertIn("EnumThreadWindows", script)
+        self.assertIn('className.ToString() != "#32768"', script)
+        self.assertIn("FindActivePopupMenuWindows", script)
+        self.assertIn("uia_menu_popup_handle_root_count", script)
+        self.assertIn("uia_menu_popup_root_count", script)
         self.assertIn('ownerClass.ToString() != "tray_icon_app"', script)
         self.assertIn("Shell_NotifyIconGetRect", script)
         self.assertIn("Shell_NotifyIconGetRect(ref identifier, out rect) == 0", script)
@@ -514,6 +527,8 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn("$null = Find-ChadexMenu", script)
         self.assertIn("$script:TrayDiagnostics.menu_exact_owner_count -gt 0", script)
         self.assertIn("if ($ownerCode -ne 7)", script)
+        self.assertIn("$showItems[0].Current.IsEnabled", script)
+        self.assertIn("$showItems[0].Current.IsOffscreen", script)
         self.assertIn("SendInput", script)
         self.assertIn("menu_owner_check_code", script)
         self.assertIn("IntPtr expectedOwnerHwnd", script)

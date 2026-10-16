@@ -39,6 +39,9 @@ $script:TrayDiagnostics = [ordered]@{
     menu_element_count = 0
     uia_menu_desktop_child_count = 0
     uia_menu_tray_owner_descendant_count = 0
+    native_popup_window_count = 0
+    uia_menu_popup_handle_root_count = 0
+    uia_menu_popup_root_count = 0
     menu_app_process_count = 0
     menu_exact_owner_count = 0
     menu_exact_item_count = 0
@@ -93,6 +96,15 @@ public static class ChadexTrayInput {
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumThreadWindows(uint threadId, EnumWindowsProc callback, IntPtr lParam);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hwnd, out TrayRect rect);
     [DllImport("user32.dll")]
     private static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")]
@@ -175,6 +187,31 @@ public static class ChadexTrayInput {
         }, IntPtr.Zero);
         return completed ? handles.ToArray() : Array.Empty<IntPtr>();
     }
+    public static IntPtr[] FindActivePopupMenuWindows(uint expectedProcessId, IntPtr expectedOwnerHwnd) {
+        uint ownerProcessId;
+        uint ownerThreadId = GetWindowThreadProcessId(expectedOwnerHwnd, out ownerProcessId);
+        if (ownerThreadId == 0 || ownerProcessId != expectedProcessId) return Array.Empty<IntPtr>();
+
+        var handles = new List<IntPtr>();
+        EnumWindowsProc callback = (hwnd, _) => {
+            uint windowProcessId;
+            uint windowThreadId = GetWindowThreadProcessId(hwnd, out windowProcessId);
+            if (windowThreadId != ownerThreadId || windowProcessId != expectedProcessId) return true;
+
+            var className = new StringBuilder(64);
+            TrayRect rect;
+            if (GetClassName(hwnd, className, className.Capacity) == 0 ||
+                className.ToString() != "#32768" || !IsWindowVisible(hwnd) ||
+                !GetWindowRect(hwnd, out rect) || rect.right <= rect.left || rect.bottom <= rect.top)
+                return true;
+
+            if (MenuOwnerCheckCode(hwnd, expectedProcessId, expectedOwnerHwnd) == 7)
+                handles.Add(hwnd);
+            return true;
+        };
+        var completed = EnumThreadWindows(ownerThreadId, callback, IntPtr.Zero);
+        return completed ? handles.ToArray() : Array.Empty<IntPtr>();
+    }
     public static bool TryGetTrayIconRect(IntPtr hwnd, uint iconId, out TrayRect rect) {
         var identifier = new NotifyIconIdentifier {
             cbSize = (uint)Marshal.SizeOf(typeof(NotifyIconIdentifier)),
@@ -186,6 +223,9 @@ public static class ChadexTrayInput {
     }
     public static int MenuOwnerCheckCode(int nativeHandle, uint processId, IntPtr expectedOwnerHwnd) {
         var hwnd = new IntPtr(unchecked((long)(uint)nativeHandle));
+        return MenuOwnerCheckCode(hwnd, processId, expectedOwnerHwnd);
+    }
+    public static int MenuOwnerCheckCode(IntPtr hwnd, uint processId, IntPtr expectedOwnerHwnd) {
         // Sanitized diagnostics: 1=missing hwnd/thread, 2=other process,
         // 3=no active menu, 4=wrong owner PID, 5=wrong HWND, 6=wrong class, 7=exact app.
         if (hwnd == IntPtr.Zero) return 1; // no native menu window
@@ -431,9 +471,9 @@ public static class ChadexTrayInput {
             [System.Windows.Automation.TreeScope]::Children, $condition)
         $script:TrayDiagnostics.uia_menu_desktop_child_count = [Math]::Max(
             $script:TrayDiagnostics.uia_menu_desktop_child_count, $desktopElements.Count)
-        # Native popup menus may be exposed below their exact owner HWND instead
-        # of as direct children of the desktop root. Search only Chadex's tray
-        # owner subtree, then independently verify the active native owner below.
+        # Native popup menus may be absent from both the desktop and owner UIA trees.
+        # Also inspect UIA roots obtained from visible #32768 windows on the exact
+        # owner thread; the native owner/PID and exact menu items remain mandatory.
         $ownerElements = @()
         try {
             $owner = [System.Windows.Automation.AutomationElement]::FromHandle(
@@ -447,8 +487,30 @@ public static class ChadexTrayInput {
         }
         $script:TrayDiagnostics.uia_menu_tray_owner_descendant_count = [Math]::Max(
             $script:TrayDiagnostics.uia_menu_tray_owner_descendant_count, $ownerElements.Count)
+        $popupHandles = @([ChadexTrayInput]::FindActivePopupMenuWindows(
+            [uint32]$AppProcessId, $script:ExpectedTrayWindow))
+        $script:TrayDiagnostics.native_popup_window_count = [Math]::Max(
+            $script:TrayDiagnostics.native_popup_window_count, $popupHandles.Count)
+        $popupRoots = @()
+        $popupHandleRootCount = 0
+        foreach ($popupHandle in $popupHandles) {
+            try {
+                $popupRoot = [System.Windows.Automation.AutomationElement]::FromHandle($popupHandle)
+                if ($null -eq $popupRoot) { continue }
+                $popupHandleRootCount++
+                if ($popupRoot.Current.ControlType -eq [System.Windows.Automation.ControlType]::Menu) {
+                    $popupRoots += $popupRoot
+                }
+            } catch [System.Windows.Automation.ElementNotAvailableException] {
+                # The native menu can close between HWND enumeration and UIA lookup.
+            }
+        }
+        $script:TrayDiagnostics.uia_menu_popup_handle_root_count = [Math]::Max(
+            $script:TrayDiagnostics.uia_menu_popup_handle_root_count, $popupHandleRootCount)
+        $script:TrayDiagnostics.uia_menu_popup_root_count = [Math]::Max(
+            $script:TrayDiagnostics.uia_menu_popup_root_count, $popupRoots.Count)
         $uniqueElements = @{}
-        foreach ($element in @($desktopElements) + @($ownerElements)) {
+        foreach ($element in @($desktopElements) + @($ownerElements) + @($popupRoots)) {
             try { $uniqueElements[($element.GetRuntimeId() -join ":")] = $element }
             catch [System.Windows.Automation.ElementNotAvailableException] {
                 # Re-query after Explorer or the native menu changes its UIA tree.
@@ -482,6 +544,8 @@ public static class ChadexTrayInput {
                     $script:TrayDiagnostics.menu_exact_item_count++
                 }
                 if ($showItems.Count -eq 1 -and $quitItems.Count -eq 1 -and
+                    $showItems[0].Current.ProcessId -eq $AppProcessId -and
+                    $showItems[0].Current.IsEnabled -and -not $showItems[0].Current.IsOffscreen -and
                     $quitItems[0].Current.ProcessId -eq $AppProcessId -and
                     $quitItems[0].Current.IsEnabled -and -not $quitItems[0].Current.IsOffscreen) {
                     $menuCandidates += [PSCustomObject]@{ Menu = $element; Quit = $quitItems[0] }
