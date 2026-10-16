@@ -119,6 +119,9 @@ TRAY_DIAGNOSTIC_FIELDS = {
     "native_callback_post_attempted": bool,
     "native_callback_post_succeeded": bool,
     "native_callback_post_error_code": int,
+    "foreground_process_grant_attempted": bool,
+    "foreground_process_grant_succeeded": bool,
+    "foreground_process_grant_error_code": int,
     "native_keyboard_fallback_attempted": bool,
     "native_keyboard_fallback_succeeded": bool,
     "native_keyboard_guard_code": int,
@@ -855,6 +858,14 @@ def request_tray_quit(powershell: str, app_pid: int) -> dict[str, bool | int]:
     if result.returncode == 0 and len(lines) == 2 and lines[0] == "tray_quit_sent":
         try:
             diagnostics = parse_tray_diagnostics(lines[1])
+            foreground_grant_attempted = diagnostics["foreground_process_grant_attempted"]
+            foreground_grant_succeeded = diagnostics["foreground_process_grant_succeeded"]
+            if foreground_grant_attempted != foreground_grant_succeeded:
+                raise ValueError("tray_foreground_grant_incomplete")
+            if foreground_grant_attempted and diagnostics["foreground_process_grant_error_code"] != 0:
+                raise ValueError("tray_foreground_grant_error")
+            if diagnostics["native_callback_post_attempted"] and not foreground_grant_succeeded:
+                raise ValueError("tray_callback_without_foreground_grant")
             keyboard_attempted = diagnostics["native_keyboard_fallback_attempted"]
             keyboard_succeeded = diagnostics["native_keyboard_fallback_succeeded"]
             if keyboard_attempted != keyboard_succeeded:

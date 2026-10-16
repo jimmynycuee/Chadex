@@ -35,6 +35,9 @@ $script:TrayDiagnostics = [ordered]@{
     native_callback_post_attempted = $false
     native_callback_post_succeeded = $false
     native_callback_post_error_code = 0
+    foreground_process_grant_attempted = $false
+    foreground_process_grant_succeeded = $false
+    foreground_process_grant_error_code = 0
     native_keyboard_fallback_attempted = $false
     native_keyboard_fallback_succeeded = $false
     native_keyboard_guard_code = 0
@@ -164,6 +167,14 @@ public static class ChadexTrayInput {
     [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessage(IntPtr hwnd, uint message, UIntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AllowSetForegroundWindow(uint processId);
+    public static bool AllowExactProcessForeground(uint processId, out int errorCode) {
+        var succeeded = processId != 0 && AllowSetForegroundWindow(processId);
+        errorCode = succeeded ? 0 : Marshal.GetLastWin32Error();
+        return succeeded;
+    }
     public static uint SendMouseInput(uint flags) {
         var input = new NativeInput {
             type = 0, // INPUT_MOUSE
@@ -938,6 +949,22 @@ public static class ChadexTrayInput {
         $script:TrayDiagnostics.native_menu_state_code = [ChadexTrayInput]::ActiveMenuStateCode(
             [uint32]$AppProcessId, $script:ExpectedTrayWindow)
         if ($script:TrayDiagnostics.native_menu_state_code -ne 0) { return $false }
+
+        # Revalidate the exact app/window after input and menu-state inspection.
+        if (-not (Test-AppIdentity) -or
+            [ChadexTrayInput]::WindowProcessId($nativeIcon.Window) -ne $AppProcessId) {
+            return $false
+        }
+
+        # The app must be allowed to activate its own notification menu. Grant
+        # foreground permission only to this verified app PID; never use ASFW_ANY.
+        $foregroundGrantErrorCode = 0
+        $script:TrayDiagnostics.foreground_process_grant_attempted = $true
+        $script:TrayDiagnostics.foreground_process_grant_succeeded =
+            [ChadexTrayInput]::AllowExactProcessForeground(
+                [uint32]$AppProcessId, [ref]$foregroundGrantErrorCode)
+        $script:TrayDiagnostics.foreground_process_grant_error_code = $foregroundGrantErrorCode
+        if (-not $script:TrayDiagnostics.foreground_process_grant_succeeded) { return $false }
 
         $script:TrayDiagnostics.native_callback_post_attempted = $true
         $postErrorCode = 0

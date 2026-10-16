@@ -345,6 +345,9 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "native_callback_post_attempted": False,
             "native_callback_post_succeeded": False,
             "native_callback_post_error_code": 0,
+            "foreground_process_grant_attempted": False,
+            "foreground_process_grant_succeeded": False,
+            "foreground_process_grant_error_code": 0,
             "native_keyboard_fallback_attempted": False,
             "native_keyboard_fallback_succeeded": False,
             "native_keyboard_guard_code": 0,
@@ -448,6 +451,8 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             native_callback_post_attempted=True,
             native_callback_post_succeeded=False,
             native_callback_post_error_code=5,
+            foreground_process_grant_attempted=True,
+            foreground_process_grant_succeeded=True,
         )
         failure_output = (
             "tray_menu_unavailable\n" + "tray_diagnostics=" +
@@ -474,6 +479,8 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             msaa_menu_child_count=3,
             native_callback_post_attempted=True,
             native_callback_post_succeeded=True,
+            foreground_process_grant_attempted=True,
+            foreground_process_grant_succeeded=True,
         )
         success_output = (
             "tray_quit_sent\n" + "tray_diagnostics=" +
@@ -527,6 +534,27 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                 smoke.request_tray_quit("powershell.exe", 4321)
         self.assertEqual(failure.exception.code, "tray_menu_unavailable")
         self.assertEqual(failure.exception.tray_diagnostics["native_keyboard_guard_code"], 9)
+
+        foreground_grant_failure = dict(
+            diagnostics,
+            foreground_process_grant_attempted=True,
+            foreground_process_grant_succeeded=False,
+            foreground_process_grant_error_code=5,
+        )
+        foreground_grant_output = (
+            "tray_menu_unavailable\ntray_diagnostics=" +
+            json.dumps(foreground_grant_failure, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 3, foreground_grant_output, b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_menu_unavailable")
+        self.assertEqual(
+            failure.exception.tray_diagnostics["foreground_process_grant_error_code"], 5)
+        self.assertFalse(failure.exception.tray_diagnostics["native_callback_post_attempted"])
+        self.assertFalse(failure.exception.tray_diagnostics["native_keyboard_fallback_attempted"])
 
         for invalid in (
                 dict(native_keyboard_diagnostics, native_keyboard_fallback_succeeded=False),
@@ -698,6 +726,23 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn("[System.Windows.Automation.TreeScope]::Descendants, $condition", script)
         self.assertIn("$ownerCode -ne 7", script)
         self.assertIn("native_callback_post_error_code", script)
+        self.assertIn("AllowSetForegroundWindow(uint processId)", script)
+        self.assertIn("AllowExactProcessForeground(uint processId, out int errorCode)", script)
+        self.assertIn("foreground_process_grant_attempted", script)
+        self.assertIn("foreground_process_grant_succeeded", script)
+        self.assertNotIn("AllowSetForegroundWindow(uint.MaxValue)", script)
+        callback_fallback = script[
+            script.index("function Invoke-NativeTrayCallbackFallback"):
+            script.index("function Invoke-NativeMenuQuitFallback")
+        ]
+        self.assertLess(
+            callback_fallback.index("AllowExactProcessForeground("),
+            callback_fallback.index("PostTrayRightButtonUp("))
+        self.assertLess(
+            callback_fallback.index(
+                "if (-not $script:TrayDiagnostics.foreground_process_grant_succeeded)"),
+            callback_fallback.index("native_callback_post_attempted = $true"))
+        self.assertIn("if (-not (Test-AppIdentity) -or", callback_fallback)
         self.assertEqual(script.count("if (-not (Invoke-NativeTrayCallbackFallback))"), 2)
         self.assertEqual(script.count("if (-not (Invoke-NativeMenuQuitFallback))"), 2)
         self.assertIn("GetForegroundWindow()", script)
