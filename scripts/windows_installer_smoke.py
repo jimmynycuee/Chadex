@@ -119,6 +119,10 @@ TRAY_DIAGNOSTIC_FIELDS = {
     "native_callback_post_attempted": bool,
     "native_callback_post_succeeded": bool,
     "native_callback_post_error_code": int,
+    "native_keyboard_fallback_attempted": bool,
+    "native_keyboard_fallback_succeeded": bool,
+    "native_keyboard_input_count": int,
+    "native_keyboard_input_error_code": int,
     "preexisting_menu_count": int,
     "menu_element_count": int,
     "uia_menu_desktop_child_count": int,
@@ -179,7 +183,9 @@ def sanitize_tray_diagnostics(value: Any) -> dict[str, bool | int] | None:
             if type(actual) is not bool:
                 return None
         elif type(actual) is not int or not 0 <= actual <= (
-                0xFFFFFFFF if name == "native_callback_post_error_code" else 10000):
+                0xFFFFFFFF if name in {
+                    "native_callback_post_error_code", "native_keyboard_input_error_code"
+                } else 10000):
             return None
         clean[name] = actual
     return clean
@@ -848,11 +854,26 @@ def request_tray_quit(powershell: str, app_pid: int) -> dict[str, bool | int]:
     if result.returncode == 0 and len(lines) == 2 and lines[0] == "tray_quit_sent":
         try:
             diagnostics = parse_tray_diagnostics(lines[1])
+            keyboard_attempted = diagnostics["native_keyboard_fallback_attempted"]
+            keyboard_succeeded = diagnostics["native_keyboard_fallback_succeeded"]
+            if keyboard_attempted != keyboard_succeeded:
+                raise ValueError("tray_keyboard_fallback_incomplete")
+            if keyboard_attempted and (
+                    diagnostics["native_keyboard_input_count"] != 4
+                    or diagnostics["native_keyboard_input_error_code"] != 0
+                    or diagnostics["native_popup_window_count"] != 1
+                    or diagnostics["post_callback_menu_state_code"] != 3
+                    or not diagnostics["post_callback_menu_owner_matches_tray"]):
+                raise ValueError("tray_keyboard_fallback_unverified")
+            if not keyboard_attempted and (
+                    diagnostics["native_keyboard_input_count"] != 0):
+                raise ValueError("unexpected_tray_keyboard_input")
             if (diagnostics["menu_exact_owner_count"] != 1 or
-                    diagnostics["menu_exact_item_count"] != 1 or
                     diagnostics["menu_owner_check_code"] != 7 or
                     diagnostics["msaa_menu_popup_count"] not in (0, 1) or
-                    (diagnostics["msaa_menu_popup_count"] == 1 and
+                    (not keyboard_attempted and diagnostics["menu_exact_item_count"] != 1) or
+                    (not keyboard_attempted and
+                     diagnostics["msaa_menu_popup_count"] == 1 and
                      diagnostics["msaa_menu_child_count"] < 2)):
                 raise ValueError("tray_menu_evidence_missing")
             return diagnostics

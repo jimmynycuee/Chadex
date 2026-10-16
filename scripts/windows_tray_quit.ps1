@@ -35,6 +35,10 @@ $script:TrayDiagnostics = [ordered]@{
     native_callback_post_attempted = $false
     native_callback_post_succeeded = $false
     native_callback_post_error_code = 0
+    native_keyboard_fallback_attempted = $false
+    native_keyboard_fallback_succeeded = $false
+    native_keyboard_input_count = 0
+    native_keyboard_input_error_code = 0
     preexisting_menu_count = 0
     menu_element_count = 0
     uia_menu_desktop_child_count = 0
@@ -89,9 +93,20 @@ public static class ChadexTrayInput {
         public UIntPtr extraInfo;
     }
     [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardInput {
+        public ushort virtualKey, scanCode;
+        public uint flags, time;
+        public UIntPtr extraInfo;
+    }
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputUnion {
+        [FieldOffset(0)] public MouseInput mouse;
+        [FieldOffset(0)] public KeyboardInput keyboard;
+    }
+    [StructLayout(LayoutKind.Sequential)]
     private struct NativeInput {
         public uint type;
-        public MouseInput mouse;
+        public InputUnion data;
     }
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -133,6 +148,8 @@ public static class ChadexTrayInput {
     private static extern int GetClassName(IntPtr hwnd, StringBuilder className, int maxCount);
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
     [DllImport("oleacc.dll", PreserveSig = true)]
     private static extern int AccessibleObjectFromWindow(
         IntPtr hwnd, uint objectId, ref Guid interfaceId,
@@ -149,9 +166,73 @@ public static class ChadexTrayInput {
     public static uint SendMouseInput(uint flags) {
         var input = new NativeInput {
             type = 0, // INPUT_MOUSE
-            mouse = new MouseInput { flags = flags, extraInfo = UIntPtr.Zero }
+            data = new InputUnion {
+                mouse = new MouseInput { flags = flags, extraInfo = UIntPtr.Zero }
+            }
         };
         return SendInput(1, new[] { input }, Marshal.SizeOf(typeof(NativeInput)));
+    }
+    public static bool SendMenuQuitKeys(
+        uint expectedProcessId, IntPtr expectedOwnerHwnd, IntPtr expectedPopupHwnd,
+        out int sentCount, out int errorCode) {
+        sentCount = 0;
+        errorCode = 0;
+        uint ownerProcessId;
+        uint ownerThreadId = GetWindowThreadProcessId(expectedOwnerHwnd, out ownerProcessId);
+        if (ownerThreadId == 0 || ownerProcessId != expectedProcessId ||
+            MenuOwnerCheckCode(expectedPopupHwnd, expectedProcessId, expectedOwnerHwnd) != 7)
+            return false;
+
+        var menuInfo = new GuiThreadInfo();
+        menuInfo.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
+        if (!GetGUIThreadInfo(ownerThreadId, ref menuInfo) ||
+            (menuInfo.flags & 0x10) == 0 || menuInfo.hwndMenuOwner != expectedOwnerHwnd)
+            return false;
+
+        var foreground = GetForegroundWindow();
+        uint foregroundProcessId;
+        uint foregroundThreadId = GetWindowThreadProcessId(foreground, out foregroundProcessId);
+        if (foreground == IntPtr.Zero || foregroundProcessId != expectedProcessId ||
+            foregroundThreadId != ownerThreadId ||
+            (foreground != expectedOwnerHwnd && foreground != expectedPopupHwnd))
+            return false;
+
+        var inputs = new[] {
+            new NativeInput {
+                type = 1, // INPUT_KEYBOARD
+                data = new InputUnion {
+                    keyboard = new KeyboardInput { virtualKey = 0x23, extraInfo = UIntPtr.Zero }
+                }
+            },
+            new NativeInput {
+                type = 1, // INPUT_KEYBOARD
+                data = new InputUnion {
+                    keyboard = new KeyboardInput {
+                        virtualKey = 0x23, flags = 0x0002, extraInfo = UIntPtr.Zero
+                    }
+                }
+            },
+            new NativeInput {
+                type = 1, // INPUT_KEYBOARD
+                data = new InputUnion {
+                    keyboard = new KeyboardInput { virtualKey = 0x0D, extraInfo = UIntPtr.Zero }
+                }
+            },
+            new NativeInput {
+                type = 1, // INPUT_KEYBOARD
+                data = new InputUnion {
+                    keyboard = new KeyboardInput {
+                        virtualKey = 0x0D, flags = 0x0002, extraInfo = UIntPtr.Zero
+                    }
+                }
+            }
+        };
+        sentCount = (int)SendInput(4, inputs, Marshal.SizeOf(typeof(NativeInput)));
+        if (sentCount != 4) {
+            errorCode = Marshal.GetLastWin32Error();
+            return false;
+        }
+        return true;
     }
     public static bool PostTrayRightButtonUp(IntPtr hwnd, uint iconId, out int errorCode) {
         // Runner-only synthesized callback delivery, not physical mouse input;
@@ -834,6 +915,34 @@ public static class ChadexTrayInput {
         return $script:TrayDiagnostics.native_callback_post_succeeded
     }
 
+    function Invoke-NativeMenuQuitFallback {
+        # The release source contract pins the app menu to Show Chadex, then Quit.
+        # Use real keyboard input on the verified foreground native menu; never
+        # send an app command or call the app's quit handler directly.
+        if (-not (Test-AppIdentity)) { return $false }
+        $activePopupHandles = @([ChadexTrayInput]::FindActivePopupMenuWindows(
+            [uint32]$AppProcessId, $script:ExpectedTrayWindow))
+        if ($activePopupHandles.Count -ne 1) { return $false }
+        $popupHandle = $activePopupHandles[0]
+        $script:TrayDiagnostics.menu_exact_owner_count = $activePopupHandles.Count
+        $script:TrayDiagnostics.menu_owner_check_code = [ChadexTrayInput]::MenuOwnerCheckCode(
+            $popupHandle, [uint32]$AppProcessId, $script:ExpectedTrayWindow)
+        if ($script:TrayDiagnostics.menu_owner_check_code -ne 7) {
+            return $false
+        }
+
+        $script:TrayDiagnostics.native_keyboard_fallback_attempted = $true
+        $sentCount = 0
+        $errorCode = 0
+        $script:TrayDiagnostics.native_keyboard_fallback_succeeded =
+            [ChadexTrayInput]::SendMenuQuitKeys(
+            [uint32]$AppProcessId, $script:ExpectedTrayWindow, $popupHandle,
+            [ref]$sentCount, [ref]$errorCode)
+        $script:TrayDiagnostics.native_keyboard_input_count = $sentCount
+        $script:TrayDiagnostics.native_keyboard_input_error_code = $errorCode
+        return $script:TrayDiagnostics.native_keyboard_fallback_succeeded
+    }
+
     function Invoke-RightClickAt([int] $X, [int] $Y) {
         if (-not [ChadexTrayInput]::SetCursorPos($X, $Y)) { return $false }
         $script:TrayDiagnostics.native_cursor_matches_rect =
@@ -945,8 +1054,13 @@ public static class ChadexTrayInput {
             $selection = Wait-ChadexMenu
             if ($null -eq $selection) {
                 Record-NativeMenuState "post_callback"
-                Write-TrayFailure "tray_menu_unavailable"
-                exit 3
+                if (-not (Invoke-NativeMenuQuitFallback)) {
+                    Write-TrayFailure "tray_menu_unavailable"
+                    exit 3
+                }
+                [Console]::Out.WriteLine("tray_quit_sent")
+                [Console]::Out.WriteLine("tray_diagnostics=" + ($script:TrayDiagnostics | ConvertTo-Json -Compress))
+                exit 0
             }
         }
     } else {
@@ -993,8 +1107,13 @@ public static class ChadexTrayInput {
                 $selection = Wait-ChadexMenu
                 if ($null -eq $selection) {
                     Record-NativeMenuState "post_callback"
-                    Write-TrayFailure "tray_menu_unavailable"
-                    exit 3
+                    if (-not (Invoke-NativeMenuQuitFallback)) {
+                        Write-TrayFailure "tray_menu_unavailable"
+                        exit 3
+                    }
+                    [Console]::Out.WriteLine("tray_quit_sent")
+                    [Console]::Out.WriteLine("tray_diagnostics=" + ($script:TrayDiagnostics | ConvertTo-Json -Compress))
+                    exit 0
                 }
             }
         }

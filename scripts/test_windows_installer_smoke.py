@@ -345,6 +345,10 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "native_callback_post_attempted": False,
             "native_callback_post_succeeded": False,
             "native_callback_post_error_code": 0,
+            "native_keyboard_fallback_attempted": False,
+            "native_keyboard_fallback_succeeded": False,
+            "native_keyboard_input_count": 0,
+            "native_keyboard_input_error_code": 0,
             "preexisting_menu_count": 0,
             "menu_element_count": 0,
             "uia_menu_desktop_child_count": 0,
@@ -480,6 +484,46 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             self.assertEqual(
                 smoke.request_tray_quit("powershell.exe", 4321), callback_diagnostics)
 
+        native_keyboard_diagnostics = dict(
+            valid_menu_diagnostics,
+            menu_exact_item_count=0,
+            native_popup_window_count=1,
+            uia_menu_popup_handle_root_count=1,
+            msaa_menu_popup_count=1,
+            msaa_menu_child_count=0,
+            post_callback_menu_state_code=3,
+            post_callback_menu_mode_flags=0x1C,
+            post_callback_menu_owner_matches_tray=True,
+            native_keyboard_fallback_attempted=True,
+            native_keyboard_fallback_succeeded=True,
+            native_keyboard_input_count=4,
+        )
+        native_keyboard_output = (
+            "tray_quit_sent\n" + "tray_diagnostics=" +
+            json.dumps(native_keyboard_diagnostics, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 0, native_keyboard_output, b"")):
+            self.assertEqual(
+                smoke.request_tray_quit("powershell.exe", 4321), native_keyboard_diagnostics)
+
+        for invalid in (
+                dict(native_keyboard_diagnostics, native_keyboard_fallback_succeeded=False),
+                dict(native_keyboard_diagnostics, native_keyboard_input_count=3),
+                dict(native_keyboard_diagnostics, post_callback_menu_owner_matches_tray=False),
+                dict(native_keyboard_diagnostics, native_keyboard_input_error_code=5)):
+            invalid_output = (
+                "tray_quit_sent\n" + "tray_diagnostics=" +
+                json.dumps(invalid, separators=(",", ":")) + "\n"
+            ).encode()
+            with patch.object(smoke, "_regular_file"), \
+                    patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                        ["powershell.exe"], 0, invalid_output, b"")):
+                with self.assertRaises(smoke.SmokeFailure) as failure:
+                    smoke.request_tray_quit("powershell.exe", 4321)
+                self.assertEqual(failure.exception.code, "tray_quit_failed")
+
         with patch.object(smoke, "_regular_file"), \
                 patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
                     ["powershell.exe"], 0, b"tray_quit_sent\n", b"")):
@@ -612,6 +656,10 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn('TrayIconBuilder::with_id("chadex")', app_source)
         self.assertIn(".menu(&menu)", app_source)
         self.assertNotIn("with_menu_on_right_click(false)", app_source)
+        show_item = app_source.index('MenuItem::with_id(app, "show", "Show Chadex"')
+        quit_item = app_source.index('MenuItem::with_id(app, "quit", "Quit"')
+        self.assertLess(show_item, quit_item)
+        self.assertIn("Menu::with_items(app, &[&show, &quit])", app_source)
 
         script = (root / "scripts/windows_tray_quit.ps1").read_text(encoding="utf-8")
         self.assertIn("PostTrayRightButtonUp", script)
@@ -630,6 +678,24 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn("$ownerCode -ne 7", script)
         self.assertIn("native_callback_post_error_code", script)
         self.assertEqual(script.count("if (-not (Invoke-NativeTrayCallbackFallback))"), 2)
+        self.assertEqual(script.count("if (-not (Invoke-NativeMenuQuitFallback))"), 2)
+        self.assertIn("GetForegroundWindow()", script)
+        self.assertIn("foregroundThreadId != ownerThreadId", script)
+        self.assertIn("MenuOwnerCheckCode(expectedPopupHwnd, expectedProcessId, expectedOwnerHwnd) != 7", script)
+        self.assertIn("(menuInfo.flags & 0x10) == 0", script)
+        self.assertIn("virtualKey = 0x23", script)
+        self.assertIn("virtualKey = 0x0D", script)
+        self.assertIn("SendInput(4, inputs", script)
+        self.assertIn("[StructLayout(LayoutKind.Explicit)]", script)
+        self.assertIn("[FieldOffset(0)] public MouseInput mouse", script)
+        self.assertIn("[FieldOffset(0)] public KeyboardInput keyboard", script)
+        keyboard_sequence = script[script.index("var inputs = new[] {"):script.index("sentCount = (int)SendInput(4, inputs")]
+        self.assertLess(keyboard_sequence.index("virtualKey = 0x23"),
+                        keyboard_sequence.index("virtualKey = 0x0D"))
+        self.assertEqual(keyboard_sequence.count("flags = 0x0002"), 2)
+        self.assertIn("native_keyboard_fallback_attempted", script)
+        self.assertIn("native_keyboard_fallback_succeeded", script)
+        self.assertIn("native_keyboard_input_count", script)
         self.assertIn("$nativeIcon.Window -ne $script:ExpectedTrayWindow", script)
         self.assertIn("[uint32]$nativeIcon.IconId", script)
         self.assertIn('$_.Current.Name -ceq "Show Chadex"', script)
