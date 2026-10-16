@@ -353,6 +353,8 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "uia_menu_popup_handle_root_count": 0,
             "uia_menu_popup_root_count": 0,
             "uia_menu_popup_descendant_item_count": 0,
+            "msaa_menu_popup_count": 0,
+            "msaa_menu_child_count": 0,
             "menu_app_process_count": 0,
             "menu_exact_owner_count": 0,
             "menu_exact_item_count": 0,
@@ -375,6 +377,13 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             native_popup_window_count=1,
             uia_menu_popup_handle_root_count=1,
         )
+        native_msaa_without_exact_items = dict(
+            native_state_without_uia,
+            msaa_menu_popup_count=1,
+            msaa_menu_child_count=3,
+            menu_exact_owner_count=1,
+            menu_owner_check_code=7,
+        )
         invalid_success_outputs = (
             b"tray_quit_sent\ntray_diagnostics={}\nextra\n",
             b"tray_quit_sent\ntray_diagnostics=not-json\n",
@@ -384,6 +393,18 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             ("tray_quit_sent\ntray_diagnostics=" + json.dumps(diagnostics) + "\n").encode(),
             ("tray_quit_sent\ntray_diagnostics=" +
              json.dumps(native_state_without_uia) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" +
+             json.dumps(native_msaa_without_exact_items) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" + json.dumps(dict(
+                valid_menu_diagnostics,
+                msaa_menu_popup_count=2,
+                msaa_menu_child_count=3,
+            )) + "\n").encode(),
+            ("tray_quit_sent\ntray_diagnostics=" + json.dumps(dict(
+                valid_menu_diagnostics,
+                msaa_menu_popup_count=1,
+                msaa_menu_child_count=1,
+            )) + "\n").encode(),
         )
         for field in ("menu_exact_owner_count", "menu_exact_item_count", "menu_owner_check_code"):
             missing_menu_evidence = dict(valid_menu_diagnostics, **{field: 0})
@@ -442,8 +463,10 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             native_rect_root_kind=1,
             native_popup_window_count=1,
             uia_menu_popup_handle_root_count=1,
-            uia_menu_popup_root_count=1,
-            uia_menu_popup_descendant_item_count=2,
+            uia_menu_popup_root_count=0,
+            uia_menu_popup_descendant_item_count=0,
+            msaa_menu_popup_count=1,
+            msaa_menu_child_count=3,
             native_callback_post_attempted=True,
             native_callback_post_succeeded=True,
         )
@@ -516,13 +539,37 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn("uia_menu_popup_handle_root_count", script)
         self.assertIn("uia_menu_popup_root_count", script)
         self.assertIn("uia_menu_popup_descendant_item_count", script)
+        self.assertIn("Root = $null", script)
+        self.assertIn("if ($null -ne $popupEntry.Root)", script)
+        self.assertIn("$rootRole -ne 11", script)
+        self.assertIn("$script:TrayDiagnostics.menu_exact_owner_count -gt 1", script)
+        self.assertIn("$activePopupHandles.Count -eq 1", script)
+        self.assertIn("$selection.Show.Element.Current", script)
+        self.assertIn("$selection.Quit.Element.Current", script)
+        self.assertIn("$script:TrayDiagnostics.menu_exact_owner_count = $activePopupHandles.Count", script)
+        self.assertIn("AccessibleObjectFromWindow", script)
+        self.assertIn("GetAccessiblePopupMenu", script)
+        self.assertIn("$accessible.accChildCount", script)
+        self.assertIn("$accessible.get_accName($childId)", script)
+        self.assertIn("$accessible.get_accRole($childId)", script)
+        self.assertIn("$accessible.get_accState($childId)", script)
+        self.assertIn("$childCount -lt 0 -or $childCount -gt 256", script)
+        self.assertIn("$role -ne 12", script)
+        self.assertIn("$showItems.Count -ne 1 -or $quitItems.Count -ne 1", script)
+        self.assertIn("($state -band 0x00000001) -eq 0", script)
+        self.assertIn("($state -band 0x00018000) -ne 0", script)
+        self.assertIn("$accessible.accDoDefaultAction($quitItems[0].ChildId)", script)
+        self.assertIn("$popupItems.Count -eq 0", script)
+        self.assertIn('Backend = "msaa"', script)
+        self.assertNotIn("WM_COMMAND", script)
         self.assertIn("TreeScope]::Descendants", script)
         self.assertIn("$popupEntry.Root.FindAll(", script)
         self.assertIn("$popupEntry.Handle, [uint32]$AppProcessId", script)
         self.assertIn("PopupHandle = $popupEntry.Handle", script)
         self.assertIn("$script:TrayDiagnostics.menu_exact_owner_count = 0", script)
         self.assertIn("$activePopupHandles -contains $selection.PopupHandle", script)
-        self.assertIn('$selection.Show.Current.Name -cne "Show Chadex"', script)
+        self.assertIn('$showCurrent.Name -cne "Show Chadex"', script)
+        self.assertIn('$quitCurrent.Name -cne "Quit"', script)
         self.assertIn("$selection.PopupHandle", script)
         self.assertIn('ownerClass.ToString() != "tray_icon_app"', script)
         self.assertIn("Shell_NotifyIconGetRect", script)

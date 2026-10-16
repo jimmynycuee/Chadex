@@ -43,6 +43,8 @@ $script:TrayDiagnostics = [ordered]@{
     uia_menu_popup_handle_root_count = 0
     uia_menu_popup_root_count = 0
     uia_menu_popup_descendant_item_count = 0
+    msaa_menu_popup_count = 0
+    msaa_menu_child_count = 0
     menu_app_process_count = 0
     menu_exact_owner_count = 0
     menu_exact_item_count = 0
@@ -131,6 +133,10 @@ public static class ChadexTrayInput {
     private static extern int GetClassName(IntPtr hwnd, StringBuilder className, int maxCount);
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+    [DllImport("oleacc.dll", PreserveSig = true)]
+    private static extern int AccessibleObjectFromWindow(
+        IntPtr hwnd, uint objectId, ref Guid interfaceId,
+        [MarshalAs(UnmanagedType.Interface)] out object accessibleObject);
     [DllImport("user32.dll")]
     private static extern bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
     [DllImport("user32.dll", SetLastError = true)]
@@ -212,6 +218,16 @@ public static class ChadexTrayInput {
         };
         var completed = EnumThreadWindows(ownerThreadId, callback, IntPtr.Zero);
         return completed ? handles.ToArray() : Array.Empty<IntPtr>();
+    }
+    public static object GetAccessiblePopupMenu(IntPtr hwnd) {
+        if (hwnd == IntPtr.Zero) return null;
+        // OBJID_CLIENT on the exact visible #32768 popup exposes the system
+        // IAccessible menu tree even when the UIA provider exposes no children.
+        var interfaceId = new Guid("618736E0-3C3D-11CF-810C-00AA00389B71");
+        object accessibleObject;
+        var result = AccessibleObjectFromWindow(hwnd, 0xFFFFFFFCu, ref interfaceId,
+            out accessibleObject);
+        return result == 0 ? accessibleObject : null;
     }
     public static bool TryGetTrayIconRect(IntPtr hwnd, uint iconId, out TrayRect rect) {
         var identifier = new NotifyIconIdentifier {
@@ -464,12 +480,86 @@ public static class ChadexTrayInput {
             $script:ExpectedTrayWindow)
         return $script:TrayDiagnostics.menu_owner_check_code -eq 7
     }
+    function Get-MsaaMenuCandidate($popupHandle, [switch] $InvokeQuit) {
+        if ($InvokeQuit) {
+            $script:TrayDiagnostics.menu_exact_item_count = 0
+            $script:TrayDiagnostics.menu_owner_check_code = 0
+        }
+        if (-not (Test-AppIdentity)) {
+            return $null
+        }
+        $ownerCode = [ChadexTrayInput]::MenuOwnerCheckCode(
+            $popupHandle, [uint32]$AppProcessId, $script:ExpectedTrayWindow)
+        $script:TrayDiagnostics.menu_owner_check_code = $ownerCode
+        if ($ownerCode -ne 7) { return $null }
+        $accessible = [ChadexTrayInput]::GetAccessiblePopupMenu($popupHandle)
+        if ($null -eq $accessible) { return $null }
+        try {
+            $rootRole = [int]$accessible.get_accRole(0)
+            if ($rootRole -ne 11) { return $null } # ROLE_SYSTEM_MENUPOPUP
+            $childCount = [int]$accessible.accChildCount
+            if ($childCount -lt 0 -or $childCount -gt 256) { return $null }
+            $script:TrayDiagnostics.msaa_menu_child_count = [Math]::Max(
+                $script:TrayDiagnostics.msaa_menu_child_count, $childCount)
+            $showItems = @()
+            $quitItems = @()
+            for ($childId = 1; $childId -le $childCount; $childId++) {
+                $name = [string]$accessible.get_accName($childId)
+                $role = [int]$accessible.get_accRole($childId)
+                if ($role -ne 12) { continue } # ROLE_SYSTEM_MENUITEM
+                $state = [int]$accessible.get_accState($childId)
+                $item = [PSCustomObject]@{
+                    ChildId = $childId
+                    Current = [PSCustomObject]@{
+                        ProcessId = $AppProcessId
+                        Name = $name
+                        IsEnabled = (($state -band 0x00000001) -eq 0)
+                        IsOffscreen = (($state -band 0x00018000) -ne 0)
+                    }
+                }
+                if ($name -ceq "Show Chadex") { $showItems += $item }
+                if ($name -ceq "Quit") { $quitItems += $item }
+            }
+            if ($showItems.Count -ne 1 -or $quitItems.Count -ne 1) { return $null }
+            $script:TrayDiagnostics.menu_exact_item_count++
+            if (-not $showItems[0].Current.IsEnabled -or $showItems[0].Current.IsOffscreen -or
+                -not $quitItems[0].Current.IsEnabled -or $quitItems[0].Current.IsOffscreen) {
+                return $null
+            }
+            if ($InvokeQuit) {
+                # Revalidate the exact active native owner immediately before
+                # invoking the accessible Quit menu item; never send a direct app command.
+                if (-not (Test-AppIdentity) -or
+                    [ChadexTrayInput]::MenuOwnerCheckCode(
+                        $popupHandle, [uint32]$AppProcessId, $script:ExpectedTrayWindow) -ne 7) {
+                    return $null
+                }
+                $accessible.accDoDefaultAction($quitItems[0].ChildId)
+                return $true
+            }
+            return [PSCustomObject]@{
+                Backend = "msaa"
+                Menu = $null
+                PopupHandle = $popupHandle
+                Show = $showItems[0]
+                Quit = $quitItems[0]
+            }
+        } catch {
+            # An unavailable or malformed accessibility provider is not identity evidence.
+            return $null
+        } finally {
+            if ([Runtime.InteropServices.Marshal]::IsComObject($accessible)) {
+                [void][Runtime.InteropServices.Marshal]::ReleaseComObject($accessible)
+            }
+        }
+    }
     function Find-ChadexMenu {
         # These counts describe one current tree query, not the number of polling
         # attempts; Wait-ChadexMenu retries while Explorer publishes the popup.
         $script:TrayDiagnostics.menu_exact_owner_count = 0
         $script:TrayDiagnostics.menu_exact_item_count = 0
         $script:TrayDiagnostics.menu_owner_check_code = 0
+        $exactOwnerHandles = @{}
         $condition = [System.Windows.Automation.PropertyCondition]::new(
             [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
             [System.Windows.Automation.ControlType]::Menu)
@@ -503,7 +593,15 @@ public static class ChadexTrayInput {
         foreach ($popupHandle in $popupHandles) {
             try {
                 $popupRoot = [System.Windows.Automation.AutomationElement]::FromHandle($popupHandle)
-                if ($null -eq $popupRoot) { continue }
+                if ($null -eq $popupRoot) {
+                    # Keep the exact native popup HWND for the MSAA fallback even
+                    # when the UIA provider cannot create a root for it.
+                    $popupRootEntries += [PSCustomObject]@{
+                        Handle = $popupHandle
+                        Root = $null
+                    }
+                    continue
+                }
                 $popupHandleRootCount++
                 $popupRootEntries += [PSCustomObject]@{
                     Handle = $popupHandle
@@ -513,7 +611,12 @@ public static class ChadexTrayInput {
                     $popupRoots += $popupRoot
                 }
             } catch [System.Windows.Automation.ElementNotAvailableException] {
-                # The native menu can close between HWND enumeration and UIA lookup.
+                # Preserve the HWND for MSAA; the exact owner check below rejects
+                # it if the native menu closed during UIA lookup.
+                $popupRootEntries += [PSCustomObject]@{
+                    Handle = $popupHandle
+                    Root = $null
+                }
             }
         }
         $script:TrayDiagnostics.uia_menu_popup_handle_root_count = [Math]::Max(
@@ -542,7 +645,11 @@ public static class ChadexTrayInput {
                     $script:ExpectedTrayWindow)
                 $script:TrayDiagnostics.menu_owner_check_code = $ownerCode
                 if ($ownerCode -ne 7) { continue }
-                $script:TrayDiagnostics.menu_exact_owner_count++
+                $ownerHandle = [Int64]$element.Current.NativeWindowHandle
+                if (-not $exactOwnerHandles.ContainsKey($ownerHandle)) {
+                    $exactOwnerHandles[$ownerHandle] = $true
+                    $script:TrayDiagnostics.menu_exact_owner_count++
+                }
                 $items = $element.FindAll(
                     [System.Windows.Automation.TreeScope]::Children,
                     [System.Windows.Automation.PropertyCondition]::new(
@@ -560,10 +667,17 @@ public static class ChadexTrayInput {
                     $quitItems[0].Current.ProcessId -eq $AppProcessId -and
                     $quitItems[0].Current.IsEnabled -and -not $quitItems[0].Current.IsOffscreen) {
                     $menuCandidates += [PSCustomObject]@{
+                        Backend = "uia"
                         Menu = $element
                         PopupHandle = [IntPtr]::Zero
-                        Show = $showItems[0]
-                        Quit = $quitItems[0]
+                        Show = [PSCustomObject]@{
+                            Current = $showItems[0].Current
+                            Element = $showItems[0]
+                        }
+                        Quit = [PSCustomObject]@{
+                            Current = $quitItems[0].Current
+                            Element = $quitItems[0]
+                        }
                     }
                 }
             } catch [System.Windows.Automation.ElementNotAvailableException] {
@@ -574,8 +688,7 @@ public static class ChadexTrayInput {
         # root rather than a Menu control. Search its descendants only after the
         # ordinary menu tree yielded no candidate; the exact native owner HWND,
         # app process, unique labels, visibility and enabled state remain required.
-        if ($menuCandidates.Count -eq 0 -and
-            $script:TrayDiagnostics.menu_exact_owner_count -eq 0) {
+        if ($menuCandidates.Count -eq 0) {
             $popupItemCondition = [System.Windows.Automation.PropertyCondition]::new(
                 [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
                 [System.Windows.Automation.ControlType]::MenuItem)
@@ -585,13 +698,20 @@ public static class ChadexTrayInput {
                     $popupEntry.Handle, [uint32]$AppProcessId, $script:ExpectedTrayWindow)
                 $script:TrayDiagnostics.menu_owner_check_code = $ownerCode
                 if ($ownerCode -ne 7) { continue }
-                $script:TrayDiagnostics.menu_exact_owner_count++
-                try {
-                    $popupItems = $popupEntry.Root.FindAll(
-                        [System.Windows.Automation.TreeScope]::Descendants,
-                        $popupItemCondition)
-                } catch [System.Windows.Automation.ElementNotAvailableException] {
-                    continue
+                $popupHandleKey = [Int64]$popupEntry.Handle.ToInt64()
+                if (-not $exactOwnerHandles.ContainsKey($popupHandleKey)) {
+                    $exactOwnerHandles[$popupHandleKey] = $true
+                    $script:TrayDiagnostics.menu_exact_owner_count++
+                }
+                $popupItems = @()
+                if ($null -ne $popupEntry.Root) {
+                    try {
+                        $popupItems = $popupEntry.Root.FindAll(
+                            [System.Windows.Automation.TreeScope]::Descendants,
+                            $popupItemCondition)
+                    } catch [System.Windows.Automation.ElementNotAvailableException] {
+                        # The exact native owner remains eligible for MSAA below.
+                    }
                 }
                 $uniquePopupItems = @{}
                 foreach ($item in $popupItems) {
@@ -618,15 +738,33 @@ public static class ChadexTrayInput {
                     $quitItems[0].Current.ProcessId -eq $AppProcessId -and
                     $quitItems[0].Current.IsEnabled -and -not $quitItems[0].Current.IsOffscreen) {
                     $menuCandidates += [PSCustomObject]@{
+                        Backend = "uia"
                         Menu = $popupEntry.Root
                         PopupHandle = $popupEntry.Handle
-                        Show = $showItems[0]
-                        Quit = $quitItems[0]
+                        Show = [PSCustomObject]@{
+                            Current = $showItems[0].Current
+                            Element = $showItems[0]
+                        }
+                        Quit = [PSCustomObject]@{
+                            Current = $quitItems[0].Current
+                            Element = $quitItems[0]
+                        }
                     }
+                } elseif ($popupItems.Count -eq 0) {
+                    # Windows may expose #32768 as a UIA Window with no children.
+                    # Use the native MSAA popup object, but keep exact owner, role,
+                    # unique labels, enabled/visible checks, and accessible action.
+                    $script:TrayDiagnostics.msaa_menu_popup_count = [Math]::Max(
+                        $script:TrayDiagnostics.msaa_menu_popup_count, $popupHandles.Count)
+                    $msaaCandidate = Get-MsaaMenuCandidate $popupEntry.Handle
+                    if ($null -ne $msaaCandidate) { $menuCandidates += $msaaCandidate }
                 }
             }
         }
-        if ($menuCandidates.Count -gt 1) { throw "tray_menu_ambiguous" }
+        if ($menuCandidates.Count -gt 1 -or
+            $script:TrayDiagnostics.menu_exact_owner_count -gt 1) {
+            throw "tray_menu_ambiguous"
+        }
         if ($menuCandidates.Count -eq 1) { return $menuCandidates[0] }
         return $null
     }
@@ -862,29 +1000,51 @@ public static class ChadexTrayInput {
         }
     }
     # Revalidate immediately before invoking; never trust menu labels alone.
-    $selectionOwnerValid = $false
+    $activePopupHandles = @([ChadexTrayInput]::FindActivePopupMenuWindows(
+        [uint32]$AppProcessId, $script:ExpectedTrayWindow))
+    $script:TrayDiagnostics.menu_exact_owner_count = $activePopupHandles.Count
+    $selectionOwnerValid = $activePopupHandles.Count -eq 1
     if ($selection.PopupHandle -ne [IntPtr]::Zero) {
-        $activePopupHandles = @([ChadexTrayInput]::FindActivePopupMenuWindows(
-            [uint32]$AppProcessId, $script:ExpectedTrayWindow))
-        $selectionOwnerValid = $activePopupHandles -contains $selection.PopupHandle
+        $selectionOwnerValid = $selectionOwnerValid -and
+            ($activePopupHandles -contains $selection.PopupHandle)
         $script:TrayDiagnostics.menu_owner_check_code = [ChadexTrayInput]::MenuOwnerCheckCode(
             $selection.PopupHandle, [uint32]$AppProcessId, $script:ExpectedTrayWindow)
         $selectionOwnerValid = $selectionOwnerValid -and
             $script:TrayDiagnostics.menu_owner_check_code -eq 7
     } else {
-        $selectionOwnerValid = Test-MenuOwner $selection.Menu
+        $selectionOwnerValid = $selectionOwnerValid -and (Test-MenuOwner $selection.Menu)
     }
-    if (-not $selectionOwnerValid -or
-        $selection.Show.Current.ProcessId -ne $AppProcessId -or
-        $selection.Show.Current.Name -cne "Show Chadex" -or
-        -not $selection.Show.Current.IsEnabled -or $selection.Show.Current.IsOffscreen -or
-        $selection.Quit.Current.ProcessId -ne $AppProcessId -or
-        $selection.Quit.Current.Name -cne "Quit" -or
-        -not $selection.Quit.Current.IsEnabled -or $selection.Quit.Current.IsOffscreen) {
+    if (-not $selectionOwnerValid) {
         Write-TrayFailure "tray_menu_unavailable"
         exit 3
     }
-    Invoke-Element $selection.Quit
+    if ($selection.Backend -eq "msaa") {
+        $script:TrayDiagnostics.msaa_menu_popup_count = $activePopupHandles.Count
+        if ($null -eq (Get-MsaaMenuCandidate $selection.PopupHandle -InvokeQuit)) {
+            Write-TrayFailure "tray_menu_unavailable"
+            exit 3
+        }
+    } else {
+        try {
+            # UIA Current is a live query. The saved Current values in the
+            # selection object are discovery snapshots and cannot authorize action.
+            $showCurrent = $selection.Show.Element.Current
+            $quitCurrent = $selection.Quit.Element.Current
+        } catch [System.Windows.Automation.ElementNotAvailableException] {
+            Write-TrayFailure "tray_menu_unavailable"
+            exit 3
+        }
+        if ($showCurrent.ProcessId -ne $AppProcessId -or
+            $showCurrent.Name -cne "Show Chadex" -or
+            -not $showCurrent.IsEnabled -or $showCurrent.IsOffscreen -or
+            $quitCurrent.ProcessId -ne $AppProcessId -or
+            $quitCurrent.Name -cne "Quit" -or
+            -not $quitCurrent.IsEnabled -or $quitCurrent.IsOffscreen) {
+            Write-TrayFailure "tray_menu_unavailable"
+            exit 3
+        }
+        Invoke-Element $selection.Quit.Element
+    }
     [Console]::Out.WriteLine("tray_quit_sent")
     [Console]::Out.WriteLine("tray_diagnostics=" + ($script:TrayDiagnostics | ConvertTo-Json -Compress))
     exit 0

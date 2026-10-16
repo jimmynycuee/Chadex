@@ -127,6 +127,8 @@ TRAY_DIAGNOSTIC_FIELDS = {
     "uia_menu_popup_handle_root_count": int,
     "uia_menu_popup_root_count": int,
     "uia_menu_popup_descendant_item_count": int,
+    "msaa_menu_popup_count": int,
+    "msaa_menu_child_count": int,
     "menu_app_process_count": int,
     "menu_exact_owner_count": int,
     "menu_exact_item_count": int,
@@ -848,7 +850,10 @@ def request_tray_quit(powershell: str, app_pid: int) -> dict[str, bool | int]:
             diagnostics = parse_tray_diagnostics(lines[1])
             if (diagnostics["menu_exact_owner_count"] != 1 or
                     diagnostics["menu_exact_item_count"] != 1 or
-                    diagnostics["menu_owner_check_code"] != 7):
+                    diagnostics["menu_owner_check_code"] != 7 or
+                    diagnostics["msaa_menu_popup_count"] not in (0, 1) or
+                    (diagnostics["msaa_menu_popup_count"] == 1 and
+                     diagnostics["msaa_menu_child_count"] < 2)):
                 raise ValueError("tray_menu_evidence_missing")
             return diagnostics
         except ValueError:
