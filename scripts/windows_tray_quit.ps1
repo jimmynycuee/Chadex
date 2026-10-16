@@ -37,6 +37,7 @@ $script:TrayDiagnostics = [ordered]@{
     native_callback_post_error_code = 0
     native_keyboard_fallback_attempted = $false
     native_keyboard_fallback_succeeded = $false
+    native_keyboard_guard_code = 0
     native_keyboard_input_count = 0
     native_keyboard_input_error_code = 0
     preexisting_menu_count = 0
@@ -174,28 +175,58 @@ public static class ChadexTrayInput {
     }
     public static bool SendMenuQuitKeys(
         uint expectedProcessId, IntPtr expectedOwnerHwnd, IntPtr expectedPopupHwnd,
-        out int sentCount, out int errorCode) {
+        out int sentCount, out int errorCode, out int guardCode) {
         sentCount = 0;
         errorCode = 0;
+        // Sanitized diagnostics: 0=not evaluated; 1=owner identity; 2=popup owner;
+        // 3=GUI info; 4=popup mode; 5=menu owner; 6=no foreground; 7=foreground PID;
+        // 8=foreground thread; 9=foreground HWND; 10=all keys sent; 11=partial/failed SendInput.
+        guardCode = 0;
         uint ownerProcessId;
         uint ownerThreadId = GetWindowThreadProcessId(expectedOwnerHwnd, out ownerProcessId);
-        if (ownerThreadId == 0 || ownerProcessId != expectedProcessId ||
-            MenuOwnerCheckCode(expectedPopupHwnd, expectedProcessId, expectedOwnerHwnd) != 7)
+        if (ownerThreadId == 0 || ownerProcessId != expectedProcessId) {
+            guardCode = 1;
             return false;
+        }
+        if (MenuOwnerCheckCode(expectedPopupHwnd, expectedProcessId, expectedOwnerHwnd) != 7) {
+            guardCode = 2;
+            return false;
+        }
 
         var menuInfo = new GuiThreadInfo();
         menuInfo.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
-        if (!GetGUIThreadInfo(ownerThreadId, ref menuInfo) ||
-            (menuInfo.flags & 0x10) == 0 || menuInfo.hwndMenuOwner != expectedOwnerHwnd)
+        if (!GetGUIThreadInfo(ownerThreadId, ref menuInfo)) {
+            guardCode = 3;
             return false;
+        }
+        if ((menuInfo.flags & 0x10) == 0) {
+            guardCode = 4;
+            return false;
+        }
+        if (menuInfo.hwndMenuOwner != expectedOwnerHwnd) {
+            guardCode = 5;
+            return false;
+        }
 
         var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero) {
+            guardCode = 6;
+            return false;
+        }
         uint foregroundProcessId;
         uint foregroundThreadId = GetWindowThreadProcessId(foreground, out foregroundProcessId);
-        if (foreground == IntPtr.Zero || foregroundProcessId != expectedProcessId ||
-            foregroundThreadId != ownerThreadId ||
-            (foreground != expectedOwnerHwnd && foreground != expectedPopupHwnd))
+        if (foregroundProcessId != expectedProcessId) {
+            guardCode = 7;
             return false;
+        }
+        if (foregroundThreadId != ownerThreadId) {
+            guardCode = 8;
+            return false;
+        }
+        if (foreground != expectedOwnerHwnd && foreground != expectedPopupHwnd) {
+            guardCode = 9;
+            return false;
+        }
 
         var inputs = new[] {
             new NativeInput {
@@ -230,8 +261,10 @@ public static class ChadexTrayInput {
         sentCount = (int)SendInput(4, inputs, Marshal.SizeOf(typeof(NativeInput)));
         if (sentCount != 4) {
             errorCode = Marshal.GetLastWin32Error();
+            guardCode = 11;
             return false;
         }
+        guardCode = 10;
         return true;
     }
     public static bool PostTrayRightButtonUp(IntPtr hwnd, uint iconId, out int errorCode) {
@@ -934,10 +967,12 @@ public static class ChadexTrayInput {
         $script:TrayDiagnostics.native_keyboard_fallback_attempted = $true
         $sentCount = 0
         $errorCode = 0
+        $guardCode = 0
         $script:TrayDiagnostics.native_keyboard_fallback_succeeded =
             [ChadexTrayInput]::SendMenuQuitKeys(
             [uint32]$AppProcessId, $script:ExpectedTrayWindow, $popupHandle,
-            [ref]$sentCount, [ref]$errorCode)
+            [ref]$sentCount, [ref]$errorCode, [ref]$guardCode)
+        $script:TrayDiagnostics.native_keyboard_guard_code = $guardCode
         $script:TrayDiagnostics.native_keyboard_input_count = $sentCount
         $script:TrayDiagnostics.native_keyboard_input_error_code = $errorCode
         return $script:TrayDiagnostics.native_keyboard_fallback_succeeded

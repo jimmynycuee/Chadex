@@ -347,6 +347,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "native_callback_post_error_code": 0,
             "native_keyboard_fallback_attempted": False,
             "native_keyboard_fallback_succeeded": False,
+            "native_keyboard_guard_code": 0,
             "native_keyboard_input_count": 0,
             "native_keyboard_input_error_code": 0,
             "preexisting_menu_count": 0,
@@ -496,6 +497,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             post_callback_menu_owner_matches_tray=True,
             native_keyboard_fallback_attempted=True,
             native_keyboard_fallback_succeeded=True,
+            native_keyboard_guard_code=10,
             native_keyboard_input_count=4,
         )
         native_keyboard_output = (
@@ -508,10 +510,29 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             self.assertEqual(
                 smoke.request_tray_quit("powershell.exe", 4321), native_keyboard_diagnostics)
 
+        keyboard_guard_failure = dict(
+            native_keyboard_diagnostics,
+            native_keyboard_fallback_succeeded=False,
+            native_keyboard_guard_code=9,
+            native_keyboard_input_count=0,
+        )
+        keyboard_guard_output = (
+            "tray_menu_unavailable\ntray_diagnostics=" +
+            json.dumps(keyboard_guard_failure, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 3, keyboard_guard_output, b"")):
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.request_tray_quit("powershell.exe", 4321)
+        self.assertEqual(failure.exception.code, "tray_menu_unavailable")
+        self.assertEqual(failure.exception.tray_diagnostics["native_keyboard_guard_code"], 9)
+
         for invalid in (
                 dict(native_keyboard_diagnostics, native_keyboard_fallback_succeeded=False),
                 dict(native_keyboard_diagnostics, native_keyboard_input_count=3),
                 dict(native_keyboard_diagnostics, post_callback_menu_owner_matches_tray=False),
+                dict(native_keyboard_diagnostics, native_keyboard_guard_code=9),
                 dict(native_keyboard_diagnostics, native_keyboard_input_error_code=5)):
             invalid_output = (
                 "tray_quit_sent\n" + "tray_diagnostics=" +
@@ -695,6 +716,10 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertEqual(keyboard_sequence.count("flags = 0x0002"), 2)
         self.assertIn("native_keyboard_fallback_attempted", script)
         self.assertIn("native_keyboard_fallback_succeeded", script)
+        self.assertIn("out int sentCount, out int errorCode, out int guardCode", script)
+        for guard_code in range(1, 12):
+            self.assertIn(f"guardCode = {guard_code};", script)
+        self.assertIn("native_keyboard_guard_code", script)
         self.assertIn("native_keyboard_input_count", script)
         self.assertIn("$nativeIcon.Window -ne $script:ExpectedTrayWindow", script)
         self.assertIn("[uint32]$nativeIcon.IconId", script)
