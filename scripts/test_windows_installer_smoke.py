@@ -352,6 +352,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "native_popup_window_count": 0,
             "uia_menu_popup_handle_root_count": 0,
             "uia_menu_popup_root_count": 0,
+            "uia_menu_popup_descendant_item_count": 0,
             "menu_app_process_count": 0,
             "menu_exact_owner_count": 0,
             "menu_exact_item_count": 0,
@@ -442,6 +443,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             native_popup_window_count=1,
             uia_menu_popup_handle_root_count=1,
             uia_menu_popup_root_count=1,
+            uia_menu_popup_descendant_item_count=2,
             native_callback_post_attempted=True,
             native_callback_post_succeeded=True,
         )
@@ -513,6 +515,15 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn("FindActivePopupMenuWindows", script)
         self.assertIn("uia_menu_popup_handle_root_count", script)
         self.assertIn("uia_menu_popup_root_count", script)
+        self.assertIn("uia_menu_popup_descendant_item_count", script)
+        self.assertIn("TreeScope]::Descendants", script)
+        self.assertIn("$popupEntry.Root.FindAll(", script)
+        self.assertIn("$popupEntry.Handle, [uint32]$AppProcessId", script)
+        self.assertIn("PopupHandle = $popupEntry.Handle", script)
+        self.assertIn("$script:TrayDiagnostics.menu_exact_owner_count = 0", script)
+        self.assertIn("$activePopupHandles -contains $selection.PopupHandle", script)
+        self.assertIn('$selection.Show.Current.Name -cne "Show Chadex"', script)
+        self.assertIn("$selection.PopupHandle", script)
         self.assertIn('ownerClass.ToString() != "tray_icon_app"', script)
         self.assertIn("Shell_NotifyIconGetRect", script)
         self.assertIn("Shell_NotifyIconGetRect(ref identifier, out rect) == 0", script)

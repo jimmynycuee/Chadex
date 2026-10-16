@@ -126,6 +126,7 @@ TRAY_DIAGNOSTIC_FIELDS = {
     "native_popup_window_count": int,
     "uia_menu_popup_handle_root_count": int,
     "uia_menu_popup_root_count": int,
+    "uia_menu_popup_descendant_item_count": int,
     "menu_app_process_count": int,
     "menu_exact_owner_count": int,
     "menu_exact_item_count": int,
