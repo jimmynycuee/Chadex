@@ -353,6 +353,7 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             "native_keyboard_guard_code": 0,
             "native_keyboard_input_count": 0,
             "native_keyboard_input_error_code": 0,
+            "post_keyboard_menu_state_code": 0,
             "preexisting_menu_count": 0,
             "menu_element_count": 0,
             "uia_menu_desktop_child_count": 0,
@@ -505,7 +506,8 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
             native_keyboard_fallback_attempted=True,
             native_keyboard_fallback_succeeded=True,
             native_keyboard_guard_code=10,
-            native_keyboard_input_count=4,
+            native_keyboard_input_count=6,
+            post_keyboard_menu_state_code=0,
         )
         native_keyboard_output = (
             "tray_quit_sent\n" + "tray_diagnostics=" +
@@ -516,6 +518,21 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                     ["powershell.exe"], 0, native_keyboard_output, b"")):
             self.assertEqual(
                 smoke.request_tray_quit("powershell.exe", 4321), native_keyboard_diagnostics)
+
+        exact_process_exit_diagnostics = dict(
+            native_keyboard_diagnostics,
+            native_keyboard_guard_code=14,
+            post_keyboard_menu_state_code=1,
+        )
+        exact_process_exit_output = (
+            "tray_quit_sent\ntray_diagnostics=" +
+            json.dumps(exact_process_exit_diagnostics, separators=(",", ":")) + "\n"
+        ).encode()
+        with patch.object(smoke, "_regular_file"), \
+                patch.object(smoke.subprocess, "run", return_value=smoke.subprocess.CompletedProcess(
+                    ["powershell.exe"], 0, exact_process_exit_output, b"")):
+            self.assertEqual(
+                smoke.request_tray_quit("powershell.exe", 4321), exact_process_exit_diagnostics)
 
         keyboard_guard_failure = dict(
             native_keyboard_diagnostics,
@@ -561,7 +578,8 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                 dict(native_keyboard_diagnostics, native_keyboard_input_count=3),
                 dict(native_keyboard_diagnostics, post_callback_menu_owner_matches_tray=False),
                 dict(native_keyboard_diagnostics, native_keyboard_guard_code=9),
-                dict(native_keyboard_diagnostics, native_keyboard_input_error_code=5)):
+                dict(native_keyboard_diagnostics, native_keyboard_input_error_code=5),
+                dict(native_keyboard_diagnostics, post_keyboard_menu_state_code=3)):
             invalid_output = (
                 "tray_quit_sent\n" + "tray_diagnostics=" +
                 json.dumps(invalid, separators=(",", ":")) + "\n"
@@ -749,21 +767,28 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
         self.assertIn("foregroundThreadId != ownerThreadId", script)
         self.assertIn("MenuOwnerCheckCode(expectedPopupHwnd, expectedProcessId, expectedOwnerHwnd) != 7", script)
         self.assertIn("(menuInfo.flags & 0x10) == 0", script)
-        self.assertIn("virtualKey = 0x23", script)
+        self.assertIn("virtualKey = 0x28", script)
         self.assertIn("virtualKey = 0x0D", script)
-        self.assertIn("SendInput(4, inputs", script)
+        self.assertIn("SendInput(6, inputs", script)
         self.assertIn("[StructLayout(LayoutKind.Explicit)]", script)
         self.assertIn("[FieldOffset(0)] public MouseInput mouse", script)
         self.assertIn("[FieldOffset(0)] public KeyboardInput keyboard", script)
-        keyboard_sequence = script[script.index("var inputs = new[] {"):script.index("sentCount = (int)SendInput(4, inputs")]
-        self.assertLess(keyboard_sequence.index("virtualKey = 0x23"),
+        keyboard_sequence = script[script.index("var inputs = new[] {"):script.index("sentCount = (int)SendInput(6, inputs")]
+        self.assertEqual(keyboard_sequence.count("virtualKey = 0x28"), 4)
+        self.assertLess(keyboard_sequence.index("virtualKey = 0x28"),
                         keyboard_sequence.index("virtualKey = 0x0D"))
-        self.assertEqual(keyboard_sequence.count("flags = 0x0002"), 2)
+        self.assertEqual(keyboard_sequence.count("flags = 0x0002"), 3)
         self.assertIn("native_keyboard_fallback_attempted", script)
         self.assertIn("native_keyboard_fallback_succeeded", script)
-        self.assertIn("out int sentCount, out int errorCode, out int guardCode", script)
+        self.assertIn("out int sentCount, out int errorCode, out int guardCode, out int menuStateCode", script)
+        self.assertIn("post_keyboard_menu_state_code", script)
+        self.assertIn("ActiveMenuStateCode(expectedProcessId, expectedOwnerHwnd)", script)
+        self.assertIn("End is not part of the documented standard menu keyboard interface.", script)
+        self.assertIn("$process.HasExited", script)
         for guard_code in range(1, 12):
             self.assertIn(f"guardCode = {guard_code};", script)
+        self.assertIn("guardCode = menuStateCode == 3 ? 12 : 13;", script)
+        self.assertIn("$guardCode = 14", script)
         self.assertIn("native_keyboard_guard_code", script)
         self.assertIn("native_keyboard_input_count", script)
         self.assertIn("$nativeIcon.Window -ne $script:ExpectedTrayWindow", script)

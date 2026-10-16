@@ -43,6 +43,7 @@ $script:TrayDiagnostics = [ordered]@{
     native_keyboard_guard_code = 0
     native_keyboard_input_count = 0
     native_keyboard_input_error_code = 0
+    post_keyboard_menu_state_code = 0
     preexisting_menu_count = 0
     menu_element_count = 0
     uia_menu_desktop_child_count = 0
@@ -186,12 +187,14 @@ public static class ChadexTrayInput {
     }
     public static bool SendMenuQuitKeys(
         uint expectedProcessId, IntPtr expectedOwnerHwnd, IntPtr expectedPopupHwnd,
-        out int sentCount, out int errorCode, out int guardCode) {
+        out int sentCount, out int errorCode, out int guardCode, out int menuStateCode) {
         sentCount = 0;
         errorCode = 0;
+        menuStateCode = 0;
         // Sanitized diagnostics: 0=not evaluated; 1=owner identity; 2=popup owner;
         // 3=GUI info; 4=popup mode; 5=menu owner; 6=no foreground; 7=foreground PID;
-        // 8=foreground thread; 9=foreground HWND; 10=all keys sent; 11=partial/failed SendInput.
+        // 8=foreground thread; 9=foreground HWND; 10=menu dismissed; 11=partial/failed SendInput;
+        // 12=menu still active after keys; 13=post-input menu state invalid.
         guardCode = 0;
         uint ownerProcessId;
         uint ownerThreadId = GetWindowThreadProcessId(expectedOwnerHwnd, out ownerProcessId);
@@ -243,14 +246,28 @@ public static class ChadexTrayInput {
             new NativeInput {
                 type = 1, // INPUT_KEYBOARD
                 data = new InputUnion {
-                    keyboard = new KeyboardInput { virtualKey = 0x23, extraInfo = UIntPtr.Zero }
+                    keyboard = new KeyboardInput { virtualKey = 0x28, extraInfo = UIntPtr.Zero }
                 }
             },
             new NativeInput {
                 type = 1, // INPUT_KEYBOARD
                 data = new InputUnion {
                     keyboard = new KeyboardInput {
-                        virtualKey = 0x23, flags = 0x0002, extraInfo = UIntPtr.Zero
+                        virtualKey = 0x28, flags = 0x0002, extraInfo = UIntPtr.Zero
+                    }
+                }
+            },
+            new NativeInput {
+                type = 1, // INPUT_KEYBOARD
+                data = new InputUnion {
+                    keyboard = new KeyboardInput { virtualKey = 0x28, extraInfo = UIntPtr.Zero }
+                }
+            },
+            new NativeInput {
+                type = 1, // INPUT_KEYBOARD
+                data = new InputUnion {
+                    keyboard = new KeyboardInput {
+                        virtualKey = 0x28, flags = 0x0002, extraInfo = UIntPtr.Zero
                     }
                 }
             },
@@ -269,14 +286,34 @@ public static class ChadexTrayInput {
                 }
             }
         };
-        sentCount = (int)SendInput(4, inputs, Marshal.SizeOf(typeof(NativeInput)));
-        if (sentCount != 4) {
+        sentCount = (int)SendInput(6, inputs, Marshal.SizeOf(typeof(NativeInput)));
+        if (sentCount != 6) {
             errorCode = Marshal.GetLastWin32Error();
             guardCode = 11;
             return false;
         }
-        guardCode = 10;
-        return true;
+        // End is not part of the documented standard menu keyboard interface.
+        // With the source-pinned [Show Chadex, Quit] order, two Down presses
+        // select Quit; Enter must dismiss the exact active menu before success.
+        var menuWait = System.Diagnostics.Stopwatch.StartNew();
+        do {
+            menuStateCode = ActiveMenuStateCode(expectedProcessId, expectedOwnerHwnd);
+            if (menuStateCode == 0) {
+                guardCode = 10;
+                return true;
+            }
+            if (menuStateCode == 1) {
+                guardCode = 13;
+                return false;
+            }
+            if (menuStateCode != 2 && menuStateCode != 3) {
+                guardCode = 13;
+                return false;
+            }
+            System.Threading.Thread.Sleep(25);
+        } while (menuWait.ElapsedMilliseconds < 2000);
+        guardCode = menuStateCode == 3 ? 12 : 13;
+        return false;
     }
     public static bool PostTrayRightButtonUp(IntPtr hwnd, uint iconId, out int errorCode) {
         // Runner-only synthesized callback delivery, not physical mouse input;
@@ -995,13 +1032,30 @@ public static class ChadexTrayInput {
         $sentCount = 0
         $errorCode = 0
         $guardCode = 0
+        $menuStateCode = 0
         $script:TrayDiagnostics.native_keyboard_fallback_succeeded =
             [ChadexTrayInput]::SendMenuQuitKeys(
             [uint32]$AppProcessId, $script:ExpectedTrayWindow, $popupHandle,
-            [ref]$sentCount, [ref]$errorCode, [ref]$guardCode)
+            [ref]$sentCount, [ref]$errorCode, [ref]$guardCode, [ref]$menuStateCode)
+        if (-not $script:TrayDiagnostics.native_keyboard_fallback_succeeded -and
+            $guardCode -eq 13 -and $menuStateCode -eq 1) {
+            # The exact app may destroy its tray HWND while processing Quit. Treat
+            # that as success only when the retained exact-PID process handle exits.
+            $exitWait = [System.Diagnostics.Stopwatch]::StartNew()
+            do {
+                $process.Refresh()
+                if ($process.HasExited) {
+                    $guardCode = 14
+                    $script:TrayDiagnostics.native_keyboard_fallback_succeeded = $true
+                    break
+                }
+                Start-Sleep -Milliseconds 25
+            } while ($exitWait.ElapsedMilliseconds -lt 2000)
+        }
         $script:TrayDiagnostics.native_keyboard_guard_code = $guardCode
         $script:TrayDiagnostics.native_keyboard_input_count = $sentCount
         $script:TrayDiagnostics.native_keyboard_input_error_code = $errorCode
+        $script:TrayDiagnostics.post_keyboard_menu_state_code = $menuStateCode
         return $script:TrayDiagnostics.native_keyboard_fallback_succeeded
     }
 

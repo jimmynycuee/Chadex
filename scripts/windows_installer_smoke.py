@@ -127,6 +127,7 @@ TRAY_DIAGNOSTIC_FIELDS = {
     "native_keyboard_guard_code": int,
     "native_keyboard_input_count": int,
     "native_keyboard_input_error_code": int,
+    "post_keyboard_menu_state_code": int,
     "preexisting_menu_count": int,
     "menu_element_count": int,
     "uia_menu_desktop_child_count": int,
@@ -870,11 +871,12 @@ def request_tray_quit(powershell: str, app_pid: int) -> dict[str, bool | int]:
             keyboard_succeeded = diagnostics["native_keyboard_fallback_succeeded"]
             if keyboard_attempted != keyboard_succeeded:
                 raise ValueError("tray_keyboard_fallback_incomplete")
-            if keyboard_attempted and diagnostics["native_keyboard_guard_code"] != 10:
+            if keyboard_attempted and diagnostics["native_keyboard_guard_code"] not in (10, 14):
                 raise ValueError("tray_keyboard_fallback_guard_unverified")
             if keyboard_attempted and (
-                    diagnostics["native_keyboard_input_count"] != 4
+                    diagnostics["native_keyboard_input_count"] != 6
                     or diagnostics["native_keyboard_input_error_code"] != 0
+                    or diagnostics["post_keyboard_menu_state_code"] not in (0, 1)
                     or diagnostics["native_popup_window_count"] != 1
                     or diagnostics["post_callback_menu_state_code"] != 3
                     or not diagnostics["post_callback_menu_owner_matches_tray"]):
