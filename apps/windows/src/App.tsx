@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { desktopApi, type DesktopApi, type UpdateInfo } from './api';
+import { desktopApi, type DesktopApi } from './api';
 import { defaultPreferences, type Preferences, type ProjectInspection, type RuntimeMethod } from './contracts';
 import { DesktopStore, connectionStatus, localStatus, observedRuntime, safeError } from './state';
 import { Ferret } from './FerretCompanion';
@@ -10,15 +10,18 @@ import { ActivityTimeline } from './ActivityTimeline';
 import { ConnectionCircuit } from './ConnectionCircuit';
 import { Icon, type IconName } from './icons';
 import { syncWindowTheme } from './backdrop';
+import { useWindowsUpdates, type WindowsUpdates } from './updates';
+import { GuidePage } from './GuidePage';
 
-type Page = 'home' | 'projects' | 'project' | 'skills' | 'connection' | 'activity' | 'settings' | 'diagnostics' | 'updates';
-const titles: Record<Page, string> = { home: '總覽', projects: '專案', project: '專案詳情', skills: 'Skills', connection: '連線', activity: '活動紀錄', settings: '設定', diagnostics: '診斷', updates: '版本與更新' };
+type Page = 'guide' | 'home' | 'projects' | 'project' | 'skills' | 'connection' | 'activity' | 'settings' | 'diagnostics' | 'updates';
+const titles: Record<Page, string> = { guide: '使用說明', home: '總覽', projects: '專案', project: '專案詳情', skills: 'Skills', connection: '連線', activity: '活動紀錄', settings: '設定', diagnostics: '診斷', updates: '版本與更新' };
 const nav: { page: Page; icon: IconName; name: string }[] = [
   { page: 'home', icon: 'home', name: '總覽' }, { page: 'projects', icon: 'folder', name: '專案' }, { page: 'skills', icon: 'skills', name: 'Skills' },
   { page: 'connection', icon: 'link', name: '連線' }, { page: 'activity', icon: 'activity', name: '活動紀錄' },
-  { page: 'settings', icon: 'settings', name: '設定' },
+  { page: 'settings', icon: 'settings', name: '設定' }, { page: 'guide', icon: 'guide', name: '使用說明' },
 ];
 const pageNotes: Record<Page, string> = {
+  guide: '第一次使用？跟著步驟完成設定。',
   home: '你的專案與連線，在這裡掌握。', projects: '選擇資料夾，讓工作留在你的電腦。', project: '檢視工作範圍與專案狀態。', skills: '管理 Skills、外部來源與 ZIP 匯入。',
   connection: '把目前的專案連接到 ChatGPT。', activity: '由本地服務回報的實際活動。', settings: '調整桌面體驗與啟動偏好。',
   diagnostics: '檢視本地服務與連線的觀測資訊。', updates: '目前安裝的版本與更新狀態。',
@@ -39,15 +42,6 @@ function Empty({ title, children }: { title: string; children: ReactNode }) {
 function Facts({ items }: { items: [string, ReactNode][] }) {
   return <dl className="facts">{items.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
 }
-type UpdatePanelState =
-  | { kind: 'idle' }
-  | { kind: 'checking' }
-  | { kind: 'current' }
-  | { kind: 'available'; update: UpdateInfo }
-  | { kind: 'installing'; downloaded: number; total?: number }
-  | { kind: 'handoff' }
-  | { kind: 'error'; operation: 'check' | 'install'; message: string };
-
 function needsManualBootstrap(version: string) {
   const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
   if (!match) return true;
@@ -62,56 +56,8 @@ function formatBytes(value: number) {
   while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1; }
   return `${amount.toFixed(amount >= 100 ? 0 : amount >= 10 ? 1 : 2)} ${units[unit]}`;
 }
-function updateErrorMessage(operation: 'check' | 'install', error: unknown) {
-  const detail = safeError(error);
-  if (/需要.*桌面環境/.test(detail)) return '請在 Chadex Windows 桌面應用程式中使用更新功能。';
-  if (/plugin:updater|updater.*(?:not found|not registered|not allowed)/i.test(detail)) {
-    return '目前安裝版本尚未啟用 App 內更新功能。請先手動安裝含更新功能的最新版 Windows 安裝檔。';
-  }
-  return operation === 'check'
-    ? `檢查更新失敗：${detail}。請確認網路連線後重試。`
-    : `安裝未完成：${detail}。請重新檢查更新後再試。`;
-}
-function WindowsUpdatePanel({ api, version }: { api: DesktopApi; version: string | null }) {
-  const [state, setState] = useState<UpdatePanelState>({ kind: 'idle' });
-  const mounted = useRef(true);
-  const operation = useRef(false);
-  useEffect(() => () => { mounted.current = false; }, []);
-
-  async function checkUpdates() {
-    if (operation.current) return;
-    operation.current = true;
-    setState({ kind: 'checking' });
-    try {
-      const update = await api.checkForUpdate();
-      if (mounted.current) setState(update ? { kind: 'available', update } : { kind: 'current' });
-    } catch (error) {
-      if (mounted.current) setState({ kind: 'error', operation: 'check', message: updateErrorMessage('check', error) });
-    } finally { operation.current = false; }
-  }
-  async function install() {
-    if (operation.current || state.kind !== 'available') return;
-    operation.current = true;
-    setState({ kind: 'installing', downloaded: 0 });
-    try {
-      await api.installUpdate((downloaded, total) => {
-        if (!mounted.current) return;
-        const validDownloaded = Number.isFinite(downloaded) ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(downloaded))) : 0;
-        const validTotal = typeof total === 'number' && Number.isFinite(total) && total > 0
-          ? Math.floor(Math.min(Number.MAX_SAFE_INTEGER, total)) : undefined;
-        setState((current) => {
-          if (current.kind !== 'installing') return current;
-          const nextTotal = validTotal ?? current.total;
-          const boundedDownloaded = Math.max(current.downloaded, validDownloaded);
-          return { kind: 'installing', downloaded: nextTotal === undefined ? boundedDownloaded : Math.min(boundedDownloaded, nextTotal), total: nextTotal };
-        });
-      });
-      if (mounted.current) setState({ kind: 'handoff' });
-    } catch (error) {
-      if (mounted.current) setState({ kind: 'error', operation: 'install', message: updateErrorMessage('install', error) });
-    } finally { operation.current = false; }
-  }
-
+function WindowsUpdatePanel({ updates, version, blockedReason }: { updates: WindowsUpdates; version: string | null; blockedReason: string | null }) {
+  const { state, check: checkUpdates, install } = updates;
   const isBusy = state.kind === 'checking' || state.kind === 'installing';
   const canCheck = state.kind !== 'available' && state.kind !== 'installing' && state.kind !== 'handoff';
   return <Panel title="版本與更新">
@@ -137,10 +83,26 @@ function WindowsUpdatePanel({ api, version }: { api: DesktopApi; version: string
       {canCheck && <button className="primary" disabled={isBusy} onClick={() => { void checkUpdates(); }}>
         {state.kind === 'idle' ? '檢查更新' : '重新檢查更新'}
       </button>}
-      {state.kind === 'available' && <button className="primary" disabled={isBusy} onClick={() => { void install(); }}>下載並安裝 v{state.update.version}</button>}
+      {state.kind === 'available' && <button className="primary" disabled={isBusy || Boolean(blockedReason)} onClick={() => { void install(); }}>下載並安裝 v{state.update.version}</button>}
     </div>
+    {state.kind === 'available' && blockedReason && <p className="panel-note" role="note">{blockedReason}</p>}
+    <label className="setting-row"><span><strong>自動檢查更新</strong><small>啟動後不久檢查一次，之後每六小時在 Chadex 回到前景時再檢查。只會檢查，不會自動下載或安裝。</small></span><input type="checkbox" checked={updates.autoCheck} onChange={(event) => updates.setAutoCheck(event.target.checked)} /></label>
     <p className="panel-note">檢查更新不會下載或安裝；更新只會在你明確按下安裝按鈕後開始。</p>
   </Panel>;
+}
+/** Shown only once an update is found, like the macOS sidebar button; it keeps its color while working. */
+function SidebarUpdateButton({ updates, blockedReason, onOpen }: { updates: WindowsUpdates; blockedReason: string | null; onOpen: () => void }) {
+  const { state } = updates;
+  if (state.kind !== 'available' && state.kind !== 'installing' && state.kind !== 'handoff') return null;
+  const working = state.kind !== 'available';
+  const label = state.kind === 'available' ? `更新至 v${state.update.version}`
+    : state.kind === 'installing' ? (state.total ? `更新中… ${Math.round(state.downloaded / state.total * 100)}%` : '更新中…') : '重新啟動中…';
+  const hint = state.kind === 'available' ? blockedReason ?? `下載並安裝 Chadex v${state.update.version}，完成後自動重新啟動`
+    : state.kind === 'installing' ? '正在下載並安裝更新' : '更新安裝已啟動，Chadex 將關閉以完成安裝';
+  return <button className="primary sidebar-update" aria-busy={working} title={hint} aria-label={`${label}。${hint}`}
+    onClick={() => { onOpen(); if (state.kind === 'available' && !blockedReason) void updates.install(); }}>
+    {working ? <span className="spinner" aria-hidden="true" /> : <Icon name="download" size={18} />}<span>{label}</span>
+  </button>;
 }
 const defaultStore = new DesktopStore(desktopApi);
 export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopApi; store?: DesktopStore }) {
@@ -187,6 +149,19 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
     : snapshot.tunnel_ready ? '可以到 ChatGPT 開始使用了。ChatGPT 第一次讀取這個專案後，這裡會顯示已驗證。'
     : !project ? '選擇一個本地資料夾，準備服務，再連接 ChatGPT。' : '儲存憑證後連接 ChatGPT，就能讓它操作這個專案。';
   const canConnect = editable && Boolean(project) && Boolean(view.desktop?.credential_stored) && Boolean(prefs.tunnel_id) && !snapshot?.current_operation;
+  function savePreference(label: string, change: Partial<Preferences>) {
+    void run(label, async () => {
+      const latest = store.getSnapshot().desktop?.preferences ?? prefs;
+      await api.savePreferences({ ...latest, ...change });
+    });
+  }
+  const updates = useWindowsUpdates(api, view.desktop?.version ?? null, prefs.auto_check_updates ?? true,
+    (value) => savePreference('儲存更新設定', { auto_check_updates: value }));
+  const workRunning = Boolean(snapshot?.current_operation) || snapshot?.task_progress?.status === 'running' || jobs.some((job) => job.status === 'running');
+  const updateBlockedReason = workRunning ? '目前有工作正在執行。請等工作完成或取消後再更新，以免中斷進行中的工作。' : null;
+  // Fresh installs get a pointer to the guide on the home page. The page itself stays on home:
+  // the installer acceptance probe reads the home page's status facts on first launch.
+  const freshInstall = Boolean(view.desktop) && !view.desktop?.credential_stored && !prefs.tunnel_id && prefs.recent_projects.length === 0;
   const filteredActivities = activities.filter((entry) => (activityLevel === 'all' || entry.level === activityLevel)
     && `${entry.message} ${entry.source} ${entry.event_kind}`.toLocaleLowerCase().includes(activitySearch.toLocaleLowerCase())).slice().sort((a, b) => b.sequence - a.sequence);
 
@@ -289,6 +264,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
       <div className="sidebar-project"><small>目前專案</small><strong>{project ? basename(project.path) : '尚未選擇'}</strong><span title={project?.path}>{project?.path ?? '從「專案」選擇資料夾'}</span></div>
       <div className="sidebar-spacer" />
       <Ferret snapshot={snapshot} activities={activities} visible={prefs.ferret_visible} motion={prefs.ferret_motion} unavailable={view.freshness === 'unavailable' || view.desktop?.helper.state === 'failed'} />
+      <SidebarUpdateButton updates={updates} blockedReason={updateBlockedReason} onOpen={() => setPage('updates')} />
       <button className={`nav-item ${page === 'diagnostics' ? 'active' : ''}`} onClick={() => setPage('diagnostics')}><Icon name="pulse" />診斷</button>
       <button className={`version-link ${page === 'updates' ? 'active' : ''}`} onClick={() => setPage('updates')}>Windows Desktop <span>{view.desktop ? `v${view.desktop.version}` : '版本未確認'}</span></button>
     </aside>
@@ -307,6 +283,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
         </div>}
 
         {page === 'home' && <>
+          {freshInstall && <div className="notice" role="note"><strong>第一次使用 Chadex？</strong><p>跟著「使用說明」一步步完成設定，大約只需要做一次。</p><button className="primary" onClick={() => setPage('guide')}>開啟使用說明</button></div>}
           <section className="hero" aria-labelledby="hero-title">
             <div className="hero-top">
               <div className="hero-copy">
@@ -340,6 +317,11 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
           {detail.path === project?.path && <Panel title="本地服務"><Facts items={statusRows.slice(1)} /><div className="button-row"><button disabled={!editable} onClick={() => { void runtime(snapshot?.runtime_status?.runtime_configured ? 'resumeService' : 'configureLocalSetup', '準備本地服務'); }}>準備／恢復服務</button><button className="danger" disabled={!editable} onClick={() => { void runtime('stopLocalService', '停止本地服務'); }}>停止本地服務</button></div></Panel>}
         </> : <Empty title="尚未選擇專案">到「專案」選擇資料夾，查看實際檢查結果。</Empty>)}
 
+        {page === 'guide' && <GuidePage api={api} projectReady={Boolean(project)} credentialsReady={Boolean(view.desktop?.credential_stored) && Boolean(prefs.tunnel_id)}
+          tunnelReady={Boolean(snapshot?.tunnel_ready)} verified={connection.verified} canConnect={canConnect} canChooseProject={editable}
+          openAIProjectConfirmed={prefs.guide_openai_project_confirmed ?? false} pluginConfirmed={prefs.guide_chatgpt_plugin_confirmed ?? false}
+          onConfirm={(step, value) => savePreference('儲存使用說明進度', step === 'openai_project' ? { guide_openai_project_confirmed: value } : { guide_chatgpt_plugin_confirmed: value })}
+          onChooseProject={() => { void chooseProject(); }} onOpenConnection={() => setPage('connection')} onConnect={() => { void runtime('connectChatGPT', '連接 ChatGPT'); }} />}
         {page === 'skills' && <SkillsPage api={api} project={project?.path ?? null} helperReady={helperRunning} />}
 
         {page === 'connection' && <>
@@ -383,7 +365,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
           <Panel title="應用程式路徑"><Facts items={Object.entries(view.desktop?.paths ?? { helper: '未知', runtime: '未知', data: '未知' }).map(([key, value]) => [key, <code>{value}</code>])} /></Panel>
         </>}
 
-        <div hidden={page !== 'updates'}><WindowsUpdatePanel api={api} version={view.desktop?.version ?? null} /></div>
+        <div hidden={page !== 'updates'}><WindowsUpdatePanel updates={updates} version={view.desktop?.version ?? null} blockedReason={updateBlockedReason} /></div>
       </main><footer><span>Chadex · 本地優先</span><span>{view.freshness === 'fresh' ? `狀態更新 ${date(view.receivedAt)}` : '等待新的服務狀態'}</span></footer>
     </div>
   </div>;

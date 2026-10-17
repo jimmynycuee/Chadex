@@ -561,6 +561,8 @@
 "updates.checkMenu" = "Check for Updates…";
 "updates.install" = "Install v%@";
 "updates.quickUpdate" = "Update";
+"updates.quickUpdate.preparing" = "Updating…";
+"updates.quickUpdate.installing" = "Restarting…";
 "updates.quickUpdateHint" = "Update Chadex to v%@";
 "updates.releaseNotes" = "Release Notes";
 "updates.status.ready" = "Ready to check for a newer stable version.";

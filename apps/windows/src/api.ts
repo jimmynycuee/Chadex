@@ -38,9 +38,13 @@ export interface DesktopApi {
   forgetCredential(): Promise<void>;
   restartHelper(): Promise<void>;
   hideWindow(): Promise<void>;
+  /** Opens one of the guide's fixed external pages in the default browser. */
+  openGuideLink(link: GuideLink): Promise<void>;
   checkForUpdate(): Promise<UpdateInfo | null>;
   installUpdate(onProgress?: (downloaded: number, total?: number) => void): Promise<void>;
 }
+
+export type GuideLink = 'openai_projects' | 'openai_tunnels' | 'openai_api_keys' | 'chatgpt' | 'mcp_guide';
 
 export interface UpdateInfo { version: string; date?: string | null; body?: string | null }
 
@@ -197,6 +201,7 @@ export const desktopApi: DesktopApi = {
   forgetCredential: () => call('forget_credential'),
   restartHelper: () => call('restart_helper'),
   hideWindow: () => call('hide_main_window'),
+  openGuideLink: (link) => call('open_guide_link', { link }),
   checkForUpdate,
   installUpdate,
 };

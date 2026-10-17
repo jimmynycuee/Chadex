@@ -213,8 +213,13 @@ struct PlanGoalView: View {
 
     // MARK: Overview lists
 
+    /// Only the newest plan still being drafted; approved plans live on as Goal runs.
     private var visiblePlans: [PlanSummary] {
-        (panel.overview?.plans ?? []).filter { $0.state == "drafting" || $0.state == "approved" }
+        let drafting = (panel.overview?.plans ?? []).filter { $0.state == "drafting" }
+        guard let newest = drafting.max(by: {
+            ($0.updatedAtUnixMs ?? $0.createdAtUnixMs ?? 0) < ($1.updatedAtUnixMs ?? $1.createdAtUnixMs ?? 0)
+        }) else { return [] }
+        return [newest]
     }
 
     private var plansSection: some View {

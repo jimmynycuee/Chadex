@@ -15,6 +15,7 @@ struct GuideView: View {
         case connection
         case chatGPTPlugin
         case finalTest
+        case troubleshooting
     }
 
     private let projectsURL = URL(string: "https://platform.openai.com/settings/organization/projects")!
@@ -227,6 +228,11 @@ struct GuideView: View {
                         .accessibilityLabel(L10n.string("common.copy"))
                     }
 
+                    Text(L10n.string("guide.testPromptNote"))
+                        .chadexFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     if model.snapshot.chatGPTVerifiedForSelectedProject {
                         VStack(alignment: .leading, spacing: 4) {
                             Label(L10n.string("guide.finishTitle"), systemImage: "checkmark.circle.fill")
@@ -247,6 +253,18 @@ struct GuideView: View {
                 }
             }
             .id(GuideSection.finalTest)
+
+            GuideGroup(title: L10n.string("guide.troubleshooting")) {
+                GuideTrouble(title: L10n.string("guide.troubleDeveloperMode"),
+                             message: L10n.string("guide.troubleDeveloperModeMessage"))
+                GuideTrouble(title: L10n.string("guide.troubleScan"),
+                             message: L10n.string("guide.troubleScanMessage"))
+                GuideTrouble(title: L10n.string("guide.troubleWaiting"),
+                             message: L10n.string("guide.troubleWaitingMessage"))
+                GuideTrouble(title: L10n.string("guide.troubleWindow"),
+                             message: L10n.string("guide.troubleWindowMessage"))
+            }
+            .id(GuideSection.troubleshooting)
 
             Text(L10n.string("guide.uiMayChange"))
                 .chadexFont(.caption)
@@ -302,6 +320,12 @@ struct GuideView: View {
                 complete: model.snapshot.chatGPTVerifiedForSelectedProject,
                 proxy: proxy
             )
+            railButton(
+                title: L10n.string("guide.troubleshooting"),
+                section: .troubleshooting,
+                complete: nil,
+                proxy: proxy
+            )
         }
         .chadexPadding(.top, 4)
     }
@@ -316,7 +340,7 @@ struct GuideView: View {
             proxy.scrollTo(section, anchor: .top)
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: railSymbol(for: complete))
+                Image(systemName: section == .troubleshooting ? "questionmark.circle" : railSymbol(for: complete))
                     .chadexFont(.caption, weight: .medium)
                     .foregroundStyle(complete == true ? Color.green : Color.secondary)
                     .frame(width: 16)
@@ -482,18 +506,21 @@ private struct GuideProgressItem: View {
     }
 }
 
-private struct GuidePath: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
+private struct GuideTrouble: View {
+    let title: String
+    let message: String
 
     var body: some View {
-        Text(text)
-            .chadexFont(.caption, design: .monospaced)
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .chadexFont(.callout, weight: .semibold)
+            Text(message)
+                .chadexFont(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 

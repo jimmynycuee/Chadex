@@ -546,6 +546,41 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// The guide's external pages. The webview names one by key; it never passes a URL.
+fn guide_link_url(link: &str) -> Option<&'static str> {
+    match link {
+        "openai_projects" => Some("https://platform.openai.com/settings/organization/projects"),
+        "openai_tunnels" => Some("https://platform.openai.com/settings/organization/tunnels"),
+        "openai_api_keys" => Some("https://platform.openai.com/settings/organization/api-keys"),
+        "chatgpt" => Some("https://chatgpt.com"),
+        "mcp_guide" => Some(
+            "https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt",
+        ),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+fn open_guide_link(link: String) -> Result<(), String> {
+    let url = guide_link_url(&link).ok_or("guide_link_unknown")?;
+    #[cfg(windows)]
+    {
+        // explorer.exe hands an https URL to the user's default browser.
+        let system_root =
+            std::env::var_os("SystemRoot").ok_or("windows_system_root_unavailable")?;
+        std::process::Command::new(std::path::PathBuf::from(system_root).join("explorer.exe"))
+            .arg(url)
+            .spawn()
+            .map_err(|_| "browser_launch_failed")?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = url;
+        Err("windows_explorer_required".into())
+    }
+}
+
 #[tauri::command]
 fn hide_main_window(app: tauri::AppHandle) -> Result<(), String> {
     let window = app
@@ -675,7 +710,8 @@ fn main() {
         store_credential,
         forget_credential,
         restart_helper,
-        hide_main_window
+        hide_main_window,
+        open_guide_link
     ]);
     #[cfg(feature = "desktop-smoke")]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -692,6 +728,7 @@ fn main() {
         forget_credential,
         restart_helper,
         hide_main_window,
+        open_guide_link,
         quit_app,
         smoke::smoke_close_main_window,
         smoke::smoke_checkpoint
@@ -745,6 +782,16 @@ mod tests {
             "run_process",
         ] {
             assert!(!METHODS.contains(&name));
+        }
+    }
+
+    #[test]
+    fn guide_links_are_a_fixed_https_allowlist() {
+        for key in ["openai_projects", "openai_tunnels", "openai_api_keys", "chatgpt", "mcp_guide"] {
+            assert!(guide_link_url(key).is_some_and(|url| url.starts_with("https://")));
+        }
+        for key in ["", "https://example.com", "file:///C:/Windows", "chatgpt "] {
+            assert!(guide_link_url(key).is_none());
         }
     }
 

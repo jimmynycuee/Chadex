@@ -14,6 +14,10 @@ pub struct Preferences {
     pub last_project: Option<String>,
     pub tunnel_id: String,
     pub prepare_service_on_launch: bool,
+    /// Kept here rather than in WebView storage: the app's data folder stays limited to files Chadex writes itself.
+    pub auto_check_updates: bool,
+    pub guide_openai_project_confirmed: bool,
+    pub guide_chatgpt_plugin_confirmed: bool,
 }
 
 impl Default for Preferences {
@@ -30,6 +34,9 @@ impl Default for Preferences {
             last_project: None,
             tunnel_id: String::new(),
             prepare_service_on_launch: true,
+            auto_check_updates: true,
+            guide_openai_project_confirmed: false,
+            guide_chatgpt_plugin_confirmed: false,
         }
     }
 }
@@ -109,6 +116,13 @@ mod tests {
         let old: Preferences = serde_json::from_str(r#"{"theme":"dark"}"#).unwrap();
         assert!(old.prepare_service_on_launch);
         assert!(Preferences::default().prepare_service_on_launch);
+    }
+    #[test]
+    fn update_and_guide_settings_default_for_older_preference_files() {
+        let old: Preferences = serde_json::from_str(r#"{"theme":"dark"}"#).unwrap();
+        assert!(old.auto_check_updates);
+        assert!(!old.guide_openai_project_confirmed);
+        assert!(!old.guide_chatgpt_plugin_confirmed);
     }
     #[test]
     fn new_installs_default_to_dark_but_keep_a_saved_choice() {

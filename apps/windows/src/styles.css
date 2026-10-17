@@ -89,6 +89,8 @@ code, .path-block { font-family: "Cascadia Code", Consolas, monospace; font-size
 .sidebar-project strong { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .sidebar-project > span { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-spacer { flex: 1; min-height: 24px; }
+.sidebar-update { width: 100%; margin: 8px 0 4px; min-height: 36px; white-space: nowrap; }
+.sidebar-update .spinner { color: var(--on-accent); }
 .version-link { display: block; padding: 10px 12px 4px; background: none; border: none; border-top: 1px solid var(--line); border-radius: 0; color: var(--muted); font-size: 12px; line-height: 16px; text-align: left; margin-top: 12px; min-height: 0; width: 100%; }
 .version-link span { display: block; }
 .version-link.active { color: var(--accent); }
@@ -305,3 +307,30 @@ button.skill-toggle:hover:not(:disabled) { background: none; }
 .skill-definition { margin: 6px 0; padding: 10px 12px; max-height: 320px; overflow: auto; background: var(--background); border: 1px solid var(--line); border-radius: 6px; font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 main.narrow { max-width: 1036px; }
 .broad-project-confirm { border: 1px solid var(--warn); }
+
+/* Guide (mirrors the macOS GuideView) */
+.guide-intro h2 { font-size: 20px; line-height: 28px; margin-bottom: 6px; }
+.guide-intro p { margin: 0 0 6px; }
+.guide-progress { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; }
+.guide-progress a { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; text-decoration: none; }
+.guide-progress a:hover { color: var(--ink); }
+.guide-progress a.done .icon { color: var(--good); }
+.guide-step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 14px; }
+.guide-step + .guide-step { margin-top: 22px; }
+.guide-marker { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line-strong); color: var(--muted); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.guide-marker.done { border-color: transparent; background: var(--good); color: var(--glyph-on-bright); }
+.guide-step-body h3, .guide-group > h3 { font-size: 15px; line-height: 22px; margin: 2px 0 6px; }
+.guide-step-body p, .guide-group > p { color: var(--muted); font-size: 14px; line-height: 21px; margin: 0 0 8px; }
+.guide-step-body ol { color: var(--muted); font-size: 14px; line-height: 21px; margin: 0 0 8px; padding-left: 22px; }
+.guide-step-body li + li { margin-top: 4px; }
+.guide-warning { font-size: 12px !important; font-weight: 600; }
+.guide-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 8px; }
+.guide-check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.guide-ok { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--ink); margin: 8px 0 0; }
+.guide-ok > .icon { color: var(--good); flex: none; margin-top: 2px; }
+.guide-prompt { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--layer); }
+.guide-prompt code { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; user-select: text; }
+.guide-trouble { margin: 0; }
+.guide-trouble dt { font-weight: 600; font-size: 14px; margin-top: 14px; }
+.guide-trouble dt:first-child { margin-top: 0; }
+.guide-trouble dd { margin: 4px 0 0; color: var(--muted); font-size: 14px; line-height: 21px; }
