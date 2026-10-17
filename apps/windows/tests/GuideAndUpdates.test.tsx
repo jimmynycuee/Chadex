@@ -38,18 +38,17 @@ describe('guide page', () => {
     expect(localStorage.getItem('chadex.guide.openAIProjectConfirmed')).toBe('true');
   });
 
-  it('opens on the guide once for a fresh install', async () => {
-    const fresh = desktop({ credential_stored: false, preferences: { ...defaultPreferences } });
-    await mount(fresh);
-    expect(screen.getByRole('heading', { level: 1, name: '使用說明' })).toBeTruthy();
-    cleanup();
-    await mount(fresh);
+  it('points a fresh install at the guide but stays on the home page', async () => {
+    await mount(desktop({ credential_stored: false, preferences: { ...defaultPreferences } }));
     expect(screen.getByRole('heading', { level: 1, name: '總覽' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '開啟使用說明' }));
+    expect(screen.getByRole('heading', { level: 1, name: '使用說明' })).toBeTruthy();
+    expect(localStorage.length).toBe(0);
   });
 
-  it('does not reroute an install that is already set up', async () => {
+  it('does not show the pointer once set up', async () => {
     await mount();
-    expect(screen.getByRole('heading', { level: 1, name: '總覽' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '開啟使用說明' })).toBeNull();
   });
 });
 

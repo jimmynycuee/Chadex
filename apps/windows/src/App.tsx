@@ -152,23 +152,13 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
   const updates = useWindowsUpdates(api, view.desktop?.version ?? null);
   const workRunning = Boolean(snapshot?.current_operation) || snapshot?.task_progress?.status === 'running' || jobs.some((job) => job.status === 'running');
   const updateBlockedReason = workRunning ? '目前有工作正在執行。請等工作完成或取消後再更新，以免中斷進行中的工作。' : null;
+  // Fresh installs get a pointer to the guide on the home page. The page itself stays on home:
+  // the installer acceptance probe reads the home page's status facts on first launch.
   const freshInstall = Boolean(view.desktop) && !view.desktop?.credential_stored && !prefs.tunnel_id && prefs.recent_projects.length === 0;
   const filteredActivities = activities.filter((entry) => (activityLevel === 'all' || entry.level === activityLevel)
     && `${entry.message} ${entry.source} ${entry.event_kind}`.toLocaleLowerCase().includes(activitySearch.toLocaleLowerCase())).slice().sort((a, b) => b.sequence - a.sequence);
 
   useEffect(store.retain, [store]);
-  // Like the macOS app: a fresh install opens on the guide, once.
-  const routedFirstLaunch = useRef(false);
-  useEffect(() => {
-    if (routedFirstLaunch.current || !view.desktop) return;
-    routedFirstLaunch.current = true;
-    if (!freshInstall) return;
-    try {
-      if (localStorage.getItem('chadex.guide.routedFirstLaunch') === 'true') return;
-      localStorage.setItem('chadex.guide.routedFirstLaunch', 'true');
-    } catch { /* convenience only */ }
-    setPage('guide');
-  }, [view.desktop, freshInstall]);
   // Launch-time warm-up, once per app start, after the first fresh status. Fire-and-forget:
   // the helper decides what (if anything) to resume and joins/cancels it for later requests,
   // so nothing here is busy UI or an error surface.
@@ -286,6 +276,7 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
         </div>}
 
         {page === 'home' && <>
+          {freshInstall && <div className="notice" role="note"><strong>第一次使用 Chadex？</strong><p>跟著「使用說明」一步步完成設定，大約只需要做一次。</p><button className="primary" onClick={() => setPage('guide')}>開啟使用說明</button></div>}
           <section className="hero" aria-labelledby="hero-title">
             <div className="hero-top">
               <div className="hero-copy">
