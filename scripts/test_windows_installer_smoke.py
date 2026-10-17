@@ -872,6 +872,27 @@ class WindowsInstallerSmokeTests(unittest.TestCase):
                 smoke.validate_historical_baseline(baseline_dir, "0.7.2")
             self.assertEqual(failure.exception.code, "candidate_metadata_invalid")
 
+    def test_historical_baseline_accepts_the_schema_2_manifest_from_v0_7_2(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            baseline_dir, metadata = make_historical_baseline(Path(directory))
+            del metadata["desktop_sha256"]
+            metadata.update({"schema": 2, "desktop_payload_sha256": "e" * 64,
+                             "desktop_source_sha256": "f" * 64})
+            (baseline_dir / "candidate.json").write_text(json.dumps(metadata), encoding="utf-8")
+            self.assertEqual(smoke.validate_historical_baseline(baseline_dir, "0.7.3")["desktop_hash"], "e" * 64)
+
+            metadata["desktop_sha256"] = metadata.pop("desktop_payload_sha256")
+            (baseline_dir / "candidate.json").write_text(json.dumps(metadata), encoding="utf-8")
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.validate_historical_baseline(baseline_dir, "0.7.3")
+            self.assertEqual(failure.exception.code, "candidate_hash_invalid")
+
+            metadata["schema"] = 3
+            (baseline_dir / "candidate.json").write_text(json.dumps(metadata), encoding="utf-8")
+            with self.assertRaises(smoke.SmokeFailure) as failure:
+                smoke.validate_historical_baseline(baseline_dir, "0.7.3")
+            self.assertEqual(failure.exception.code, "candidate_metadata_invalid")
+
     def test_candidate_rejects_traversal_and_installer_hash_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             candidate_dir, metadata = make_candidate(Path(directory))
