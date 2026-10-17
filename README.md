@@ -2,15 +2,15 @@
 
 **ChatGPT Web + your local repo. No copy-paste loop.**
 
-## ⬇️ Download Chadex for macOS
+## ⬇️ Download Chadex
 
-### **[Download the latest macOS DMG →](https://github.com/jimmynycuee/Chadex/releases)**
+### **[Download the latest release →](https://github.com/jimmynycuee/Chadex/releases)**
 
-`macOS 14+` · `Apple Silicon` · `Free & Open Source`
+`macOS 14+ · Apple Silicon` · `Windows x64` · `Free & Open Source`
 
-**Latest stable release: v0.7.1** — Plan and Goal reliability fixes: manifest-first Skill tool discovery, approval persistence across reconnects, safe single-flight recovery without replaying uncertain writes, and project-scoped isolated Goal execution. v0.7.0 introduced Plan Mode and Goal Mode, plus a notice while ChatGPT operates the Mac. 0.6.5: Computer Use no longer leaves Chromium browsers slow: web accessibility is switched back off after 120 s idle, and ChatGPT is told when to use Computer Use. 0.6.4 made macOS buttons follow the interface size in a Liquid Glass style. 0.6.3 moved releases to the macOS 26 SDK so the design v2 Liquid Glass appears in the released app. Patch releases 0.6.1–0.6.3 fix off-centre macOS button labels at larger interface sizes and give all buttons the capsule shape of the status pills. v0.6.0 brought design v2 to macOS and Windows, a Computer Use permission card, an agent cursor overlay and Chromium web accessibility on macOS, Tunnel ID validation before saving, and a stricter local runtime (no shared-key login, loopback-only CORS and Host checks), while keeping public distribution macOS-only.
+**Latest stable release: v0.7.2** — more reliable Goal runs (execution-environment preflight, isolated acceptance lanes, checkpoint-aware retries and resumable recovery), no duplicate Plan or Goal runs, and the first Windows x64 installer: closing the window hides Chadex to the system tray while it stays connected, and later versions install from inside the app. v0.7.1: Plan and Goal reliability fixes: manifest-first Skill tool discovery, approval persistence across reconnects, safe single-flight recovery without replaying uncertain writes, and project-scoped isolated Goal execution. v0.7.0 introduced Plan Mode and Goal Mode, plus a notice while ChatGPT operates the Mac. 0.6.5: Computer Use no longer leaves Chromium browsers slow: web accessibility is switched back off after 120 s idle, and ChatGPT is told when to use Computer Use. 0.6.4 made macOS buttons follow the interface size in a Liquid Glass style. 0.6.3 moved releases to the macOS 26 SDK so the design v2 Liquid Glass appears in the released app. Patch releases 0.6.1–0.6.3 fix off-centre macOS button labels at larger interface sizes and give all buttons the capsule shape of the status pills. v0.6.0 brought design v2 to macOS and Windows, a Computer Use permission card, an agent cursor overlay and Chromium web accessibility on macOS, Tunnel ID validation before saving, and a stricter local runtime (no shared-key login, loopback-only CORS and Host checks).
 
-> On the Releases page, expand **Assets** and download the latest `Chadex-...-macos-arm64.dmg`.
+> On the Releases page, expand **Assets** and download `Chadex-...-macos-arm64.dmg` for macOS or `Chadex-...-windows-x64-unsigned-setup.exe` for Windows.
 
 Chadex 是一個原生 macOS 工具，讓 ChatGPT 能安全地連接到你明確選定的本機專案，直接協助閱讀檔案、執行工具與完成開發工作。
 
@@ -34,6 +34,14 @@ Chadex 是一個原生 macOS 工具，讓 ChatGPT 能安全地連接到你明確
 - ChatGPT 中可使用自訂 MCP / connector 的環境
 
 Intel / Universal build 目前尚未完成 release-level 驗證，因此暫不列為正式支援。
+
+### Windows
+
+1. 前往 [GitHub Releases](https://github.com/jimmynycuee/Chadex/releases)，下載 `Chadex-<版本>-windows-x64-unsigned-setup.exe`。
+2. 執行安裝檔。安裝檔尚未做 Authenticode 簽署，若 SmartScreen 顯示「Windows 已保護您的電腦」，請按「其他資訊 → 仍要執行」。
+3. 從開始功能表啟動 Chadex，依 App 內「使用說明」完成設定。
+
+關閉視窗只會把 Chadex 收到系統匣，連線仍會保持；要完全結束，請在系統匣圖示按右鍵選 **Quit**。v0.7.2 起可在 App 內更新；v0.7.1 及更早版本需先手動安裝一次 v0.7.2。
 
 ## Chadex 能做什麼
 
@@ -118,8 +126,8 @@ Release profile、簽署、DMG、GitHub Actions 與 distribution boundary 的完
 - [`docs/BRIDGE_PROTOCOL.md`](docs/BRIDGE_PROTOCOL.md) — Swift ↔ Rust bridge protocol
 - [`docs/PLAN_GOAL_MODE.md`](docs/PLAN_GOAL_MODE.md) — Plan Mode／Goal Mode 使用方式、安全邊界、恢復語意與實測證據
 - [`docs/RELEASE.md`](docs/RELEASE.md) — release gate、簽署、DMG 與 GitHub 發佈流程
+- [`docs/releases/0.7.2.md`](docs/releases/0.7.2.md) — Goal 復原、Windows 安裝檔、系統匣生命週期與 App 內更新
 - [`docs/releases/0.7.1.md`](docs/releases/0.7.1.md) — Plan／Goal 路由、核准持久性、安全復原與驗收修正
-- [`docs/releases/0.7.2.md`](docs/releases/0.7.2.md) — v0.7.2 候選版：Goal 復原、Windows 系統匣生命週期與更新流程（尚未發佈）
 - [`docs/releases/0.7.0.md`](docs/releases/0.7.0.md) — Plan 模式、Goal 模式（Codex／ChatGPT 兩種模式）、Computer Use 操作中提示
 - [`docs/releases/0.6.5.md`](docs/releases/0.6.5.md) — Computer Use 閒置後關回 Chromium 網頁輔助功能、提示 ChatGPT 何時使用
 - [`docs/releases/0.6.4.md`](docs/releases/0.6.4.md) — 按鈕跟著介面大小縮放的 Liquid Glass 樣式
