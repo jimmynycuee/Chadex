@@ -206,8 +206,8 @@ try {
         if ($BuildUpgradeFixture) {
             # Synthetic older installer metadata around the SAME production binaries.
             # This tests installer migration, not historical application compatibility.
-            if ($version -ne '0.7.2') { throw "Update the synthetic upgrade fixture for the candidate version." }
-            $upgradeBaselineVersion = '0.7.1'
+            if ($version -ne '0.7.3') { throw "Update the synthetic upgrade fixture for the candidate version." }
+            $upgradeBaselineVersion = '0.7.2'
             $fixtureConfig = Get-Content -Raw -LiteralPath "src-tauri/tauri.release.conf.json" | ConvertFrom-Json
             $fixtureConfig | Add-Member -NotePropertyName version -NotePropertyValue $upgradeBaselineVersion
             $fixtureConfig.bundle.createUpdaterArtifacts = $false

@@ -439,7 +439,10 @@ def validate_historical_baseline(baseline_dir: Path, candidate_version: str) -> 
     version = manifest.get("version")
     require(isinstance(version, str) and re.fullmatch(VERSION_PATTERN, version)
             and version != candidate_version, "candidate_metadata_invalid")
-    require(type(manifest.get("schema")) is int and manifest.get("schema") == 1
+    # Baselines are built by their own tag's script: schema 1 (v0.7.1) names the
+    # installed desktop hash desktop_sha256; schema 2 (v0.7.2+) desktop_payload_sha256.
+    schema = manifest.get("schema")
+    require(type(schema) is int and schema in (1, 2)
             and manifest.get("track") == "W5"
             and re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("source_sha", "")))
             and manifest.get("architecture") == "x86_64"
@@ -449,7 +452,7 @@ def validate_historical_baseline(baseline_dir: Path, candidate_version: str) -> 
             and manifest.get("authenticode") == "unsigned",
             "candidate_metadata_invalid")
     installer_hash = manifest.get("sha256")
-    desktop_hash = manifest.get("desktop_sha256")
+    desktop_hash = manifest.get("desktop_sha256" if schema == 1 else "desktop_payload_sha256")
     require(isinstance(installer_hash, str) and re.fullmatch(r"[0-9a-f]{64}", installer_hash)
             and isinstance(desktop_hash, str) and re.fullmatch(r"[0-9a-f]{64}", desktop_hash),
             "candidate_hash_invalid")

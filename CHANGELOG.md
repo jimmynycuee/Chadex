@@ -2,13 +2,20 @@
 
 All notable public Chadex releases are summarized here. Detailed notes remain under `docs/releases/`.
 
-## 0.7.2 (unreleased)
+## 0.7.3
+
+- macOS: the sidebar Update button shows a spinner and status while downloading and installing instead of only greying out; the Plans list shows only the newest plan still in drafting; the guide shows its troubleshooting section.
+- Windows: added a 使用說明 guide page matching the macOS guide, automatic update checks (opt-out) and a sidebar Update button with install progress.
+- Windows synthetic and historical upgrade baselines advance to v0.7.2.
+- See docs/releases/0.7.3.md for validation evidence and remaining boundaries.
+
+## 0.7.2
 
 - Repaired Goal execution environments, acceptance revisions, checkpoints and resumable operator recovery while preserving sandbox and formal human-gate requirements.
 - Prevented repeated Plan/Goal start actions from creating duplicate runs; a pending start now remains visibly reserved until reconciled.
 - On Windows, closing the window or choosing the in-app close button hides Chadex to the system tray and keeps the helper/Tunnel running. Only the tray Quit command stops the helper.
 - Added a Windows GitHub Release installer and signed in-app update path. v0.7.1 and earlier require one manual install of v0.7.2 before in-app updates can be used.
-- See docs/releases/0.7.2.md for candidate evidence, release gates and remaining boundaries.
+- See docs/releases/0.7.2.md for release evidence, gates and remaining boundaries.
 
 ## 0.7.1
 
