@@ -428,7 +428,6 @@ struct RootView: View {
         }
     }
 
-    @ViewBuilder
     private var quickUpdateTitle: String {
         switch updateManager.phase {
         case .preparing:
@@ -451,6 +450,7 @@ struct RootView: View {
         }
     }
 
+    @ViewBuilder
     private var detail: some View {
         switch selection {
         case .activity:
