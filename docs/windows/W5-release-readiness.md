@@ -4,7 +4,7 @@ W5 closes the **automatable Windows release-engineering track** on top of the W1
 
 The public macOS release workflow is unchanged. W5 does not authorize a GitHub Release, Windows asset publication, Authenticode signing policy, or updater rollout.
 
-For the v0.7.2 candidate, the Windows synthetic and historical upgrade baselines advance from v0.7.0 to v0.7.1. CI builds the historical source from the public v0.7.1 tag and upgrades it to the current candidate. The ordinary W5 artifact remains an unsigned CI validation artifact; the separate v0.7.2 release workflow produces the public Windows installer and signed updater bundle.
+For the v0.7.3 candidate, the Windows synthetic and historical upgrade baselines advance from v0.7.1 to v0.7.2 (for v0.7.2 they advanced from v0.7.0 to v0.7.1). CI builds the historical source from the public v0.7.2 tag and upgrades it to the current candidate. The ordinary W5 artifact remains an unsigned CI validation artifact; the separate release workflow produces the public Windows installer and signed updater bundle.
 
 ## Candidate contract
 
