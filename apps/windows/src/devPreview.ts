@@ -63,6 +63,7 @@ export function previewApi(scenario: string): DesktopApi {
     getGlobalInstructions: resolved(''), saveGlobalInstructions: (content) => Promise.resolve(content),
     storeCredential: resolved(undefined), forgetCredential: resolved(undefined), restartHelper: resolved(undefined),
     hideWindow: () => Promise.reject(new Error('隱藏視窗需要 Chadex Windows 桌面環境。')),
+    openGuideLink: () => Promise.reject(new Error('開啟外部連結需要 Chadex Windows 桌面環境。')),
     checkForUpdate: () => Promise.reject(new Error('更新檢查需要 Chadex Windows 桌面環境。')),
     installUpdate: () => Promise.reject(new Error('更新安裝需要 Chadex Windows 桌面環境。')),
   };
