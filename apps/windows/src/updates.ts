@@ -14,7 +14,6 @@ export type UpdateState =
 /** Same cadence as the macOS app: once shortly after launch, then again on focus after six hours. */
 export const AUTO_CHECK_DELAY_MS = 5_000;
 export const AUTO_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const AUTO_CHECK_KEY = 'chadex.updates.autoCheck';
 
 export function updateErrorMessage(operation: 'check' | 'install', error: unknown) {
   const detail = safeError(error);
@@ -27,10 +26,6 @@ export function updateErrorMessage(operation: 'check' | 'install', error: unknow
     : `安裝未完成：${detail}。請重新檢查更新後再試。`;
 }
 
-function readAutoCheck() {
-  try { return localStorage.getItem(AUTO_CHECK_KEY) !== 'false'; } catch { return true; }
-}
-
 export interface WindowsUpdates {
   state: UpdateState;
   autoCheck: boolean;
@@ -40,9 +35,10 @@ export interface WindowsUpdates {
   install(): Promise<void>;
 }
 
-export function useWindowsUpdates(api: DesktopApi, version: string | null): WindowsUpdates {
+/** `autoCheck` comes from the app's preferences; `saveAutoCheck` stores a change there. */
+export function useWindowsUpdates(api: DesktopApi, version: string | null, autoCheck: boolean,
+  saveAutoCheck: (value: boolean) => void): WindowsUpdates {
   const [state, setState] = useState<UpdateState>({ kind: 'idle' });
-  const [autoCheck, setAutoCheckState] = useState(readAutoCheck);
   const stateRef = useRef(state);
   stateRef.current = state;
   const mounted = useRef(true);
@@ -89,11 +85,6 @@ export function useWindowsUpdates(api: DesktopApi, version: string | null): Wind
     } finally { operation.current = false; }
   }, [api]);
 
-  const setAutoCheck = useCallback((value: boolean) => {
-    setAutoCheckState(value);
-    try { localStorage.setItem(AUTO_CHECK_KEY, String(value)); } catch { /* Storage is a convenience only. */ }
-  }, []);
-
   useEffect(() => {
     if (!autoCheck || !version) return;
     const timer = window.setTimeout(() => { void check(true); }, AUTO_CHECK_DELAY_MS);
@@ -110,5 +101,5 @@ export function useWindowsUpdates(api: DesktopApi, version: string | null): Wind
     };
   }, [autoCheck, version, check]);
 
-  return { state, autoCheck, setAutoCheck, check, install };
+  return { state, autoCheck, setAutoCheck: saveAutoCheck, check, install };
 }

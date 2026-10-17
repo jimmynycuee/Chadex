@@ -44,6 +44,10 @@ export interface Preferences {
   recent_projects: string[]; last_project: string | null; tunnel_id: string;
   /** Absent in older saved preferences: undefined means ON (matches macOS nil = ON). */
   prepare_service_on_launch?: boolean;
+  /** Absent in older saved preferences: undefined means ON. */
+  auto_check_updates?: boolean;
+  guide_openai_project_confirmed?: boolean;
+  guide_chatgpt_plugin_confirmed?: boolean;
 }
 export interface DesktopState {
   helper: { state: 'running' | 'stopping' | 'stopped' | 'failed'; pid: number | null; error: string | null };
@@ -103,4 +107,5 @@ export interface SkillInventory { project: string; total_count: number; skills: 
 export const defaultPreferences: Preferences = {
   restore_project: true, launch_at_login: false, notifications: false,
   ferret_visible: true, ferret_motion: true, theme: 'dark', recent_projects: [], last_project: null, tunnel_id: '', prepare_service_on_launch: true,
+  auto_check_updates: true, guide_openai_project_confirmed: false, guide_chatgpt_plugin_confirmed: false,
 };

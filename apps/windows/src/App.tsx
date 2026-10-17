@@ -149,7 +149,14 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
     : snapshot.tunnel_ready ? '可以到 ChatGPT 開始使用了。ChatGPT 第一次讀取這個專案後，這裡會顯示已驗證。'
     : !project ? '選擇一個本地資料夾，準備服務，再連接 ChatGPT。' : '儲存憑證後連接 ChatGPT，就能讓它操作這個專案。';
   const canConnect = editable && Boolean(project) && Boolean(view.desktop?.credential_stored) && Boolean(prefs.tunnel_id) && !snapshot?.current_operation;
-  const updates = useWindowsUpdates(api, view.desktop?.version ?? null);
+  function savePreference(label: string, change: Partial<Preferences>) {
+    void run(label, async () => {
+      const latest = store.getSnapshot().desktop?.preferences ?? prefs;
+      await api.savePreferences({ ...latest, ...change });
+    });
+  }
+  const updates = useWindowsUpdates(api, view.desktop?.version ?? null, prefs.auto_check_updates ?? true,
+    (value) => savePreference('儲存更新設定', { auto_check_updates: value }));
   const workRunning = Boolean(snapshot?.current_operation) || snapshot?.task_progress?.status === 'running' || jobs.some((job) => job.status === 'running');
   const updateBlockedReason = workRunning ? '目前有工作正在執行。請等工作完成或取消後再更新，以免中斷進行中的工作。' : null;
   // Fresh installs get a pointer to the guide on the home page. The page itself stays on home:
@@ -312,6 +319,8 @@ export function App({ api = desktopApi, store = defaultStore }: { api?: DesktopA
 
         {page === 'guide' && <GuidePage api={api} projectReady={Boolean(project)} credentialsReady={Boolean(view.desktop?.credential_stored) && Boolean(prefs.tunnel_id)}
           tunnelReady={Boolean(snapshot?.tunnel_ready)} verified={connection.verified} canConnect={canConnect} canChooseProject={editable}
+          openAIProjectConfirmed={prefs.guide_openai_project_confirmed ?? false} pluginConfirmed={prefs.guide_chatgpt_plugin_confirmed ?? false}
+          onConfirm={(step, value) => savePreference('儲存使用說明進度', step === 'openai_project' ? { guide_openai_project_confirmed: value } : { guide_chatgpt_plugin_confirmed: value })}
           onChooseProject={() => { void chooseProject(); }} onOpenConnection={() => setPage('connection')} onConnect={() => { void runtime('connectChatGPT', '連接 ChatGPT'); }} />}
         {page === 'skills' && <SkillsPage api={api} project={project?.path ?? null} helperReady={helperRunning} />}
 

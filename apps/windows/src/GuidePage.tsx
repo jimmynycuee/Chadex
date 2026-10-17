@@ -7,14 +7,6 @@ import { Icon } from './icons';
 // with the Windows app's own button names and window behavior.
 export const GUIDE_TEST_PROMPT = 'List Chadex projects, find my selected project and list its top-level files. If it is empty, report to me.';
 
-function useStoredFlag(key: string): [boolean, (value: boolean) => void] {
-  const [value, setValue] = useState(() => { try { return localStorage.getItem(key) === 'true'; } catch { return false; } });
-  return [value, (next) => {
-    setValue(next);
-    try { localStorage.setItem(key, String(next)); } catch { /* A remembered checkbox is a convenience only. */ }
-  }];
-}
-
 function Step({ number, title, complete, children }: { number: number; title: string; complete: boolean; children: ReactNode }) {
   return <div className="guide-step">
     <span className={`guide-marker${complete ? ' done' : ''}`} aria-label={complete ? '已完成' : `步驟 ${number}`}>{complete ? <Icon name="check" size={16} /> : number}</span>
@@ -36,6 +28,10 @@ export interface GuidePageProps {
   verified: boolean;
   canConnect: boolean;
   canChooseProject: boolean;
+  /** The two steps only the user can confirm; stored in the app's preferences. */
+  openAIProjectConfirmed: boolean;
+  pluginConfirmed: boolean;
+  onConfirm(step: 'openai_project' | 'chatgpt_plugin', value: boolean): void;
   onChooseProject(): void;
   onOpenConnection(): void;
   onConnect(): void;
@@ -43,8 +39,7 @@ export interface GuidePageProps {
 
 export function GuidePage(props: GuidePageProps) {
   const { api, projectReady, credentialsReady, tunnelReady, verified } = props;
-  const [openAIProjectConfirmed, setOpenAIProjectConfirmed] = useStoredFlag('chadex.guide.openAIProjectConfirmed');
-  const [pluginConfirmed, setPluginConfirmed] = useStoredFlag('chadex.guide.chatGPTPluginConfirmed');
+  const { openAIProjectConfirmed, pluginConfirmed } = props;
   const [linkError, setLinkError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -82,7 +77,7 @@ export function GuidePage(props: GuidePageProps) {
         <p>先到 OpenAI Platform 建立一個 Project，這樣 Chadex 使用的 API key 可以獨立管理。</p>
         <ol><li>建立新的 Project。</li><li>Project 名稱建議直接填 Chadex。</li></ol>
         <div className="guide-links">{linkButton('openai_projects', '開啟 OpenAI Projects')}</div>
-        <label className="guide-check"><input type="checkbox" checked={openAIProjectConfirmed} onChange={(event) => setOpenAIProjectConfirmed(event.target.checked)} />我已建立 Chadex Project</label>
+        <label className="guide-check"><input type="checkbox" checked={openAIProjectConfirmed} onChange={(event) => props.onConfirm('openai_project', event.target.checked)} />我已建立 Chadex Project</label>
       </Step>
       <Step number={2} title="建立 Tunnel ID 和 API key" complete={credentialsReady}>
         <p>接著在 OpenAI Platform 建立一組 Secure MCP Tunnel 與 API key。</p>
@@ -123,7 +118,7 @@ export function GuidePage(props: GuidePageProps) {
         </ol>
         <p className="panel-note">如果找不到「新增」或無法建立外掛程式，通常是 ChatGPT 方案、workspace 權限或 Developer Mode 尚未開放。</p>
         <div className="guide-links">{linkButton('chatgpt', '開啟 ChatGPT')}{linkButton('mcp_guide', 'OpenAI MCP 官方說明')}</div>
-        <label className="guide-check"><input type="checkbox" checked={pluginConfirmed} onChange={(event) => setPluginConfirmed(event.target.checked)} />我已建立 Chadex 外掛程式</label>
+        <label className="guide-check"><input type="checkbox" checked={pluginConfirmed} onChange={(event) => props.onConfirm('chatgpt_plugin', event.target.checked)} />我已建立 Chadex 外掛程式</label>
       </Step>
     </Group>
 

@@ -31,11 +31,11 @@ describe('guide page', () => {
     expect(screen.getByText(/點系統匣的 Chadex 圖示/)).toBeTruthy();
   });
 
-  it('remembers the manual confirmations', async () => {
-    await mount();
+  it('stores the manual confirmations in the app preferences', async () => {
+    const { api } = await mount();
     fireEvent.click(screen.getByRole('button', { name: '使用說明' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '我已建立 Chadex Project' }));
-    expect(localStorage.getItem('chadex.guide.openAIProjectConfirmed')).toBe('true');
+    await waitFor(() => expect(api.savePreferences).toHaveBeenCalledWith(expect.objectContaining({ guide_openai_project_confirmed: true })));
   });
 
   it('points a fresh install at the guide but stays on the home page', async () => {
@@ -91,14 +91,30 @@ describe('automatic update check and sidebar button', () => {
     await waitFor(() => expect(api.checkForUpdate).toHaveBeenCalledTimes(2));
   });
 
-  it('can be turned off', async () => {
+  it('can be turned off, and the setting lives in the app preferences', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    localStorage.setItem('chadex.updates.autoCheck', 'false');
-    const { api } = await mount(desktop({ version: '0.7.2' }));
+    const { api } = await mount(desktop({ version: '0.7.2', preferences: { ...desktop().preferences, auto_check_updates: false } }));
     await act(async () => { vi.advanceTimersByTime(AUTO_CHECK_DELAY_MS * 2); });
     expect(api.checkForUpdate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /Windows Desktop/ }));
-    expect((screen.getByRole('checkbox', { name: /自動檢查更新/ }) as HTMLInputElement).checked).toBe(false);
+    const toggle = screen.getByRole('checkbox', { name: /自動檢查更新/ }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(api.savePreferences).toHaveBeenCalledWith(expect.objectContaining({ auto_check_updates: true })));
+  });
+
+  it('never touches WebView storage, which would add files to the app data folder', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const get = vi.spyOn(Storage.prototype, 'getItem'); const set = vi.spyOn(Storage.prototype, 'setItem');
+    const api = apiMock(desktop({ version: '0.7.2' }));
+    await mount(undefined, api);
+    await act(async () => { vi.advanceTimersByTime(AUTO_CHECK_DELAY_MS); });
+    fireEvent.click(screen.getByRole('button', { name: '使用說明' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '我已建立 Chadex Project' }));
+    fireEvent.click(screen.getByRole('button', { name: /Windows Desktop/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /自動檢查更新/ }));
+    expect(get).not.toHaveBeenCalled(); expect(set).not.toHaveBeenCalled();
+    get.mockRestore(); set.mockRestore();
   });
 
   it('does not install while work is running', async () => {
